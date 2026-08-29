@@ -7,110 +7,1265 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-enum UserStatus {
-  active
-  locked
-  disabled
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model ai_alert_explanations {
+  ai_alert_explanation_id String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ai_alert_id             String    @db.Uuid
+  explanation_text        String
+  feature_contributions   Json?
+  baseline_data           Json?
+  created_at              DateTime  @default(now()) @db.Timestamptz(6)
+  ai_alerts               ai_alerts @relation(fields: [ai_alert_id], references: [ai_alert_id], onDelete: NoAction, onUpdate: NoAction)
 }
 
-model Department {
-  id          String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("department_id")
-  code        String       @unique @db.VarChar(50)
-  name        String       @db.VarChar(150)
-  description String?
-  status      String       @default("active") @db.VarChar(20)
-  users       User[]
-  createdAt   DateTime     @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt   DateTime     @updatedAt @map("updated_at") @db.Timestamptz
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model ai_alerts {
+  ai_alert_id           String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  alert_code            String                  @unique @db.VarChar(50)
+  security_event_id     String                  @db.Uuid
+  log_source_id         String                  @db.Uuid
+  asset_id              String?                 @db.Uuid
+  ai_model_version_id   String                  @db.Uuid
+  anomaly_score         Decimal                 @db.Decimal(8, 6)
+  risk_score            Decimal?                @db.Decimal(8, 4)
+  risk_level            String?                 @db.VarChar(20)
+  title                 String                  @db.VarChar(255)
+  description           String?
+  status                String                  @default("new") @db.VarChar(30)
+  detected_at           DateTime                @default(now()) @db.Timestamptz(6)
+  reviewed_by_user_id   String?                 @db.Uuid
+  reviewed_at           DateTime?               @db.Timestamptz(6)
+  created_at            DateTime                @default(now()) @db.Timestamptz(6)
+  ai_alert_explanations ai_alert_explanations[]
+  ai_model_versions     ai_model_versions       @relation(fields: [ai_model_version_id], references: [ai_model_version_id], onDelete: NoAction, onUpdate: NoAction)
+  assets                assets?                 @relation(fields: [asset_id], references: [asset_id], onDelete: NoAction, onUpdate: NoAction)
+  log_sources           log_sources             @relation(fields: [log_source_id], references: [log_source_id], onDelete: NoAction, onUpdate: NoAction)
+  users                 users?                  @relation(fields: [reviewed_by_user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+  security_events       security_events         @relation(fields: [security_event_id], references: [security_event_id], onDelete: NoAction, onUpdate: NoAction)
+  ai_feedback           ai_feedback[]
+  incident_alert_links  incident_alert_links[]
 
-  @@map("departments")
+  @@index([ai_model_version_id])
+  @@index([asset_id])
+  @@index([log_source_id])
+  @@index([security_event_id])
+  @@index([status, detected_at])
 }
 
-model User {
-  id                 String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("user_id")
-  departmentId       String?       @db.Uuid @map("department_id")
-  email              String        @unique @db.VarChar(255)
-  passwordHash       String        @db.VarChar(255) @map("password_hash")
-  fullName           String        @db.VarChar(150) @map("full_name")
-  phone              String?       @db.VarChar(30)
-  employeeCode       String?       @unique @db.VarChar(50) @map("employee_code")
-  status             UserStatus    @default(active)
-  mustChangePassword Boolean       @default(false) @map("must_change_password")
-  emailVerifiedAt    DateTime?     @map("email_verified_at") @db.Timestamptz
-  lastLoginAt        DateTime?     @map("last_login_at") @db.Timestamptz
-  lockedAt           DateTime?     @map("locked_at") @db.Timestamptz
-  disabledAt         DateTime?     @map("disabled_at") @db.Timestamptz
-  createdAt          DateTime      @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt          DateTime      @updatedAt @map("updated_at") @db.Timestamptz
-  deletedAt          DateTime?     @map("deleted_at") @db.Timestamptz
-  department         Department?   @relation(fields: [departmentId], references: [id])
-  roles              UserRole[]
-  sessions           AuthSession[]
-
-  @@index([departmentId])
-  @@index([status])
-  @@map("users")
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model ai_feedback {
+  ai_feedback_id      String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  ai_alert_id         String    @db.Uuid
+  reviewed_by_user_id String?   @db.Uuid
+  feedback_label      String    @db.VarChar(30)
+  comment             String?
+  created_at          DateTime  @default(now()) @db.Timestamptz(6)
+  ai_alerts           ai_alerts @relation(fields: [ai_alert_id], references: [ai_alert_id], onDelete: NoAction, onUpdate: NoAction)
+  users               users?    @relation(fields: [reviewed_by_user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
 }
 
-model Role {
-  id          String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("role_id")
-  code        String           @unique @db.VarChar(50)
-  name        String           @db.VarChar(100)
-  description String?
-  isSystem    Boolean          @default(false) @map("is_system")
-  createdAt   DateTime         @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt   DateTime         @updatedAt @map("updated_at") @db.Timestamptz
-  users       UserRole[]
-  permissions RolePermission[]
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model ai_model_versions {
+  ai_model_version_id String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  model_name          String      @db.VarChar(150)
+  algorithm           String      @db.VarChar(100)
+  version             String      @db.VarChar(50)
+  provider            String?     @db.VarChar(150)
+  model_path          String?
+  parameters          Json?
+  is_active           Boolean     @default(false)
+  created_at          DateTime    @default(now()) @db.Timestamptz(6)
+  ai_alerts           ai_alerts[]
 
-  @@map("roles")
+  @@unique([model_name, version], map: "ai_model_versions_model_name_version_idx")
 }
 
-model Permission {
-  id          String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("permission_id")
-  code        String           @unique @db.VarChar(100)
-  module      String           @db.VarChar(50)
-  action      String           @db.VarChar(50)
-  description String?
-  createdAt   DateTime         @default(now()) @map("created_at") @db.Timestamptz
-  roles       RolePermission[]
-
-  @@map("permissions")
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model approval_actions {
+  approval_action_id  String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  approval_request_id String            @db.Uuid
+  workflow_step_id    String            @db.Uuid
+  acted_by_user_id    String?           @db.Uuid
+  decision            String            @db.VarChar(30)
+  comment             String?
+  acted_at            DateTime          @default(now()) @db.Timestamptz(6)
+  users               users?            @relation(fields: [acted_by_user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+  approval_requests   approval_requests @relation(fields: [approval_request_id], references: [approval_request_id], onDelete: NoAction, onUpdate: NoAction)
+  workflow_steps      workflow_steps    @relation(fields: [workflow_step_id], references: [workflow_step_id], onDelete: NoAction, onUpdate: NoAction)
 }
 
-model UserRole {
-  userId     String   @db.Uuid @map("user_id")
-  roleId     String   @db.Uuid @map("role_id")
-  assignedAt DateTime @default(now()) @map("assigned_at") @db.Timestamptz
-  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  role       Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
-
-  @@id([userId, roleId])
-  @@map("user_roles")
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model approval_delegations {
+  approval_delegation_id                              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  delegator_user_id                                   String   @db.Uuid
+  delegate_user_id                                    String   @db.Uuid
+  start_at                                            DateTime @db.Timestamptz(6)
+  end_at                                              DateTime @db.Timestamptz(6)
+  reason                                              String?
+  is_active                                           Boolean  @default(true)
+  created_at                                          DateTime @default(now()) @db.Timestamptz(6)
+  users_approval_delegations_delegate_user_idTousers  users    @relation("approval_delegations_delegate_user_idTousers", fields: [delegate_user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+  users_approval_delegations_delegator_user_idTousers users    @relation("approval_delegations_delegator_user_idTousers", fields: [delegator_user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
 }
 
-model RolePermission {
-  roleId      String     @db.Uuid @map("role_id")
-  permissionId String    @db.Uuid @map("permission_id")
-  role        Role       @relation(fields: [roleId], references: [id], onDelete: Cascade)
-  permission  Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
-
-  @@id([roleId, permissionId])
-  @@map("role_permissions")
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model approval_requests {
+  approval_request_id    String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workflow_definition_id String               @db.Uuid
+  entity_type            String               @db.VarChar(50)
+  entity_id              String               @db.Uuid
+  requested_by_user_id   String?              @db.Uuid
+  current_step           Int                  @default(1)
+  status                 String               @default("pending") @db.VarChar(30)
+  submitted_at           DateTime             @default(now()) @db.Timestamptz(6)
+  completed_at           DateTime?            @db.Timestamptz(6)
+  approval_actions       approval_actions[]
+  users                  users?               @relation(fields: [requested_by_user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+  workflow_definitions   workflow_definitions @relation(fields: [workflow_definition_id], references: [workflow_definition_id], onDelete: NoAction, onUpdate: NoAction)
 }
 
-model AuthSession {
-  id               String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid @map("auth_session_id")
-  userId           String    @db.Uuid @map("user_id")
-  refreshTokenHash String    @unique @db.VarChar(64) @map("refresh_token_hash")
-  ipAddress        String?   @db.Inet @map("ip_address")
-  userAgent        String?
-  expiresAt        DateTime  @map("expires_at") @db.Timestamptz
-  revokedAt        DateTime? @map("revoked_at") @db.Timestamptz
-  createdAt        DateTime  @default(now()) @map("created_at") @db.Timestamptz
-  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model asset_alert_thresholds {
+  asset_alert_threshold_id String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  asset_id                 String   @unique @db.Uuid
+  threshold                Decimal  @db.Decimal(8, 6)
+  risk_level_min           String?  @db.VarChar(20)
+  enabled                  Boolean  @default(true)
+  updated_by_user_id       String?  @db.Uuid
+  updated_at               DateTime @default(now()) @db.Timestamptz(6)
+  assets                   assets   @relation(fields: [asset_id], references: [asset_id], onDelete: NoAction, onUpdate: NoAction)
+  users                    users?   @relation(fields: [updated_by_user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+}
 
-  @@index([userId])
-  @@index([expiresAt])
-  @@map("auth_sessions")
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model asset_change_history {
+  asset_change_history_id String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  asset_id                String   @db.Uuid
+  changed_by_user_id      String?  @db.Uuid
+  action                  String   @db.VarChar(30)
+  before_data             Json?
+  after_data              Json?
+  changed_at              DateTime @default(now()) @db.Timestamptz(6)
+  assets                  assets   @relation(fields: [asset_id], references: [asset_id], onDelete: NoAction, onUpdate: NoAction)
+  users                   users?   @relation(fields: [changed_by_user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model assets {
+  asset_id                               String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  asset_code                             String                  @unique @db.VarChar(50)
+  name                                   String                  @db.VarChar(150)
+  asset_type                             String                  @db.VarChar(50)
+  description                            String?
+  department_id                          String?                 @db.Uuid
+  owner_user_id                          String?                 @db.Uuid
+  criticality                            String                  @default("medium") @db.VarChar(20)
+  hostname                               String?                 @db.VarChar(255)
+  ip_address                             String?                 @db.Inet
+  location                               String?                 @db.VarChar(255)
+  status                                 String                  @default("active") @db.VarChar(20)
+  metadata                               Json?
+  created_by_user_id                     String?                 @db.Uuid
+  created_at                             DateTime                @default(now()) @db.Timestamptz(6)
+  updated_at                             DateTime                @default(now()) @db.Timestamptz(6)
+  retired_at                             DateTime?               @db.Timestamptz(6)
+  deleted_at                             DateTime?               @db.Timestamptz(6)
+  ai_alerts                              ai_alerts[]
+  asset_alert_thresholds                 asset_alert_thresholds?
+  asset_change_history                   asset_change_history[]
+  users_assets_created_by_user_idTousers users?                  @relation("assets_created_by_user_idTousers", fields: [created_by_user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+  departments                            departments?            @relation(fields: [department_id], references: [department_id], onDelete: NoAction, onUpdate: NoAction)
+  users_assets_owner_user_idTousers      users?                  @relation("assets_owner_user_idTousers", fields: [owner_user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+  log_sources                            log_sources[]
+  risk_assessments                       risk_assessments[]
+
+  @@index([department_id])
+  @@index([owner_user_id])
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model audit_logs {
+  audit_log_id  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  actor_user_id String?  @db.Uuid
+  module        String   @db.VarChar(50)
+  action        String   @db.VarChar(100)
+  entity_type   String?  @db.VarChar(50)
+  entity_id     String?  @db.Uuid
+  before_data   Json?
+  after_data    Json?
+  ip_address    String?  @db.Inet
+  user_agent    String?
+  created_at    DateTime @default(now()) @db.Timestamptz(6)
+  users         users?   @relation(fields: [actor_user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([actor_user_id, created_at])
+  @@index([entity_type, entity_id])
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model auth_sessions {
+  auth_session_id    String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id            String    @db.Uuid
+  refresh_token_hash String    @db.VarChar(255)
+  ip_address         String?   @db.Inet
+  user_agent         String?
+  expires_at         DateTime  @db.Timestamptz(6)
+  revoked_at         DateTime? @db.Timestamptz(6)
+  created_at         DateTime  @default(now()) @db.Timestamptz(6)
+  users              users     @relation(fields: [user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model business_processes {
+  business_process_id String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code                String             @unique @db.VarChar(50)
+  name                String             @db.VarChar(150)
+  department_id       String?            @db.Uuid
+  owner_user_id       String?            @db.Uuid
+  description         String?
+  criticality         String             @default("medium") @db.VarChar(20)
+  status              String             @default("active") @db.VarChar(20)
+  created_at          DateTime           @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime           @default(now()) @db.Timestamptz(6)
+  departments         departments?       @relation(fields: [department_id], references: [department_id], onDelete: NoAction, onUpdate: NoAction)
+  users               users?             @relation(fields: [owner_user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+  risk_assessments    risk_assessments[]
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model compliance_controls {
+  compliance_control_id        String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  compliance_framework_id      String                    @db.Uuid
+  control_code                 String                    @db.VarChar(50)
+  title                        String                    @db.VarChar(255)
+  description                  String?
+  parent_compliance_control_id String?                   @db.Uuid
+  created_at                   DateTime                  @default(now()) @db.Timestamptz(6)
+  compliance_frameworks        compliance_frameworks     @relation(fields: [compliance_framework_id], references: [compliance_framework_id], onDelete: NoAction, onUpdate: NoAction)
+  compliance_controls          compliance_controls?      @relation("compliance_controlsTocompliance_controls", fields: [parent_compliance_control_id], references: [compliance_control_id], onDelete: NoAction, onUpdate: NoAction)
+  other_compliance_controls    compliance_controls[]     @relation("compliance_controlsTocompliance_controls")
+  control_assessments          control_assessments[]
+  policy_control_mappings      policy_control_mappings[]
+
+  @@unique([compliance_framework_id, control_code], map: "compliance_controls_compliance_framework_id_control_code_idx")
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model compliance_evidence {
+  compliance_evidence_id String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  control_assessment_id  String              @db.Uuid
+  file_id                String              @db.Uuid
+  description            String?
+  uploaded_by_user_id    String?             @db.Uuid
+  valid_until            DateTime?           @db.Date
+  created_at             DateTime            @default(now()) @db.Timestamptz(6)
+  control_assessments    control_assessments @relation(fields: [control_assessment_id], references: [control_assessment_id], onDelete: NoAction, onUpdate: NoAction)
+  files                  files               @relation(fields: [file_id], references: [file_id], onDelete: NoAction, onUpdate: NoAction)
+  users                  users?              @relation(fields: [uploaded_by_user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model compliance_frameworks {
+  compliance_framework_id String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code                    String                @db.VarChar(50)
+  name                    String                @db.VarChar(150)
+  version                 String?               @db.VarChar(50)
+  description             String?
+  created_at              DateTime              @default(now()) @db.Timestamptz(6)
+  compliance_controls     compliance_controls[]
+
+  @@unique([code, version], map: "compliance_frameworks_code_version_idx")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model control_assessments {
+  control_assessment_id String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  compliance_control_id String                @db.Uuid
+  assessed_by_user_id   String?               @db.Uuid
+  compliance_status     String                @db.VarChar(30)
+  score                 Decimal?              @db.Decimal(5, 2)
+  notes                 String?
+  assessed_at           DateTime              @default(now()) @db.Timestamptz(6)
+  next_review_at        DateTime?             @db.Timestamptz(6)
+  compliance_evidence   compliance_evidence[]
+  users                 users?                @relation(fields: [assessed_by_user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+  compliance_controls   compliance_controls   @relation(fields: [compliance_control_id], references: [compliance_control_id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model dashboard_preferences {
+  dashboard_preference_id String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id                 String   @unique @db.Uuid
+  layout                  Json
+  updated_at              DateTime @default(now()) @db.Timestamptz(6)
+  users                   users    @relation(fields: [user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model departments {
+  department_id             String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code                      String                      @unique @db.VarChar(50)
+  name                      String                      @db.VarChar(150)
+  description               String?
+  parent_department_id      String?                     @db.Uuid
+  status                    String                      @default("active") @db.VarChar(20)
+  created_at                DateTime                    @default(now()) @db.Timestamptz(6)
+  updated_at                DateTime                    @default(now()) @db.Timestamptz(6)
+  assets                    assets[]
+  business_processes        business_processes[]
+  departments               departments?                @relation("departmentsTodepartments", fields: [parent_department_id], references: [department_id], onDelete: NoAction, onUpdate: NoAction)
+  other_departments         departments[]               @relation("departmentsTodepartments")
+  policy_departments        policy_departments[]
+  training_campaign_targets training_campaign_targets[]
+  users                     users[]
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model files {
+  file_id               String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  original_name         String                  @db.VarChar(255)
+  storage_key           String                  @unique
+  mime_type             String?                 @db.VarChar(100)
+  size_bytes            BigInt?
+  checksum              String?                 @db.VarChar(128)
+  uploaded_by_user_id   String?                 @db.Uuid
+  created_at            DateTime                @default(now()) @db.Timestamptz(6)
+  compliance_evidence   compliance_evidence[]
+  users                 users?                  @relation(fields: [uploaded_by_user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+  import_jobs           import_jobs[]
+  incident_evidence     incident_evidence[]
+  report_runs           report_runs[]
+  training_certificates training_certificates[]
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model import_jobs {
+  import_job_id      String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  import_type        String    @db.VarChar(30)
+  file_id            String    @db.Uuid
+  status             String    @default("pending") @db.VarChar(20)
+  total_rows         Int       @default(0)
+  success_rows       Int       @default(0)
+  failed_rows        Int       @default(0)
+  error_details      Json?
+  created_by_user_id String?   @db.Uuid
+  created_at         DateTime  @default(now()) @db.Timestamptz(6)
+  completed_at       DateTime? @db.Timestamptz(6)
+  users              users?    @relation(fields: [created_by_user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+  files              files     @relation(fields: [file_id], references: [file_id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model incident_alert_links {
+  incident_id        String    @db.Uuid
+  ai_alert_id        String    @db.Uuid
+  created_by_user_id String?   @db.Uuid
+  created_at         DateTime  @default(now()) @db.Timestamptz(6)
+  ai_alerts          ai_alerts @relation(fields: [ai_alert_id], references: [ai_alert_id], onDelete: NoAction, onUpdate: NoAction)
+  users              users?    @relation(fields: [created_by_user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+  incidents          incidents @relation(fields: [incident_id], references: [incident_id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@id([incident_id, ai_alert_id])
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model incident_assignments {
+  incident_assignment_id                                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  incident_id                                           String    @db.Uuid
+  assignee_user_id                                      String?   @db.Uuid
+  assignee_team_id                                      String?   @db.Uuid
+  assigned_by_user_id                                   String?   @db.Uuid
+  assigned_at                                           DateTime  @default(now()) @db.Timestamptz(6)
+  completed_at                                          DateTime? @db.Timestamptz(6)
+  users_incident_assignments_assigned_by_user_idTousers users?    @relation("incident_assignments_assigned_by_user_idTousers", fields: [assigned_by_user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+  teams                                                 teams?    @relation(fields: [assignee_team_id], references: [team_id], onDelete: NoAction, onUpdate: NoAction)
+  users_incident_assignments_assignee_user_idTousers    users?    @relation("incident_assignments_assignee_user_idTousers", fields: [assignee_user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+  incidents                                             incidents @relation(fields: [incident_id], references: [incident_id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model incident_evidence {
+  incident_evidence_id String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  incident_id          String    @db.Uuid
+  file_id              String    @db.Uuid
+  description          String?
+  uploaded_by_user_id  String?   @db.Uuid
+  created_at           DateTime  @default(now()) @db.Timestamptz(6)
+  files                files     @relation(fields: [file_id], references: [file_id], onDelete: NoAction, onUpdate: NoAction)
+  incidents            incidents @relation(fields: [incident_id], references: [incident_id], onDelete: NoAction, onUpdate: NoAction)
+  users                users?    @relation(fields: [uploaded_by_user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model incident_risk_links {
+  incident_id        String           @db.Uuid
+  risk_assessment_id String           @db.Uuid
+  linked_by_user_id  String?          @db.Uuid
+  created_at         DateTime         @default(now()) @db.Timestamptz(6)
+  incidents          incidents        @relation(fields: [incident_id], references: [incident_id], onDelete: NoAction, onUpdate: NoAction)
+  users              users?           @relation(fields: [linked_by_user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+  risk_assessments   risk_assessments @relation(fields: [risk_assessment_id], references: [risk_assessment_id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@id([incident_id, risk_assessment_id])
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model incident_updates {
+  incident_update_id String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  incident_id        String    @db.Uuid
+  user_id            String?   @db.Uuid
+  status_from        String?   @db.VarChar(30)
+  status_to          String?   @db.VarChar(30)
+  note               String?
+  created_at         DateTime  @default(now()) @db.Timestamptz(6)
+  incidents          incidents @relation(fields: [incident_id], references: [incident_id], onDelete: NoAction, onUpdate: NoAction)
+  users              users?    @relation(fields: [user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([incident_id])
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model incidents {
+  incident_id           String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  incident_code         String                 @unique @db.VarChar(50)
+  title                 String                 @db.VarChar(255)
+  description           String
+  category              String?                @db.VarChar(100)
+  severity              String                 @default("medium") @db.VarChar(20)
+  status                String                 @default("reported") @db.VarChar(30)
+  reported_by_user_id   String?                @db.Uuid
+  occurred_at           DateTime?              @db.Timestamptz(6)
+  detected_at           DateTime               @default(now()) @db.Timestamptz(6)
+  escalated_at          DateTime?              @db.Timestamptz(6)
+  resolved_at           DateTime?              @db.Timestamptz(6)
+  closed_at             DateTime?              @db.Timestamptz(6)
+  created_at            DateTime               @default(now()) @db.Timestamptz(6)
+  updated_at            DateTime               @default(now()) @db.Timestamptz(6)
+  incident_alert_links  incident_alert_links[]
+  incident_assignments  incident_assignments[]
+  incident_evidence     incident_evidence[]
+  incident_risk_links   incident_risk_links[]
+  incident_updates      incident_updates[]
+  users                 users?                 @relation(fields: [reported_by_user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+  post_incident_reports post_incident_reports?
+
+  @@index([detected_at])
+  @@index([status, severity])
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model integration_api_keys {
+  integration_api_key_id String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  integration_id         String       @db.Uuid
+  key_name               String       @db.VarChar(100)
+  secret_encrypted       String
+  key_fingerprint        String?      @db.VarChar(100)
+  expires_at             DateTime?    @db.Timestamptz(6)
+  is_active              Boolean      @default(true)
+  created_at             DateTime     @default(now()) @db.Timestamptz(6)
+  integrations           integrations @relation(fields: [integration_id], references: [integration_id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model integration_logs {
+  integration_log_id String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  integration_id     String       @db.Uuid
+  sync_job_id        String?      @db.Uuid
+  level              String       @db.VarChar(20)
+  message            String
+  details            Json?
+  created_at         DateTime     @default(now()) @db.Timestamptz(6)
+  integrations       integrations @relation(fields: [integration_id], references: [integration_id], onDelete: NoAction, onUpdate: NoAction)
+  sync_jobs          sync_jobs?   @relation(fields: [sync_job_id], references: [sync_job_id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model integrations {
+  integration_id       String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name                 String                 @db.VarChar(150)
+  integration_type     String                 @db.VarChar(50)
+  base_url             String?
+  configuration        Json?
+  status               String                 @default("inactive") @db.VarChar(20)
+  last_connected_at    DateTime?              @db.Timestamptz(6)
+  created_by_user_id   String?                @db.Uuid
+  created_at           DateTime               @default(now()) @db.Timestamptz(6)
+  updated_at           DateTime               @default(now()) @db.Timestamptz(6)
+  integration_api_keys integration_api_keys[]
+  integration_logs     integration_logs[]
+  users                users?                 @relation(fields: [created_by_user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+  log_sources          log_sources[]
+  sync_jobs            sync_jobs[]
+  sync_schedules       sync_schedules[]
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model log_sources {
+  log_source_id      String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name               String            @db.VarChar(150)
+  source_type        String            @db.VarChar(50)
+  asset_id           String?           @db.Uuid
+  integration_id     String?           @db.Uuid
+  configuration      Json?
+  status             String            @default("active") @db.VarChar(20)
+  last_received_at   DateTime?         @db.Timestamptz(6)
+  created_by_user_id String?           @db.Uuid
+  created_at         DateTime          @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime          @default(now()) @db.Timestamptz(6)
+  ai_alerts          ai_alerts[]
+  assets             assets?           @relation(fields: [asset_id], references: [asset_id], onDelete: NoAction, onUpdate: NoAction)
+  users              users?            @relation(fields: [created_by_user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+  integrations       integrations?     @relation(fields: [integration_id], references: [integration_id], onDelete: NoAction, onUpdate: NoAction)
+  security_events    security_events[]
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model login_history {
+  login_history_id String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id          String?  @db.Uuid
+  email_attempted  String   @db.VarChar(255)
+  ip_address       String?  @db.Inet
+  user_agent       String?
+  success          Boolean
+  failure_reason   String?  @db.VarChar(255)
+  logged_in_at     DateTime @default(now()) @db.Timestamptz(6)
+  users            users?   @relation(fields: [user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([user_id, logged_in_at])
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model mfa_methods {
+  mfa_method_id    String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id          String    @db.Uuid
+  method_type      String    @db.VarChar(20)
+  secret_encrypted String?
+  is_enabled       Boolean   @default(false)
+  verified_at      DateTime? @db.Timestamptz(6)
+  created_at       DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at       DateTime  @default(now()) @db.Timestamptz(6)
+  users            users     @relation(fields: [user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model notification_deliveries {
+  notification_delivery_id String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  notification_id          String        @db.Uuid
+  channel                  String        @db.VarChar(20)
+  status                   String        @default("pending") @db.VarChar(20)
+  sent_at                  DateTime?     @db.Timestamptz(6)
+  error_message            String?
+  created_at               DateTime      @default(now()) @db.Timestamptz(6)
+  notifications            notifications @relation(fields: [notification_id], references: [notification_id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model notification_preferences {
+  notification_preference_id String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id                    String   @db.Uuid
+  event_type                 String   @db.VarChar(50)
+  in_app_enabled             Boolean  @default(true)
+  email_enabled              Boolean  @default(true)
+  updated_at                 DateTime @default(now()) @db.Timestamptz(6)
+  users                      users    @relation(fields: [user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([user_id, event_type], map: "notification_preferences_user_id_event_type_idx")
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model notifications {
+  notification_id         String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id                 String                    @db.Uuid
+  type                    String                    @db.VarChar(50)
+  title                   String                    @db.VarChar(255)
+  message                 String
+  entity_type             String?                   @db.VarChar(50)
+  entity_id               String?                   @db.Uuid
+  is_read                 Boolean                   @default(false)
+  read_at                 DateTime?                 @db.Timestamptz(6)
+  created_at              DateTime                  @default(now()) @db.Timestamptz(6)
+  notification_deliveries notification_deliveries[]
+  users                   users                     @relation(fields: [user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([user_id, is_read, created_at])
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model password_reset_tokens {
+  password_reset_token_id String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id                 String    @db.Uuid
+  token_hash              String    @unique @db.VarChar(255)
+  expires_at              DateTime  @db.Timestamptz(6)
+  used_at                 DateTime? @db.Timestamptz(6)
+  created_at              DateTime  @default(now()) @db.Timestamptz(6)
+  users                   users     @relation(fields: [user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model permissions {
+  permission_id    String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code             String             @unique @db.VarChar(100)
+  module           String             @db.VarChar(50)
+  action           String             @db.VarChar(50)
+  description      String?
+  created_at       DateTime           @default(now()) @db.Timestamptz(6)
+  role_permissions role_permissions[]
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model policies {
+  policy_id          String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  policy_code        String               @unique @db.VarChar(50)
+  title              String               @db.VarChar(255)
+  description        String?
+  owner_user_id      String?              @db.Uuid
+  status             String               @default("draft") @db.VarChar(20)
+  created_at         DateTime             @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime             @default(now()) @db.Timestamptz(6)
+  users              users?               @relation(fields: [owner_user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+  policy_departments policy_departments[]
+  policy_versions    policy_versions[]
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model policy_acknowledgements {
+  policy_acknowledgement_id String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  policy_version_id         String          @db.Uuid
+  user_id                   String          @db.Uuid
+  acknowledged_at           DateTime        @default(now()) @db.Timestamptz(6)
+  ip_address                String?         @db.Inet
+  policy_versions           policy_versions @relation(fields: [policy_version_id], references: [policy_version_id], onDelete: NoAction, onUpdate: NoAction)
+  users                     users           @relation(fields: [user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([policy_version_id, user_id], map: "policy_acknowledgements_policy_version_id_user_id_idx")
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model policy_control_mappings {
+  policy_version_id     String              @db.Uuid
+  compliance_control_id String              @db.Uuid
+  notes                 String?
+  compliance_controls   compliance_controls @relation(fields: [compliance_control_id], references: [compliance_control_id], onDelete: NoAction, onUpdate: NoAction)
+  policy_versions       policy_versions     @relation(fields: [policy_version_id], references: [policy_version_id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@id([policy_version_id, compliance_control_id])
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model policy_departments {
+  policy_id           String      @db.Uuid
+  department_id       String      @db.Uuid
+  assigned_by_user_id String?     @db.Uuid
+  assigned_at         DateTime    @default(now()) @db.Timestamptz(6)
+  users               users?      @relation(fields: [assigned_by_user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+  departments         departments @relation(fields: [department_id], references: [department_id], onDelete: NoAction, onUpdate: NoAction)
+  policies            policies    @relation(fields: [policy_id], references: [policy_id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@id([policy_id, department_id])
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model policy_versions {
+  policy_version_id                                 String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  policy_id                                         String                    @db.Uuid
+  version_number                                    String                    @db.VarChar(30)
+  content                                           String
+  change_summary                                    String?
+  status                                            String                    @default("draft") @db.VarChar(20)
+  effective_date                                    DateTime?                 @db.Date
+  created_by_user_id                                String?                   @db.Uuid
+  published_by_user_id                              String?                   @db.Uuid
+  published_at                                      DateTime?                 @db.Timestamptz(6)
+  created_at                                        DateTime                  @default(now()) @db.Timestamptz(6)
+  policy_acknowledgements                           policy_acknowledgements[]
+  policy_control_mappings                           policy_control_mappings[]
+  users_policy_versions_created_by_user_idTousers   users?                    @relation("policy_versions_created_by_user_idTousers", fields: [created_by_user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+  policies                                          policies                  @relation(fields: [policy_id], references: [policy_id], onDelete: NoAction, onUpdate: NoAction)
+  users_policy_versions_published_by_user_idTousers users?                    @relation("policy_versions_published_by_user_idTousers", fields: [published_by_user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([policy_id, version_number], map: "policy_versions_policy_id_version_number_idx")
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model post_incident_reports {
+  post_incident_report_id String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  incident_id             String    @unique @db.Uuid
+  root_cause              String?
+  impact_summary          String?
+  lessons_learned         String?
+  corrective_actions      String?
+  created_by_user_id      String?   @db.Uuid
+  created_at              DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at              DateTime  @default(now()) @db.Timestamptz(6)
+  users                   users?    @relation(fields: [created_by_user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+  incidents               incidents @relation(fields: [incident_id], references: [incident_id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model quiz_answers {
+  quiz_answer_id          String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  quiz_attempt_id         String         @db.Uuid
+  quiz_question_id        String         @db.Uuid
+  selected_quiz_option_id String?        @db.Uuid
+  answer_text             String?
+  is_correct              Boolean?
+  score_awarded           Decimal?       @db.Decimal(5, 2)
+  quiz_attempts           quiz_attempts  @relation(fields: [quiz_attempt_id], references: [quiz_attempt_id], onDelete: NoAction, onUpdate: NoAction)
+  quiz_questions          quiz_questions @relation(fields: [quiz_question_id], references: [quiz_question_id], onDelete: NoAction, onUpdate: NoAction)
+  quiz_options            quiz_options?  @relation(fields: [selected_quiz_option_id], references: [quiz_option_id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model quiz_attempts {
+  quiz_attempt_id String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  quiz_id         String         @db.Uuid
+  user_id         String         @db.Uuid
+  score           Decimal?       @db.Decimal(5, 2)
+  passed          Boolean?
+  started_at      DateTime       @default(now()) @db.Timestamptz(6)
+  submitted_at    DateTime?      @db.Timestamptz(6)
+  quiz_answers    quiz_answers[]
+  quizzes         quizzes        @relation(fields: [quiz_id], references: [quiz_id], onDelete: NoAction, onUpdate: NoAction)
+  users           users          @relation(fields: [user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model quiz_options {
+  quiz_option_id   String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  quiz_question_id String         @db.Uuid
+  option_text      String
+  is_correct       Boolean        @default(false)
+  display_order    Int            @default(1)
+  quiz_answers     quiz_answers[]
+  quiz_questions   quiz_questions @relation(fields: [quiz_question_id], references: [quiz_question_id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model quiz_questions {
+  quiz_question_id String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  quiz_id          String         @db.Uuid
+  question_text    String
+  question_type    String         @db.VarChar(30)
+  score            Decimal        @default(1) @db.Decimal(5, 2)
+  display_order    Int            @default(1)
+  quiz_answers     quiz_answers[]
+  quiz_options     quiz_options[]
+  quizzes          quizzes        @relation(fields: [quiz_id], references: [quiz_id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model quizzes {
+  quiz_id            String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  training_course_id String           @db.Uuid
+  title              String           @db.VarChar(255)
+  passing_score      Decimal          @db.Decimal(5, 2)
+  max_attempts       Int              @default(1)
+  created_at         DateTime         @default(now()) @db.Timestamptz(6)
+  quiz_attempts      quiz_attempts[]
+  quiz_questions     quiz_questions[]
+  training_courses   training_courses @relation(fields: [training_course_id], references: [training_course_id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model report_runs {
+  report_run_id        String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  scheduled_report_id  String?            @db.Uuid
+  report_type          String             @db.VarChar(50)
+  file_id              String?            @db.Uuid
+  status               String             @default("pending") @db.VarChar(20)
+  generated_by_user_id String?            @db.Uuid
+  generated_at         DateTime?          @db.Timestamptz(6)
+  error_message        String?
+  created_at           DateTime           @default(now()) @db.Timestamptz(6)
+  files                files?             @relation(fields: [file_id], references: [file_id], onDelete: NoAction, onUpdate: NoAction)
+  users                users?             @relation(fields: [generated_by_user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+  scheduled_reports    scheduled_reports? @relation(fields: [scheduled_report_id], references: [scheduled_report_id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model risk_assessment_threats {
+  risk_assessment_id String           @db.Uuid
+  threat_id          String           @db.Uuid
+  notes              String?
+  risk_assessments   risk_assessments @relation(fields: [risk_assessment_id], references: [risk_assessment_id], onDelete: NoAction, onUpdate: NoAction)
+  threats            threats          @relation(fields: [threat_id], references: [threat_id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@id([risk_assessment_id, threat_id])
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model risk_assessment_vulnerabilities {
+  risk_assessment_id String           @db.Uuid
+  vulnerability_id   String           @db.Uuid
+  notes              String?
+  risk_assessments   risk_assessments @relation(fields: [risk_assessment_id], references: [risk_assessment_id], onDelete: NoAction, onUpdate: NoAction)
+  vulnerabilities    vulnerabilities  @relation(fields: [vulnerability_id], references: [vulnerability_id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@id([risk_assessment_id, vulnerability_id])
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model risk_assessments {
+  risk_assessment_id              String                            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  risk_code                       String                            @unique @db.VarChar(50)
+  asset_id                        String?                           @db.Uuid
+  business_process_id             String?                           @db.Uuid
+  title                           String                            @db.VarChar(255)
+  description                     String?
+  likelihood                      Int                               @db.SmallInt
+  impact                          Int                               @db.SmallInt
+  risk_score                      Int                               @db.SmallInt
+  risk_level                      String                            @db.VarChar(20)
+  residual_likelihood             Int?                              @db.SmallInt
+  residual_impact                 Int?                              @db.SmallInt
+  residual_score                  Int?                              @db.SmallInt
+  status                          String                            @default("draft") @db.VarChar(30)
+  assessed_by_user_id             String?                           @db.Uuid
+  previous_risk_assessment_id     String?                           @db.Uuid
+  assessed_at                     DateTime                          @default(now()) @db.Timestamptz(6)
+  closed_at                       DateTime?                         @db.Timestamptz(6)
+  created_at                      DateTime                          @default(now()) @db.Timestamptz(6)
+  updated_at                      DateTime                          @default(now()) @db.Timestamptz(6)
+  incident_risk_links             incident_risk_links[]
+  risk_assessment_threats         risk_assessment_threats[]
+  risk_assessment_vulnerabilities risk_assessment_vulnerabilities[]
+  users                           users?                            @relation(fields: [assessed_by_user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+  assets                          assets?                           @relation(fields: [asset_id], references: [asset_id], onDelete: NoAction, onUpdate: NoAction)
+  business_processes              business_processes?               @relation(fields: [business_process_id], references: [business_process_id], onDelete: NoAction, onUpdate: NoAction)
+  risk_assessments                risk_assessments?                 @relation("risk_assessmentsTorisk_assessments", fields: [previous_risk_assessment_id], references: [risk_assessment_id], onDelete: NoAction, onUpdate: NoAction)
+  other_risk_assessments          risk_assessments[]                @relation("risk_assessmentsTorisk_assessments")
+  risk_treatment_plans            risk_treatment_plans[]
+
+  @@index([assessed_by_user_id])
+  @@index([asset_id])
+  @@index([business_process_id])
+  @@index([status, risk_level])
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model risk_treatment_actions {
+  risk_treatment_action_id String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  risk_treatment_plan_id   String               @db.Uuid
+  title                    String               @db.VarChar(255)
+  description              String?
+  assigned_to_user_id      String?              @db.Uuid
+  due_date                 DateTime?            @db.Date
+  progress_percent         Int                  @default(0) @db.SmallInt
+  status                   String               @default("pending") @db.VarChar(20)
+  completed_at             DateTime?            @db.Timestamptz(6)
+  created_at               DateTime             @default(now()) @db.Timestamptz(6)
+  updated_at               DateTime             @default(now()) @db.Timestamptz(6)
+  users                    users?               @relation(fields: [assigned_to_user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+  risk_treatment_plans     risk_treatment_plans @relation(fields: [risk_treatment_plan_id], references: [risk_treatment_plan_id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model risk_treatment_plans {
+  risk_treatment_plan_id                               String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  risk_assessment_id                                   String                   @db.Uuid
+  strategy                                             String                   @db.VarChar(30)
+  description                                          String
+  owner_user_id                                        String?                  @db.Uuid
+  target_date                                          DateTime?                @db.Date
+  status                                               String                   @default("draft") @db.VarChar(30)
+  submitted_at                                         DateTime?                @db.Timestamptz(6)
+  completed_at                                         DateTime?                @db.Timestamptz(6)
+  created_by_user_id                                   String?                  @db.Uuid
+  created_at                                           DateTime                 @default(now()) @db.Timestamptz(6)
+  updated_at                                           DateTime                 @default(now()) @db.Timestamptz(6)
+  risk_treatment_actions                               risk_treatment_actions[]
+  users_risk_treatment_plans_created_by_user_idTousers users?                   @relation("risk_treatment_plans_created_by_user_idTousers", fields: [created_by_user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+  users_risk_treatment_plans_owner_user_idTousers      users?                   @relation("risk_treatment_plans_owner_user_idTousers", fields: [owner_user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+  risk_assessments                                     risk_assessments         @relation(fields: [risk_assessment_id], references: [risk_assessment_id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([risk_assessment_id])
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model role_permissions {
+  role_id       String      @db.Uuid
+  permission_id String      @db.Uuid
+  created_at    DateTime    @default(now()) @db.Timestamptz(6)
+  permissions   permissions @relation(fields: [permission_id], references: [permission_id], onDelete: NoAction, onUpdate: NoAction)
+  roles         roles       @relation(fields: [role_id], references: [role_id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@id([role_id, permission_id])
+}
+
+model roles {
+  role_id          String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code             String             @unique @db.VarChar(50)
+  name             String             @db.VarChar(100)
+  description      String?
+  is_system        Boolean            @default(false)
+  created_at       DateTime           @default(now()) @db.Timestamptz(6)
+  updated_at       DateTime           @default(now()) @db.Timestamptz(6)
+  role_permissions role_permissions[]
+  user_roles       user_roles[]
+  workflow_steps   workflow_steps[]
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model scheduled_reports {
+  scheduled_report_id String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name                String        @db.VarChar(150)
+  report_type         String        @db.VarChar(50)
+  format              String        @db.VarChar(20)
+  filters             Json?
+  schedule_expression String        @db.VarChar(100)
+  recipients          Json
+  is_active           Boolean       @default(true)
+  created_by_user_id  String?       @db.Uuid
+  last_run_at         DateTime?     @db.Timestamptz(6)
+  next_run_at         DateTime?     @db.Timestamptz(6)
+  created_at          DateTime      @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime      @default(now()) @db.Timestamptz(6)
+  report_runs         report_runs[]
+  users               users?        @relation(fields: [created_by_user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model security_events {
+  security_event_id String      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  log_source_id     String      @db.Uuid
+  external_event_id String?     @db.VarChar(255)
+  event_type        String      @db.VarChar(100)
+  severity          String?     @db.VarChar(20)
+  event_time        DateTime    @db.Timestamptz(6)
+  source_ip         String?     @db.Inet
+  destination_ip    String?     @db.Inet
+  raw_payload       Json?
+  normalized_data   Json?
+  created_at        DateTime    @default(now()) @db.Timestamptz(6)
+  ai_alerts         ai_alerts[]
+  log_sources       log_sources @relation(fields: [log_source_id], references: [log_source_id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([event_type, event_time])
+  @@index([external_event_id])
+  @@index([log_source_id, event_time])
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model sync_jobs {
+  sync_job_id       String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  integration_id    String             @db.Uuid
+  sync_schedule_id  String?            @db.Uuid
+  status            String             @default("pending") @db.VarChar(20)
+  records_processed Int                @default(0)
+  records_failed    Int                @default(0)
+  started_at        DateTime?          @db.Timestamptz(6)
+  completed_at      DateTime?          @db.Timestamptz(6)
+  error_message     String?
+  created_at        DateTime           @default(now()) @db.Timestamptz(6)
+  integration_logs  integration_logs[]
+  integrations      integrations       @relation(fields: [integration_id], references: [integration_id], onDelete: NoAction, onUpdate: NoAction)
+  sync_schedules    sync_schedules?    @relation(fields: [sync_schedule_id], references: [sync_schedule_id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model sync_schedules {
+  sync_schedule_id    String       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  integration_id      String       @db.Uuid
+  schedule_expression String       @db.VarChar(100)
+  is_active           Boolean      @default(true)
+  last_run_at         DateTime?    @db.Timestamptz(6)
+  next_run_at         DateTime?    @db.Timestamptz(6)
+  created_at          DateTime     @default(now()) @db.Timestamptz(6)
+  updated_at          DateTime     @default(now()) @db.Timestamptz(6)
+  sync_jobs           sync_jobs[]
+  integrations        integrations @relation(fields: [integration_id], references: [integration_id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model system_settings {
+  system_setting_id  String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  setting_key        String   @unique @db.VarChar(100)
+  setting_value      Json
+  updated_by_user_id String?  @db.Uuid
+  updated_at         DateTime @default(now()) @db.Timestamptz(6)
+  users              users?   @relation(fields: [updated_by_user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model team_members {
+  team_id   String   @db.Uuid
+  user_id   String   @db.Uuid
+  joined_at DateTime @default(now()) @db.Timestamptz(6)
+  teams     teams    @relation(fields: [team_id], references: [team_id], onDelete: NoAction, onUpdate: NoAction)
+  users     users    @relation(fields: [user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@id([team_id, user_id])
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model teams {
+  team_id              String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name                 String                 @unique @db.VarChar(150)
+  description          String?
+  created_by_user_id   String?                @db.Uuid
+  created_at           DateTime               @default(now()) @db.Timestamptz(6)
+  updated_at           DateTime               @default(now()) @db.Timestamptz(6)
+  incident_assignments incident_assignments[]
+  team_members         team_members[]
+  users                users?                 @relation(fields: [created_by_user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+model threats {
+  threat_id               String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code                    String                    @unique @db.VarChar(50)
+  name                    String                    @db.VarChar(150)
+  description             String?
+  category                String?                   @db.VarChar(100)
+  created_at              DateTime                  @default(now()) @db.Timestamptz(6)
+  updated_at              DateTime                  @default(now()) @db.Timestamptz(6)
+  risk_assessment_threats risk_assessment_threats[]
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model training_campaign_targets {
+  training_campaign_target_id String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  training_campaign_id        String             @db.Uuid
+  user_id                     String?            @db.Uuid
+  department_id               String?            @db.Uuid
+  created_at                  DateTime           @default(now()) @db.Timestamptz(6)
+  departments                 departments?       @relation(fields: [department_id], references: [department_id], onDelete: NoAction, onUpdate: NoAction)
+  training_campaigns          training_campaigns @relation(fields: [training_campaign_id], references: [training_campaign_id], onDelete: NoAction, onUpdate: NoAction)
+  users                       users?             @relation(fields: [user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([training_campaign_id, department_id], map: "training_campaign_targets_training_campaign_id_department_i_idx")
+  @@unique([training_campaign_id, user_id], map: "training_campaign_targets_training_campaign_id_user_id_idx")
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model training_campaigns {
+  training_campaign_id      String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  training_course_id        String                      @db.Uuid
+  title                     String                      @db.VarChar(255)
+  assigned_by_user_id       String?                     @db.Uuid
+  start_date                DateTime                    @db.Date
+  due_date                  DateTime                    @db.Date
+  created_at                DateTime                    @default(now()) @db.Timestamptz(6)
+  training_campaign_targets training_campaign_targets[]
+  users                     users?                      @relation(fields: [assigned_by_user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+  training_courses          training_courses            @relation(fields: [training_course_id], references: [training_course_id], onDelete: NoAction, onUpdate: NoAction)
+  training_enrollments      training_enrollments[]
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model training_certificates {
+  training_certificate_id String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  training_enrollment_id  String               @unique @db.Uuid
+  certificate_number      String               @unique @db.VarChar(100)
+  file_id                 String?              @db.Uuid
+  issued_at               DateTime             @default(now()) @db.Timestamptz(6)
+  issued_by_user_id       String?              @db.Uuid
+  files                   files?               @relation(fields: [file_id], references: [file_id], onDelete: NoAction, onUpdate: NoAction)
+  users                   users?               @relation(fields: [issued_by_user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+  training_enrollments    training_enrollments @relation(fields: [training_enrollment_id], references: [training_enrollment_id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model training_courses {
+  training_course_id String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  title              String               @db.VarChar(255)
+  description        String?
+  content            String?
+  status             String               @default("draft") @db.VarChar(20)
+  created_by_user_id String?              @db.Uuid
+  created_at         DateTime             @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime             @default(now()) @db.Timestamptz(6)
+  quizzes            quizzes[]
+  training_campaigns training_campaigns[]
+  users              users?               @relation(fields: [created_by_user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model training_enrollments {
+  training_enrollment_id String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  training_campaign_id   String                 @db.Uuid
+  user_id                String                 @db.Uuid
+  status                 String                 @default("assigned") @db.VarChar(20)
+  progress_percent       Int                    @default(0) @db.SmallInt
+  started_at             DateTime?              @db.Timestamptz(6)
+  completed_at           DateTime?              @db.Timestamptz(6)
+  last_accessed_at       DateTime?              @db.Timestamptz(6)
+  training_certificates  training_certificates?
+  training_campaigns     training_campaigns     @relation(fields: [training_campaign_id], references: [training_campaign_id], onDelete: NoAction, onUpdate: NoAction)
+  users                  users                  @relation(fields: [user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([training_campaign_id, user_id], map: "training_enrollments_training_campaign_id_user_id_idx")
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model user_roles {
+  user_id                                     String   @db.Uuid
+  role_id                                     String   @db.Uuid
+  assigned_by_user_id                         String?  @db.Uuid
+  assigned_at                                 DateTime @default(now()) @db.Timestamptz(6)
+  users_user_roles_assigned_by_user_idTousers users?   @relation("user_roles_assigned_by_user_idTousers", fields: [assigned_by_user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+  roles                                       roles    @relation(fields: [role_id], references: [role_id], onDelete: NoAction, onUpdate: NoAction)
+  users_user_roles_user_idTousers             users    @relation("user_roles_user_idTousers", fields: [user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@id([user_id, role_id])
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model users {
+  user_id                                                              String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  department_id                                                        String?                     @db.Uuid
+  email                                                                String                      @unique @db.VarChar(255)
+  password_hash                                                        String                      @db.VarChar(255)
+  full_name                                                            String                      @db.VarChar(150)
+  phone                                                                String?                     @db.VarChar(30)
+  employee_code                                                        String?                     @unique @db.VarChar(50)
+  avatar_url                                                           String?
+  status                                                               String                      @default("active") @db.VarChar(20)
+  must_change_password                                                 Boolean                     @default(false)
+  email_verified_at                                                    DateTime?                   @db.Timestamptz(6)
+  last_login_at                                                        DateTime?                   @db.Timestamptz(6)
+  locked_at                                                            DateTime?                   @db.Timestamptz(6)
+  disabled_at                                                          DateTime?                   @db.Timestamptz(6)
+  created_by_user_id                                                   String?                     @db.Uuid
+  created_at                                                           DateTime                    @default(now()) @db.Timestamptz(6)
+  updated_at                                                           DateTime                    @default(now()) @db.Timestamptz(6)
+  deleted_at                                                           DateTime?                   @db.Timestamptz(6)
+  ai_alerts                                                            ai_alerts[]
+  ai_feedback                                                          ai_feedback[]
+  approval_actions                                                     approval_actions[]
+  approval_delegations_approval_delegations_delegate_user_idTousers    approval_delegations[]      @relation("approval_delegations_delegate_user_idTousers")
+  approval_delegations_approval_delegations_delegator_user_idTousers   approval_delegations[]      @relation("approval_delegations_delegator_user_idTousers")
+  approval_requests                                                    approval_requests[]
+  asset_alert_thresholds                                               asset_alert_thresholds[]
+  asset_change_history                                                 asset_change_history[]
+  assets_assets_created_by_user_idTousers                              assets[]                    @relation("assets_created_by_user_idTousers")
+  assets_assets_owner_user_idTousers                                   assets[]                    @relation("assets_owner_user_idTousers")
+  audit_logs                                                           audit_logs[]
+  auth_sessions                                                        auth_sessions[]
+  business_processes                                                   business_processes[]
+  compliance_evidence                                                  compliance_evidence[]
+  control_assessments                                                  control_assessments[]
+  dashboard_preferences                                                dashboard_preferences?
+  files                                                                files[]
+  import_jobs                                                          import_jobs[]
+  incident_alert_links                                                 incident_alert_links[]
+  incident_assignments_incident_assignments_assigned_by_user_idTousers incident_assignments[]      @relation("incident_assignments_assigned_by_user_idTousers")
+  incident_assignments_incident_assignments_assignee_user_idTousers    incident_assignments[]      @relation("incident_assignments_assignee_user_idTousers")
+  incident_evidence                                                    incident_evidence[]
+  incident_risk_links                                                  incident_risk_links[]
+  incident_updates                                                     incident_updates[]
+  incidents                                                            incidents[]
+  integrations                                                         integrations[]
+  log_sources                                                          log_sources[]
+  login_history                                                        login_history[]
+  mfa_methods                                                          mfa_methods[]
+  notification_preferences                                             notification_preferences[]
+  notifications                                                        notifications[]
+  password_reset_tokens                                                password_reset_tokens[]
+  policies                                                             policies[]
+  policy_acknowledgements                                              policy_acknowledgements[]
+  policy_departments                                                   policy_departments[]
+  policy_versions_policy_versions_created_by_user_idTousers            policy_versions[]           @relation("policy_versions_created_by_user_idTousers")
+  policy_versions_policy_versions_published_by_user_idTousers          policy_versions[]           @relation("policy_versions_published_by_user_idTousers")
+  post_incident_reports                                                post_incident_reports[]
+  quiz_attempts                                                        quiz_attempts[]
+  report_runs                                                          report_runs[]
+  risk_assessments                                                     risk_assessments[]
+  risk_treatment_actions                                               risk_treatment_actions[]
+  risk_treatment_plans_risk_treatment_plans_created_by_user_idTousers  risk_treatment_plans[]      @relation("risk_treatment_plans_created_by_user_idTousers")
+  risk_treatment_plans_risk_treatment_plans_owner_user_idTousers       risk_treatment_plans[]      @relation("risk_treatment_plans_owner_user_idTousers")
+  scheduled_reports                                                    scheduled_reports[]
+  system_settings                                                      system_settings[]
+  team_members                                                         team_members[]
+  teams                                                                teams[]
+  training_campaign_targets                                            training_campaign_targets[]
+  training_campaigns                                                   training_campaigns[]
+  training_certificates                                                training_certificates[]
+  training_courses                                                     training_courses[]
+  training_enrollments                                                 training_enrollments[]
+  user_roles_user_roles_assigned_by_user_idTousers                     user_roles[]                @relation("user_roles_assigned_by_user_idTousers")
+  user_roles_user_roles_user_idTousers                                 user_roles[]                @relation("user_roles_user_idTousers")
+  users                                                                users?                      @relation("usersTousers", fields: [created_by_user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+  other_users                                                          users[]                     @relation("usersTousers")
+  departments                                                          departments?                @relation(fields: [department_id], references: [department_id], onDelete: NoAction, onUpdate: NoAction)
+  workflow_definitions                                                 workflow_definitions[]
+
+  @@index([department_id])
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+model vulnerabilities {
+  vulnerability_id                String                            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code                            String                            @unique @db.VarChar(50)
+  name                            String                            @db.VarChar(150)
+  description                     String?
+  severity                        String?                           @db.VarChar(20)
+  created_at                      DateTime                          @default(now()) @db.Timestamptz(6)
+  updated_at                      DateTime                          @default(now()) @db.Timestamptz(6)
+  risk_assessment_vulnerabilities risk_assessment_vulnerabilities[]
+}
+
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model workflow_definitions {
+  workflow_definition_id String              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name                   String              @db.VarChar(150)
+  entity_type            String              @db.VarChar(50)
+  description            String?
+  is_active              Boolean             @default(true)
+  created_by_user_id     String?             @db.Uuid
+  created_at             DateTime            @default(now()) @db.Timestamptz(6)
+  updated_at             DateTime            @default(now()) @db.Timestamptz(6)
+  approval_requests      approval_requests[]
+  users                  users?              @relation(fields: [created_by_user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+  workflow_steps         workflow_steps[]
+}
+
+/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
+/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
+model workflow_steps {
+  workflow_step_id       String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  workflow_definition_id String               @db.Uuid
+  step_order             Int
+  name                   String               @db.VarChar(150)
+  approver_role_id       String?              @db.Uuid
+  required_approvals     Int                  @default(1)
+  due_hours              Int?
+  approval_actions       approval_actions[]
+  roles                  roles?               @relation(fields: [approver_role_id], references: [role_id], onDelete: NoAction, onUpdate: NoAction)
+  workflow_definitions   workflow_definitions @relation(fields: [workflow_definition_id], references: [workflow_definition_id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([workflow_definition_id, step_order], map: "workflow_steps_workflow_definition_id_step_order_idx")
 }

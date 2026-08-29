@@ -2,27 +2,48 @@ import { prisma } from '@/database/prisma.js';
 import { AppError } from '@/common/errors/app-error.js';
 
 const publicUserSelect = {
-  id: true,
+  user_id: true,
   email: true,
-  fullName: true,
+  full_name: true,
   phone: true,
-  employeeCode: true,
+  employee_code: true,
   status: true,
-  mustChangePassword: true,
-  emailVerifiedAt: true,
-  lastLoginAt: true,
-  createdAt: true,
-  department: { select: { id: true, code: true, name: true } },
-  roles: { select: { role: { select: { code: true, name: true } } } },
+  must_change_password: true,
+  email_verified_at: true,
+  last_login_at: true,
+  created_at: true,
+  departments: { select: { department_id: true, code: true, name: true } },
+  user_roles_user_roles_user_idTousers: {
+    select: { roles: { select: { code: true, name: true } } },
+  },
 } as const;
 
 export const usersService = {
   async findMe(userId: string) {
-    const user = await prisma.user.findFirst({
-      where: { id: userId, deletedAt: null },
+    const user = await prisma.users.findFirst({
+      where: { user_id: userId, deleted_at: null },
       select: publicUserSelect,
     });
     if (!user) throw new AppError(404, 'USER_NOT_FOUND', 'User was not found');
-    return { ...user, roles: user.roles.map(({ role }) => role) };
+    return {
+      id: user.user_id,
+      email: user.email,
+      fullName: user.full_name,
+      phone: user.phone,
+      employeeCode: user.employee_code,
+      status: user.status,
+      mustChangePassword: user.must_change_password,
+      emailVerifiedAt: user.email_verified_at,
+      lastLoginAt: user.last_login_at,
+      createdAt: user.created_at,
+      department: user.departments
+        ? {
+            id: user.departments.department_id,
+            code: user.departments.code,
+            name: user.departments.name,
+          }
+        : null,
+      roles: user.user_roles_user_roles_user_idTousers.map(({ roles }) => roles),
+    };
   },
 };

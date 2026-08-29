@@ -20,6 +20,7 @@
     "db:migrate": "prisma migrate dev",
     "db:deploy": "prisma migrate deploy",
     "db:seed": "tsx prisma/seed.ts",
+    "db:verify": "node scripts/verify-database-schema.cjs",
     "db:studio": "prisma studio"
   },
   "dependencies": {

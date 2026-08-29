@@ -11,21 +11,25 @@ async function main(): Promise<void> {
     throw new Error('ADMIN_EMAIL and ADMIN_PASSWORD (minimum 12 characters) are required');
   }
 
-  const role = await prisma.role.upsert({
+  const role = await prisma.roles.upsert({
     where: { code: 'ADMIN' },
     update: {},
-    create: { code: 'ADMIN', name: 'System Administrator', isSystem: true },
+    create: { code: 'ADMIN', name: 'System Administrator', is_system: true },
   });
   const passwordHash = await argon2.hash(password, { type: argon2.argon2id });
-  const user = await prisma.user.upsert({
+  const user = await prisma.users.upsert({
     where: { email },
     update: {},
-    create: { email, passwordHash, fullName: 'SecuraAI Administrator' },
+    create: {
+      email,
+      password_hash: passwordHash,
+      full_name: 'SecuraAI Administrator',
+    },
   });
-  await prisma.userRole.upsert({
-    where: { userId_roleId: { userId: user.id, roleId: role.id } },
+  await prisma.user_roles.upsert({
+    where: { user_id_role_id: { user_id: user.user_id, role_id: role.role_id } },
     update: {},
-    create: { userId: user.id, roleId: role.id },
+    create: { user_id: user.user_id, role_id: role.role_id },
   });
 }
 
