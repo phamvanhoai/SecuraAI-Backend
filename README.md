@@ -59,6 +59,9 @@ tests/          tests
 project-docs/   project proposals, reports and reference database designs
 ```
 
+The complete domain ownership and implementation convention is documented in
+[`src/modules/README.md`](src/modules/README.md).
+
 ## Production security
 
 - Inject generated secrets through a secret manager and serve only behind HTTPS.
