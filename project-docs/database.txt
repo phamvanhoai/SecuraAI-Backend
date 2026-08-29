@@ -1,0 +1,1764 @@
+// =========================================================
+// Enterprise Information Security Risk Management Platform - V3
+// ISMS/GRC + AI-based Anomaly Detection (Pre-trained Models)
+// Database: PostgreSQL
+// Naming convention: descriptive UUID primary keys
+// =========================================================
+
+Table departments {
+  department_id uuid [pk, default: `gen_random_uuid()`]
+  code varchar(50) [not null, unique]
+  name varchar(150) [not null]
+  description text
+  parent_department_id uuid
+  status varchar(20) [not null, default: 'active']
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+
+  Note: '''
+  CHECK (status IN ('active', 'inactive'))
+  '''
+}
+
+Table users {
+  user_id uuid [pk, default: `gen_random_uuid()`]
+  department_id uuid
+  email varchar(255) [not null, unique]
+  password_hash varchar(255) [not null]
+  full_name varchar(150) [not null]
+  phone varchar(30)
+  employee_code varchar(50) [unique]
+  avatar_url text
+  status varchar(20) [not null, default: 'active']
+  must_change_password boolean [not null, default: false]
+  email_verified_at timestamptz
+  last_login_at timestamptz
+  locked_at timestamptz
+  disabled_at timestamptz
+  created_by_user_id uuid
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  deleted_at timestamptz
+
+  indexes {
+    (department_id)
+  }
+
+  Note: '''
+  CHECK (status IN ('active', 'inactive', 'locked', 'disabled'))
+  '''
+}
+
+Table roles {
+  role_id uuid [pk, default: `gen_random_uuid()`]
+  code varchar(50) [not null, unique]
+  name varchar(100) [not null]
+  description text
+  is_system boolean [not null, default: false]
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+}
+
+Table permissions {
+  permission_id uuid [pk, default: `gen_random_uuid()`]
+  code varchar(100) [not null, unique]
+  module varchar(50) [not null]
+  action varchar(50) [not null]
+  description text
+  created_at timestamptz [not null, default: `now()`]
+}
+
+Table user_roles {
+  user_id uuid [not null]
+  role_id uuid [not null]
+  assigned_by_user_id uuid
+  assigned_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (user_id, role_id) [pk]
+  }
+}
+
+Table role_permissions {
+  role_id uuid [not null]
+  permission_id uuid [not null]
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (role_id, permission_id) [pk]
+  }
+}
+
+Table auth_sessions {
+  auth_session_id uuid [pk, default: `gen_random_uuid()`]
+  user_id uuid [not null]
+  refresh_token_hash varchar(255) [not null]
+  ip_address inet
+  user_agent text
+  expires_at timestamptz [not null]
+  revoked_at timestamptz
+  created_at timestamptz [not null, default: `now()`]
+}
+
+Table mfa_methods {
+  mfa_method_id uuid [pk, default: `gen_random_uuid()`]
+  user_id uuid [not null]
+  method_type varchar(20) [not null]
+  secret_encrypted text
+  is_enabled boolean [not null, default: false]
+  verified_at timestamptz
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+
+  Note: '''
+  CHECK (method_type IN ('totp', 'email'))
+  '''
+}
+
+Table password_reset_tokens {
+  password_reset_token_id uuid [pk, default: `gen_random_uuid()`]
+  user_id uuid [not null]
+  token_hash varchar(255) [not null, unique]
+  expires_at timestamptz [not null]
+  used_at timestamptz
+  created_at timestamptz [not null, default: `now()`]
+}
+
+Table login_history {
+  login_history_id uuid [pk, default: `gen_random_uuid()`]
+  user_id uuid
+  email_attempted varchar(255) [not null]
+  ip_address inet
+  user_agent text
+  success boolean [not null]
+  failure_reason varchar(255)
+  logged_in_at timestamptz [not null, default: `now()`]
+  indexes {
+    (user_id, logged_in_at)
+  }
+
+}
+
+Table teams {
+  team_id uuid [pk, default: `gen_random_uuid()`]
+  name varchar(150) [not null, unique]
+  description text
+  created_by_user_id uuid
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+}
+
+Table team_members {
+  team_id uuid [not null]
+  user_id uuid [not null]
+  joined_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (team_id, user_id) [pk]
+  }
+}
+
+Table files {
+  file_id uuid [pk, default: `gen_random_uuid()`]
+  original_name varchar(255) [not null]
+  storage_key text [not null, unique]
+  mime_type varchar(100)
+  size_bytes bigint
+  checksum varchar(128)
+  uploaded_by_user_id uuid
+  created_at timestamptz [not null, default: `now()`]
+}
+
+Table import_jobs {
+  import_job_id uuid [pk, default: `gen_random_uuid()`]
+  import_type varchar(30) [not null]
+  file_id uuid [not null]
+  status varchar(20) [not null, default: 'pending']
+  total_rows integer [not null, default: 0]
+  success_rows integer [not null, default: 0]
+  failed_rows integer [not null, default: 0]
+  error_details jsonb
+  created_by_user_id uuid
+  created_at timestamptz [not null, default: `now()`]
+  completed_at timestamptz
+
+  Note: '''
+  CHECK (import_type IN ('users', 'assets'))
+
+  CHECK (status IN ('pending', 'processing', 'completed', 'failed'))
+
+  CHECK (
+    total_rows >= 0
+    AND success_rows >= 0
+    AND failed_rows >= 0
+    AND success_rows + failed_rows <= total_rows
+  )
+  '''
+}
+
+Table assets {
+  asset_id uuid [pk, default: `gen_random_uuid()`]
+  asset_code varchar(50) [not null, unique]
+  name varchar(150) [not null]
+  asset_type varchar(50) [not null]
+  description text
+  department_id uuid
+  owner_user_id uuid
+  criticality varchar(20) [not null, default: 'medium']
+  hostname varchar(255)
+  ip_address inet
+  location varchar(255)
+  status varchar(20) [not null, default: 'active']
+  metadata jsonb
+  created_by_user_id uuid
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+  retired_at timestamptz
+  deleted_at timestamptz
+
+  indexes {
+    (department_id)
+    (owner_user_id)
+  }
+
+  Note: '''
+  CHECK (criticality IN ('low', 'medium', 'high', 'critical'))
+
+  CHECK (status IN ('active', 'inactive', 'retired', 'disposed'))
+  '''
+}
+
+Table asset_change_history {
+  asset_change_history_id uuid [pk, default: `gen_random_uuid()`]
+  asset_id uuid [not null]
+  changed_by_user_id uuid
+  action varchar(30) [not null]
+  before_data jsonb
+  after_data jsonb
+  changed_at timestamptz [not null, default: `now()`]
+}
+
+Table business_processes {
+  business_process_id uuid [pk, default: `gen_random_uuid()`]
+  code varchar(50) [not null, unique]
+  name varchar(150) [not null]
+  department_id uuid
+  owner_user_id uuid
+  description text
+  criticality varchar(20) [not null, default: 'medium']
+  status varchar(20) [not null, default: 'active']
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+
+  Note: '''
+  CHECK (criticality IN ('low', 'medium', 'high', 'critical'))
+
+  CHECK (status IN ('active', 'inactive'))
+  '''
+}
+
+Table threats {
+  threat_id uuid [pk, default: `gen_random_uuid()`]
+  code varchar(50) [not null, unique]
+  name varchar(150) [not null]
+  description text
+  category varchar(100)
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+}
+
+Table vulnerabilities {
+  vulnerability_id uuid [pk, default: `gen_random_uuid()`]
+  code varchar(50) [not null, unique]
+  name varchar(150) [not null]
+  description text
+  severity varchar(20)
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+
+  Note: '''
+  CHECK (
+    severity IS NULL
+    OR severity IN ('low', 'medium', 'high', 'critical')
+  )
+  '''
+}
+
+Table risk_assessments {
+  risk_assessment_id uuid [pk, default: `gen_random_uuid()`]
+  risk_code varchar(50) [not null, unique]
+  asset_id uuid
+  business_process_id uuid
+  title varchar(255) [not null]
+  description text
+  likelihood smallint [not null]
+  impact smallint [not null]
+  risk_score smallint [not null, note: 'likelihood x impact']
+  risk_level varchar(20) [not null]
+  residual_likelihood smallint
+  residual_impact smallint
+  residual_score smallint
+  status varchar(30) [not null, default: 'draft']
+  assessed_by_user_id uuid
+  previous_risk_assessment_id uuid
+  assessed_at timestamptz [not null, default: `now()`]
+  closed_at timestamptz
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (asset_id)
+    (business_process_id)
+    (status, risk_level)
+    (assessed_by_user_id)
+  }
+
+  Note: '''
+  CHECK (likelihood BETWEEN 1 AND 5)
+
+  CHECK (impact BETWEEN 1 AND 5)
+
+  CHECK (risk_score = likelihood * impact)
+
+  CHECK (risk_level IN ('low', 'medium', 'high', 'critical'))
+
+  CHECK (
+    residual_likelihood IS NULL
+    OR residual_likelihood BETWEEN 1 AND 5
+  )
+
+  CHECK (
+    residual_impact IS NULL
+    OR residual_impact BETWEEN 1 AND 5
+  )
+
+  CHECK (
+    residual_score IS NULL
+    OR (
+      residual_likelihood IS NOT NULL
+      AND residual_impact IS NOT NULL
+      AND residual_score = residual_likelihood * residual_impact
+    )
+  )
+
+  CHECK (
+    status IN (
+      'draft',
+      'pending_approval',
+      'approved',
+      'in_treatment',
+      'closed',
+      'rejected'
+    )
+  )
+
+  CHECK (
+    (asset_id IS NOT NULL AND business_process_id IS NULL)
+    OR (asset_id IS NULL AND business_process_id IS NOT NULL)
+  )
+  '''
+}
+
+Table risk_assessment_threats {
+  risk_assessment_id uuid [not null]
+  threat_id uuid [not null]
+  notes text
+
+  indexes {
+    (risk_assessment_id, threat_id) [pk]
+  }
+}
+
+Table risk_assessment_vulnerabilities {
+  risk_assessment_id uuid [not null]
+  vulnerability_id uuid [not null]
+  notes text
+
+  indexes {
+    (risk_assessment_id, vulnerability_id) [pk]
+  }
+}
+
+Table risk_treatment_plans {
+  risk_treatment_plan_id uuid [pk, default: `gen_random_uuid()`]
+  risk_assessment_id uuid [not null]
+  strategy varchar(30) [not null]
+  description text [not null]
+  owner_user_id uuid
+  target_date date
+  status varchar(30) [not null, default: 'draft']
+  submitted_at timestamptz
+  completed_at timestamptz
+  created_by_user_id uuid
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (risk_assessment_id)
+  }
+
+  Note: '''
+  CHECK (
+    strategy IN ('avoid', 'mitigate', 'transfer', 'accept')
+  )
+
+  CHECK (
+    status IN (
+      'draft',
+      'pending_approval',
+      'approved',
+      'in_progress',
+      'completed',
+      'rejected',
+      'cancelled'
+    )
+  )
+
+  CHECK (
+    completed_at IS NULL
+    OR completed_at >= created_at
+  )
+  '''
+}
+
+Table risk_treatment_actions {
+  risk_treatment_action_id uuid [pk, default: `gen_random_uuid()`]
+  risk_treatment_plan_id uuid [not null]
+  title varchar(255) [not null]
+  description text
+  assigned_to_user_id uuid
+  due_date date
+  progress_percent smallint [not null, default: 0]
+  status varchar(20) [not null, default: 'pending']
+  completed_at timestamptz
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+
+  Note: '''
+  CHECK (progress_percent BETWEEN 0 AND 100)
+
+  CHECK (
+    status IN (
+      'pending',
+      'in_progress',
+      'completed',
+      'blocked',
+      'cancelled'
+    )
+  )
+
+  CHECK (
+    completed_at IS NULL
+    OR completed_at >= created_at
+  )
+  '''
+}
+
+Table policies {
+  policy_id uuid [pk, default: `gen_random_uuid()`]
+  policy_code varchar(50) [not null, unique]
+  title varchar(255) [not null]
+  description text
+  owner_user_id uuid
+  status varchar(20) [not null, default: 'draft']
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+
+  Note: '''
+  CHECK (
+    status IN (
+      'draft',
+      'pending_approval',
+      'published',
+      'archived'
+    )
+  )
+  '''
+}
+
+Table policy_versions {
+  policy_version_id uuid [pk, default: `gen_random_uuid()`]
+  policy_id uuid [not null]
+  version_number varchar(30) [not null]
+  content text [not null]
+  change_summary text
+  status varchar(20) [not null, default: 'draft']
+  effective_date date
+  created_by_user_id uuid
+  published_by_user_id uuid
+  published_at timestamptz
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (policy_id, version_number) [unique]
+  }
+
+  Note: '''
+  CHECK (
+    status IN (
+      'draft',
+      'pending_review',
+      'approved',
+      'published',
+      'archived'
+    )
+  )
+
+  CHECK (
+    published_at IS NULL
+    OR published_at >= created_at
+  )
+  '''
+}
+
+Table policy_departments {
+  policy_id uuid [not null]
+  department_id uuid [not null]
+  assigned_by_user_id uuid
+  assigned_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (policy_id, department_id) [pk]
+  }
+}
+
+Table policy_acknowledgements {
+  policy_acknowledgement_id uuid [pk, default: `gen_random_uuid()`]
+  policy_version_id uuid [not null]
+  user_id uuid [not null]
+  acknowledged_at timestamptz [not null, default: `now()`]
+  ip_address inet
+
+  indexes {
+    (policy_version_id, user_id) [unique]
+  }
+}
+
+Table compliance_frameworks {
+  compliance_framework_id uuid [pk, default: `gen_random_uuid()`]
+  code varchar(50) [not null]
+  name varchar(150) [not null]
+  version varchar(50)
+  description text
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (code, version) [unique]
+  }
+}
+
+Table compliance_controls {
+  compliance_control_id uuid [pk, default: `gen_random_uuid()`]
+  compliance_framework_id uuid [not null]
+  control_code varchar(50) [not null]
+  title varchar(255) [not null]
+  description text
+  parent_compliance_control_id uuid
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (compliance_framework_id, control_code) [unique]
+  }
+}
+
+Table policy_control_mappings {
+  policy_version_id uuid [not null]
+  compliance_control_id uuid [not null]
+  notes text
+
+  indexes {
+    (policy_version_id, compliance_control_id) [pk]
+  }
+}
+
+Table control_assessments {
+  control_assessment_id uuid [pk, default: `gen_random_uuid()`]
+  compliance_control_id uuid [not null]
+  assessed_by_user_id uuid
+  compliance_status varchar(30) [not null]
+  score numeric(5,2)
+  notes text
+  assessed_at timestamptz [not null, default: `now()`]
+  next_review_at timestamptz
+
+  Note: '''
+  CHECK (
+    compliance_status IN (
+      'compliant',
+      'partially_compliant',
+      'non_compliant',
+      'not_assessed'
+    )
+  )
+
+  CHECK (
+    score IS NULL
+    OR score BETWEEN 0 AND 100
+  )
+
+  CHECK (
+    next_review_at IS NULL
+    OR next_review_at >= assessed_at
+  )
+  '''
+}
+
+Table compliance_evidence {
+  compliance_evidence_id uuid [pk, default: `gen_random_uuid()`]
+  control_assessment_id uuid [not null]
+  file_id uuid [not null]
+  description text
+  uploaded_by_user_id uuid
+  valid_until date
+  created_at timestamptz [not null, default: `now()`]
+}
+
+Table incidents {
+  incident_id uuid [pk, default: `gen_random_uuid()`]
+  incident_code varchar(50) [not null, unique]
+  title varchar(255) [not null]
+  description text [not null]
+  category varchar(100)
+  severity varchar(20) [not null, default: 'medium']
+  status varchar(30) [not null, default: 'reported']
+  reported_by_user_id uuid
+  occurred_at timestamptz
+  detected_at timestamptz [not null, default: `now()`]
+  escalated_at timestamptz
+  resolved_at timestamptz
+  closed_at timestamptz
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (status, severity)
+    (detected_at)
+  }
+
+  Note: '''
+  CHECK (
+    severity IN ('low', 'medium', 'high', 'critical')
+  )
+
+  CHECK (
+    status IN (
+      'reported',
+      'assigned',
+      'in_progress',
+      'escalated',
+      'resolved',
+      'closed'
+    )
+  )
+
+  CHECK (
+    occurred_at IS NULL
+    OR occurred_at <= detected_at
+  )
+
+  CHECK (
+    resolved_at IS NULL
+    OR resolved_at >= detected_at
+  )
+
+  CHECK (
+    closed_at IS NULL
+    OR (
+      resolved_at IS NOT NULL
+      AND closed_at >= resolved_at
+    )
+  )
+  '''
+}
+
+Table incident_assignments {
+  incident_assignment_id uuid [pk, default: `gen_random_uuid()`]
+  incident_id uuid [not null]
+  assignee_user_id uuid
+  assignee_team_id uuid
+  assigned_by_user_id uuid
+  assigned_at timestamptz [not null, default: `now()`]
+  completed_at timestamptz
+
+  Note: '''
+  CHECK (
+    (assignee_user_id IS NOT NULL AND assignee_team_id IS NULL)
+    OR (assignee_user_id IS NULL AND assignee_team_id IS NOT NULL)
+  )
+
+  CHECK (
+    completed_at IS NULL
+    OR completed_at >= assigned_at
+  )
+  '''
+}
+
+Table incident_updates {
+  incident_update_id uuid [pk, default: `gen_random_uuid()`]
+  incident_id uuid [not null]
+  user_id uuid
+  status_from varchar(30)
+  status_to varchar(30)
+  note text
+  created_at timestamptz [not null, default: `now()`]
+  indexes {
+    (incident_id)
+  }
+
+
+  Note: '''
+  CHECK (
+    status_from IS NULL
+    OR status_from IN ('reported', 'assigned', 'in_progress', 'escalated', 'resolved', 'closed')
+  )
+
+  CHECK (
+    status_to IS NULL
+    OR status_to IN ('reported', 'assigned', 'in_progress', 'escalated', 'resolved', 'closed')
+  )
+  '''
+}
+
+Table incident_evidence {
+  incident_evidence_id uuid [pk, default: `gen_random_uuid()`]
+  incident_id uuid [not null]
+  file_id uuid [not null]
+  description text
+  uploaded_by_user_id uuid
+  created_at timestamptz [not null, default: `now()`]
+}
+
+Table incident_risk_links {
+  incident_id uuid [not null]
+  risk_assessment_id uuid [not null]
+  linked_by_user_id uuid
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (incident_id, risk_assessment_id) [pk]
+  }
+}
+
+Table post_incident_reports {
+  post_incident_report_id uuid [pk, default: `gen_random_uuid()`]
+  incident_id uuid [not null, unique]
+  root_cause text
+  impact_summary text
+  lessons_learned text
+  corrective_actions text
+  created_by_user_id uuid
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+}
+
+Table integrations {
+  integration_id uuid [pk, default: `gen_random_uuid()`]
+  name varchar(150) [not null]
+  integration_type varchar(50) [not null]
+  base_url text
+  configuration jsonb
+  status varchar(20) [not null, default: 'inactive']
+  last_connected_at timestamptz
+  created_by_user_id uuid
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+
+  Note: '''
+  CHECK (
+    integration_type IN (
+      'siem',
+      'firewall',
+      'log_source',
+      'api'
+    )
+  )
+
+  CHECK (
+    status IN (
+      'active',
+      'inactive',
+      'error',
+      'disabled'
+    )
+  )
+  '''
+}
+
+Table integration_api_keys {
+  integration_api_key_id uuid [pk, default: `gen_random_uuid()`]
+  integration_id uuid [not null]
+  key_name varchar(100) [not null]
+  secret_encrypted text [not null]
+  key_fingerprint varchar(100)
+  expires_at timestamptz
+  is_active boolean [not null, default: true]
+  created_at timestamptz [not null, default: `now()`]
+}
+
+Table sync_schedules {
+  sync_schedule_id uuid [pk, default: `gen_random_uuid()`]
+  integration_id uuid [not null]
+  schedule_expression varchar(100) [not null]
+  is_active boolean [not null, default: true]
+  last_run_at timestamptz
+  next_run_at timestamptz
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+}
+
+Table sync_jobs {
+  sync_job_id uuid [pk, default: `gen_random_uuid()`]
+  integration_id uuid [not null]
+  sync_schedule_id uuid
+  status varchar(20) [not null, default: 'pending']
+  records_processed integer [not null, default: 0]
+  records_failed integer [not null, default: 0]
+  started_at timestamptz
+  completed_at timestamptz
+  error_message text
+  created_at timestamptz [not null, default: `now()`]
+
+  Note: '''
+  CHECK (
+    status IN (
+      'pending',
+      'running',
+      'completed',
+      'failed',
+      'cancelled'
+    )
+  )
+
+  CHECK (
+    records_processed >= 0
+    AND records_failed >= 0
+  )
+
+  CHECK (
+    completed_at IS NULL
+    OR (
+      started_at IS NOT NULL
+      AND completed_at >= started_at
+    )
+  )
+  '''
+}
+
+Table integration_logs {
+  integration_log_id uuid [pk, default: `gen_random_uuid()`]
+  integration_id uuid [not null]
+  sync_job_id uuid
+  level varchar(20) [not null]
+  message text [not null]
+  details jsonb
+  created_at timestamptz [not null, default: `now()`]
+}
+
+Table log_sources {
+  log_source_id uuid [pk, default: `gen_random_uuid()`]
+  name varchar(150) [not null]
+  source_type varchar(50) [not null]
+  asset_id uuid
+  integration_id uuid
+  configuration jsonb
+  status varchar(20) [not null, default: 'active']
+  last_received_at timestamptz
+  created_by_user_id uuid
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+
+  Note: '''
+  CHECK (
+    source_type IN (
+      'application',
+      'system',
+      'authentication',
+      'network',
+      'firewall',
+      'external'
+    )
+  )
+
+  CHECK (
+    status IN ('active', 'inactive', 'error')
+  )
+  '''
+}
+
+Table security_events {
+  security_event_id uuid [pk, default: `gen_random_uuid()`]
+  log_source_id uuid [not null]
+  external_event_id varchar(255)
+  event_type varchar(100) [not null]
+  severity varchar(20)
+  event_time timestamptz [not null]
+  source_ip inet
+  destination_ip inet
+  raw_payload jsonb
+  normalized_data jsonb
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (log_source_id, event_time)
+    (external_event_id)
+    (event_type, event_time)
+  }
+
+  Note: '''
+  This entity represents the security event received from a log source and normalized for AI analysis.
+  It provides traceability between external events and generated AI alerts.
+
+  CHECK (
+    severity IS NULL
+    OR severity IN ('low', 'medium', 'high', 'critical')
+  )
+  '''
+}
+
+Table ai_model_versions {
+  ai_model_version_id uuid [pk, default: `gen_random_uuid()`]
+  model_name varchar(150) [not null]
+  algorithm varchar(100) [not null]
+  version varchar(50) [not null]
+  provider varchar(150)
+  model_path text
+  parameters jsonb
+  is_active boolean [not null, default: false]
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (model_name, version) [unique]
+  }
+
+  Note: '''
+  This table stores pre-trained AI model versions used by the system.
+  The system does not perform model training, retraining, or fine-tuning.
+
+  PostgreSQL partial unique index required:
+  CREATE UNIQUE INDEX uq_ai_model_versions_one_active
+  ON ai_model_versions(model_name)
+  WHERE is_active = true;
+  '''
+}
+
+Table ai_alerts {
+  ai_alert_id uuid [pk, default: `gen_random_uuid()`]
+  alert_code varchar(50) [not null, unique]
+  security_event_id uuid [not null]
+  log_source_id uuid [not null]
+  asset_id uuid
+  ai_model_version_id uuid [not null]
+  anomaly_score numeric(8,6) [not null]
+  risk_score numeric(8,4)
+  risk_level varchar(20)
+  title varchar(255) [not null]
+  description text
+  status varchar(30) [not null, default: 'new']
+  detected_at timestamptz [not null, default: `now()`]
+  reviewed_by_user_id uuid
+  reviewed_at timestamptz
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (security_event_id)
+    (log_source_id)
+    (asset_id)
+    (ai_model_version_id)
+    (status, detected_at)
+  }
+
+  Note: '''
+  CHECK (anomaly_score BETWEEN 0 AND 1)
+
+  CHECK (
+    risk_score IS NULL
+    OR risk_score BETWEEN 0 AND 100
+  )
+
+  CHECK (
+    risk_level IS NULL
+    OR risk_level IN ('low', 'medium', 'high', 'critical')
+  )
+
+  CHECK (
+    status IN (
+      'new',
+      'reviewing',
+      'confirmed',
+      'false_positive',
+      'resolved',
+      'dismissed'
+    )
+  )
+
+  CHECK (
+    reviewed_at IS NULL
+    OR reviewed_at >= detected_at
+  )
+  '''
+}
+
+Table ai_alert_explanations {
+  ai_alert_explanation_id uuid [pk, default: `gen_random_uuid()`]
+  ai_alert_id uuid [not null]
+  explanation_text text [not null]
+  feature_contributions jsonb
+  baseline_data jsonb
+  created_at timestamptz [not null, default: `now()`]
+}
+
+Table ai_feedback {
+  ai_feedback_id uuid [pk, default: `gen_random_uuid()`]
+  ai_alert_id uuid [not null]
+  reviewed_by_user_id uuid
+  feedback_label varchar(30) [not null]
+  comment text
+  created_at timestamptz [not null, default: `now()`]
+
+  Note: '''
+  CHECK (
+    feedback_label IN (
+      'confirmed_incident',
+      'false_positive',
+      'needs_review'
+    )
+  )
+  '''
+}
+
+Table asset_alert_thresholds {
+  asset_alert_threshold_id uuid [pk, default: `gen_random_uuid()`]
+  asset_id uuid [not null, unique]
+  threshold numeric(8,6) [not null]
+  risk_level_min varchar(20)
+  enabled boolean [not null, default: true]
+  updated_by_user_id uuid
+  updated_at timestamptz [not null, default: `now()`]
+
+  Note: '''
+  CHECK (threshold BETWEEN 0 AND 1)
+
+  CHECK (
+    risk_level_min IS NULL
+    OR risk_level_min IN ('low', 'medium', 'high', 'critical')
+  )
+  '''
+}
+
+Table incident_alert_links {
+  incident_id uuid [not null]
+  ai_alert_id uuid [not null]
+  created_by_user_id uuid
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (incident_id, ai_alert_id) [pk]
+  }
+}
+
+Table training_courses {
+  training_course_id uuid [pk, default: `gen_random_uuid()`]
+  title varchar(255) [not null]
+  description text
+  content text
+  status varchar(20) [not null, default: 'draft']
+  created_by_user_id uuid
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+
+  Note: '''
+  CHECK (
+    status IN ('draft', 'published', 'archived')
+  )
+  '''
+}
+
+Table training_campaigns {
+  training_campaign_id uuid [pk, default: `gen_random_uuid()`]
+  training_course_id uuid [not null]
+  title varchar(255) [not null]
+  assigned_by_user_id uuid
+  start_date date [not null]
+  due_date date [not null]
+  created_at timestamptz [not null, default: `now()`]
+
+  Note: '''
+  CHECK (due_date >= start_date)
+  '''
+}
+
+Table training_campaign_targets {
+  training_campaign_target_id uuid [pk, default: `gen_random_uuid()`]
+  training_campaign_id uuid [not null]
+  user_id uuid
+  department_id uuid
+  created_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (training_campaign_id, user_id) [unique]
+    (training_campaign_id, department_id) [unique]
+  }
+
+  Note: '''
+  CHECK (
+    (user_id IS NOT NULL AND department_id IS NULL)
+    OR (user_id IS NULL AND department_id IS NOT NULL)
+  )
+  '''
+}
+
+Table training_enrollments {
+  training_enrollment_id uuid [pk, default: `gen_random_uuid()`]
+  training_campaign_id uuid [not null]
+  user_id uuid [not null]
+  status varchar(20) [not null, default: 'assigned']
+  progress_percent smallint [not null, default: 0]
+  started_at timestamptz
+  completed_at timestamptz
+  last_accessed_at timestamptz
+
+  indexes {
+    (training_campaign_id, user_id) [unique]
+  }
+
+  Note: '''
+  CHECK (
+    status IN (
+      'assigned',
+      'in_progress',
+      'completed',
+      'overdue',
+      'cancelled'
+    )
+  )
+
+  CHECK (progress_percent BETWEEN 0 AND 100)
+
+  CHECK (
+    completed_at IS NULL
+    OR (
+      started_at IS NOT NULL
+      AND completed_at >= started_at
+    )
+  )
+  '''
+}
+
+Table quizzes {
+  quiz_id uuid [pk, default: `gen_random_uuid()`]
+  training_course_id uuid [not null]
+  title varchar(255) [not null]
+  passing_score numeric(5,2) [not null]
+  max_attempts integer [not null, default: 1]
+  created_at timestamptz [not null, default: `now()`]
+
+  Note: '''
+  CHECK (passing_score BETWEEN 0 AND 100)
+
+  CHECK (max_attempts > 0)
+  '''
+}
+
+Table quiz_questions {
+  quiz_question_id uuid [pk, default: `gen_random_uuid()`]
+  quiz_id uuid [not null]
+  question_text text [not null]
+  question_type varchar(30) [not null]
+  score numeric(5,2) [not null, default: 1]
+  display_order integer [not null, default: 1]
+
+  Note: '''
+  CHECK (
+    question_type IN (
+      'single_choice',
+      'multiple_choice',
+      'true_false',
+      'short_answer'
+    )
+  )
+
+  CHECK (score >= 0)
+
+  CHECK (display_order > 0)
+  '''
+}
+
+Table quiz_options {
+  quiz_option_id uuid [pk, default: `gen_random_uuid()`]
+  quiz_question_id uuid [not null]
+  option_text text [not null]
+  is_correct boolean [not null, default: false]
+  display_order integer [not null, default: 1]
+
+  Note: '''
+  CHECK (display_order > 0)
+  '''
+}
+
+Table quiz_attempts {
+  quiz_attempt_id uuid [pk, default: `gen_random_uuid()`]
+  quiz_id uuid [not null]
+  user_id uuid [not null]
+  score numeric(5,2)
+  passed boolean
+  started_at timestamptz [not null, default: `now()`]
+  submitted_at timestamptz
+
+  Note: '''
+  CHECK (
+    score IS NULL
+    OR score BETWEEN 0 AND 100
+  )
+
+  CHECK (
+    submitted_at IS NULL
+    OR submitted_at >= started_at
+  )
+  '''
+}
+
+Table quiz_answers {
+  quiz_answer_id uuid [pk, default: `gen_random_uuid()`]
+  quiz_attempt_id uuid [not null]
+  quiz_question_id uuid [not null]
+  selected_quiz_option_id uuid
+  answer_text text
+  is_correct boolean
+  score_awarded numeric(5,2)
+}
+
+Table training_certificates {
+  training_certificate_id uuid [pk, default: `gen_random_uuid()`]
+  training_enrollment_id uuid [not null, unique]
+  certificate_number varchar(100) [not null, unique]
+  file_id uuid
+  issued_at timestamptz [not null, default: `now()`]
+  issued_by_user_id uuid
+}
+
+Table dashboard_preferences {
+  dashboard_preference_id uuid [pk, default: `gen_random_uuid()`]
+  user_id uuid [not null, unique]
+  layout jsonb [not null]
+  updated_at timestamptz [not null, default: `now()`]
+}
+
+Table scheduled_reports {
+  scheduled_report_id uuid [pk, default: `gen_random_uuid()`]
+  name varchar(150) [not null]
+  report_type varchar(50) [not null]
+  format varchar(20) [not null]
+  filters jsonb
+  schedule_expression varchar(100) [not null]
+  recipients jsonb [not null]
+  is_active boolean [not null, default: true]
+  created_by_user_id uuid
+  last_run_at timestamptz
+  next_run_at timestamptz
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+
+  Note: '''
+  CHECK (
+    report_type IN (
+      'risk',
+      'compliance',
+      'incident',
+      'training',
+      'security_kpi',
+      'executive_summary'
+    )
+  )
+
+  CHECK (
+    format IN ('pdf', 'excel')
+  )
+  '''
+}
+
+Table report_runs {
+  report_run_id uuid [pk, default: `gen_random_uuid()`]
+  scheduled_report_id uuid
+  report_type varchar(50) [not null]
+  file_id uuid
+  status varchar(20) [not null, default: 'pending']
+  generated_by_user_id uuid
+  generated_at timestamptz
+  error_message text
+  created_at timestamptz [not null, default: `now()`]
+
+  Note: '''
+  CHECK (
+    status IN (
+      'pending',
+      'processing',
+      'completed',
+      'failed'
+    )
+  )
+  '''
+}
+
+Table notifications {
+  notification_id uuid [pk, default: `gen_random_uuid()`]
+  user_id uuid [not null]
+  type varchar(50) [not null]
+  title varchar(255) [not null]
+  message text [not null]
+  entity_type varchar(50)
+  entity_id uuid
+  is_read boolean [not null, default: false]
+  read_at timestamptz
+  created_at timestamptz [not null, default: `now()`]
+  indexes {
+    (user_id, is_read, created_at)
+  }
+
+}
+
+Table notification_preferences {
+  notification_preference_id uuid [pk, default: `gen_random_uuid()`]
+  user_id uuid [not null]
+  event_type varchar(50) [not null]
+  in_app_enabled boolean [not null, default: true]
+  email_enabled boolean [not null, default: true]
+  updated_at timestamptz [not null, default: `now()`]
+
+  indexes {
+    (user_id, event_type) [unique]
+  }
+}
+
+Table notification_deliveries {
+  notification_delivery_id uuid [pk, default: `gen_random_uuid()`]
+  notification_id uuid [not null]
+  channel varchar(20) [not null]
+  status varchar(20) [not null, default: 'pending']
+  sent_at timestamptz
+  error_message text
+  created_at timestamptz [not null, default: `now()`]
+
+  Note: '''
+  CHECK (
+    channel IN ('in_app', 'email')
+  )
+
+  CHECK (
+    status IN (
+      'pending',
+      'sent',
+      'delivered',
+      'failed'
+    )
+  )
+  '''
+}
+
+Table audit_logs {
+  audit_log_id uuid [pk, default: `gen_random_uuid()`]
+  actor_user_id uuid
+  module varchar(50) [not null]
+  action varchar(100) [not null]
+  entity_type varchar(50)
+  entity_id uuid
+  before_data jsonb
+  after_data jsonb
+  ip_address inet
+  user_agent text
+  created_at timestamptz [not null, default: `now()`]
+  indexes {
+    (actor_user_id, created_at)
+    (entity_type, entity_id)
+  }
+
+}
+
+Table system_settings {
+  system_setting_id uuid [pk, default: `gen_random_uuid()`]
+  setting_key varchar(100) [not null, unique]
+  setting_value jsonb [not null]
+  updated_by_user_id uuid
+  updated_at timestamptz [not null, default: `now()`]
+}
+
+Table workflow_definitions {
+  workflow_definition_id uuid [pk, default: `gen_random_uuid()`]
+  name varchar(150) [not null]
+  entity_type varchar(50) [not null]
+  description text
+  is_active boolean [not null, default: true]
+  created_by_user_id uuid
+  created_at timestamptz [not null, default: `now()`]
+  updated_at timestamptz [not null, default: `now()`]
+}
+
+Table workflow_steps {
+  workflow_step_id uuid [pk, default: `gen_random_uuid()`]
+  workflow_definition_id uuid [not null]
+  step_order integer [not null]
+  name varchar(150) [not null]
+  approver_role_id uuid
+  required_approvals integer [not null, default: 1]
+  due_hours integer
+
+  indexes {
+    (workflow_definition_id, step_order) [unique]
+  }
+
+  Note: '''
+  CHECK (step_order > 0)
+
+  CHECK (required_approvals > 0)
+
+  CHECK (
+    due_hours IS NULL
+    OR due_hours > 0
+  )
+  '''
+}
+
+Table approval_requests {
+  approval_request_id uuid [pk, default: `gen_random_uuid()`]
+  workflow_definition_id uuid [not null]
+  entity_type varchar(50) [not null]
+  entity_id uuid [not null]
+  requested_by_user_id uuid
+  current_step integer [not null, default: 1]
+  status varchar(30) [not null, default: 'pending']
+  submitted_at timestamptz [not null, default: `now()`]
+  completed_at timestamptz
+
+  Note: '''
+  CHECK (current_step > 0)
+
+  CHECK (
+    status IN (
+      'pending',
+      'approved',
+      'rejected',
+      'cancelled',
+      'expired'
+    )
+  )
+
+  CHECK (
+    completed_at IS NULL
+    OR completed_at >= submitted_at
+  )
+  '''
+}
+
+Table approval_actions {
+  approval_action_id uuid [pk, default: `gen_random_uuid()`]
+  approval_request_id uuid [not null]
+  workflow_step_id uuid [not null]
+  acted_by_user_id uuid
+  decision varchar(30) [not null]
+  comment text
+  acted_at timestamptz [not null, default: `now()`]
+
+  Note: '''
+  CHECK (
+    decision IN (
+      'approved',
+      'rejected',
+      'returned'
+    )
+  )
+  '''
+}
+
+Table approval_delegations {
+  approval_delegation_id uuid [pk, default: `gen_random_uuid()`]
+  delegator_user_id uuid [not null]
+  delegate_user_id uuid [not null]
+  start_at timestamptz [not null]
+  end_at timestamptz [not null]
+  reason text
+  is_active boolean [not null, default: true]
+  created_at timestamptz [not null, default: `now()`]
+
+  Note: '''
+  CHECK (delegator_user_id <> delegate_user_id)
+
+  CHECK (end_at > start_at)
+  '''
+}
+
+// =========================================================
+// V3 DESIGN DECISIONS
+// =========================================================
+// 1. AI uses pre-trained models only. No training, retraining, or fine-tuning is in scope.
+// 2. AI flow: Integration -> Log Source -> Security Event -> Pre-trained AI Model -> AI Alert -> Explanation/Feedback.
+// 3. Security events provide traceability for external_event_id and AI alerts.
+// 4. Risk assessment targets exactly one of Asset or Business Process.
+// 5. Incident assignment targets exactly one of User or Team.
+// 6. Training campaign target targets exactly one of User or Department.
+// 7. Controlled values use CHECK constraints rather than PostgreSQL ENUM/lookup tables.
+// 8. Risk scores are stored as historical snapshots and protected by CHECK constraints.
+// 9. Frequently queried foreign keys and filter/time fields are indexed.
+// 10. Partial unique index for one active model per model family is required in PostgreSQL.
+
+// =========================================================
+// RELATIONSHIPS
+// =========================================================
+
+Ref: departments.parent_department_id > departments.department_id
+
+Ref: users.department_id > departments.department_id
+Ref: users.created_by_user_id > users.user_id
+
+Ref: user_roles.user_id > users.user_id
+Ref: user_roles.role_id > roles.role_id
+Ref: user_roles.assigned_by_user_id > users.user_id
+Ref: role_permissions.role_id > roles.role_id
+Ref: role_permissions.permission_id > permissions.permission_id
+Ref: auth_sessions.user_id > users.user_id
+Ref: mfa_methods.user_id > users.user_id
+Ref: password_reset_tokens.user_id > users.user_id
+Ref: login_history.user_id > users.user_id
+Ref: teams.created_by_user_id > users.user_id
+Ref: team_members.team_id > teams.team_id
+Ref: team_members.user_id > users.user_id
+
+Ref: files.uploaded_by_user_id > users.user_id
+Ref: import_jobs.file_id > files.file_id
+Ref: import_jobs.created_by_user_id > users.user_id
+
+Ref: assets.department_id > departments.department_id
+Ref: assets.owner_user_id > users.user_id
+Ref: assets.created_by_user_id > users.user_id
+Ref: asset_change_history.asset_id > assets.asset_id
+Ref: asset_change_history.changed_by_user_id > users.user_id
+Ref: business_processes.department_id > departments.department_id
+Ref: business_processes.owner_user_id > users.user_id
+
+Ref: risk_assessments.asset_id > assets.asset_id
+Ref: risk_assessments.business_process_id > business_processes.business_process_id
+Ref: risk_assessments.assessed_by_user_id > users.user_id
+Ref: risk_assessments.previous_risk_assessment_id > risk_assessments.risk_assessment_id
+Ref: risk_assessment_threats.risk_assessment_id > risk_assessments.risk_assessment_id
+Ref: risk_assessment_threats.threat_id > threats.threat_id
+Ref: risk_assessment_vulnerabilities.risk_assessment_id > risk_assessments.risk_assessment_id
+Ref: risk_assessment_vulnerabilities.vulnerability_id > vulnerabilities.vulnerability_id
+Ref: risk_treatment_plans.risk_assessment_id > risk_assessments.risk_assessment_id
+Ref: risk_treatment_plans.owner_user_id > users.user_id
+Ref: risk_treatment_plans.created_by_user_id > users.user_id
+Ref: risk_treatment_actions.risk_treatment_plan_id > risk_treatment_plans.risk_treatment_plan_id
+Ref: risk_treatment_actions.assigned_to_user_id > users.user_id
+
+Ref: policies.owner_user_id > users.user_id
+Ref: policy_versions.policy_id > policies.policy_id
+Ref: policy_versions.created_by_user_id > users.user_id
+Ref: policy_versions.published_by_user_id > users.user_id
+Ref: policy_departments.policy_id > policies.policy_id
+Ref: policy_departments.department_id > departments.department_id
+Ref: policy_departments.assigned_by_user_id > users.user_id
+Ref: policy_acknowledgements.policy_version_id > policy_versions.policy_version_id
+Ref: policy_acknowledgements.user_id > users.user_id
+Ref: compliance_controls.compliance_framework_id > compliance_frameworks.compliance_framework_id
+Ref: compliance_controls.parent_compliance_control_id > compliance_controls.compliance_control_id
+Ref: policy_control_mappings.policy_version_id > policy_versions.policy_version_id
+Ref: policy_control_mappings.compliance_control_id > compliance_controls.compliance_control_id
+Ref: control_assessments.compliance_control_id > compliance_controls.compliance_control_id
+Ref: control_assessments.assessed_by_user_id > users.user_id
+Ref: compliance_evidence.control_assessment_id > control_assessments.control_assessment_id
+Ref: compliance_evidence.file_id > files.file_id
+Ref: compliance_evidence.uploaded_by_user_id > users.user_id
+
+Ref: incidents.reported_by_user_id > users.user_id
+Ref: incident_assignments.incident_id > incidents.incident_id
+Ref: incident_assignments.assignee_user_id > users.user_id
+Ref: incident_assignments.assignee_team_id > teams.team_id
+Ref: incident_assignments.assigned_by_user_id > users.user_id
+Ref: incident_updates.incident_id > incidents.incident_id
+Ref: incident_updates.user_id > users.user_id
+Ref: incident_evidence.incident_id > incidents.incident_id
+Ref: incident_evidence.file_id > files.file_id
+Ref: incident_evidence.uploaded_by_user_id > users.user_id
+Ref: incident_risk_links.incident_id > incidents.incident_id
+Ref: incident_risk_links.risk_assessment_id > risk_assessments.risk_assessment_id
+Ref: incident_risk_links.linked_by_user_id > users.user_id
+Ref: post_incident_reports.incident_id > incidents.incident_id
+Ref: post_incident_reports.created_by_user_id > users.user_id
+
+Ref: integrations.created_by_user_id > users.user_id
+Ref: integration_api_keys.integration_id > integrations.integration_id
+Ref: sync_schedules.integration_id > integrations.integration_id
+Ref: sync_jobs.integration_id > integrations.integration_id
+Ref: sync_jobs.sync_schedule_id > sync_schedules.sync_schedule_id
+Ref: integration_logs.integration_id > integrations.integration_id
+Ref: integration_logs.sync_job_id > sync_jobs.sync_job_id
+
+Ref: log_sources.asset_id > assets.asset_id
+Ref: log_sources.integration_id > integrations.integration_id
+Ref: log_sources.created_by_user_id > users.user_id
+Ref: security_events.log_source_id > log_sources.log_source_id
+Ref: ai_alerts.security_event_id > security_events.security_event_id
+Ref: ai_alerts.log_source_id > log_sources.log_source_id
+Ref: ai_alerts.asset_id > assets.asset_id
+Ref: ai_alerts.ai_model_version_id > ai_model_versions.ai_model_version_id
+Ref: ai_alerts.reviewed_by_user_id > users.user_id
+Ref: ai_alert_explanations.ai_alert_id > ai_alerts.ai_alert_id
+Ref: ai_feedback.ai_alert_id > ai_alerts.ai_alert_id
+Ref: ai_feedback.reviewed_by_user_id > users.user_id
+Ref: asset_alert_thresholds.asset_id > assets.asset_id
+Ref: asset_alert_thresholds.updated_by_user_id > users.user_id
+Ref: incident_alert_links.incident_id > incidents.incident_id
+Ref: incident_alert_links.ai_alert_id > ai_alerts.ai_alert_id
+Ref: incident_alert_links.created_by_user_id > users.user_id
+
+Ref: training_courses.created_by_user_id > users.user_id
+Ref: training_campaigns.training_course_id > training_courses.training_course_id
+Ref: training_campaigns.assigned_by_user_id > users.user_id
+Ref: training_campaign_targets.training_campaign_id > training_campaigns.training_campaign_id
+Ref: training_campaign_targets.user_id > users.user_id
+Ref: training_campaign_targets.department_id > departments.department_id
+Ref: training_enrollments.training_campaign_id > training_campaigns.training_campaign_id
+Ref: training_enrollments.user_id > users.user_id
+Ref: quizzes.training_course_id > training_courses.training_course_id
+Ref: quiz_questions.quiz_id > quizzes.quiz_id
+Ref: quiz_options.quiz_question_id > quiz_questions.quiz_question_id
+Ref: quiz_attempts.quiz_id > quizzes.quiz_id
+Ref: quiz_attempts.user_id > users.user_id
+Ref: quiz_answers.quiz_attempt_id > quiz_attempts.quiz_attempt_id
+Ref: quiz_answers.quiz_question_id > quiz_questions.quiz_question_id
+Ref: quiz_answers.selected_quiz_option_id > quiz_options.quiz_option_id
+Ref: training_certificates.training_enrollment_id > training_enrollments.training_enrollment_id
+Ref: training_certificates.file_id > files.file_id
+Ref: training_certificates.issued_by_user_id > users.user_id
+
+Ref: dashboard_preferences.user_id > users.user_id
+Ref: scheduled_reports.created_by_user_id > users.user_id
+Ref: report_runs.scheduled_report_id > scheduled_reports.scheduled_report_id
+Ref: report_runs.file_id > files.file_id
+Ref: report_runs.generated_by_user_id > users.user_id
+
+Ref: notifications.user_id > users.user_id
+Ref: notification_preferences.user_id > users.user_id
+Ref: notification_deliveries.notification_id > notifications.notification_id
+
+Ref: audit_logs.actor_user_id > users.user_id
+Ref: system_settings.updated_by_user_id > users.user_id
+
+Ref: workflow_definitions.created_by_user_id > users.user_id
+Ref: workflow_steps.workflow_definition_id > workflow_definitions.workflow_definition_id
+Ref: workflow_steps.approver_role_id > roles.role_id
+Ref: approval_requests.workflow_definition_id > workflow_definitions.workflow_definition_id
+Ref: approval_requests.requested_by_user_id > users.user_id
+Ref: approval_actions.approval_request_id > approval_requests.approval_request_id
+Ref: approval_actions.workflow_step_id > workflow_steps.workflow_step_id
+Ref: approval_actions.acted_by_user_id > users.user_id
+Ref: approval_delegations.delegator_user_id > users.user_id
+Ref: approval_delegations.delegate_user_id > users.user_id
+
+// =========================================================
+// TABLE GROUPS - easier to organize the ERD on dbdiagram.io
+// =========================================================
+
+TableGroup Authentication_RBAC {
+  departments
+  users
+  roles
+  permissions
+  user_roles
+  role_permissions
+  auth_sessions
+  mfa_methods
+  password_reset_tokens
+  login_history
+  teams
+  team_members
+}
+
+TableGroup Common {
+  files
+  import_jobs
+}
+
+TableGroup Asset_Management {
+  assets
+  asset_change_history
+  business_processes
+}
+
+TableGroup Risk_Management {
+  threats
+  vulnerabilities
+  risk_assessments
+  risk_assessment_threats
+  risk_assessment_vulnerabilities
+  risk_treatment_plans
+  risk_treatment_actions
+}
+
+TableGroup Policy_Compliance {
+  policies
+  policy_versions
+  policy_departments
+  policy_acknowledgements
+  compliance_frameworks
+  compliance_controls
+  policy_control_mappings
+  control_assessments
+  compliance_evidence
+}
+
+TableGroup Incident_Management {
+  incidents
+  incident_assignments
+  incident_updates
+  incident_evidence
+  incident_risk_links
+  post_incident_reports
+}
+
+TableGroup Integration_API {
+  integrations
+  integration_api_keys
+  sync_schedules
+  sync_jobs
+  integration_logs
+}
+
+TableGroup AI_Anomaly_Detection {
+  log_sources
+  ai_model_versions
+  ai_alerts
+  ai_alert_explanations
+  ai_feedback
+  asset_alert_thresholds
+  incident_alert_links
+}
+
+TableGroup Training_Awareness {
+  training_courses
+  training_campaigns
+  training_campaign_targets
+  training_enrollments
+  quizzes
+  quiz_questions
+  quiz_options
+  quiz_attempts
+  quiz_answers
+  training_certificates
+}
+
+TableGroup Reporting_Notification_Audit {
+  dashboard_preferences
+  scheduled_reports
+  report_runs
+  notifications
+  notification_preferences
+  notification_deliveries
+  audit_logs
+  system_settings
+}
+
+TableGroup Approval_Workflow {
+  workflow_definitions
+  workflow_steps
+  approval_requests
+  approval_actions
+  approval_delegations
+}
