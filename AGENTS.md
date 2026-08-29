@@ -202,7 +202,12 @@ If a database-dependent test is intentionally not run, state that clearly in the
 
 ## 11. Git and change discipline
 
-- Work from `develop` unless the user names another branch.
+- Use `develop` only as the integration base. Do not implement features directly on `develop` or `main`.
+- Create or switch to a dedicated branch for each feature/fix before editing code, using names such as `feature/risk-assessment`, `feature/incident-reporting`, or `fix/login-validation`.
+- Never commit automatically. Commit only when the user explicitly requests a commit in the current conversation.
+- Never push automatically. Push only when the user explicitly requests a push and names or clearly confirms the target branch.
+- A request to implement, fix, verify, or finish code does not implicitly authorize committing or pushing it.
+- Do not include unrelated work in a feature branch or commit.
 - Preserve unrelated user changes and project documents.
 - Keep commits scoped and use Conventional Commits, for example `feat(risks): add assessment creation`.
 - Do not commit generated `dist/`, coverage, local logs, `.env`, uploads or editor configuration.
