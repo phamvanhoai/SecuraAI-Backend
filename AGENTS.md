@@ -16,6 +16,14 @@ Current stack:
 - OpenAPI/Swagger
 - Vitest, ESLint and Prettier
 
+Current database baseline:
+
+- Online database: Supabase-managed PostgreSQL 17 in the Singapore region.
+- The application schema contains 75 business tables, 134 foreign keys and 85 enforced business `CHECK` constraints.
+- `prisma/migrations/20260830055000_full_database_schema/migration.sql` installs the complete V3 schema.
+- `prisma/migrations/20260830060000_enforce_business_checks/migration.sql` materializes the checks that the dbdiagram export stored as comments.
+- `npm run db:verify` compares the live `public` schema with the approved database design.
+
 Do not migrate the project to NestJS, another web framework, another ORM, or another database unless the user explicitly requests it.
 
 ## 2. Sources of truth
@@ -25,11 +33,12 @@ Use these sources in this order:
 1. The user's current requirement.
 2. This `AGENTS.md` file.
 3. `src/modules/README.md` for domain ownership and module boundaries.
-4. `prisma/schema.prisma` for the database model currently implemented by the application.
-5. `project-docs/database.txt` and `project-docs/Database.sql` for the target full database design.
-6. `project-docs/De xuat de tai khoa luan WebApp.pdf` for roles and the 101 use cases.
+4. Applied files under `prisma/migrations/` for the exact deployable PostgreSQL schema, including features Prisma cannot represent.
+5. `prisma/schema.prisma` for the introspected Prisma Client model currently implemented by the application.
+6. `project-docs/database.txt` and `project-docs/Database.sql` for the approved V3 database design.
+7. `project-docs/De xuat de tai khoa luan WebApp.pdf` for roles and the 101 use cases.
 
-The files in `project-docs/` are references, not executable migrations. Never import or execute them automatically. When their design differs from `prisma/schema.prisma`, explain the difference and create an explicit Prisma migration for approved changes.
+The files in `project-docs/` are design references, not files to execute directly. Their approved schema has already been converted into versioned migrations. Never run a reference SQL file against an environment automatically. When the design changes, create a new explicit migration; do not rerun or modify an applied migration.
 
 ## 3. Architecture
 
@@ -81,7 +90,7 @@ src/modules/<domain>/
   index.ts
 ```
 
-Do not create placeholder files containing fake behavior. Add a layer when the first real use case needs it. Keep the module manifest's tables and capabilities synchronized with implementation scope.
+The domain folders already contain empty layer scaffolds so team members can start consistently. Replace those exports with real implementations as use cases are assigned. Never add fake responses or placeholder behavior that appears functional. Keep the module manifest's tables and capabilities synchronized with implementation scope.
 
 ## 5. TypeScript rules
 
@@ -93,6 +102,8 @@ Do not create placeholder files containing fake behavior. Add a layer when the f
 - Prefer small named functions and explicit return types on exported functions.
 - Use existing naming: kebab-case directories, dot-suffixed files, camelCase values, PascalCase types/classes.
 - Do not expose Prisma model types directly as public API contracts when a response DTO is appropriate.
+- The introspected Prisma models and fields intentionally use database `snake_case`. Repositories may use these generated names, but controllers must map them to stable camelCase API response DTOs.
+- Do not rename Prisma models or fields only for aesthetics. A naming cleanup requires complete `@map`/`@@map` coverage, regenerated Client, updated repositories and verification that the migration diff is empty.
 
 ## 6. HTTP and API conventions
 
@@ -131,6 +142,9 @@ Do not weaken existing authentication, CORS, Helmet, rate limiting, request-size
 - Add indexes for foreign keys and common filters after considering actual query patterns.
 - Do not edit an already deployed migration. Add a new migration.
 - Do not run destructive resets, drops or production migrations without explicit user authorization.
+- The Supabase `public` schema must contain exactly the 75 approved business tables plus Prisma's `_prisma_migrations` table. Do not modify Supabase-managed schemas such as `auth`, `storage`, `realtime`, `extensions` or `vault`.
+- Prisma does not fully represent PostgreSQL comments, deferred foreign keys or all check-constraint metadata. Preserve these in SQL migrations; do not assume `prisma db pull` captures every database feature.
+- Run `npm run db:verify` after schema changes. It must report 75 tables, 134 foreign keys, 85 checks, and empty `missing`/`unexpected` lists.
 
 Repository example:
 
@@ -149,6 +163,8 @@ export const entityRepository = {
 
 - Treat all request data, uploaded files, integration payloads and external API responses as untrusted.
 - Never commit `.env`, credentials, tokens, private keys, production URLs or real personal data.
+- Treat the Supabase access token, database password, project connection string and service-role key as secrets. Never place them in source, documentation, command output, frontend code or Git history.
+- Backend Prisma is the only approved application path to PostgreSQL. Do not expose Supabase Data API tables directly to the frontend unless a separately approved RLS design is implemented and tested.
 - Keep secrets in environment variables/secret managers and preserve logger redaction.
 - Apply allow-lists for CORS, file types, sort fields, filters, webhook origins and redirect targets.
 - Use parameterized queries and output-safe response serialization.
@@ -179,6 +195,7 @@ npm test
 npm run build
 npm audit
 npx prisma validate
+npm run db:verify
 ```
 
 If a database-dependent test is intentionally not run, state that clearly in the handoff.
@@ -203,6 +220,7 @@ A code task is complete only when:
 - OpenAPI documentation matches the implementation.
 - Relevant tests pass along with typecheck, lint and build.
 - Schema changes include a migration.
+- Live database verification passes when the task changes database structure.
 - The handoff states what changed, how it was verified and any remaining limitation.
 
 When requirements are ambiguous, inspect the project references and existing patterns first. Ask the user only when a choice would materially change business behavior, security, data design or public API compatibility.
