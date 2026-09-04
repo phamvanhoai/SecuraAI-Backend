@@ -1,4 +1,4 @@
-import type { ModuleManifest } from '@/modules/module.types.js';
+import type { ModuleManifest } from '../module.types.js';
 import { aiAlertsRouter } from './ai-alerts.routes.js';
 
 export const aiAlertsModule: ModuleManifest = {

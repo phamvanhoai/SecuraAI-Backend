@@ -1,7 +1,7 @@
 import type { RequestHandler } from 'express';
 import jwt from 'jsonwebtoken';
-import { env } from '@/config/env.js';
-import { AppError } from '@/common/errors/app-error.js';
+import { env } from '../../config/env.js';
+import { AppError } from '../errors/app-error.js';
 
 type AccessClaims = jwt.JwtPayload & {
   sub: string;
