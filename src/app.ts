@@ -7,11 +7,11 @@ import helmet from 'helmet';
 import hpp from 'hpp';
 import pinoHttp from 'pino-http';
 import swaggerUi from 'swagger-ui-express';
-import { env } from '@/config/env.js';
-import { logger } from '@/config/logger.js';
-import { errorHandler, notFoundHandler } from '@/common/middleware/error-handler.js';
-import { openApiSpec } from '@/docs/openapi.js';
-import { apiRouter } from '@/routes/index.js';
+import { env } from './config/env.js';
+import { logger } from './config/logger.js';
+import { errorHandler, notFoundHandler } from './common/middleware/error-handler.js';
+import { openApiSpec } from './docs/openapi.js';
+import { apiRouter } from './routes/index.js';
 
 export const createApp = () => {
   const app = express();

@@ -1,5 +1,5 @@
 import type { RequestHandler } from 'express';
-import { AppError } from '@/common/errors/app-error.js';
+import { AppError } from '../../common/errors/app-error.js';
 import { usersService } from './users.service.js';
 
 export const me: RequestHandler = async (req, res) => {

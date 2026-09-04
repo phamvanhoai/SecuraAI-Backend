@@ -98,7 +98,7 @@ The domain folders already contain empty layer scaffolds so team members can sta
 - Do not use `any`, `@ts-ignore`, non-null assertions, or unsafe casts to silence errors.
 - Prefer `unknown` at untrusted boundaries and narrow it safely.
 - Use `import type` for type-only imports.
-- Use the `@/` path alias for imports across directories and `.js` extensions in source imports because output uses NodeNext modules.
+- Use relative imports with `.js` extensions so the same source works with NodeNext locally and in Vercel Functions.
 - Prefer small named functions and explicit return types on exported functions.
 - Use existing naming: kebab-case directories, dot-suffixed files, camelCase values, PascalCase types/classes.
 - Do not expose Prisma model types directly as public API contracts when a response DTO is appropriate.

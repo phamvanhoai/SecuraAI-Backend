@@ -1,4 +1,4 @@
-import type { ModuleManifest } from '@/modules/module.types.js';
+import type { ModuleManifest } from '../module.types.js';
 import { incidentManagementRouter } from './incident-management.routes.js';
 
 export const incidentManagementModule: ModuleManifest = {

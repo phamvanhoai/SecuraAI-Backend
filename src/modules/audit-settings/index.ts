@@ -1,4 +1,4 @@
-import type { ModuleManifest } from '@/modules/module.types.js';
+import type { ModuleManifest } from '../module.types.js';
 import { auditSettingsRouter } from './audit-settings.routes.js';
 
 export const auditSettingsModule: ModuleManifest = {
