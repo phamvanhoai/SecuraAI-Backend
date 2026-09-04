@@ -1,5 +1,5 @@
 import swaggerJsdoc from 'swagger-jsdoc';
-import { env } from '@/config/env.js';
+import { env } from '../config/env.js';
 
 export const openApiSpec = swaggerJsdoc({
   definition: {

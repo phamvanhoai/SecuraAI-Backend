@@ -1,4 +1,4 @@
-import type { ModuleManifest } from '@/modules/module.types.js';
+import type { ModuleManifest } from '../module.types.js';
 import { policyComplianceRouter } from './policy-compliance.routes.js';
 
 export const policyComplianceModule: ModuleManifest = {

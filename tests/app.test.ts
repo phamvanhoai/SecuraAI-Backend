@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import request from 'supertest';
 
-vi.mock('@/database/prisma.js', () => ({ prisma: { $queryRaw: vi.fn().mockResolvedValue([{ value: 1 }]) } }));
+vi.mock('../src/database/prisma.js', () => ({ prisma: { $queryRaw: vi.fn().mockResolvedValue([{ value: 1 }]) } }));
 
 describe('application', () => {
   it('returns liveness status', async () => {

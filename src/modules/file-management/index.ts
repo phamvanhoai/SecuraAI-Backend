@@ -1,4 +1,4 @@
-import type { ModuleManifest } from '@/modules/module.types.js';
+import type { ModuleManifest } from '../module.types.js';
 import { fileManagementRouter } from './file-management.routes.js';
 
 export const fileManagementModule: ModuleManifest = {
