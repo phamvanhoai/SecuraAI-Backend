@@ -9,7 +9,6 @@ export default tseslint.config(
       'dist/**',
       'node_modules/**',
       'coverage/**',
-      'public/swagger-ui/**',
       'scripts/**',
       'eslint.config.mjs',
       'vitest.config.ts',
