@@ -9,8 +9,8 @@
   },
   "scripts": {
     "dev": "tsx watch src/server.ts",
-    "build": "npm run docs:assets && tsc -p tsconfig.build.json",
-    "postinstall": "prisma generate && node scripts/copy-swagger-assets.cjs",
+    "build": "tsc -p tsconfig.build.json",
+    "postinstall": "prisma generate",
     "start": "node dist/server.js",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
@@ -24,8 +24,7 @@
     "db:deploy": "prisma migrate deploy",
     "db:seed": "tsx prisma/seed.ts",
     "db:verify": "node scripts/verify-database-schema.cjs",
-    "db:studio": "prisma studio",
-    "docs:assets": "node scripts/copy-swagger-assets.cjs"
+    "db:studio": "prisma studio"
   },
   "dependencies": {
     "@prisma/client": "6.12.0",

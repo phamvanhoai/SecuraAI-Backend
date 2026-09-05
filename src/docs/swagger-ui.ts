@@ -1,3 +1,14 @@
+import { readFileSync } from 'node:fs';
+
+export const swaggerUiAssets = {
+  stylesheet: readFileSync(require.resolve('swagger-ui-dist/swagger-ui.css'), 'utf8'),
+  bundle: readFileSync(require.resolve('swagger-ui-dist/swagger-ui-bundle.js'), 'utf8'),
+  standalonePreset: readFileSync(
+    require.resolve('swagger-ui-dist/swagger-ui-standalone-preset.js'),
+    'utf8',
+  ),
+};
+
 export const swaggerUiHtml = `<!doctype html>
 <html lang="en">
   <head>
