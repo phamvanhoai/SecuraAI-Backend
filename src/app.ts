@@ -6,11 +6,11 @@ import rateLimit from 'express-rate-limit';
 import helmet from 'helmet';
 import hpp from 'hpp';
 import pinoHttp from 'pino-http';
-import swaggerUi from 'swagger-ui-express';
 import { env } from './config/env.js';
 import { logger } from './config/logger.js';
 import { errorHandler, notFoundHandler } from './common/middleware/error-handler.js';
 import { openApiSpec } from './docs/openapi.js';
+import { swaggerUiHtml } from './docs/swagger-ui.js';
 import { apiRouter } from './routes/index.js';
 
 export const createApp = () => {
@@ -31,8 +31,12 @@ export const createApp = () => {
   app.use(hpp());
   app.use(compression());
   if (env.SWAGGER_ENABLED) {
+    app.use(
+      '/swagger-ui',
+      express.static('public/swagger-ui', { dotfiles: 'deny', fallthrough: false, index: false }),
+    );
     app.get('/docs/openapi.json', (_req, res) => res.json(openApiSpec));
-    app.use('/docs', swaggerUi.serve, swaggerUi.setup(openApiSpec, { explorer: true }));
+    app.get(['/docs', '/docs/'], (_req, res) => res.type('html').send(swaggerUiHtml));
   }
   app.use(env.API_PREFIX, apiRouter);
   app.use(notFoundHandler);
