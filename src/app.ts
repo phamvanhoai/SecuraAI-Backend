@@ -10,7 +10,7 @@ import { env } from './config/env.js';
 import { logger } from './config/logger.js';
 import { errorHandler, notFoundHandler } from './common/middleware/error-handler.js';
 import { openApiSpec } from './docs/openapi.js';
-import { swaggerUiHtml } from './docs/swagger-ui.js';
+import { swaggerUiAssets, swaggerUiHtml } from './docs/swagger-ui.js';
 import { apiRouter } from './routes/index.js';
 
 export const createApp = () => {
@@ -31,9 +31,14 @@ export const createApp = () => {
   app.use(hpp());
   app.use(compression());
   if (env.SWAGGER_ENABLED) {
-    app.use(
-      '/swagger-ui',
-      express.static('public/swagger-ui', { dotfiles: 'deny', fallthrough: false, index: false }),
+    app.get('/swagger-ui/swagger-ui.css', (_req, res) =>
+      res.type('text/css').send(swaggerUiAssets.stylesheet),
+    );
+    app.get('/swagger-ui/swagger-ui-bundle.js', (_req, res) =>
+      res.type('application/javascript').send(swaggerUiAssets.bundle),
+    );
+    app.get('/swagger-ui/swagger-ui-standalone-preset.js', (_req, res) =>
+      res.type('application/javascript').send(swaggerUiAssets.standalonePreset),
     );
     app.get('/docs/openapi.json', (_req, res) => res.json(openApiSpec));
     app.get(['/docs', '/docs/'], (_req, res) => res.type('html').send(swaggerUiHtml));
