@@ -16,6 +16,44 @@ async function main(): Promise<void> {
     update: {},
     create: { code: 'ADMIN', name: 'System Administrator', is_system: true },
   });
+  const securityOfficerRole = await prisma.roles.upsert({
+    where: { code: 'SECURITY_OFFICER' },
+    update: {},
+    create: {
+      code: 'SECURITY_OFFICER',
+      name: 'Security Officer',
+      is_system: true,
+    },
+  });
+  const createPolicyPermission = await prisma.permissions.upsert({
+    where: { code: 'policies:create' },
+    update: {
+      module: 'policy-compliance',
+      action: 'create',
+      description: 'Create information security policy drafts',
+    },
+    create: {
+      code: 'policies:create',
+      module: 'policy-compliance',
+      action: 'create',
+      description: 'Create information security policy drafts',
+    },
+  });
+  for (const policyAuthorRole of [role, securityOfficerRole]) {
+    await prisma.role_permissions.upsert({
+      where: {
+        role_id_permission_id: {
+          role_id: policyAuthorRole.role_id,
+          permission_id: createPolicyPermission.permission_id,
+        },
+      },
+      update: {},
+      create: {
+        role_id: policyAuthorRole.role_id,
+        permission_id: createPolicyPermission.permission_id,
+      },
+    });
+  }
   const passwordHash = await argon2.hash(password, { type: argon2.argon2id });
   const user = await prisma.users.upsert({
     where: { email },
