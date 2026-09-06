@@ -1,2 +1,7 @@
-/** Export Zod schemas and inferred DTO types for AssetManagement use cases from this file. */
-export {};
+export {
+  assetCriticalities,
+  assetListSortFields,
+  assetStatuses,
+  listAssetsQuerySchema,
+} from './list-assets-query.dto.js';
+export type { ListAssetsQuery } from './list-assets-query.dto.js';
