@@ -102,6 +102,30 @@ describe('GET /api/v1/assets', () => {
     expect(response.body.error.code).toBe('VALIDATION_ERROR');
     expect(listAssetsMock).not.toHaveBeenCalled();
   });
+
+  it('combines search, all filters, pagination and sorting', async () => {
+    const departmentId = '00000000-0000-4000-8000-000000000020';
+    const ownerUserId = '00000000-0000-4000-8000-000000000021';
+    const response = await request(createApp())
+      .get(
+        `/api/v1/assets?q=%20DB-Server%20&assetType=server&criticality=critical&status=active&departmentId=${departmentId}&ownerUserId=${ownerUserId}&page=3&limit=5&sortBy=name&sortOrder=desc`,
+      )
+      .set('authorization', `Bearer ${accessToken(['assets.read'])}`);
+
+    expect(response.status).toBe(200);
+    expect(listAssetsMock).toHaveBeenCalledWith({
+      q: 'DB-Server',
+      assetType: 'server',
+      criticality: 'critical',
+      status: 'active',
+      departmentId,
+      ownerUserId,
+      page: 3,
+      limit: 5,
+      sortBy: 'name',
+      sortOrder: 'desc',
+    });
+  });
 });
 
 describe('PATCH /api/v1/assets/:assetId', () => {

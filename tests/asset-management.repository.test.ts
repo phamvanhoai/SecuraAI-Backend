@@ -89,6 +89,36 @@ describe('assetManagementRepository.list', () => {
       }),
     );
   });
+
+  it.each([
+    ['assetCode', 'asc', [{ asset_code: 'asc' }, { asset_id: 'asc' }]],
+    ['name', 'desc', [{ name: 'desc' }, { asset_id: 'asc' }]],
+    ['createdAt', 'asc', [{ created_at: 'asc' }, { asset_id: 'asc' }]],
+    ['updatedAt', 'desc', [{ updated_at: 'desc' }, { asset_id: 'asc' }]],
+  ] as const)(
+    'maps sortBy=%s to an allow-listed stable database order',
+    async (sortBy, sortOrder, expected) => {
+      await assetManagementRepository.list({ page: 1, limit: 20, sortBy, sortOrder });
+
+      const findManyArgument: unknown = findManyMock.mock.calls[0]?.[0];
+      expect(findManyArgument).toMatchObject({ orderBy: expected });
+    },
+  );
+
+  it('returns an empty result without treating it as not found', async () => {
+    countMock.mockResolvedValue(0);
+    findManyMock.mockResolvedValue([]);
+
+    await expect(
+      assetManagementRepository.list({
+        page: 1,
+        limit: 20,
+        q: 'does-not-exist',
+        sortBy: 'assetCode',
+        sortOrder: 'asc',
+      }),
+    ).resolves.toEqual({ items: [], total: 0 });
+  });
 });
 
 describe('assetManagementRepository.update', () => {

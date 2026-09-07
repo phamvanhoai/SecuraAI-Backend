@@ -44,6 +44,11 @@ describe('listAssetsQuerySchema', () => {
   ])('rejects invalid query values: %o', (query) => {
     expect(listAssetsQuerySchema.safeParse(query).success).toBe(false);
   });
+
+  it('rejects empty and oversized search terms', () => {
+    expect(listAssetsQuerySchema.safeParse({ q: '   ' }).success).toBe(false);
+    expect(listAssetsQuerySchema.safeParse({ q: 'a'.repeat(101) }).success).toBe(false);
+  });
 });
 
 describe('createAssetBodySchema', () => {

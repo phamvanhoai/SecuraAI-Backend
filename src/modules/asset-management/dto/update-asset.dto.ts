@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { assetCriticalities, assetStatuses } from './list-assets-query.dto.js';
+import { assetStatuses } from './list-assets-query.dto.js';
 
 const nullableText = (maxLength: number) =>
   z.preprocess(
@@ -22,7 +22,6 @@ export const updateAssetBodySchema = z
     description: nullableText(10_000),
     departmentId: z.uuid().nullable().optional(),
     ownerUserId: z.uuid().nullable().optional(),
-    criticality: z.enum(assetCriticalities).optional(),
     hostname: nullableText(255),
     ipAddress: z.union([z.ipv4(), z.ipv6()]).nullable().optional(),
     location: nullableText(255),

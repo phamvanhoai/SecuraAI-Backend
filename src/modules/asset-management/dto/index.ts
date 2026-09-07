@@ -9,3 +9,5 @@ export { createAssetBodySchema } from './create-asset.dto.js';
 export type { CreateAssetBody } from './create-asset.dto.js';
 export { updateAssetBodySchema, updateAssetParamsSchema } from './update-asset.dto.js';
 export type { UpdateAssetBody, UpdateAssetParams } from './update-asset.dto.js';
+export { classifyAssetCriticalityBodySchema } from './classify-asset-criticality.dto.js';
+export type { ClassifyAssetCriticalityBody } from './classify-asset-criticality.dto.js';
