@@ -44,6 +44,34 @@ async function main(): Promise<void> {
       description: 'Create an IT asset',
     },
   });
+  const assetUpdatePermission = await prisma.permissions.upsert({
+    where: { code: 'assets.update' },
+    update: {
+      module: 'asset-management',
+      action: 'update',
+      description: 'Update an IT asset',
+    },
+    create: {
+      code: 'assets.update',
+      module: 'asset-management',
+      action: 'update',
+      description: 'Update an IT asset',
+    },
+  });
+  const assetDeletePermission = await prisma.permissions.upsert({
+    where: { code: 'assets.delete' },
+    update: {
+      module: 'asset-management',
+      action: 'delete',
+      description: 'Delete an IT asset',
+    },
+    create: {
+      code: 'assets.delete',
+      module: 'asset-management',
+      action: 'delete',
+      description: 'Delete an IT asset',
+    },
+  });
   const passwordHash = await argon2.hash(password, { type: argon2.argon2id });
   const user = await prisma.users.upsert({
     where: { email },
@@ -83,6 +111,32 @@ async function main(): Promise<void> {
     create: {
       role_id: role.role_id,
       permission_id: assetCreatePermission.permission_id,
+    },
+  });
+  await prisma.role_permissions.upsert({
+    where: {
+      role_id_permission_id: {
+        role_id: role.role_id,
+        permission_id: assetUpdatePermission.permission_id,
+      },
+    },
+    update: {},
+    create: {
+      role_id: role.role_id,
+      permission_id: assetUpdatePermission.permission_id,
+    },
+  });
+  await prisma.role_permissions.upsert({
+    where: {
+      role_id_permission_id: {
+        role_id: role.role_id,
+        permission_id: assetDeletePermission.permission_id,
+      },
+    },
+    update: {},
+    create: {
+      role_id: role.role_id,
+      permission_id: assetDeletePermission.permission_id,
     },
   });
 }

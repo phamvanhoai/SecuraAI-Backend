@@ -7,6 +7,13 @@ const {
   findManyMock,
   historyCreateMock,
   transactionMock,
+  assetUpdateMock,
+  assetFindFirstMock,
+  riskCountMock,
+  alertCountMock,
+  logSourceCountMock,
+  thresholdCountMock,
+  incidentCountMock,
 } = vi.hoisted(() => ({
   assetCreateMock: vi.fn(),
   auditCreateMock: vi.fn(),
@@ -14,6 +21,13 @@ const {
   findManyMock: vi.fn(),
   historyCreateMock: vi.fn(),
   transactionMock: vi.fn(),
+  assetUpdateMock: vi.fn(),
+  assetFindFirstMock: vi.fn(),
+  riskCountMock: vi.fn(),
+  alertCountMock: vi.fn(),
+  logSourceCountMock: vi.fn(),
+  thresholdCountMock: vi.fn(),
+  incidentCountMock: vi.fn(),
 }));
 
 vi.mock('../src/database/prisma.js', () => ({
@@ -74,6 +88,120 @@ describe('assetManagementRepository.list', () => {
         take: 10,
       }),
     );
+  });
+});
+
+describe('assetManagementRepository.update', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    transactionMock.mockImplementation((callback: (transaction: unknown) => Promise<unknown>) =>
+      callback({
+        assets: { update: assetUpdateMock },
+        asset_change_history: { create: historyCreateMock },
+        audit_logs: { create: auditCreateMock },
+      }),
+    );
+    assetUpdateMock.mockResolvedValue({ asset_id: 'asset-1' });
+  });
+
+  it('updates and audits changed fields in one transaction', async () => {
+    const beforeData = { name: 'Old name' };
+    const afterData = { name: 'New name' };
+
+    await assetManagementRepository.update(
+      'asset-1',
+      { name: 'New name', departmentId: null, retiredAt: null },
+      {
+        actorUserId: 'user-1',
+        ipAddress: '127.0.0.1',
+        userAgent: 'vitest',
+        beforeData,
+        afterData,
+      },
+    );
+
+    const updateArgument: unknown = assetUpdateMock.mock.calls[0]?.[0];
+    const historyArgument: unknown = historyCreateMock.mock.calls[0]?.[0];
+    const auditArgument: unknown = auditCreateMock.mock.calls[0]?.[0];
+    expect(updateArgument).toMatchObject({
+      where: { asset_id: 'asset-1', deleted_at: null },
+      data: { name: 'New name', department_id: null, retired_at: null },
+    });
+    expect(historyArgument).toMatchObject({
+      data: { action: 'updated', before_data: beforeData, after_data: afterData },
+    });
+    expect(auditArgument).toMatchObject({
+      data: { action: 'asset.updated', before_data: beforeData, after_data: afterData },
+    });
+  });
+});
+
+describe('assetManagementRepository.softDelete', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    transactionMock.mockImplementation((callback: (transaction: unknown) => Promise<unknown>) =>
+      callback({
+        assets: { findFirst: assetFindFirstMock, update: assetUpdateMock },
+        risk_assessments: { count: riskCountMock },
+        ai_alerts: { count: alertCountMock },
+        log_sources: { count: logSourceCountMock },
+        asset_alert_thresholds: { count: thresholdCountMock },
+        incident_alert_links: { count: incidentCountMock },
+        asset_change_history: { create: historyCreateMock },
+        audit_logs: { create: auditCreateMock },
+      }),
+    );
+    assetFindFirstMock.mockResolvedValue({
+      asset_id: 'asset-1',
+      asset_code: 'AST-001',
+      name: 'Server',
+      status: 'active',
+    });
+    for (const countMock of [
+      riskCountMock,
+      alertCountMock,
+      logSourceCountMock,
+      thresholdCountMock,
+      incidentCountMock,
+    ]) {
+      countMock.mockResolvedValue(0);
+    }
+  });
+
+  it('does not write when an active dependency exists', async () => {
+    riskCountMock.mockResolvedValue(2);
+
+    const result = await assetManagementRepository.softDelete('asset-1', {
+      actorUserId: 'user-1',
+      ipAddress: null,
+      userAgent: null,
+    });
+
+    expect(result).toMatchObject({ kind: 'blocked', dependencies: { riskAssessments: 2 } });
+    expect(assetUpdateMock).not.toHaveBeenCalled();
+    expect(historyCreateMock).not.toHaveBeenCalled();
+    expect(auditCreateMock).not.toHaveBeenCalled();
+  });
+
+  it('soft-deletes and creates history and audit records atomically', async () => {
+    const result = await assetManagementRepository.softDelete('asset-1', {
+      actorUserId: 'user-1',
+      ipAddress: '127.0.0.1',
+      userAgent: 'vitest',
+    });
+
+    const updateArgument: unknown = assetUpdateMock.mock.calls[0]?.[0];
+    const historyArgument: unknown = historyCreateMock.mock.calls[0]?.[0];
+    const auditArgument: unknown = auditCreateMock.mock.calls[0]?.[0];
+    expect(result).toEqual({ kind: 'deleted' });
+    expect(updateArgument).toMatchObject({
+      where: { asset_id: 'asset-1', deleted_at: null },
+      data: { status: 'inactive' },
+    });
+    expect(historyArgument).toMatchObject({ data: { action: 'deleted', asset_id: 'asset-1' } });
+    expect(auditArgument).toMatchObject({
+      data: { action: 'asset.deleted', entity_id: 'asset-1' },
+    });
   });
 });
 

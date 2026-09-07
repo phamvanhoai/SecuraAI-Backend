@@ -1,7 +1,8 @@
-import type { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { prisma } from '../../database/prisma.js';
 import type { ListAssetsQuery } from './dto/list-assets-query.dto.js';
 import type { CreateAssetBody } from './dto/create-asset.dto.js';
+import type { UpdateAssetBody } from './dto/update-asset.dto.js';
 
 export const assetListSelect = {
   asset_id: true,
@@ -34,6 +35,10 @@ export const assetDetailSelect = {
   description: true,
   hostname: true,
   ip_address: true,
+  department_id: true,
+  owner_user_id: true,
+  metadata: true,
+  retired_at: true,
   created_at: true,
 } satisfies Prisma.assetsSelect;
 
@@ -44,6 +49,26 @@ type CreateAssetContext = {
   ipAddress: string | null;
   userAgent: string | null;
 };
+
+export type AssetUpdateChanges = UpdateAssetBody & { retiredAt?: Date | null };
+
+type UpdateAssetContext = CreateAssetContext & {
+  beforeData: Prisma.InputJsonObject;
+  afterData: Prisma.InputJsonObject;
+};
+
+export type AssetDependencyCounts = {
+  riskAssessments: number;
+  openAlerts: number;
+  activeLogSources: number;
+  enabledAlertThresholds: number;
+  openIncidents: number;
+};
+
+export type DeleteAssetResult =
+  | { kind: 'not_found' }
+  | { kind: 'blocked'; dependencies: AssetDependencyCounts }
+  | { kind: 'deleted' };
 
 const buildWhere = (query: ListAssetsQuery): Prisma.assetsWhereInput => ({
   deleted_at: null,
@@ -116,6 +141,13 @@ export const assetManagementRepository = {
     });
   },
 
+  findById(assetId: string): Promise<AssetDetailRecord | null> {
+    return prisma.assets.findFirst({
+      where: { asset_id: assetId, deleted_at: null },
+      select: assetDetailSelect,
+    });
+  },
+
   create(input: CreateAssetBody, context: CreateAssetContext): Promise<AssetDetailRecord> {
     return prisma.$transaction(async (transaction) => {
       const asset = await transaction.assets.create({
@@ -171,5 +203,149 @@ export const assetManagementRepository = {
 
       return asset;
     });
+  },
+
+  update(
+    assetId: string,
+    changes: AssetUpdateChanges,
+    context: UpdateAssetContext,
+  ): Promise<AssetDetailRecord> {
+    return prisma.$transaction(async (transaction) => {
+      const asset = await transaction.assets.update({
+        where: { asset_id: assetId, deleted_at: null },
+        data: {
+          ...(changes.name !== undefined && { name: changes.name }),
+          ...(changes.assetType !== undefined && { asset_type: changes.assetType }),
+          ...(changes.description !== undefined && { description: changes.description }),
+          ...(changes.departmentId !== undefined && { department_id: changes.departmentId }),
+          ...(changes.ownerUserId !== undefined && { owner_user_id: changes.ownerUserId }),
+          ...(changes.criticality !== undefined && { criticality: changes.criticality }),
+          ...(changes.hostname !== undefined && { hostname: changes.hostname }),
+          ...(changes.ipAddress !== undefined && { ip_address: changes.ipAddress }),
+          ...(changes.location !== undefined && { location: changes.location }),
+          ...(changes.status !== undefined && { status: changes.status }),
+          ...(changes.metadata !== undefined && { metadata: changes.metadata }),
+          ...(changes.retiredAt !== undefined && { retired_at: changes.retiredAt }),
+          updated_at: new Date(),
+        },
+        select: assetDetailSelect,
+      });
+
+      await transaction.asset_change_history.create({
+        data: {
+          asset_id: assetId,
+          changed_by_user_id: context.actorUserId,
+          action: 'updated',
+          before_data: context.beforeData,
+          after_data: context.afterData,
+        },
+      });
+      await transaction.audit_logs.create({
+        data: {
+          actor_user_id: context.actorUserId,
+          module: 'asset-management',
+          action: 'asset.updated',
+          entity_type: 'asset',
+          entity_id: assetId,
+          before_data: context.beforeData,
+          after_data: context.afterData,
+          ip_address: context.ipAddress,
+          user_agent: context.userAgent,
+        },
+      });
+
+      return asset;
+    });
+  },
+
+  softDelete(assetId: string, context: CreateAssetContext): Promise<DeleteAssetResult> {
+    return prisma.$transaction(
+      async (transaction) => {
+        const asset = await transaction.assets.findFirst({
+          where: { asset_id: assetId, deleted_at: null },
+          select: { asset_id: true, asset_code: true, name: true, status: true },
+        });
+        if (!asset) return { kind: 'not_found' };
+
+        const [
+          riskAssessments,
+          openAlerts,
+          activeLogSources,
+          enabledAlertThresholds,
+          openIncidents,
+        ] = await Promise.all([
+          transaction.risk_assessments.count({
+            where: { asset_id: assetId, status: { notIn: ['closed', 'rejected'] } },
+          }),
+          transaction.ai_alerts.count({
+            where: { asset_id: assetId, status: { in: ['new', 'reviewing', 'confirmed'] } },
+          }),
+          transaction.log_sources.count({ where: { asset_id: assetId, status: 'active' } }),
+          transaction.asset_alert_thresholds.count({ where: { asset_id: assetId, enabled: true } }),
+          transaction.incident_alert_links.count({
+            where: {
+              ai_alerts: { asset_id: assetId },
+              incidents: { closed_at: null },
+            },
+          }),
+        ]);
+        const dependencies = {
+          riskAssessments,
+          openAlerts,
+          activeLogSources,
+          enabledAlertThresholds,
+          openIncidents,
+        };
+        if (Object.values(dependencies).some((count) => count > 0)) {
+          return { kind: 'blocked', dependencies };
+        }
+
+        const deletedAt = new Date();
+        const beforeData: Prisma.InputJsonObject = {
+          assetId: asset.asset_id,
+          assetCode: asset.asset_code,
+          name: asset.name,
+          status: asset.status,
+          deletedAt: null,
+        };
+        const afterData: Prisma.InputJsonObject = {
+          assetId: asset.asset_id,
+          assetCode: asset.asset_code,
+          name: asset.name,
+          status: 'inactive',
+          deletedAt: deletedAt.toISOString(),
+        };
+
+        await transaction.assets.update({
+          where: { asset_id: assetId, deleted_at: null },
+          data: { status: 'inactive', deleted_at: deletedAt, updated_at: deletedAt },
+        });
+        await transaction.asset_change_history.create({
+          data: {
+            asset_id: assetId,
+            changed_by_user_id: context.actorUserId,
+            action: 'deleted',
+            before_data: beforeData,
+            after_data: afterData,
+          },
+        });
+        await transaction.audit_logs.create({
+          data: {
+            actor_user_id: context.actorUserId,
+            module: 'asset-management',
+            action: 'asset.deleted',
+            entity_type: 'asset',
+            entity_id: assetId,
+            before_data: beforeData,
+            after_data: afterData,
+            ip_address: context.ipAddress,
+            user_agent: context.userAgent,
+          },
+        });
+
+        return { kind: 'deleted' };
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
   },
 };

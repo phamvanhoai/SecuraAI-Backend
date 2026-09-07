@@ -139,6 +139,30 @@ export const openApiSpec = swaggerJsdoc({
             },
           ],
         },
+        UpdateAssetRequest: {
+          type: 'object',
+          additionalProperties: false,
+          minProperties: 1,
+          properties: {
+            name: { type: 'string', minLength: 1, maxLength: 150 },
+            assetType: { type: 'string', minLength: 1, maxLength: 50 },
+            description: { type: 'string', maxLength: 10000, nullable: true },
+            departmentId: { type: 'string', format: 'uuid', nullable: true },
+            ownerUserId: { type: 'string', format: 'uuid', nullable: true },
+            criticality: {
+              type: 'string',
+              enum: ['low', 'medium', 'high', 'critical'],
+            },
+            hostname: { type: 'string', maxLength: 255, nullable: true },
+            ipAddress: { type: 'string', format: 'ip', nullable: true },
+            location: { type: 'string', maxLength: 255, nullable: true },
+            status: {
+              type: 'string',
+              enum: ['active', 'inactive', 'retired', 'disposed'],
+            },
+            metadata: { type: 'object', description: 'JSON object up to 20 KB.' },
+          },
+        },
       },
     },
     paths: {
@@ -394,6 +418,79 @@ export const openApiSpec = swaggerJsdoc({
                 'application/json': { schema: { $ref: '#/components/schemas/Error' } },
               },
             },
+          },
+        },
+      },
+      '/assets/{assetId}': {
+        patch: {
+          tags: ['Assets'],
+          summary: 'Update an IT asset',
+          description:
+            'Partially updates a non-deleted asset and atomically records changed fields in history and audit logs. Requires the assets.update permission.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'assetId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': { schema: { $ref: '#/components/schemas/UpdateAssetRequest' } },
+            },
+          },
+          responses: {
+            '200': {
+              description: 'Asset updated, or returned unchanged when values are identical',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    required: ['success', 'data'],
+                    properties: {
+                      success: { type: 'boolean', example: true },
+                      data: { $ref: '#/components/schemas/AssetDetail' },
+                    },
+                  },
+                },
+              },
+            },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'The assets.update permission is required' },
+            '404': { description: 'Asset, department or owner was not found' },
+            '422': {
+              description: 'Invalid input, inactive relation or forbidden status transition',
+            },
+            '429': { description: 'Too many requests' },
+            '500': { description: 'Unexpected server error' },
+          },
+        },
+        delete: {
+          tags: ['Assets'],
+          summary: 'Delete an IT asset',
+          description:
+            'Soft-deletes an asset only when it has no active business dependencies. The operation atomically records change history and an audit log. Requires the assets.delete permission.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'assetId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          responses: {
+            '204': { description: 'Asset deleted' },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'The assets.delete permission is required' },
+            '404': { description: 'Asset was not found or was already deleted' },
+            '409': { description: 'Asset has active business dependencies' },
+            '422': { description: 'Invalid asset ID' },
+            '429': { description: 'Too many requests' },
+            '500': { description: 'Unexpected server error' },
           },
         },
       },

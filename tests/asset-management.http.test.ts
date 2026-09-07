@@ -2,19 +2,32 @@ import jwt from 'jsonwebtoken';
 import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { createAssetMock, findByCodeMock, listAssetsMock } = vi.hoisted(() => ({
+const {
+  createAssetMock,
+  findByCodeMock,
+  findByIdMock,
+  listAssetsMock,
+  softDeleteMock,
+  updateAssetMock,
+} = vi.hoisted(() => ({
   createAssetMock: vi.fn(),
   findByCodeMock: vi.fn(),
+  findByIdMock: vi.fn(),
   listAssetsMock: vi.fn(),
+  softDeleteMock: vi.fn(),
+  updateAssetMock: vi.fn(),
 }));
 
 vi.mock('../src/modules/asset-management/asset-management.repository.js', () => ({
   assetManagementRepository: {
     create: createAssetMock,
     findByCode: findByCodeMock,
+    findById: findByIdMock,
     findDepartmentById: vi.fn(),
     findOwnerById: vi.fn(),
     list: listAssetsMock,
+    softDelete: softDeleteMock,
+    update: updateAssetMock,
   },
 }));
 
@@ -88,6 +101,122 @@ describe('GET /api/v1/assets', () => {
     expect(response.status).toBe(422);
     expect(response.body.error.code).toBe('VALIDATION_ERROR');
     expect(listAssetsMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('PATCH /api/v1/assets/:assetId', () => {
+  const assetId = '00000000-0000-4000-8000-000000000010';
+  const record = {
+    asset_id: assetId,
+    asset_code: 'AST-001',
+    name: 'Database Server',
+    asset_type: 'server',
+    description: null,
+    department_id: null,
+    owner_user_id: null,
+    criticality: 'medium',
+    hostname: null,
+    ip_address: null,
+    location: 'Server Room',
+    status: 'active',
+    metadata: {},
+    retired_at: null,
+    created_at: new Date('2026-09-07T10:00:00.000Z'),
+    updated_at: new Date('2026-09-07T10:00:00.000Z'),
+    departments: null,
+    users_assets_owner_user_idTousers: null,
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    findByIdMock.mockResolvedValue(record);
+    updateAssetMock.mockResolvedValue({ ...record, name: 'Updated Server' });
+  });
+
+  it('requires assets.update and validates params and body', async () => {
+    const forbidden = await request(createApp())
+      .patch(`/api/v1/assets/${assetId}`)
+      .set('authorization', `Bearer ${accessToken([])}`)
+      .send({ name: 'Updated Server' });
+    const invalid = await request(createApp())
+      .patch('/api/v1/assets/not-a-uuid')
+      .set('authorization', `Bearer ${accessToken(['assets.update'])}`)
+      .send({});
+
+    expect(forbidden.status).toBe(403);
+    expect(invalid.status).toBe(422);
+    expect(updateAssetMock).not.toHaveBeenCalled();
+  });
+
+  it('updates an asset and returns 200', async () => {
+    const response = await request(createApp())
+      .patch(`/api/v1/assets/${assetId}`)
+      .set('authorization', `Bearer ${accessToken(['assets.update'])}`)
+      .send({ name: 'Updated Server' });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      success: true,
+      data: { id: assetId, assetCode: 'AST-001', name: 'Updated Server' },
+    });
+    expect(updateAssetMock).toHaveBeenCalledOnce();
+  });
+});
+
+describe('DELETE /api/v1/assets/:assetId', () => {
+  const assetId = '00000000-0000-4000-8000-000000000010';
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    softDeleteMock.mockResolvedValue({ kind: 'deleted' });
+  });
+
+  it('requires authentication and assets.delete', async () => {
+    const unauthorized = await request(createApp()).delete(`/api/v1/assets/${assetId}`);
+    const forbidden = await request(createApp())
+      .delete(`/api/v1/assets/${assetId}`)
+      .set('authorization', `Bearer ${accessToken([])}`);
+
+    expect(unauthorized.status).toBe(401);
+    expect(forbidden.status).toBe(403);
+    expect(softDeleteMock).not.toHaveBeenCalled();
+  });
+
+  it('validates the asset ID', async () => {
+    const response = await request(createApp())
+      .delete('/api/v1/assets/not-a-uuid')
+      .set('authorization', `Bearer ${accessToken(['assets.delete'])}`);
+
+    expect(response.status).toBe(422);
+    expect(softDeleteMock).not.toHaveBeenCalled();
+  });
+
+  it('returns 409 with dependency counts when deletion is blocked', async () => {
+    softDeleteMock.mockResolvedValue({
+      kind: 'blocked',
+      dependencies: {
+        riskAssessments: 1,
+        openAlerts: 0,
+        activeLogSources: 0,
+        enabledAlertThresholds: 0,
+        openIncidents: 0,
+      },
+    });
+    const response = await request(createApp())
+      .delete(`/api/v1/assets/${assetId}`)
+      .set('authorization', `Bearer ${accessToken(['assets.delete'])}`);
+
+    expect(response.status).toBe(409);
+    expect(response.body.error.code).toBe('ASSET_HAS_ACTIVE_DEPENDENCIES');
+  });
+
+  it('returns 204 after a successful soft deletion', async () => {
+    const response = await request(createApp())
+      .delete(`/api/v1/assets/${assetId}`)
+      .set('authorization', `Bearer ${accessToken(['assets.delete'])}`);
+
+    expect(response.status).toBe(204);
+    expect(response.body).toEqual({});
   });
 });
 

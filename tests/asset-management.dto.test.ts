@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { listAssetsQuerySchema } from '../src/modules/asset-management/dto/list-assets-query.dto.js';
 import { createAssetBodySchema } from '../src/modules/asset-management/dto/create-asset.dto.js';
+import {
+  updateAssetBodySchema,
+  updateAssetParamsSchema,
+} from '../src/modules/asset-management/dto/update-asset.dto.js';
 
 describe('listAssetsQuerySchema', () => {
   it('applies bounded pagination and sorting defaults', () => {
@@ -67,5 +71,32 @@ describe('createAssetBodySchema', () => {
     { assetCode: 'AST-001', name: 'Server', assetType: 'server', metadata: [] },
   ])('rejects invalid create data: %o', (body) => {
     expect(createAssetBodySchema.safeParse(body).success).toBe(false);
+  });
+});
+
+describe('updateAsset schemas', () => {
+  it('accepts partial updates and turns blank nullable text into null', () => {
+    expect(updateAssetBodySchema.parse({ hostname: ' ', departmentId: null })).toEqual({
+      hostname: null,
+      departmentId: null,
+    });
+  });
+
+  it.each([
+    {},
+    { assetCode: 'NEW-CODE' },
+    { name: '' },
+    { status: 'deleted' },
+    { ipAddress: 'not-an-ip' },
+  ])('rejects invalid update data: %o', (body) => {
+    expect(updateAssetBodySchema.safeParse(body).success).toBe(false);
+  });
+
+  it('requires a valid asset UUID path parameter', () => {
+    expect(
+      updateAssetParamsSchema.safeParse({ assetId: '00000000-0000-4000-8000-000000000001' })
+        .success,
+    ).toBe(true);
+    expect(updateAssetParamsSchema.safeParse({ assetId: 'bad-id' }).success).toBe(false);
   });
 });
