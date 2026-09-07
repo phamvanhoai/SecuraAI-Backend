@@ -1,4 +1,4 @@
-import type { AssetListRecord } from './asset-management.repository.js';
+import type { AssetDetailRecord, AssetListRecord } from './asset-management.repository.js';
 
 export type AssetListItem = {
   id: string;
@@ -35,4 +35,19 @@ export const toAssetListItem = (asset: AssetListRecord): AssetListItem => ({
       }
     : null,
   updatedAt: asset.updated_at,
+});
+
+export type AssetDetail = AssetListItem & {
+  description: string | null;
+  hostname: string | null;
+  ipAddress: string | null;
+  createdAt: Date;
+};
+
+export const toAssetDetail = (asset: AssetDetailRecord): AssetDetail => ({
+  ...toAssetListItem(asset),
+  description: asset.description,
+  hostname: asset.hostname,
+  ipAddress: asset.ip_address,
+  createdAt: asset.created_at,
 });

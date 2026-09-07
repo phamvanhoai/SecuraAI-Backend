@@ -96,6 +96,49 @@ export const openApiSpec = swaggerJsdoc({
             updatedAt: { type: 'string', format: 'date-time' },
           },
         },
+        CreateAssetRequest: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['assetCode', 'name', 'assetType'],
+          properties: {
+            assetCode: {
+              type: 'string',
+              minLength: 1,
+              maxLength: 50,
+              pattern: '^[A-Za-z0-9][A-Za-z0-9._/-]*$',
+              example: 'AST-001',
+            },
+            name: { type: 'string', minLength: 1, maxLength: 150 },
+            assetType: { type: 'string', minLength: 1, maxLength: 50, example: 'server' },
+            description: { type: 'string', maxLength: 10000 },
+            departmentId: { type: 'string', format: 'uuid' },
+            ownerUserId: { type: 'string', format: 'uuid' },
+            criticality: {
+              type: 'string',
+              enum: ['low', 'medium', 'high', 'critical'],
+              default: 'medium',
+            },
+            hostname: { type: 'string', maxLength: 255 },
+            ipAddress: { type: 'string', format: 'ip' },
+            location: { type: 'string', maxLength: 255 },
+            metadata: { type: 'object', description: 'JSON object up to 20 KB.' },
+          },
+        },
+        AssetDetail: {
+          allOf: [
+            { $ref: '#/components/schemas/AssetSummary' },
+            {
+              type: 'object',
+              required: ['description', 'hostname', 'ipAddress', 'createdAt'],
+              properties: {
+                description: { type: 'string', nullable: true },
+                hostname: { type: 'string', nullable: true },
+                ipAddress: { type: 'string', nullable: true },
+                createdAt: { type: 'string', format: 'date-time' },
+              },
+            },
+          ],
+        },
       },
     },
     paths: {
@@ -187,6 +230,43 @@ export const openApiSpec = swaggerJsdoc({
         },
       },
       '/assets': {
+        post: {
+          tags: ['Assets'],
+          summary: 'Create an IT asset',
+          description:
+            'Creates an active asset and atomically records its change history and audit log. Requires the assets.create permission.',
+          security: [{ bearerAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': { schema: { $ref: '#/components/schemas/CreateAssetRequest' } },
+            },
+          },
+          responses: {
+            '201': {
+              description: 'Asset created',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    required: ['success', 'data'],
+                    properties: {
+                      success: { type: 'boolean', example: true },
+                      data: { $ref: '#/components/schemas/AssetDetail' },
+                    },
+                  },
+                },
+              },
+            },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'The assets.create permission is required' },
+            '404': { description: 'Department or owner was not found' },
+            '409': { description: 'Asset code already exists' },
+            '422': { description: 'Invalid body or inactive department/owner' },
+            '429': { description: 'Too many requests' },
+            '500': { description: 'Unexpected server error' },
+          },
+        },
         get: {
           tags: ['Assets'],
           summary: 'View the asset list',

@@ -30,6 +30,20 @@ async function main(): Promise<void> {
       description: 'View the asset list',
     },
   });
+  const assetCreatePermission = await prisma.permissions.upsert({
+    where: { code: 'assets.create' },
+    update: {
+      module: 'asset-management',
+      action: 'create',
+      description: 'Create an IT asset',
+    },
+    create: {
+      code: 'assets.create',
+      module: 'asset-management',
+      action: 'create',
+      description: 'Create an IT asset',
+    },
+  });
   const passwordHash = await argon2.hash(password, { type: argon2.argon2id });
   const user = await prisma.users.upsert({
     where: { email },
@@ -56,6 +70,19 @@ async function main(): Promise<void> {
     create: {
       role_id: role.role_id,
       permission_id: assetReadPermission.permission_id,
+    },
+  });
+  await prisma.role_permissions.upsert({
+    where: {
+      role_id_permission_id: {
+        role_id: role.role_id,
+        permission_id: assetCreatePermission.permission_id,
+      },
+    },
+    update: {},
+    create: {
+      role_id: role.role_id,
+      permission_id: assetCreatePermission.permission_id,
     },
   });
 }

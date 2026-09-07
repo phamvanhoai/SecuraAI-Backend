@@ -1,14 +1,26 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { countMock, findManyMock, transactionMock } = vi.hoisted(() => ({
+const {
+  assetCreateMock,
+  auditCreateMock,
+  countMock,
+  findManyMock,
+  historyCreateMock,
+  transactionMock,
+} = vi.hoisted(() => ({
+  assetCreateMock: vi.fn(),
+  auditCreateMock: vi.fn(),
   countMock: vi.fn(),
   findManyMock: vi.fn(),
+  historyCreateMock: vi.fn(),
   transactionMock: vi.fn(),
 }));
 
 vi.mock('../src/database/prisma.js', () => ({
   prisma: {
-    assets: { count: countMock, findMany: findManyMock },
+    assets: { count: countMock, findMany: findManyMock, findUnique: vi.fn() },
+    departments: { findUnique: vi.fn() },
+    users: { findFirst: vi.fn() },
     $transaction: transactionMock,
   },
 }));
@@ -62,5 +74,68 @@ describe('assetManagementRepository.list', () => {
         take: 10,
       }),
     );
+  });
+});
+
+describe('assetManagementRepository.create', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    transactionMock.mockImplementation((callback: (transaction: unknown) => Promise<unknown>) =>
+      callback({
+        assets: { create: assetCreateMock },
+        asset_change_history: { create: historyCreateMock },
+        audit_logs: { create: auditCreateMock },
+      }),
+    );
+    assetCreateMock.mockResolvedValue({
+      asset_id: 'asset-1',
+      asset_code: 'AST-001',
+      name: 'Server',
+      asset_type: 'server',
+      criticality: 'medium',
+      status: 'active',
+      location: null,
+      description: null,
+      hostname: null,
+      ip_address: null,
+      created_at: new Date('2026-09-07T10:00:00.000Z'),
+      updated_at: new Date('2026-09-07T10:00:00.000Z'),
+      departments: null,
+      users_assets_owner_user_idTousers: null,
+    });
+  });
+
+  it('atomically writes the asset, change history and audit log', async () => {
+    await assetManagementRepository.create(
+      {
+        assetCode: 'AST-001',
+        name: 'Server',
+        assetType: 'server',
+        criticality: 'medium',
+      },
+      { actorUserId: 'user-1', ipAddress: '127.0.0.1', userAgent: 'vitest' },
+    );
+
+    const assetCreateArgument: unknown = assetCreateMock.mock.calls[0]?.[0];
+    const historyCreateArgument: unknown = historyCreateMock.mock.calls[0]?.[0];
+    const auditCreateArgument: unknown = auditCreateMock.mock.calls[0]?.[0];
+
+    expect(assetCreateArgument).toMatchObject({
+      data: {
+        asset_code: 'AST-001',
+        status: 'active',
+        created_by_user_id: 'user-1',
+      },
+    });
+    expect(historyCreateArgument).toMatchObject({
+      data: { asset_id: 'asset-1', action: 'created' },
+    });
+    expect(auditCreateArgument).toMatchObject({
+      data: {
+        actor_user_id: 'user-1',
+        action: 'asset.created',
+        entity_id: 'asset-1',
+      },
+    });
   });
 });
