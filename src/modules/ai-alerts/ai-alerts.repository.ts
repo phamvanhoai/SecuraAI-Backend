@@ -4,6 +4,26 @@ import type {
   CreateModelConfigurationBody,
   ListModelConfigurationsQuery,
 } from './dto/model-configuration.dto.js';
+import type { ListAlertsQuery } from './dto/alert-query.dto.js';
+
+export const alertSelect = {
+  ai_alert_id: true,
+  alert_code: true,
+  anomaly_score: true,
+  title: true,
+  description: true,
+  status: true,
+  detected_at: true,
+  created_at: true,
+  assets: { select: { asset_id: true, asset_code: true, name: true } },
+  log_sources: { select: { log_source_id: true, name: true, source_type: true } },
+  ai_model_versions: {
+    select: { ai_model_version_id: true, model_name: true, version: true, provider: true },
+  },
+  security_events: { select: { security_event_id: true, event_type: true, event_time: true } },
+} satisfies Prisma.ai_alertsSelect;
+
+export type AlertRecord = Prisma.ai_alertsGetPayload<{ select: typeof alertSelect }>;
 
 export const modelConfigurationSelect = {
   ai_model_version_id: true,
@@ -27,12 +47,136 @@ type RequestContext = {
   userAgent: string | null;
 };
 
+export type DetectionEvent = {
+  id: string;
+  logSourceId: string;
+  assetId: string | null;
+  eventType: string;
+  eventTime: Date;
+  sourceIp: string | null;
+};
+
+export type AlertCandidate = {
+  alertCode: string;
+  securityEventId: string;
+  logSourceId: string;
+  assetId: string | null;
+  modelVersionId: string;
+  ruleId: string;
+  title: string;
+  description: string;
+  anomalyScore: number;
+};
+
 const toParametersJson = (input: CreateModelConfigurationBody): Prisma.InputJsonObject => ({
   ollamaModel: input.ollamaModel,
   rules: input.rules.map((rule) => ({ ...rule })),
 });
 
 export const aiAlertsRepository = {
+  async listAlerts(query: ListAlertsQuery): Promise<{ items: AlertRecord[]; total: number }> {
+    const where: Prisma.ai_alertsWhereInput = {
+      ...(query.status !== undefined && { status: query.status }),
+      ...(query.assetId !== undefined && { asset_id: query.assetId }),
+      ...(query.logSourceId !== undefined && { log_source_id: query.logSourceId }),
+      ...(query.detectedAfter !== undefined && { detected_at: { gt: query.detectedAfter } }),
+    };
+    const [total, items] = await prisma.$transaction([
+      prisma.ai_alerts.count({ where }),
+      prisma.ai_alerts.findMany({
+        where,
+        select: alertSelect,
+        orderBy: [{ detected_at: query.sortOrder }, { ai_alert_id: 'asc' }],
+        skip: (query.page - 1) * query.limit,
+        take: query.limit,
+      }),
+    ]);
+    return { items, total };
+  },
+
+  findActiveDetectionModels() {
+    return prisma.ai_model_versions.findMany({
+      where: { is_active: true },
+      select: {
+        ai_model_version_id: true,
+        model_name: true,
+        version: true,
+        parameters: true,
+      },
+      orderBy: [{ model_name: 'asc' }, { created_at: 'desc' }],
+      take: 20,
+    });
+  },
+
+  countMatchingEvents(
+    event: DetectionEvent,
+    windowSeconds: number,
+    groupBy: 'sourceIp' | 'logSource',
+  ): Promise<number> {
+    const windowStart = new Date(event.eventTime.getTime() - windowSeconds * 1000);
+    return prisma.security_events.count({
+      where: {
+        event_type: event.eventType,
+        event_time: { gte: windowStart, lte: event.eventTime },
+        ...(groupBy === 'sourceIp' && event.sourceIp !== null
+          ? { source_ip: event.sourceIp }
+          : { log_source_id: event.logSourceId }),
+      },
+    });
+  },
+
+  createAlertIfMissing(
+    candidate: AlertCandidate,
+    context: RequestContext,
+  ): Promise<AlertRecord | null> {
+    return prisma.$transaction(
+      async (transaction) => {
+        const existing = await transaction.ai_alerts.findFirst({
+          where: {
+            security_event_id: candidate.securityEventId,
+            ai_model_version_id: candidate.modelVersionId,
+            description: { startsWith: `[rule:${candidate.ruleId}]` },
+          },
+          select: { ai_alert_id: true },
+        });
+        if (existing) return null;
+        const alert = await transaction.ai_alerts.create({
+          data: {
+            alert_code: candidate.alertCode,
+            security_event_id: candidate.securityEventId,
+            log_source_id: candidate.logSourceId,
+            asset_id: candidate.assetId,
+            ai_model_version_id: candidate.modelVersionId,
+            anomaly_score: candidate.anomalyScore,
+            title: candidate.title,
+            description: candidate.description,
+            status: 'new',
+          },
+          select: alertSelect,
+        });
+        await transaction.audit_logs.create({
+          data: {
+            actor_user_id: context.actorUserId,
+            module: 'ai-alerts',
+            action: 'ai_alert.created',
+            entity_type: 'ai_alert',
+            entity_id: alert.ai_alert_id,
+            after_data: {
+              alertCode: alert.alert_code,
+              modelVersionId: candidate.modelVersionId,
+              ruleId: candidate.ruleId,
+              status: 'new',
+            },
+            ip_address: context.ipAddress,
+            user_agent: context.userAgent,
+          },
+        });
+        return alert;
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
+  },
+
   async listModelConfigurations(
     query: ListModelConfigurationsQuery,
   ): Promise<{ items: ModelConfigurationRecord[]; total: number }> {

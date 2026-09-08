@@ -18,6 +18,12 @@ const {
   updateMock: vi.fn(),
 }));
 
+const { detectAlertsMock } = vi.hoisted(() => ({ detectAlertsMock: vi.fn() }));
+
+vi.mock('../src/modules/ai-alerts/ai-alerts.service.js', () => ({
+  aiAlertsService: { detectAlertsForEvents: detectAlertsMock },
+}));
+
 vi.mock('../src/modules/security-monitoring/security-monitoring.repository.js', () => ({
   securityMonitoringRepository: {
     createLogSource: createMock,
@@ -58,7 +64,21 @@ describe('securityMonitoringService', () => {
       status: 'active',
       configuration: { format: 'json' },
     });
-    ingestMock.mockResolvedValue({ ingested: 1, duplicates: 0 });
+    ingestMock.mockResolvedValue({
+      ingested: 1,
+      duplicates: 0,
+      eventsForDetection: [
+        {
+          id: 'event-1',
+          logSourceId: 'source-1',
+          assetId: null,
+          eventType: 'login.failed',
+          eventTime: new Date('2026-09-08T00:00:00Z'),
+          sourceIp: null,
+        },
+      ],
+    });
+    detectAlertsMock.mockResolvedValue({ alertsCreated: 1 });
   });
 
   it('requires read permission and returns pagination', async () => {
@@ -145,10 +165,14 @@ describe('securityMonitoringService', () => {
         { userId: 'user-1', permissions: ['security-events.ingest'] },
         { ipAddress: null, userAgent: null },
       ),
-    ).resolves.toEqual({ received: 1, ingested: 1, duplicates: 0 });
+    ).resolves.toEqual({ received: 1, ingested: 1, duplicates: 0, alertsCreated: 1 });
     expect(ingestMock).toHaveBeenCalledWith(
       expect.any(String),
       [expect.objectContaining({ eventType: 'login.failed', externalEventId: 'evt-1' })],
+      expect.objectContaining({ actorUserId: 'user-1' }),
+    );
+    expect(detectAlertsMock).toHaveBeenCalledWith(
+      [expect.objectContaining({ id: 'event-1' })],
       expect.objectContaining({ actorUserId: 'user-1' }),
     );
   });
