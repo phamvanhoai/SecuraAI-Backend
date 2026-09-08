@@ -128,6 +128,34 @@ async function main(): Promise<void> {
       description: 'Ingest and normalize security events from configured log sources',
     },
   });
+  const aiModelReadPermission = await prisma.permissions.upsert({
+    where: { code: 'ai-models.read' },
+    update: {
+      module: 'ai-alerts',
+      action: 'read-models',
+      description: 'View pre-trained AI model configurations',
+    },
+    create: {
+      code: 'ai-models.read',
+      module: 'ai-alerts',
+      action: 'read-models',
+      description: 'View pre-trained AI model configurations',
+    },
+  });
+  const aiModelManagePermission = await prisma.permissions.upsert({
+    where: { code: 'ai-models.manage' },
+    update: {
+      module: 'ai-alerts',
+      action: 'manage-models',
+      description: 'Configure pre-trained AI models and detection rules',
+    },
+    create: {
+      code: 'ai-models.manage',
+      module: 'ai-alerts',
+      action: 'manage-models',
+      description: 'Configure pre-trained AI models and detection rules',
+    },
+  });
   const passwordHash = await argon2.hash(password, { type: argon2.argon2id });
   const user = await prisma.users.upsert({
     where: { email },
@@ -212,6 +240,8 @@ async function main(): Promise<void> {
     logSourceReadPermission,
     logSourceManagePermission,
     securityEventIngestPermission,
+    aiModelReadPermission,
+    aiModelManagePermission,
   ]) {
     await prisma.role_permissions.upsert({
       where: {
