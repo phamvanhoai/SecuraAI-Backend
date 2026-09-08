@@ -16,6 +16,7 @@ export const openApiSpec = swaggerJsdoc({
       { name: 'Users' },
       { name: 'Assets' },
       { name: 'Security Monitoring' },
+      { name: 'AI Alerts' },
     ],
     components: {
       securitySchemes: { bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' } },
@@ -228,6 +229,47 @@ export const openApiSpec = swaggerJsdoc({
                 destinationIp: { type: 'string' },
                 externalEventId: { type: 'string' },
               },
+            },
+          },
+        },
+        DetectionRule: {
+          type: 'object',
+          additionalProperties: false,
+          required: [
+            'id',
+            'name',
+            'eventType',
+            'threshold',
+            'windowSeconds',
+            'groupBy',
+            'severity',
+          ],
+          properties: {
+            id: { type: 'string', pattern: '^[a-z0-9][a-z0-9._-]*$' },
+            name: { type: 'string', maxLength: 150 },
+            eventType: { type: 'string', maxLength: 100 },
+            threshold: { type: 'integer', minimum: 1, maximum: 10000 },
+            windowSeconds: { type: 'integer', minimum: 1, maximum: 86400 },
+            groupBy: { type: 'string', enum: ['sourceIp', 'logSource'] },
+            severity: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] },
+            enabled: { type: 'boolean', default: true },
+          },
+        },
+        CreateModelConfigurationRequest: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['modelName', 'algorithm', 'version'],
+          properties: {
+            modelName: { type: 'string', maxLength: 150 },
+            algorithm: { type: 'string', maxLength: 100 },
+            version: { type: 'string', maxLength: 50 },
+            provider: { type: 'string', default: 'ollama', maxLength: 150 },
+            modelPath: { type: 'string', format: 'uri' },
+            ollamaModel: { type: 'string', default: 'qwen3:4b', maxLength: 150 },
+            rules: {
+              type: 'array',
+              maxItems: 100,
+              items: { $ref: '#/components/schemas/DetectionRule' },
             },
           },
         },
@@ -725,6 +767,75 @@ export const openApiSpec = swaggerJsdoc({
             '403': { description: 'The log-sources.manage permission is required' },
             '404': { description: 'Related asset or integration was not found' },
             '422': { description: 'Invalid request body' },
+          },
+        },
+      },
+      '/ai-alerts/models': {
+        get: {
+          tags: ['AI Alerts'],
+          summary: 'List pre-trained model configurations',
+          description: 'Requires the ai-models.read permission.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
+            {
+              name: 'limit',
+              in: 'query',
+              schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
+            },
+            { name: 'modelName', in: 'query', schema: { type: 'string', maxLength: 150 } },
+            { name: 'active', in: 'query', schema: { type: 'boolean' } },
+          ],
+          responses: {
+            '200': { description: 'Paginated model configuration list' },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'The ai-models.read permission is required' },
+            '422': { description: 'Invalid query parameters' },
+          },
+        },
+        post: {
+          tags: ['AI Alerts'],
+          summary: 'Configure a pre-trained model and detection rules',
+          description:
+            'Registers an immutable configuration version without training or fine-tuning. Requires ai-models.manage.',
+          security: [{ bearerAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/CreateModelConfigurationRequest' },
+              },
+            },
+          },
+          responses: {
+            '201': { description: 'Model configuration created inactive' },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'The ai-models.manage permission is required' },
+            '409': { description: 'Model name and version already exist' },
+            '422': { description: 'Invalid configuration' },
+          },
+        },
+      },
+      '/ai-alerts/models/{modelVersionId}/activate': {
+        post: {
+          tags: ['AI Alerts'],
+          summary: 'Activate a model configuration version',
+          description: 'Atomically deactivates the previous version with the same model name.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'modelVersionId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          responses: {
+            '200': { description: 'Model configuration activated' },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'The ai-models.manage permission is required' },
+            '404': { description: 'Model version was not found' },
+            '422': { description: 'Invalid model version ID' },
           },
         },
       },
