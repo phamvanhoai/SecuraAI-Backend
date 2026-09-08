@@ -8,6 +8,7 @@ import type {
 } from './dto/log-source.dto.js';
 import type { IngestSecurityEventsBody } from './dto/security-event.dto.js';
 import { normalizeSecurityEvents } from './security-event.normalizer.js';
+import { aiAlertsService } from '../ai-alerts/index.js';
 
 type Actor = { userId: string; permissions: readonly string[] };
 type RequestContext = { ipAddress: string | null; userAgent: string | null };
@@ -94,6 +95,15 @@ export const securityMonitoringService = {
       ...context,
     });
     if (!result) throw new AppError(409, 'LOG_SOURCE_INACTIVE', 'Log source is not active');
-    return { received: input.events.length, ...result };
+    const detection = await aiAlertsService.detectAlertsForEvents(result.eventsForDetection, {
+      actorUserId: actor.userId,
+      ...context,
+    });
+    return {
+      received: input.events.length,
+      ingested: result.ingested,
+      duplicates: result.duplicates,
+      alertsCreated: detection.alertsCreated,
+    };
   },
 };

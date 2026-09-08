@@ -9,7 +9,7 @@ const {
   transactionMock,
   updateMock,
   eventFindManyMock,
-  eventCreateManyMock,
+  eventCreateManyAndReturnMock,
 } = vi.hoisted(() => ({
   auditCreateMock: vi.fn(),
   countMock: vi.fn(),
@@ -19,7 +19,7 @@ const {
   transactionMock: vi.fn(),
   updateMock: vi.fn(),
   eventFindManyMock: vi.fn(),
-  eventCreateManyMock: vi.fn(),
+  eventCreateManyAndReturnMock: vi.fn(),
 }));
 
 vi.mock('../src/database/prisma.js', () => ({
@@ -137,13 +137,37 @@ describe('securityMonitoringRepository', () => {
     transactionMock.mockImplementation((callback: (transaction: unknown) => Promise<unknown>) =>
       callback({
         log_sources: { findUnique: findUniqueMock, update: updateMock },
-        security_events: { findMany: eventFindManyMock, createMany: eventCreateManyMock },
+        security_events: {
+          findMany: eventFindManyMock,
+          createManyAndReturn: eventCreateManyAndReturnMock,
+        },
         audit_logs: { create: auditCreateMock },
       }),
     );
-    findUniqueMock.mockResolvedValue({ log_source_id: 'source-1', status: 'active' });
-    eventFindManyMock.mockResolvedValue([{ external_event_id: 'existing' }]);
-    eventCreateManyMock.mockResolvedValue({ count: 1 });
+    findUniqueMock.mockResolvedValue({
+      log_source_id: 'source-1',
+      asset_id: null,
+      status: 'active',
+    });
+    eventFindManyMock.mockResolvedValue([
+      {
+        security_event_id: 'existing-event',
+        log_source_id: 'source-1',
+        external_event_id: 'existing',
+        event_type: 'login.failed',
+        event_time: new Date('2026-09-08T00:00:00Z'),
+        source_ip: null,
+      },
+    ]);
+    eventCreateManyAndReturnMock.mockResolvedValue([
+      {
+        security_event_id: 'event-1',
+        log_source_id: 'source-1',
+        event_type: 'login.failed',
+        event_time: new Date('2026-09-08T00:00:00Z'),
+        source_ip: null,
+      },
+    ]);
     const base = {
       eventType: 'login.failed',
       severity: 'high' as const,
@@ -162,10 +186,19 @@ describe('securityMonitoringRepository', () => {
       ],
       { actorUserId: 'user-1', ipAddress: null, userAgent: null },
     );
-    expect(result).toEqual({ ingested: 1, duplicates: 2 });
-    expect(eventCreateManyMock).toHaveBeenCalledWith({
-      data: [expect.objectContaining({ external_event_id: 'new', log_source_id: 'source-1' })],
+    expect(result).toEqual({
+      ingested: 1,
+      duplicates: 2,
+      eventsForDetection: [
+        expect.objectContaining({ id: 'existing-event', eventType: 'login.failed' }),
+        expect.objectContaining({ id: 'event-1', eventType: 'login.failed' }),
+      ],
     });
+    expect(eventCreateManyAndReturnMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: [expect.objectContaining({ external_event_id: 'new', log_source_id: 'source-1' })],
+      }),
+    );
     expect(updateMock).toHaveBeenCalledOnce();
     const auditArgument: unknown = auditCreateMock.mock.calls[0]?.[0];
     expect(auditArgument).toMatchObject({ data: { action: 'security_events.ingested' } });

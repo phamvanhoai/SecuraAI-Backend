@@ -5,6 +5,7 @@ import { asyncHandler } from '../../common/utils/async-handler.js';
 import {
   activateModelConfiguration,
   createModelConfiguration,
+  listAlerts,
   listModelConfigurations,
 } from './ai-alerts.controller.js';
 import {
@@ -12,8 +13,17 @@ import {
   listModelConfigurationsQuerySchema,
   modelVersionParamsSchema,
 } from './dto/model-configuration.dto.js';
+import { listAlertsQuerySchema } from './dto/alert-query.dto.js';
 
 export const aiAlertsRouter = Router();
+
+aiAlertsRouter.get(
+  '/',
+  authenticate,
+  authorize('ai-alerts.read'),
+  validate({ query: listAlertsQuerySchema }),
+  asyncHandler(listAlerts),
+);
 
 aiAlertsRouter.get(
   '/models',

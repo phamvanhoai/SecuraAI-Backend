@@ -816,6 +816,33 @@ export const openApiSpec = swaggerJsdoc({
           },
         },
       },
+      '/ai-alerts': {
+        get: {
+          tags: ['AI Alerts'],
+          summary: 'View AI alerts',
+          description:
+            'Returns generated alert summaries. Use detectedAfter and the returned serverTime watermark for near-real-time polling. Requires ai-alerts.read.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
+            {
+              name: 'limit',
+              in: 'query',
+              schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
+            },
+            { name: 'status', in: 'query', schema: { type: 'string' } },
+            { name: 'assetId', in: 'query', schema: { type: 'string', format: 'uuid' } },
+            { name: 'logSourceId', in: 'query', schema: { type: 'string', format: 'uuid' } },
+            { name: 'detectedAfter', in: 'query', schema: { type: 'string', format: 'date-time' } },
+          ],
+          responses: {
+            '200': { description: 'Paginated AI alert list' },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'The ai-alerts.read permission is required' },
+            '422': { description: 'Invalid query parameters' },
+          },
+        },
+      },
       '/ai-alerts/models/{modelVersionId}/activate': {
         post: {
           tags: ['AI Alerts'],

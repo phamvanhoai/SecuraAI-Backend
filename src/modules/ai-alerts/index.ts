@@ -1,6 +1,8 @@
 import type { ModuleManifest } from '../module.types.js';
 import { aiAlertsRouter } from './ai-alerts.routes.js';
 
+export { aiAlertsService } from './ai-alerts.service.js';
+
 export const aiAlertsModule: ModuleManifest = {
   name: 'ai-alerts',
   routePrefix: '/ai-alerts',

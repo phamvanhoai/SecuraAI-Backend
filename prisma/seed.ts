@@ -156,6 +156,20 @@ async function main(): Promise<void> {
       description: 'Configure pre-trained AI models and detection rules',
     },
   });
+  const aiAlertReadPermission = await prisma.permissions.upsert({
+    where: { code: 'ai-alerts.read' },
+    update: {
+      module: 'ai-alerts',
+      action: 'read-alerts',
+      description: 'View generated AI alerts in near real time',
+    },
+    create: {
+      code: 'ai-alerts.read',
+      module: 'ai-alerts',
+      action: 'read-alerts',
+      description: 'View generated AI alerts in near real time',
+    },
+  });
   const passwordHash = await argon2.hash(password, { type: argon2.argon2id });
   const user = await prisma.users.upsert({
     where: { email },
@@ -242,6 +256,7 @@ async function main(): Promise<void> {
     securityEventIngestPermission,
     aiModelReadPermission,
     aiModelManagePermission,
+    aiAlertReadPermission,
   ]) {
     await prisma.role_permissions.upsert({
       where: {
