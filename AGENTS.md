@@ -204,6 +204,9 @@ If a database-dependent test is intentionally not run, state that clearly in the
 
 - Use `develop` only as the integration base. Do not implement features directly on `develop` or `main`.
 - Create or switch to a dedicated branch for each feature/fix before editing code, using names such as `feature/risk-assessment`, `feature/incident-reporting`, or `fix/login-validation`.
+- Create a separate feature branch for each assigned use case. Do not reuse one feature branch for multiple completed use cases, even when those use cases belong to the same module.
+- After a feature branch is merged, create the next feature branch from the latest `origin/develop`. Do not branch from an older feature branch or continue new use-case work on a branch that has already been merged.
+- Name use-case branches after the specific behavior, for example `feature/configure-log-source`, `feature/configure-anomaly-rules`, or `feature/view-real-time-ai-alerts`.
 - Never commit automatically. Commit only when the user explicitly requests a commit in the current conversation.
 - Never push automatically. Push only when the user explicitly requests a push and names or clearly confirms the target branch.
 - A request to implement, fix, verify, or finish code does not implicitly authorize committing or pushing it.
