@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const {
   createAssetMock,
+  classifyCriticalityMock,
   findByCodeMock,
   findDepartmentByIdMock,
   findByIdMock,
@@ -11,6 +12,7 @@ const {
   updateAssetMock,
 } = vi.hoisted(() => ({
   createAssetMock: vi.fn(),
+  classifyCriticalityMock: vi.fn(),
   findByCodeMock: vi.fn(),
   findDepartmentByIdMock: vi.fn(),
   findByIdMock: vi.fn(),
@@ -22,6 +24,7 @@ const {
 
 vi.mock('../src/modules/asset-management/asset-management.repository.js', () => ({
   assetManagementRepository: {
+    classifyCriticality: classifyCriticalityMock,
     create: createAssetMock,
     findByCode: findByCodeMock,
     findById: findByIdMock,
@@ -246,6 +249,97 @@ describe('assetManagementService.delete', () => {
       actorUserId: 'user-1',
       ...context,
     });
+  });
+});
+
+describe('assetManagementService.classifyCriticality', () => {
+  const actor = { userId: 'user-1', permissions: ['assets.classify'] };
+  const context = { ipAddress: '127.0.0.1', userAgent: 'vitest' };
+  const input = {
+    confidentialityImpact: 4,
+    integrityImpact: 5,
+    availabilityImpact: 5,
+    businessImpact: 4,
+    reason: 'Production customer database',
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    findByIdMock.mockResolvedValue(existingAsset);
+    classifyCriticalityMock.mockResolvedValue(undefined);
+  });
+
+  it('requires assets.classify and an existing usable asset', async () => {
+    await expect(
+      assetManagementService.classifyCriticality(
+        existingAsset.asset_id,
+        input,
+        { userId: 'user-1', permissions: [] },
+        context,
+      ),
+    ).rejects.toMatchObject({ statusCode: 403, code: 'FORBIDDEN' });
+
+    findByIdMock.mockResolvedValueOnce(null);
+    await expect(
+      assetManagementService.classifyCriticality(existingAsset.asset_id, input, actor, context),
+    ).rejects.toMatchObject({ statusCode: 404, code: 'ASSET_NOT_FOUND' });
+
+    findByIdMock.mockResolvedValueOnce({ ...existingAsset, status: 'disposed' });
+    await expect(
+      assetManagementService.classifyCriticality(existingAsset.asset_id, input, actor, context),
+    ).rejects.toMatchObject({ statusCode: 422, code: 'ASSET_DISPOSED' });
+  });
+
+  it('calculates the weighted score and criticality on the server', async () => {
+    const result = await assetManagementService.classifyCriticality(
+      existingAsset.asset_id,
+      input,
+      actor,
+      context,
+    );
+
+    expect(result).toMatchObject({
+      assetId: existingAsset.asset_id,
+      previousCriticality: 'medium',
+      criticality: 'critical',
+      score: 4.55,
+      changed: true,
+    });
+    const classification: unknown = classifyCriticalityMock.mock.calls[0]?.[1];
+    expect(classification).toMatchObject({
+      previousCriticality: 'medium',
+      criticality: 'critical',
+      score: 4.55,
+      changed: true,
+      criteria: {
+        confidentialityImpact: 4,
+        integrityImpact: 5,
+        availabilityImpact: 5,
+        businessImpact: 4,
+      },
+      reason: input.reason,
+    });
+  });
+
+  it('still records a classification when the criticality does not change', async () => {
+    findByIdMock.mockResolvedValue({ ...existingAsset, criticality: 'medium' });
+    const mediumInput = {
+      confidentialityImpact: 2,
+      integrityImpact: 2,
+      availabilityImpact: 3,
+      businessImpact: 3,
+      reason: 'Periodic review',
+    };
+
+    const result = await assetManagementService.classifyCriticality(
+      existingAsset.asset_id,
+      mediumInput,
+      actor,
+      context,
+    );
+
+    expect(result).toMatchObject({ criticality: 'medium', score: 2.5, changed: false });
+    expect(classifyCriticalityMock).toHaveBeenCalledOnce();
   });
 });
 

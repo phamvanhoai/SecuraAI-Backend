@@ -3,11 +3,13 @@ import { authenticate, authorize } from '../../common/middleware/authenticate.js
 import { validate } from '../../common/middleware/validate.js';
 import { asyncHandler } from '../../common/utils/async-handler.js';
 import {
+  classifyAssetCriticality,
   createAsset,
   deleteAsset,
   listAssets,
   updateAsset,
 } from './asset-management.controller.js';
+import { classifyAssetCriticalityBodySchema } from './dto/classify-asset-criticality.dto.js';
 import { createAssetBodySchema } from './dto/create-asset.dto.js';
 import { listAssetsQuerySchema } from './dto/list-assets-query.dto.js';
 import { updateAssetBodySchema, updateAssetParamsSchema } from './dto/update-asset.dto.js';
@@ -44,4 +46,12 @@ assetManagementRouter.delete(
   authorize('assets.delete'),
   validate({ params: updateAssetParamsSchema }),
   asyncHandler(deleteAsset),
+);
+
+assetManagementRouter.post(
+  '/:assetId/classify-criticality',
+  authenticate,
+  authorize('assets.classify'),
+  validate({ params: updateAssetParamsSchema, body: classifyAssetCriticalityBodySchema }),
+  asyncHandler(classifyAssetCriticality),
 );
