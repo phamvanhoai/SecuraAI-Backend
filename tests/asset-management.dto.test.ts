@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { listAssetsQuerySchema } from '../src/modules/asset-management/dto/list-assets-query.dto.js';
 import { createAssetBodySchema } from '../src/modules/asset-management/dto/create-asset.dto.js';
+import { classifyAssetCriticalityBodySchema } from '../src/modules/asset-management/dto/classify-asset-criticality.dto.js';
 import {
   updateAssetBodySchema,
   updateAssetParamsSchema,
@@ -90,6 +91,7 @@ describe('updateAsset schemas', () => {
   it.each([
     {},
     { assetCode: 'NEW-CODE' },
+    { criticality: 'critical' },
     { name: '' },
     { status: 'deleted' },
     { ipAddress: 'not-an-ip' },
@@ -103,5 +105,66 @@ describe('updateAsset schemas', () => {
         .success,
     ).toBe(true);
     expect(updateAssetParamsSchema.safeParse({ assetId: 'bad-id' }).success).toBe(false);
+  });
+});
+
+describe('classifyAssetCriticalityBodySchema', () => {
+  it('accepts four integer impact scores and trims the reason', () => {
+    expect(
+      classifyAssetCriticalityBodySchema.parse({
+        confidentialityImpact: 4,
+        integrityImpact: 5,
+        availabilityImpact: 5,
+        businessImpact: 4,
+        reason: '  Production customer database  ',
+      }),
+    ).toEqual({
+      confidentialityImpact: 4,
+      integrityImpact: 5,
+      availabilityImpact: 5,
+      businessImpact: 4,
+      reason: 'Production customer database',
+    });
+  });
+
+  it.each([
+    {
+      confidentialityImpact: 0,
+      integrityImpact: 3,
+      availabilityImpact: 3,
+      businessImpact: 3,
+      reason: 'Reason',
+    },
+    {
+      confidentialityImpact: 3,
+      integrityImpact: 6,
+      availabilityImpact: 3,
+      businessImpact: 3,
+      reason: 'Reason',
+    },
+    {
+      confidentialityImpact: 3.5,
+      integrityImpact: 3,
+      availabilityImpact: 3,
+      businessImpact: 3,
+      reason: 'Reason',
+    },
+    {
+      confidentialityImpact: 3,
+      integrityImpact: 3,
+      availabilityImpact: 3,
+      businessImpact: 3,
+      reason: ' ',
+    },
+    {
+      confidentialityImpact: 3,
+      integrityImpact: 3,
+      availabilityImpact: 3,
+      businessImpact: 3,
+      reason: 'Reason',
+      criticality: 'critical',
+    },
+  ])('rejects invalid classification data: %o', (body) => {
+    expect(classifyAssetCriticalityBodySchema.safeParse(body).success).toBe(false);
   });
 });

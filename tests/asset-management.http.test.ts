@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const {
   createAssetMock,
+  classifyCriticalityMock,
   findByCodeMock,
   findByIdMock,
   listAssetsMock,
@@ -11,6 +12,7 @@ const {
   updateAssetMock,
 } = vi.hoisted(() => ({
   createAssetMock: vi.fn(),
+  classifyCriticalityMock: vi.fn(),
   findByCodeMock: vi.fn(),
   findByIdMock: vi.fn(),
   listAssetsMock: vi.fn(),
@@ -20,6 +22,7 @@ const {
 
 vi.mock('../src/modules/asset-management/asset-management.repository.js', () => ({
   assetManagementRepository: {
+    classifyCriticality: classifyCriticalityMock,
     create: createAssetMock,
     findByCode: findByCodeMock,
     findById: findByIdMock,
@@ -185,6 +188,18 @@ describe('PATCH /api/v1/assets/:assetId', () => {
     });
     expect(updateAssetMock).toHaveBeenCalledOnce();
   });
+
+  it('rejects direct criticality updates', async () => {
+    const response = await request(createApp())
+      .patch(`/api/v1/assets/${assetId}`)
+      .set('authorization', `Bearer ${accessToken(['assets.update'])}`)
+      .send({ criticality: 'low' });
+
+    expect(response.status).toBe(422);
+    expect(response.body.error.code).toBe('VALIDATION_ERROR');
+    expect(findByIdMock).not.toHaveBeenCalled();
+    expect(updateAssetMock).not.toHaveBeenCalled();
+  });
 });
 
 describe('DELETE /api/v1/assets/:assetId', () => {
@@ -241,6 +256,98 @@ describe('DELETE /api/v1/assets/:assetId', () => {
 
     expect(response.status).toBe(204);
     expect(response.body).toEqual({});
+  });
+});
+
+describe('POST /api/v1/assets/:assetId/classify-criticality', () => {
+  const assetId = '00000000-0000-4000-8000-000000000010';
+  const body = {
+    confidentialityImpact: 4,
+    integrityImpact: 5,
+    availabilityImpact: 5,
+    businessImpact: 4,
+    reason: 'Production customer database',
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    findByIdMock.mockResolvedValue({
+      asset_id: assetId,
+      criticality: 'medium',
+      status: 'active',
+    });
+    classifyCriticalityMock.mockResolvedValue(undefined);
+  });
+
+  it('requires authentication and assets.classify', async () => {
+    const unauthorized = await request(createApp())
+      .post(`/api/v1/assets/${assetId}/classify-criticality`)
+      .send(body);
+    const forbidden = await request(createApp())
+      .post(`/api/v1/assets/${assetId}/classify-criticality`)
+      .set('authorization', `Bearer ${accessToken([])}`)
+      .send(body);
+
+    expect(unauthorized.status).toBe(401);
+    expect(forbidden.status).toBe(403);
+    expect(classifyCriticalityMock).not.toHaveBeenCalled();
+  });
+
+  it('validates path, scores and reason before classification', async () => {
+    const response = await request(createApp())
+      .post('/api/v1/assets/not-a-uuid/classify-criticality')
+      .set('authorization', `Bearer ${accessToken(['assets.classify'])}`)
+      .send({ ...body, availabilityImpact: 6, reason: '' });
+
+    expect(response.status).toBe(422);
+    expect(classifyCriticalityMock).not.toHaveBeenCalled();
+  });
+
+  it('returns the server-calculated classification', async () => {
+    const response = await request(createApp())
+      .post(`/api/v1/assets/${assetId}/classify-criticality`)
+      .set('authorization', `Bearer ${accessToken(['assets.classify'])}`)
+      .send(body);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      success: true,
+      data: {
+        assetId,
+        previousCriticality: 'medium',
+        criticality: 'critical',
+        score: 4.55,
+        changed: true,
+      },
+    });
+  });
+
+  it('returns 404 for an unknown or soft-deleted asset', async () => {
+    findByIdMock.mockResolvedValue(null);
+    const response = await request(createApp())
+      .post(`/api/v1/assets/${assetId}/classify-criticality`)
+      .set('authorization', `Bearer ${accessToken(['assets.classify'])}`)
+      .send(body);
+
+    expect(response.status).toBe(404);
+    expect(response.body.error.code).toBe('ASSET_NOT_FOUND');
+    expect(classifyCriticalityMock).not.toHaveBeenCalled();
+  });
+
+  it('returns 422 for a disposed asset', async () => {
+    findByIdMock.mockResolvedValue({
+      asset_id: assetId,
+      criticality: 'medium',
+      status: 'disposed',
+    });
+    const response = await request(createApp())
+      .post(`/api/v1/assets/${assetId}/classify-criticality`)
+      .set('authorization', `Bearer ${accessToken(['assets.classify'])}`)
+      .send(body);
+
+    expect(response.status).toBe(422);
+    expect(response.body.error.code).toBe('ASSET_DISPOSED');
+    expect(classifyCriticalityMock).not.toHaveBeenCalled();
   });
 });
 

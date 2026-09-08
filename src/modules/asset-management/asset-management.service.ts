@@ -4,9 +4,9 @@ import { AppError } from '../../common/errors/app-error.js';
 import { toAssetDetail, toAssetListItem } from './asset-management.mapper.js';
 import { assetManagementRepository } from './asset-management.repository.js';
 import type { CreateAssetBody } from './dto/create-asset.dto.js';
+import type { ClassifyAssetCriticalityBody } from './dto/classify-asset-criticality.dto.js';
 import type { ListAssetsQuery } from './dto/list-assets-query.dto.js';
 import type { UpdateAssetBody } from './dto/update-asset.dto.js';
-import type { ClassifyAssetCriticalityBody } from './dto/classify-asset-criticality.dto.js';
 import type { AssetUpdateChanges } from './asset-management.repository.js';
 
 type AssetListActor = {

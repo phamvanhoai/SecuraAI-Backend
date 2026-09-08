@@ -2,8 +2,8 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../../database/prisma.js';
 import type { ListAssetsQuery } from './dto/list-assets-query.dto.js';
 import type { CreateAssetBody } from './dto/create-asset.dto.js';
-import type { UpdateAssetBody } from './dto/update-asset.dto.js';
 import type { ClassifyAssetCriticalityBody } from './dto/classify-asset-criticality.dto.js';
+import type { UpdateAssetBody } from './dto/update-asset.dto.js';
 
 export const assetListSelect = {
   asset_id: true,

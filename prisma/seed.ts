@@ -72,6 +72,20 @@ async function main(): Promise<void> {
       description: 'Delete an IT asset',
     },
   });
+  const assetClassifyPermission = await prisma.permissions.upsert({
+    where: { code: 'assets.classify' },
+    update: {
+      module: 'asset-management',
+      action: 'classify',
+      description: 'Classify asset criticality',
+    },
+    create: {
+      code: 'assets.classify',
+      module: 'asset-management',
+      action: 'classify',
+      description: 'Classify asset criticality',
+    },
+  });
   const passwordHash = await argon2.hash(password, { type: argon2.argon2id });
   const user = await prisma.users.upsert({
     where: { email },
@@ -137,6 +151,19 @@ async function main(): Promise<void> {
     create: {
       role_id: role.role_id,
       permission_id: assetDeletePermission.permission_id,
+    },
+  });
+  await prisma.role_permissions.upsert({
+    where: {
+      role_id_permission_id: {
+        role_id: role.role_id,
+        permission_id: assetClassifyPermission.permission_id,
+      },
+    },
+    update: {},
+    create: {
+      role_id: role.role_id,
+      permission_id: assetClassifyPermission.permission_id,
     },
   });
 }

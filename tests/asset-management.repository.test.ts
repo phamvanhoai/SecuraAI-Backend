@@ -14,6 +14,7 @@ const {
   logSourceCountMock,
   thresholdCountMock,
   incidentCountMock,
+  assetLookupMock,
 } = vi.hoisted(() => ({
   assetCreateMock: vi.fn(),
   auditCreateMock: vi.fn(),
@@ -28,11 +29,17 @@ const {
   logSourceCountMock: vi.fn(),
   thresholdCountMock: vi.fn(),
   incidentCountMock: vi.fn(),
+  assetLookupMock: vi.fn(),
 }));
 
 vi.mock('../src/database/prisma.js', () => ({
   prisma: {
-    assets: { count: countMock, findMany: findManyMock, findUnique: vi.fn() },
+    assets: {
+      count: countMock,
+      findFirst: assetLookupMock,
+      findMany: findManyMock,
+      findUnique: vi.fn(),
+    },
     departments: { findUnique: vi.fn() },
     users: { findFirst: vi.fn() },
     $transaction: transactionMock,
@@ -40,6 +47,20 @@ vi.mock('../src/database/prisma.js', () => ({
 }));
 
 import { assetManagementRepository } from '../src/modules/asset-management/asset-management.repository.js';
+
+describe('assetManagementRepository.findById', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    assetLookupMock.mockResolvedValue(null);
+  });
+
+  it('treats soft-deleted assets as not found', async () => {
+    await expect(assetManagementRepository.findById('asset-1')).resolves.toBeNull();
+    expect(assetLookupMock).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { asset_id: 'asset-1', deleted_at: null } }),
+    );
+  });
+});
 
 describe('assetManagementRepository.list', () => {
   beforeEach(() => {
@@ -232,6 +253,84 @@ describe('assetManagementRepository.softDelete', () => {
     expect(auditArgument).toMatchObject({
       data: { action: 'asset.deleted', entity_id: 'asset-1' },
     });
+  });
+});
+
+describe('assetManagementRepository.classifyCriticality', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    transactionMock.mockImplementation((callback: (transaction: unknown) => Promise<unknown>) =>
+      callback({
+        assets: { update: assetUpdateMock },
+        asset_change_history: { create: historyCreateMock },
+        audit_logs: { create: auditCreateMock },
+      }),
+    );
+  });
+
+  it('updates the asset and always records classification history and audit', async () => {
+    const classifiedAt = new Date('2026-09-08T08:00:00.000Z');
+    await assetManagementRepository.classifyCriticality(
+      'asset-1',
+      {
+        previousCriticality: 'medium',
+        criticality: 'critical',
+        score: 4.55,
+        changed: true,
+        classifiedAt,
+        criteria: {
+          confidentialityImpact: 4,
+          integrityImpact: 5,
+          availabilityImpact: 5,
+          businessImpact: 4,
+        },
+        reason: 'Production customer database',
+      },
+      { actorUserId: 'user-1', ipAddress: '127.0.0.1', userAgent: 'vitest' },
+    );
+
+    const updateArgument: unknown = assetUpdateMock.mock.calls[0]?.[0];
+    const historyArgument: unknown = historyCreateMock.mock.calls[0]?.[0];
+    const auditArgument: unknown = auditCreateMock.mock.calls[0]?.[0];
+    expect(updateArgument).toMatchObject({
+      where: { asset_id: 'asset-1', deleted_at: null },
+      data: { criticality: 'critical', updated_at: classifiedAt },
+    });
+    expect(historyArgument).toMatchObject({
+      data: {
+        action: 'classified',
+        before_data: { criticality: 'medium' },
+        after_data: { criticality: 'critical', score: 4.55, changed: true },
+      },
+    });
+    expect(auditArgument).toMatchObject({
+      data: { action: 'asset.criticality_classified', entity_id: 'asset-1' },
+    });
+  });
+
+  it('records history and audit without updating when the result is unchanged', async () => {
+    await assetManagementRepository.classifyCriticality(
+      'asset-1',
+      {
+        previousCriticality: 'medium',
+        criticality: 'medium',
+        score: 2.5,
+        changed: false,
+        classifiedAt: new Date('2026-09-08T08:00:00.000Z'),
+        criteria: {
+          confidentialityImpact: 2,
+          integrityImpact: 2,
+          availabilityImpact: 3,
+          businessImpact: 3,
+        },
+        reason: 'Periodic review',
+      },
+      { actorUserId: 'user-1', ipAddress: null, userAgent: null },
+    );
+
+    expect(assetUpdateMock).not.toHaveBeenCalled();
+    expect(historyCreateMock).toHaveBeenCalledOnce();
+    expect(auditCreateMock).toHaveBeenCalledOnce();
   });
 });
 
