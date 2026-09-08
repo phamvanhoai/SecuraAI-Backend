@@ -5,6 +5,7 @@ import { toAssetDetail, toAssetListItem } from './asset-management.mapper.js';
 import { assetManagementRepository } from './asset-management.repository.js';
 import type { CreateAssetBody } from './dto/create-asset.dto.js';
 import type { ClassifyAssetCriticalityBody } from './dto/classify-asset-criticality.dto.js';
+import type { AssignAssetOwnerBody } from './dto/assign-asset-owner.dto.js';
 import type { ListAssetsQuery } from './dto/list-assets-query.dto.js';
 import type { UpdateAssetBody } from './dto/update-asset.dto.js';
 import type { AssetUpdateChanges } from './asset-management.repository.js';
@@ -130,14 +131,6 @@ export const assetManagementService = {
       }
     }
 
-    if (input.ownerUserId !== undefined && input.ownerUserId !== null) {
-      const owner = await assetManagementRepository.findOwnerById(input.ownerUserId);
-      if (!owner) throw new AppError(404, 'ASSET_OWNER_NOT_FOUND', 'Asset owner was not found');
-      if (owner.status !== 'active') {
-        throw new AppError(422, 'ASSET_OWNER_INACTIVE', 'Asset owner is not active');
-      }
-    }
-
     const changes: AssetUpdateChanges = {
       ...(input.name !== undefined && input.name !== current.name && { name: input.name }),
       ...(input.assetType !== undefined &&
@@ -146,8 +139,6 @@ export const assetManagementService = {
         input.description !== current.description && { description: input.description }),
       ...(input.departmentId !== undefined &&
         input.departmentId !== current.department_id && { departmentId: input.departmentId }),
-      ...(input.ownerUserId !== undefined &&
-        input.ownerUserId !== current.owner_user_id && { ownerUserId: input.ownerUserId }),
       ...(input.hostname !== undefined &&
         input.hostname !== current.hostname && { hostname: input.hostname }),
       ...(input.ipAddress !== undefined &&
@@ -179,8 +170,6 @@ export const assetManagementService = {
       recordChange('description', current.description, changes.description);
     if (changes.departmentId !== undefined)
       recordChange('departmentId', current.department_id, changes.departmentId);
-    if (changes.ownerUserId !== undefined)
-      recordChange('ownerUserId', current.owner_user_id, changes.ownerUserId);
     if (changes.hostname !== undefined)
       recordChange('hostname', current.hostname, changes.hostname);
     if (changes.ipAddress !== undefined)
@@ -286,5 +275,91 @@ export const assetManagementService = {
       changed,
       classifiedAt,
     };
+  },
+
+  async assignOwner(
+    assetId: string,
+    input: AssignAssetOwnerBody,
+    actor: AssetListActor,
+    context: CreateAssetContext,
+  ) {
+    if (!actor.permissions.includes('assets.assign-owner')) {
+      throw new AppError(403, 'FORBIDDEN', 'Insufficient permissions');
+    }
+
+    const asset = await assetManagementRepository.findById(assetId);
+    if (!asset) throw new AppError(404, 'ASSET_NOT_FOUND', 'Asset was not found');
+    if (asset.status === 'disposed') {
+      throw new AppError(422, 'ASSET_DISPOSED', 'A disposed asset cannot be assigned an owner');
+    }
+
+    let nextOwner: { user_id: string; full_name: string } | null = null;
+    if (input.ownerUserId !== null) {
+      const owner = await assetManagementRepository.findOwnerById(input.ownerUserId);
+      if (!owner) throw new AppError(404, 'ASSET_OWNER_NOT_FOUND', 'Asset owner was not found');
+      if (owner.status !== 'active') {
+        throw new AppError(422, 'ASSET_OWNER_INACTIVE', 'Asset owner is not active');
+      }
+      nextOwner = owner;
+    }
+
+    const previousOwner = asset.users_assets_owner_user_idTousers
+      ? {
+          id: asset.users_assets_owner_user_idTousers.user_id,
+          fullName: asset.users_assets_owner_user_idTousers.full_name,
+        }
+      : null;
+    if (input.ownerUserId === asset.owner_user_id) {
+      return {
+        assetId,
+        previousOwner,
+        owner: previousOwner,
+        changed: false,
+        assignedAt: null,
+      };
+    }
+
+    const action =
+      asset.owner_user_id === null
+        ? 'owner_assigned'
+        : input.ownerUserId === null
+          ? 'owner_unassigned'
+          : 'owner_reassigned';
+    const assignedAt = new Date();
+    try {
+      const updated = await assetManagementRepository.assignOwner(
+        assetId,
+        {
+          ownerUserId: input.ownerUserId,
+          reason: input.reason,
+          previousOwnerId: asset.owner_user_id,
+          action,
+          assignedAt,
+        },
+        {
+          actorUserId: actor.userId,
+          ipAddress: context.ipAddress,
+          userAgent: context.userAgent,
+        },
+      );
+      const owner = updated.users_assets_owner_user_idTousers
+        ? {
+            id: updated.users_assets_owner_user_idTousers.user_id,
+            fullName: updated.users_assets_owner_user_idTousers.full_name,
+          }
+        : nextOwner
+          ? { id: nextOwner.user_id, fullName: nextOwner.full_name }
+          : null;
+      return { assetId, previousOwner, owner, changed: true, assignedAt };
+    } catch (error: unknown) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2025') {
+        throw new AppError(
+          409,
+          'ASSET_OWNER_ASSIGNMENT_CONFLICT',
+          'Asset owner changed concurrently; retry the request',
+        );
+      }
+      throw error;
+    }
   },
 };

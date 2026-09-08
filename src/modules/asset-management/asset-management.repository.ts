@@ -3,6 +3,7 @@ import { prisma } from '../../database/prisma.js';
 import type { ListAssetsQuery } from './dto/list-assets-query.dto.js';
 import type { CreateAssetBody } from './dto/create-asset.dto.js';
 import type { ClassifyAssetCriticalityBody } from './dto/classify-asset-criticality.dto.js';
+import type { AssignAssetOwnerBody } from './dto/assign-asset-owner.dto.js';
 import type { UpdateAssetBody } from './dto/update-asset.dto.js';
 
 export const assetListSelect = {
@@ -56,6 +57,12 @@ export type AssetUpdateChanges = UpdateAssetBody & { retiredAt?: Date | null };
 type UpdateAssetContext = CreateAssetContext & {
   beforeData: Prisma.InputJsonObject;
   afterData: Prisma.InputJsonObject;
+};
+
+export type AssetOwnerAssignment = AssignAssetOwnerBody & {
+  previousOwnerId: string | null;
+  action: 'owner_assigned' | 'owner_reassigned' | 'owner_unassigned';
+  assignedAt: Date;
 };
 
 export type CriticalityClassification = {
@@ -148,7 +155,7 @@ export const assetManagementRepository = {
   findOwnerById(ownerUserId: string) {
     return prisma.users.findFirst({
       where: { user_id: ownerUserId, deleted_at: null },
-      select: { user_id: true, status: true },
+      select: { user_id: true, full_name: true, status: true },
     });
   },
 
@@ -229,7 +236,6 @@ export const assetManagementRepository = {
           ...(changes.assetType !== undefined && { asset_type: changes.assetType }),
           ...(changes.description !== undefined && { description: changes.description }),
           ...(changes.departmentId !== undefined && { department_id: changes.departmentId }),
-          ...(changes.ownerUserId !== undefined && { owner_user_id: changes.ownerUserId }),
           ...(changes.hostname !== undefined && { hostname: changes.hostname }),
           ...(changes.ipAddress !== undefined && { ip_address: changes.ipAddress }),
           ...(changes.location !== undefined && { location: changes.location }),
@@ -408,6 +414,59 @@ export const assetManagementRepository = {
           user_agent: context.userAgent,
         },
       });
+    });
+  },
+
+  assignOwner(
+    assetId: string,
+    assignment: AssetOwnerAssignment,
+    context: CreateAssetContext,
+  ): Promise<AssetDetailRecord> {
+    return prisma.$transaction(async (transaction) => {
+      const asset = await transaction.assets.update({
+        where: {
+          asset_id: assetId,
+          deleted_at: null,
+          owner_user_id: assignment.previousOwnerId,
+        },
+        data: {
+          owner_user_id: assignment.ownerUserId,
+          updated_at: assignment.assignedAt,
+        },
+        select: assetDetailSelect,
+      });
+      const beforeData: Prisma.InputJsonObject = {
+        ownerUserId: assignment.previousOwnerId,
+      };
+      const afterData: Prisma.InputJsonObject = {
+        ownerUserId: assignment.ownerUserId,
+        reason: assignment.reason,
+        assignedAt: assignment.assignedAt.toISOString(),
+      };
+      await transaction.asset_change_history.create({
+        data: {
+          asset_id: assetId,
+          changed_by_user_id: context.actorUserId,
+          action: assignment.action,
+          before_data: beforeData,
+          after_data: afterData,
+        },
+      });
+      await transaction.audit_logs.create({
+        data: {
+          actor_user_id: context.actorUserId,
+          module: 'asset-management',
+          action: `asset.${assignment.action}`,
+          entity_type: 'asset',
+          entity_id: assetId,
+          before_data: beforeData,
+          after_data: afterData,
+          ip_address: context.ipAddress,
+          user_agent: context.userAgent,
+        },
+      });
+
+      return asset;
     });
   },
 };
