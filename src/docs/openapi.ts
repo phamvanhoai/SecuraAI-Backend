@@ -10,7 +10,13 @@ export const openApiSpec = swaggerJsdoc({
       description: 'Secure backend API for the SecuraAI GRC and anomaly detection platform.',
     },
     servers: [{ url: env.API_PREFIX, description: 'Current server' }],
-    tags: [{ name: 'Health' }, { name: 'Authentication' }, { name: 'Users' }, { name: 'Assets' }],
+    tags: [
+      { name: 'Health' },
+      { name: 'Authentication' },
+      { name: 'Users' },
+      { name: 'Assets' },
+      { name: 'Security Monitoring' },
+    ],
     components: {
       securitySchemes: { bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' } },
       schemas: {
@@ -200,6 +206,99 @@ export const openApiSpec = swaggerJsdoc({
             score: { type: 'number', minimum: 1, maximum: 5, example: 4.55 },
             changed: { type: 'boolean' },
             classifiedAt: { type: 'string', format: 'date-time' },
+          },
+        },
+        LogSourceConfiguration: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['format'],
+          properties: {
+            format: { type: 'string', enum: ['json', 'syslog', 'cef', 'text'] },
+            timezone: { type: 'string', default: 'UTC', maxLength: 100 },
+            collectRawPayload: { type: 'boolean', default: true },
+            pollingIntervalSeconds: { type: 'integer', minimum: 1, maximum: 86400 },
+            fieldMapping: {
+              type: 'object',
+              additionalProperties: false,
+              properties: {
+                timestamp: { type: 'string' },
+                eventType: { type: 'string' },
+                severity: { type: 'string' },
+                sourceIp: { type: 'string' },
+                destinationIp: { type: 'string' },
+                externalEventId: { type: 'string' },
+              },
+            },
+          },
+        },
+        CreateLogSourceRequest: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['name', 'sourceType', 'configuration'],
+          properties: {
+            name: { type: 'string', minLength: 1, maxLength: 150 },
+            sourceType: {
+              type: 'string',
+              enum: ['application', 'system', 'authentication', 'network', 'firewall', 'external'],
+            },
+            assetId: { type: 'string', format: 'uuid', nullable: true },
+            integrationId: { type: 'string', format: 'uuid', nullable: true },
+            configuration: { $ref: '#/components/schemas/LogSourceConfiguration' },
+            status: { type: 'string', enum: ['active', 'inactive', 'error'], default: 'active' },
+          },
+        },
+        UpdateLogSourceRequest: {
+          type: 'object',
+          additionalProperties: false,
+          minProperties: 1,
+          properties: {
+            name: { type: 'string', minLength: 1, maxLength: 150 },
+            assetId: { type: 'string', format: 'uuid', nullable: true },
+            integrationId: { type: 'string', format: 'uuid', nullable: true },
+            configuration: { $ref: '#/components/schemas/LogSourceConfiguration' },
+            status: { type: 'string', enum: ['active', 'inactive', 'error'] },
+          },
+        },
+        IngestSecurityEventsRequest: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['events'],
+          properties: {
+            events: {
+              type: 'array',
+              minItems: 1,
+              maxItems: 100,
+              description:
+                'JSON log objects. Canonical fields default to timestamp, eventType, severity, sourceIp, destinationIp and externalEventId; configured field mappings may override them.',
+              items: { type: 'object', additionalProperties: true },
+            },
+          },
+        },
+        LogSource: {
+          type: 'object',
+          required: [
+            'id',
+            'name',
+            'sourceType',
+            'asset',
+            'integration',
+            'configuration',
+            'status',
+            'lastReceivedAt',
+            'createdAt',
+            'updatedAt',
+          ],
+          properties: {
+            id: { type: 'string', format: 'uuid' },
+            name: { type: 'string' },
+            sourceType: { type: 'string' },
+            asset: { type: 'object', nullable: true },
+            integration: { type: 'object', nullable: true },
+            configuration: { $ref: '#/components/schemas/LogSourceConfiguration' },
+            status: { type: 'string', enum: ['active', 'inactive', 'error'] },
+            lastReceivedAt: { type: 'string', format: 'date-time', nullable: true },
+            createdAt: { type: 'string', format: 'date-time' },
+            updatedAt: { type: 'string', format: 'date-time' },
           },
         },
       },
@@ -578,6 +677,121 @@ export const openApiSpec = swaggerJsdoc({
             '422': { description: 'Invalid scores, reason, asset ID or disposed asset' },
             '429': { description: 'Too many requests' },
             '500': { description: 'Unexpected server error' },
+          },
+        },
+      },
+      '/security-monitoring/log-sources': {
+        get: {
+          tags: ['Security Monitoring'],
+          summary: 'List configured log sources',
+          description: 'Requires the log-sources.read permission.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
+            {
+              name: 'limit',
+              in: 'query',
+              schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
+            },
+            { name: 'q', in: 'query', schema: { type: 'string', maxLength: 100 } },
+            { name: 'sourceType', in: 'query', schema: { type: 'string' } },
+            { name: 'status', in: 'query', schema: { type: 'string' } },
+            { name: 'assetId', in: 'query', schema: { type: 'string', format: 'uuid' } },
+          ],
+          responses: {
+            '200': { description: 'Paginated log source list' },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'The log-sources.read permission is required' },
+            '422': { description: 'Invalid query parameters' },
+          },
+        },
+        post: {
+          tags: ['Security Monitoring'],
+          summary: 'Configure a log source',
+          description:
+            'Creates a non-secret parsing configuration. Integration credentials are managed separately. Requires log-sources.manage.',
+          security: [{ bearerAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/CreateLogSourceRequest' },
+              },
+            },
+          },
+          responses: {
+            '201': { description: 'Log source created' },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'The log-sources.manage permission is required' },
+            '404': { description: 'Related asset or integration was not found' },
+            '422': { description: 'Invalid request body' },
+          },
+        },
+      },
+      '/security-monitoring/log-sources/{logSourceId}': {
+        patch: {
+          tags: ['Security Monitoring'],
+          summary: 'Update a log source configuration',
+          description: 'Requires the log-sources.manage permission.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'logSourceId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/UpdateLogSourceRequest' },
+              },
+            },
+          },
+          responses: {
+            '200': { description: 'Log source updated' },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'The log-sources.manage permission is required' },
+            '404': { description: 'Log source, asset or integration was not found' },
+            '422': { description: 'Invalid request body or log source ID' },
+          },
+        },
+      },
+      '/security-monitoring/log-sources/{logSourceId}/events': {
+        post: {
+          tags: ['Security Monitoring'],
+          summary: 'Ingest and normalize security events',
+          description:
+            'Accepts up to 100 JSON events for an active log source, applies its field mapping, ignores duplicate external event IDs and updates lastReceivedAt. Requires security-events.ingest.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'logSourceId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/IngestSecurityEventsRequest' },
+              },
+            },
+          },
+          responses: {
+            '202': { description: 'Events validated, normalized and persisted' },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'The security-events.ingest permission is required' },
+            '404': { description: 'Log source was not found' },
+            '409': {
+              description: 'Log source is inactive, invalid or not configured for JSON ingestion',
+            },
+            '422': { description: 'Invalid request body or event data' },
+            '429': { description: 'Too many ingestion requests' },
           },
         },
       },
