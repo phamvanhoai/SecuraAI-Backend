@@ -1,5 +1,40 @@
 import { Router } from 'express';
+import { authenticate, authorize } from '../../common/middleware/authenticate.js';
+import { validate } from '../../common/middleware/validate.js';
+import { asyncHandler } from '../../common/utils/async-handler.js';
+import {
+  activateModelConfiguration,
+  createModelConfiguration,
+  listModelConfigurations,
+} from './ai-alerts.controller.js';
+import {
+  createModelConfigurationBodySchema,
+  listModelConfigurationsQuerySchema,
+  modelVersionParamsSchema,
+} from './dto/model-configuration.dto.js';
 
 export const aiAlertsRouter = Router();
 
-// Register ai-alerts endpoints here. Apply authentication, authorization and DTO validation per route.
+aiAlertsRouter.get(
+  '/models',
+  authenticate,
+  authorize('ai-models.read'),
+  validate({ query: listModelConfigurationsQuerySchema }),
+  asyncHandler(listModelConfigurations),
+);
+
+aiAlertsRouter.post(
+  '/models',
+  authenticate,
+  authorize('ai-models.manage'),
+  validate({ body: createModelConfigurationBodySchema }),
+  asyncHandler(createModelConfiguration),
+);
+
+aiAlertsRouter.post(
+  '/models/:modelVersionId/activate',
+  authenticate,
+  authorize('ai-models.manage'),
+  validate({ params: modelVersionParamsSchema }),
+  asyncHandler(activateModelConfiguration),
+);
