@@ -7,6 +7,10 @@ import {
   modelVersionParamsSchema,
 } from './dto/model-configuration.dto.js';
 import { listAlertsQuerySchema } from './dto/alert-query.dto.js';
+import {
+  alertIdParamsSchema,
+  evaluateAlertReliabilityBodySchema,
+} from './dto/alert-feedback.dto.js';
 
 const requestContext = (req: Request) => ({
   ipAddress: req.ip ?? null,
@@ -25,6 +29,19 @@ export const listAlerts: RequestHandler = async (req, res) => {
   const query = listAlertsQuerySchema.parse(req.query);
   const data = await aiAlertsService.listAlerts(query, req.auth);
   res.status(200).json({ success: true, data });
+};
+
+export const evaluateAlertReliability: RequestHandler = async (req, res) => {
+  if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+  const { alertId } = alertIdParamsSchema.parse(req.params);
+  const body = evaluateAlertReliabilityBodySchema.parse(req.body);
+  const data = await aiAlertsService.evaluateAlertReliability(
+    alertId,
+    body,
+    req.auth,
+    requestContext(req),
+  );
+  res.status(201).json({ success: true, data });
 };
 
 export const createModelConfiguration: RequestHandler = async (req, res) => {
@@ -50,4 +67,5 @@ export const aiAlertsController = {
   createModelConfiguration,
   listAlerts,
   listModelConfigurations,
+  evaluateAlertReliability,
 } as const;

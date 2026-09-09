@@ -1,7 +1,11 @@
 import { Prisma } from '@prisma/client';
 import { createHash } from 'node:crypto';
 import { AppError } from '../../common/errors/app-error.js';
-import { toAlertResponse, toModelConfigurationResponse } from './ai-alerts.mapper.js';
+import {
+  toAlertFeedbackResponse,
+  toAlertResponse,
+  toModelConfigurationResponse,
+} from './ai-alerts.mapper.js';
 import { aiAlertsRepository } from './ai-alerts.repository.js';
 import type {
   CreateModelConfigurationBody,
@@ -10,6 +14,7 @@ import type {
 import type { ListAlertsQuery } from './dto/alert-query.dto.js';
 import { modelParametersSchema } from './dto/model-configuration.dto.js';
 import type { DetectionEvent } from './ai-alerts.repository.js';
+import type { EvaluateAlertReliabilityBody } from './dto/alert-feedback.dto.js';
 
 type Actor = { userId: string; permissions: readonly string[] };
 type RequestContext = { ipAddress: string | null; userAgent: string | null };
@@ -28,6 +33,21 @@ const alertCodeFor = (eventId: string, modelVersionId: string, ruleId: string): 
     .slice(0, 40)}`;
 
 export const aiAlertsService = {
+  async evaluateAlertReliability(
+    alertId: string,
+    input: EvaluateAlertReliabilityBody,
+    actor: Actor,
+    context: RequestContext,
+  ) {
+    requirePermission(actor, 'ai-alerts.feedback');
+    const feedback = await aiAlertsRepository.evaluateAlertReliability(alertId, input, {
+      actorUserId: actor.userId,
+      ...context,
+    });
+    if (!feedback) throw new AppError(404, 'AI_ALERT_NOT_FOUND', 'AI alert was not found');
+    return toAlertFeedbackResponse(feedback);
+  },
+
   async listAlerts(query: ListAlertsQuery, actor: Actor) {
     requirePermission(actor, 'ai-alerts.read');
     const serverTime = new Date();

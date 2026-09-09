@@ -1,5 +1,14 @@
 import type { ModelConfigurationRecord } from './ai-alerts.repository.js';
-import type { AlertRecord } from './ai-alerts.repository.js';
+import type { AlertRecord, FeedbackRecord } from './ai-alerts.repository.js';
+
+export const toAlertFeedbackResponse = (feedback: FeedbackRecord) => ({
+  id: feedback.ai_feedback_id,
+  alertId: feedback.ai_alert_id,
+  reviewedByUserId: feedback.reviewed_by_user_id,
+  feedbackLabel: feedback.feedback_label,
+  comment: feedback.comment,
+  createdAt: feedback.created_at,
+});
 
 export const toModelConfigurationResponse = (model: ModelConfigurationRecord) => ({
   id: model.ai_model_version_id,

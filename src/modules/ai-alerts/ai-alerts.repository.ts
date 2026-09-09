@@ -5,6 +5,7 @@ import type {
   ListModelConfigurationsQuery,
 } from './dto/model-configuration.dto.js';
 import type { ListAlertsQuery } from './dto/alert-query.dto.js';
+import type { EvaluateAlertReliabilityBody } from './dto/alert-feedback.dto.js';
 
 export const alertSelect = {
   ai_alert_id: true,
@@ -68,12 +69,62 @@ export type AlertCandidate = {
   anomalyScore: number;
 };
 
+export const feedbackSelect = {
+  ai_feedback_id: true,
+  ai_alert_id: true,
+  reviewed_by_user_id: true,
+  feedback_label: true,
+  comment: true,
+  created_at: true,
+} satisfies Prisma.ai_feedbackSelect;
+
+export type FeedbackRecord = Prisma.ai_feedbackGetPayload<{ select: typeof feedbackSelect }>;
+
 const toParametersJson = (input: CreateModelConfigurationBody): Prisma.InputJsonObject => ({
   ollamaModel: input.ollamaModel,
   rules: input.rules.map((rule) => ({ ...rule })),
 });
 
 export const aiAlertsRepository = {
+  evaluateAlertReliability(
+    alertId: string,
+    input: EvaluateAlertReliabilityBody,
+    context: RequestContext,
+  ): Promise<FeedbackRecord | null> {
+    return prisma.$transaction(async (transaction) => {
+      const alert = await transaction.ai_alerts.findUnique({
+        where: { ai_alert_id: alertId },
+        select: { ai_alert_id: true },
+      });
+      if (!alert) return null;
+      const feedback = await transaction.ai_feedback.create({
+        data: {
+          ai_alert_id: alertId,
+          reviewed_by_user_id: context.actorUserId,
+          feedback_label: input.feedbackLabel,
+          ...(input.comment !== undefined && { comment: input.comment }),
+        },
+        select: feedbackSelect,
+      });
+      await transaction.audit_logs.create({
+        data: {
+          actor_user_id: context.actorUserId,
+          module: 'ai-alerts',
+          action: 'ai_alert.reliability_evaluated',
+          entity_type: 'ai_alert',
+          entity_id: alertId,
+          after_data: {
+            feedbackId: feedback.ai_feedback_id,
+            feedbackLabel: feedback.feedback_label,
+          },
+          ip_address: context.ipAddress,
+          user_agent: context.userAgent,
+        },
+      });
+      return feedback;
+    });
+  },
+
   async listAlerts(query: ListAlertsQuery): Promise<{ items: AlertRecord[]; total: number }> {
     const where: Prisma.ai_alertsWhereInput = {
       ...(query.status !== undefined && { status: query.status }),
