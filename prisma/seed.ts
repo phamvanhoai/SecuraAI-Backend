@@ -13,13 +13,59 @@ async function main(): Promise<void> {
 
   const role = await prisma.roles.upsert({
     where: { code: 'ADMIN' },
-    update: {},
-    create: { code: 'ADMIN', name: 'System Administrator', is_system: true },
+    update: {
+      name: 'System Administrator',
+      description: 'Admin role defined by the approved project use cases',
+      is_system: true,
+    },
+    create: {
+      code: 'ADMIN',
+      name: 'System Administrator',
+      description: 'Admin role defined by the approved project use cases',
+      is_system: true,
+    },
   });
   const securityOfficerRole = await prisma.roles.upsert({
     where: { code: 'SECURITY_OFFICER' },
-    update: {},
-    create: { code: 'SECURITY_OFFICER', name: 'Security Officer', is_system: true },
+    update: {
+      name: 'Security Officer',
+      description: 'Security Officer role defined by the approved project use cases',
+      is_system: true,
+    },
+    create: {
+      code: 'SECURITY_OFFICER',
+      name: 'Security Officer',
+      description: 'Security Officer role defined by the approved project use cases',
+      is_system: true,
+    },
+  });
+  await prisma.roles.upsert({
+    where: { code: 'EMPLOYEE' },
+    update: {
+      name: 'Employee',
+      description: 'Employee role defined by the approved project use cases',
+      is_system: true,
+    },
+    create: {
+      code: 'EMPLOYEE',
+      name: 'Employee',
+      description: 'Employee role defined by the approved project use cases',
+      is_system: true,
+    },
+  });
+  await prisma.roles.upsert({
+    where: { code: 'EXECUTIVE' },
+    update: {
+      name: 'Executive',
+      description: 'Executive role defined by the approved project use cases',
+      is_system: true,
+    },
+    create: {
+      code: 'EXECUTIVE',
+      name: 'Executive',
+      description: 'Executive role defined by the approved project use cases',
+      is_system: true,
+    },
   });
   const createPolicyPermission = await prisma.permissions.upsert({
     where: { code: 'policies.create' },
