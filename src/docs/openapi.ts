@@ -18,6 +18,7 @@ export const openApiSpec = swaggerJsdoc({
       { name: 'Security Monitoring' },
       { name: 'AI Alerts' },
       { name: 'Policies' },
+      { name: 'Integrations' },
     ],
     components: {
       securitySchemes: { bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' } },
@@ -464,6 +465,53 @@ export const openApiSpec = swaggerJsdoc({
             lastReceivedAt: { type: 'string', format: 'date-time', nullable: true },
             createdAt: { type: 'string', format: 'date-time' },
             updatedAt: { type: 'string', format: 'date-time' },
+          },
+        },
+        CreateIntegrationRequest: {
+          type: 'object',
+          required: ['name', 'integrationType'],
+          properties: {
+            name: { type: 'string' },
+            integrationType: { type: 'string', enum: ['siem', 'firewall', 'log_source', 'api'] },
+            baseUrl: { type: 'string', format: 'uri' },
+            configuration: { type: 'object' },
+          },
+        },
+        UpdateIntegrationRequest: {
+          type: 'object',
+          properties: {
+            name: { type: 'string' },
+            baseUrl: { type: 'string', format: 'uri' },
+            configuration: { type: 'object' },
+            status: { type: 'string', enum: ['active', 'inactive', 'disabled'] },
+          },
+        },
+        TestConnectionRequest: {
+          type: 'object',
+          properties: { timeoutMs: { type: 'integer', minimum: 1000, maximum: 10000, default: 5000 } },
+        },
+        IntegrationResponse: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', format: 'uuid' },
+            name: { type: 'string' },
+            integrationType: { type: 'string' },
+            baseUrl: { type: 'string', nullable: true },
+            configuration: { type: 'object', nullable: true },
+            status: { type: 'string' },
+            lastConnectedAt: { type: 'string', format: 'date-time', nullable: true },
+            createdByUserId: { type: 'string', format: 'uuid', nullable: true },
+            createdAt: { type: 'string', format: 'date-time' },
+            updatedAt: { type: 'string', format: 'date-time' },
+          },
+        },
+        TestConnectionResponse: {
+          type: 'object',
+          properties: {
+            connected: { type: 'boolean' },
+            statusCode: { type: 'integer', nullable: true },
+            latencyMs: { type: 'integer' },
+            message: { type: 'string' },
           },
         },
       },
@@ -1154,6 +1202,38 @@ export const openApiSpec = swaggerJsdoc({
             '404': { description: 'Log source, asset or integration was not found' },
             '422': { description: 'Invalid request body or log source ID' },
           },
+        },
+      },
+      '/integrations': {
+        post: {
+          tags: ['Integrations'], summary: 'Create external integration configuration', security: [{ bearerAuth: [] }],
+          requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/CreateIntegrationRequest' } } } },
+          responses: { '201': { description: 'Integration created' }, '400': { description: 'Validation or SSRF error' }, '401': { description: 'Unauthorized' }, '403': { description: 'Forbidden' } },
+        },
+        get: {
+          tags: ['Integrations'], summary: 'List external integrations', security: [{ bearerAuth: [] }],
+          responses: { '200': { description: 'List of integrations' }, '401': { description: 'Unauthorized' }, '403': { description: 'Forbidden' } },
+        },
+      },
+      '/integrations/{id}': {
+        get: {
+          tags: ['Integrations'], summary: 'Get integration by ID', security: [{ bearerAuth: [] }],
+          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+          responses: { '200': { description: 'Integration details' }, '404': { description: 'Integration not found' } },
+        },
+        patch: {
+          tags: ['Integrations'], summary: 'Update integration configuration', security: [{ bearerAuth: [] }],
+          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+          requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/UpdateIntegrationRequest' } } } },
+          responses: { '200': { description: 'Integration updated' }, '404': { description: 'Integration not found' } },
+        },
+      },
+      '/integrations/{id}/test-connection': {
+        post: {
+          tags: ['Integrations'], summary: 'Test external connection to SIEM or Firewall', security: [{ bearerAuth: [] }],
+          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+          requestBody: { required: false, content: { 'application/json': { schema: { $ref: '#/components/schemas/TestConnectionRequest' } } } },
+          responses: { '200': { description: 'Connection test outcome' }, '400': { description: 'SSRF rejected or no base URL configured' }, '404': { description: 'Integration not found' }, '429': { description: 'Rate limit exceeded' } },
         },
       },
       '/security-monitoring/log-sources/{logSourceId}/events': {
