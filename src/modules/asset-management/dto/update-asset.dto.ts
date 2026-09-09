@@ -21,7 +21,6 @@ export const updateAssetBodySchema = z
     assetType: z.string().trim().min(1).max(50).optional(),
     description: nullableText(10_000),
     departmentId: z.uuid().nullable().optional(),
-    ownerUserId: z.uuid().nullable().optional(),
     hostname: nullableText(255),
     ipAddress: z.union([z.ipv4(), z.ipv6()]).nullable().optional(),
     location: nullableText(255),

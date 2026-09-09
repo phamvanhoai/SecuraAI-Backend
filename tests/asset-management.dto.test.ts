@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { listAssetsQuerySchema } from '../src/modules/asset-management/dto/list-assets-query.dto.js';
 import { createAssetBodySchema } from '../src/modules/asset-management/dto/create-asset.dto.js';
 import { classifyAssetCriticalityBodySchema } from '../src/modules/asset-management/dto/classify-asset-criticality.dto.js';
+import { assignAssetOwnerBodySchema } from '../src/modules/asset-management/dto/assign-asset-owner.dto.js';
 import {
   updateAssetBodySchema,
   updateAssetParamsSchema,
@@ -166,5 +167,31 @@ describe('classifyAssetCriticalityBodySchema', () => {
     },
   ])('rejects invalid classification data: %o', (body) => {
     expect(classifyAssetCriticalityBodySchema.safeParse(body).success).toBe(false);
+  });
+});
+
+describe('assignAssetOwnerBodySchema', () => {
+  it('accepts an owner UUID or null and trims the mandatory reason', () => {
+    expect(
+      assignAssetOwnerBodySchema.parse({
+        ownerUserId: '00000000-0000-4000-8000-000000000020',
+        reason: '  Infrastructure responsibility  ',
+      }),
+    ).toEqual({
+      ownerUserId: '00000000-0000-4000-8000-000000000020',
+      reason: 'Infrastructure responsibility',
+    });
+    expect(
+      assignAssetOwnerBodySchema.safeParse({ ownerUserId: null, reason: 'Unassign owner' }).success,
+    ).toBe(true);
+  });
+
+  it.each([
+    { reason: 'Missing owner field' },
+    { ownerUserId: 'not-a-uuid', reason: 'Invalid owner' },
+    { ownerUserId: null, reason: ' ' },
+    { ownerUserId: null, reason: 'Unassign', departmentId: null },
+  ])('rejects invalid assignment data: %o', (body) => {
+    expect(assignAssetOwnerBodySchema.safeParse(body).success).toBe(false);
   });
 });
