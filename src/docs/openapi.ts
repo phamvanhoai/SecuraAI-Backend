@@ -17,6 +17,7 @@ export const openApiSpec = swaggerJsdoc({
       { name: 'Assets' },
       { name: 'Security Monitoring' },
       { name: 'AI Alerts' },
+      { name: 'Policies' },
     ],
     components: {
       securitySchemes: { bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' } },
@@ -40,6 +41,36 @@ export const openApiSpec = swaggerJsdoc({
             accessToken: { type: 'string' },
             refreshToken: { type: 'string' },
             expiresIn: { type: 'string', example: '15m' },
+          },
+        },
+        PublishPolicyVersionRequest: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            effectiveDate: { type: 'string', format: 'date', example: '2026-09-09' },
+          },
+        },
+        PublishedPolicyVersion: {
+          type: 'object',
+          required: ['policyId', 'policyCode', 'title', 'status', 'publishedVersion'],
+          properties: {
+            policyId: { type: 'string', format: 'uuid' },
+            policyCode: { type: 'string', example: 'ISP-001' },
+            title: { type: 'string' },
+            status: { type: 'string', enum: ['published'] },
+            publishedVersion: {
+              type: 'object',
+              required: ['id', 'versionNumber', 'status', 'effectiveDate', 'publishedAt'],
+              properties: {
+                id: { type: 'string', format: 'uuid' },
+                versionNumber: { type: 'string', example: '1.0' },
+                status: { type: 'string', enum: ['published'] },
+                effectiveDate: { type: 'string', format: 'date', nullable: true },
+                publishedByUserId: { type: 'string', format: 'uuid', nullable: true },
+                publishedAt: { type: 'string', format: 'date-time', nullable: true },
+                createdAt: { type: 'string', format: 'date-time' },
+              },
+            },
           },
         },
         Error: {
@@ -1041,6 +1072,56 @@ export const openApiSpec = swaggerJsdoc({
             '403': { description: 'The ai-models.manage permission is required' },
             '404': { description: 'Model version was not found' },
             '422': { description: 'Invalid model version ID' },
+          },
+        },
+      },
+      '/compliance/policies/{policyId}/versions/{versionId}/publish': {
+        post: {
+          tags: ['Policies'],
+          summary: 'Publish an official policy version',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'policyId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+            {
+              name: 'versionId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          requestBody: {
+            required: false,
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/PublishPolicyVersionRequest' },
+              },
+            },
+          },
+          responses: {
+            '200': {
+              description: 'Official policy version published',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      success: { type: 'boolean', example: true },
+                      data: { $ref: '#/components/schemas/PublishedPolicyVersion' },
+                    },
+                  },
+                },
+              },
+            },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'The policies.publish permission is required' },
+            '404': { description: 'Policy version was not found' },
+            '409': { description: 'Policy version cannot be published in its current state' },
+            '422': { description: 'Invalid IDs or request body' },
           },
         },
       },
