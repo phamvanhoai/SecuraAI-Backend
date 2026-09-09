@@ -185,6 +185,7 @@ describe('Integrations HTTP API (UC 13.1 - Connect SIEM/Firewall)', () => {
         statusText: 'OK',
         latencyMs: 88,
         ok: true,
+        body: null,
       });
       vi.spyOn(integrationsRepository, 'update').mockResolvedValue({
         ...mockIntegration,

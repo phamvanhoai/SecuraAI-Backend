@@ -140,6 +140,8 @@ export type SafeHttpResponse = {
   statusText: string;
   latencyMs: number;
   ok: boolean;
+  /** Parsed response body (JSON) or raw string. Null when body is empty or unreadable. */
+  body: unknown;
 };
 
 /**
@@ -204,13 +206,49 @@ export async function executeSafeHttpRequest(options: SafeHttpRequestOptions): P
       },
       (res) => {
         const latencyMs = Date.now() - startTime;
-        res.resume(); // consume response body to free up memory
         const statusCode = res.statusCode ?? 500;
-        resolve({
-          statusCode,
-          statusText: res.statusMessage ?? '',
-          latencyMs,
-          ok: statusCode >= 200 && statusCode < 300,
+        const contentType = res.headers['content-type'] ?? '';
+        const MAX_BODY_BYTES = 4 * 1024 * 1024; // 4 MB safety cap
+
+        const chunks: Buffer[] = [];
+        let bytesRead = 0;
+        let limitExceeded = false;
+
+        res.on('data', (chunk: Buffer) => {
+          bytesRead += chunk.length;
+          if (bytesRead > MAX_BODY_BYTES) {
+            limitExceeded = true;
+            res.destroy();
+          } else {
+            chunks.push(chunk);
+          }
+        });
+
+        res.on('end', () => {
+          let body: unknown = null;
+          if (!limitExceeded && chunks.length > 0) {
+            const raw = Buffer.concat(chunks).toString('utf8');
+            if (contentType.includes('application/json')) {
+              try {
+                body = JSON.parse(raw) as unknown;
+              } catch {
+                body = raw;
+              }
+            } else {
+              body = raw;
+            }
+          }
+          resolve({
+            statusCode,
+            statusText: res.statusMessage ?? '',
+            latencyMs,
+            ok: statusCode >= 200 && statusCode < 300,
+            body,
+          });
+        });
+
+        res.on('error', (err) => {
+          if (!limitExceeded) reject(err);
         });
       },
     );

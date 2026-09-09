@@ -2,3 +2,8 @@ export * from './create-integration.dto.js';
 export * from './update-integration.dto.js';
 export * from './query-integrations.dto.js';
 export * from './test-connection.dto.js';
+export * from './create-sync-schedule.dto.js';
+export * from './update-sync-schedule.dto.js';
+export * from './query-sync-jobs.dto.js';
+export * from './trigger-sync.dto.js';
+export * from './query-integration-logs.dto.js';
