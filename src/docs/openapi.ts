@@ -397,6 +397,18 @@ export const openApiSpec = swaggerJsdoc({
             },
           },
         },
+        EvaluateAlertReliabilityRequest: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['feedbackLabel'],
+          properties: {
+            feedbackLabel: {
+              type: 'string',
+              enum: ['confirmed_incident', 'false_positive', 'needs_review'],
+            },
+            comment: { type: 'string', minLength: 1, maxLength: 2000 },
+          },
+        },
         CreateLogSourceRequest: {
           type: 'object',
           additionalProperties: false,
@@ -1120,6 +1132,38 @@ export const openApiSpec = swaggerJsdoc({
             '403': { description: 'The ai-models.manage permission is required' },
             '404': { description: 'Model version was not found' },
             '422': { description: 'Invalid model version ID' },
+          },
+        },
+      },
+      '/ai-alerts/{alertId}/feedback': {
+        post: {
+          tags: ['AI Alerts'],
+          summary: 'Evaluate AI alert reliability',
+          description:
+            'Records an analyst assessment without changing the alert lifecycle status. Requires ai-alerts.feedback.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'alertId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/EvaluateAlertReliabilityRequest' },
+              },
+            },
+          },
+          responses: {
+            '201': { description: 'Reliability feedback recorded' },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'The ai-alerts.feedback permission is required' },
+            '404': { description: 'AI alert was not found' },
+            '422': { description: 'Invalid alert ID or feedback' },
           },
         },
       },
