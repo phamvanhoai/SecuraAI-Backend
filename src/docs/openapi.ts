@@ -14,6 +14,7 @@ export const openApiSpec = swaggerJsdoc({
       { name: 'Health' },
       { name: 'Authentication' },
       { name: 'Users' },
+      { name: 'Role Management' },
       { name: 'Assets' },
       { name: 'Security Monitoring' },
       { name: 'AI Alerts' },
@@ -83,6 +84,60 @@ export const openApiSpec = swaggerJsdoc({
               properties: { code: { type: 'string' }, message: { type: 'string' } },
             },
             requestId: { type: 'string' },
+          },
+        },
+        CustomRoleInput: {
+          type: 'object',
+          required: ['code', 'name'],
+          additionalProperties: false,
+          properties: {
+            code: { type: 'string', pattern: '^[A-Z][A-Z0-9_]*$', example: 'RISK_REVIEWER' },
+            name: { type: 'string', minLength: 2, maxLength: 100 },
+            description: { type: 'string', nullable: true, maxLength: 1000 },
+            permissionIds: {
+              type: 'array',
+              maxItems: 200,
+              uniqueItems: true,
+              items: { type: 'string', format: 'uuid' },
+            },
+          },
+        },
+        CustomRole: {
+          type: 'object',
+          required: [
+            'id',
+            'code',
+            'name',
+            'isSystem',
+            'permissions',
+            'assignedUserCount',
+            'workflowStepCount',
+            'createdAt',
+            'updatedAt',
+          ],
+          properties: {
+            id: { type: 'string', format: 'uuid' },
+            code: { type: 'string' },
+            name: { type: 'string' },
+            description: { type: 'string', nullable: true },
+            isSystem: { type: 'boolean', enum: [false] },
+            permissions: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  id: { type: 'string', format: 'uuid' },
+                  code: { type: 'string' },
+                  module: { type: 'string' },
+                  action: { type: 'string' },
+                  description: { type: 'string', nullable: true },
+                },
+              },
+            },
+            assignedUserCount: { type: 'integer' },
+            workflowStepCount: { type: 'integer' },
+            createdAt: { type: 'string', format: 'date-time' },
+            updatedAt: { type: 'string', format: 'date-time' },
           },
         },
         AssetSummary: {
@@ -615,7 +670,7 @@ export const openApiSpec = swaggerJsdoc({
             message: { type: 'string' },
           },
         },
-CreateSyncScheduleRequest: {
+        CreateSyncScheduleRequest: {
           type: 'object',
           required: ['scheduleExpression'],
           properties: {
@@ -655,7 +710,10 @@ CreateSyncScheduleRequest: {
             id: { type: 'string', format: 'uuid' },
             integrationId: { type: 'string', format: 'uuid' },
             syncScheduleId: { type: 'string', format: 'uuid', nullable: true },
-            status: { type: 'string', enum: ['pending', 'running', 'completed', 'failed', 'cancelled'] },
+            status: {
+              type: 'string',
+              enum: ['pending', 'running', 'completed', 'failed', 'cancelled'],
+            },
             recordsProcessed: { type: 'integer', example: 150 },
             recordsFailed: { type: 'integer', example: 0 },
             startedAt: { type: 'string', format: 'date-time', nullable: true },
@@ -679,6 +737,105 @@ CreateSyncScheduleRequest: {
       },
     },
     paths: {
+      '/access-control/roles': {
+        get: {
+          tags: ['Role Management'],
+          summary: 'View custom roles',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'page', in: 'query', schema: { type: 'integer', default: 1, minimum: 1 } },
+            { name: 'limit', in: 'query', schema: { type: 'integer', default: 20, maximum: 100 } },
+            { name: 'search', in: 'query', schema: { type: 'string' } },
+            {
+              name: 'sortBy',
+              in: 'query',
+              schema: { type: 'string', enum: ['code', 'name', 'createdAt', 'updatedAt'] },
+            },
+            { name: 'sortOrder', in: 'query', schema: { type: 'string', enum: ['asc', 'desc'] } },
+          ],
+          responses: {
+            '200': { description: 'Paginated custom roles' },
+            '401': { description: 'Unauthorized' },
+            '403': { description: 'Missing roles.read permission' },
+          },
+        },
+        post: {
+          tags: ['Role Management'],
+          summary: 'Create custom role',
+          security: [{ bearerAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': { schema: { $ref: '#/components/schemas/CustomRoleInput' } },
+            },
+          },
+          responses: {
+            '201': { description: 'Custom role created' },
+            '401': { description: 'Unauthorized' },
+            '403': { description: 'Missing roles.create permission' },
+            '409': { description: 'Role code already exists' },
+            '422': { description: 'Invalid input or permissions' },
+          },
+        },
+      },
+      '/access-control/roles/{roleId}': {
+        parameters: [
+          {
+            name: 'roleId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        get: {
+          tags: ['Role Management'],
+          summary: 'View custom role details',
+          security: [{ bearerAuth: [] }],
+          responses: {
+            '200': { description: 'Custom role details' },
+            '401': { description: 'Unauthorized' },
+            '403': { description: 'Missing roles.read permission' },
+            '404': { description: 'Custom role not found' },
+          },
+        },
+        patch: {
+          tags: ['Role Management'],
+          summary: 'Update custom role',
+          security: [{ bearerAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  allOf: [{ $ref: '#/components/schemas/CustomRoleInput' }],
+                  minProperties: 1,
+                },
+              },
+            },
+          },
+          responses: {
+            '200': { description: 'Custom role updated' },
+            '401': { description: 'Unauthorized' },
+            '403': { description: 'Missing roles.update permission' },
+            '404': { description: 'Role not found' },
+            '409': { description: 'Role code already exists' },
+            '422': { description: 'System role or invalid input' },
+          },
+        },
+        delete: {
+          tags: ['Role Management'],
+          summary: 'Delete custom role',
+          security: [{ bearerAuth: [] }],
+          responses: {
+            '204': { description: 'Custom role deleted' },
+            '401': { description: 'Unauthorized' },
+            '403': { description: 'Missing roles.delete permission' },
+            '404': { description: 'Role not found' },
+            '409': { description: 'Role is in use' },
+            '422': { description: 'System role cannot be deleted' },
+          },
+        },
+      },
       '/health/live': {
         get: {
           tags: ['Health'],
@@ -1606,11 +1763,20 @@ CreateSyncScheduleRequest: {
             'Moves a new or reviewing alert to confirmed and records analyst feedback atomically. This does not create an incident draft. Requires ai-alerts.confirm.',
           security: [{ bearerAuth: [] }],
           parameters: [
-            { name: 'alertId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+            {
+              name: 'alertId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
           ],
           requestBody: {
             required: false,
-            content: { 'application/json': { schema: { $ref: '#/components/schemas/ConfirmAlertIncidentRequest' } } },
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ConfirmAlertIncidentRequest' },
+              },
+            },
           },
           responses: {
             '200': { description: 'Alert confirmed or already confirmed' },
@@ -1828,7 +1994,7 @@ CreateSyncScheduleRequest: {
           },
         },
       },
-'/integrations/{id}/schedules': {
+      '/integrations/{id}/schedules': {
         post: {
           tags: ['Integrations'],
           summary: 'Create synchronization schedule',
@@ -1839,7 +2005,9 @@ CreateSyncScheduleRequest: {
           requestBody: {
             required: true,
             content: {
-              'application/json': { schema: { $ref: '#/components/schemas/CreateSyncScheduleRequest' } },
+              'application/json': {
+                schema: { $ref: '#/components/schemas/CreateSyncScheduleRequest' },
+              },
             },
           },
           responses: {
@@ -1886,7 +2054,12 @@ CreateSyncScheduleRequest: {
           security: [{ bearerAuth: [] }],
           parameters: [
             { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
-            { name: 'scheduleId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+            {
+              name: 'scheduleId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
           ],
           responses: {
             '200': { description: 'Sync schedule details' },
@@ -1901,12 +2074,19 @@ CreateSyncScheduleRequest: {
           security: [{ bearerAuth: [] }],
           parameters: [
             { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
-            { name: 'scheduleId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+            {
+              name: 'scheduleId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
           ],
           requestBody: {
             required: true,
             content: {
-              'application/json': { schema: { $ref: '#/components/schemas/UpdateSyncScheduleRequest' } },
+              'application/json': {
+                schema: { $ref: '#/components/schemas/UpdateSyncScheduleRequest' },
+              },
             },
           },
           responses: {
@@ -1923,7 +2103,12 @@ CreateSyncScheduleRequest: {
           security: [{ bearerAuth: [] }],
           parameters: [
             { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
-            { name: 'scheduleId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+            {
+              name: 'scheduleId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
           ],
           responses: {
             '204': { description: 'Sync schedule deleted' },
@@ -1983,7 +2168,10 @@ CreateSyncScheduleRequest: {
             {
               name: 'status',
               in: 'query',
-              schema: { type: 'string', enum: ['pending', 'running', 'completed', 'failed', 'cancelled'] },
+              schema: {
+                type: 'string',
+                enum: ['pending', 'running', 'completed', 'failed', 'cancelled'],
+              },
             },
             { name: 'syncScheduleId', in: 'query', schema: { type: 'string', format: 'uuid' } },
             {
@@ -2011,7 +2199,12 @@ CreateSyncScheduleRequest: {
           security: [{ bearerAuth: [] }],
           parameters: [
             { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
-            { name: 'jobId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+            {
+              name: 'jobId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
           ],
           responses: {
             '200': { description: 'Sync job details' },
@@ -2030,7 +2223,11 @@ CreateSyncScheduleRequest: {
             { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
             { name: 'page', in: 'query', schema: { type: 'integer', default: 1 } },
             { name: 'limit', in: 'query', schema: { type: 'integer', default: 20 } },
-            { name: 'level', in: 'query', schema: { type: 'string', enum: ['info', 'warn', 'error'] } },
+            {
+              name: 'level',
+              in: 'query',
+              schema: { type: 'string', enum: ['info', 'warn', 'error'] },
+            },
             { name: 'syncJobId', in: 'query', schema: { type: 'string', format: 'uuid' } },
           ],
           responses: {
