@@ -100,6 +100,90 @@ async function main(): Promise<void> {
       description: 'Assign or unassign an asset owner',
     },
   });
+  const logSourceReadPermission = await prisma.permissions.upsert({
+    where: { code: 'log-sources.read' },
+    update: {
+      module: 'security-monitoring',
+      action: 'read',
+      description: 'View configured log sources',
+    },
+    create: {
+      code: 'log-sources.read',
+      module: 'security-monitoring',
+      action: 'read',
+      description: 'View configured log sources',
+    },
+  });
+  const logSourceManagePermission = await prisma.permissions.upsert({
+    where: { code: 'log-sources.manage' },
+    update: {
+      module: 'security-monitoring',
+      action: 'manage',
+      description: 'Configure log sources',
+    },
+    create: {
+      code: 'log-sources.manage',
+      module: 'security-monitoring',
+      action: 'manage',
+      description: 'Configure log sources',
+    },
+  });
+  const securityEventIngestPermission = await prisma.permissions.upsert({
+    where: { code: 'security-events.ingest' },
+    update: {
+      module: 'security-monitoring',
+      action: 'ingest',
+      description: 'Ingest and normalize security events from configured log sources',
+    },
+    create: {
+      code: 'security-events.ingest',
+      module: 'security-monitoring',
+      action: 'ingest',
+      description: 'Ingest and normalize security events from configured log sources',
+    },
+  });
+  const aiModelReadPermission = await prisma.permissions.upsert({
+    where: { code: 'ai-models.read' },
+    update: {
+      module: 'ai-alerts',
+      action: 'read-models',
+      description: 'View pre-trained AI model configurations',
+    },
+    create: {
+      code: 'ai-models.read',
+      module: 'ai-alerts',
+      action: 'read-models',
+      description: 'View pre-trained AI model configurations',
+    },
+  });
+  const aiModelManagePermission = await prisma.permissions.upsert({
+    where: { code: 'ai-models.manage' },
+    update: {
+      module: 'ai-alerts',
+      action: 'manage-models',
+      description: 'Configure pre-trained AI models and detection rules',
+    },
+    create: {
+      code: 'ai-models.manage',
+      module: 'ai-alerts',
+      action: 'manage-models',
+      description: 'Configure pre-trained AI models and detection rules',
+    },
+  });
+  const aiAlertReadPermission = await prisma.permissions.upsert({
+    where: { code: 'ai-alerts.read' },
+    update: {
+      module: 'ai-alerts',
+      action: 'read-alerts',
+      description: 'View generated AI alerts in near real time',
+    },
+    create: {
+      code: 'ai-alerts.read',
+      module: 'ai-alerts',
+      action: 'read-alerts',
+      description: 'View generated AI alerts in near real time',
+    },
+  });
   const passwordHash = await argon2.hash(password, { type: argon2.argon2id });
   const user = await prisma.users.upsert({
     where: { email },
@@ -193,6 +277,28 @@ async function main(): Promise<void> {
       permission_id: assetAssignOwnerPermission.permission_id,
     },
   });
+  for (const permission of [
+    logSourceReadPermission,
+    logSourceManagePermission,
+    securityEventIngestPermission,
+    aiModelReadPermission,
+    aiModelManagePermission,
+    aiAlertReadPermission,
+  ]) {
+    await prisma.role_permissions.upsert({
+      where: {
+        role_id_permission_id: {
+          role_id: role.role_id,
+          permission_id: permission.permission_id,
+        },
+      },
+      update: {},
+      create: {
+        role_id: role.role_id,
+        permission_id: permission.permission_id,
+      },
+    });
+  }
 }
 
 main()
