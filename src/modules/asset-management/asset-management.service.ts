@@ -4,6 +4,7 @@ import { AppError } from '../../common/errors/app-error.js';
 import { toAssetDetail, toAssetListItem } from './asset-management.mapper.js';
 import { assetManagementRepository } from './asset-management.repository.js';
 import type { CreateAssetBody } from './dto/create-asset.dto.js';
+import type { ClassifyAssetCriticalityBody } from './dto/classify-asset-criticality.dto.js';
 import type { ListAssetsQuery } from './dto/list-assets-query.dto.js';
 import type { UpdateAssetBody } from './dto/update-asset.dto.js';
 import type { AssetUpdateChanges } from './asset-management.repository.js';
@@ -23,6 +24,13 @@ const allowedStatusTransitions: Readonly<Record<string, readonly string[]>> = {
   inactive: ['active', 'retired', 'disposed'],
   retired: ['active', 'disposed'],
   disposed: [],
+};
+
+const criticalityFromScore = (score: number): 'low' | 'medium' | 'high' | 'critical' => {
+  if (score < 2) return 'low';
+  if (score < 3) return 'medium';
+  if (score < 4) return 'high';
+  return 'critical';
 };
 
 export const assetManagementService = {
@@ -140,8 +148,6 @@ export const assetManagementService = {
         input.departmentId !== current.department_id && { departmentId: input.departmentId }),
       ...(input.ownerUserId !== undefined &&
         input.ownerUserId !== current.owner_user_id && { ownerUserId: input.ownerUserId }),
-      ...(input.criticality !== undefined &&
-        input.criticality !== current.criticality && { criticality: input.criticality }),
       ...(input.hostname !== undefined &&
         input.hostname !== current.hostname && { hostname: input.hostname }),
       ...(input.ipAddress !== undefined &&
@@ -175,8 +181,6 @@ export const assetManagementService = {
       recordChange('departmentId', current.department_id, changes.departmentId);
     if (changes.ownerUserId !== undefined)
       recordChange('ownerUserId', current.owner_user_id, changes.ownerUserId);
-    if (changes.criticality !== undefined)
-      recordChange('criticality', current.criticality, changes.criticality);
     if (changes.hostname !== undefined)
       recordChange('hostname', current.hostname, changes.hostname);
     if (changes.ipAddress !== undefined)
@@ -224,5 +228,63 @@ export const assetManagementService = {
         result.dependencies,
       );
     }
+  },
+
+  async classifyCriticality(
+    assetId: string,
+    input: ClassifyAssetCriticalityBody,
+    actor: AssetListActor,
+    context: CreateAssetContext,
+  ) {
+    if (!actor.permissions.includes('assets.classify')) {
+      throw new AppError(403, 'FORBIDDEN', 'Insufficient permissions');
+    }
+
+    const asset = await assetManagementRepository.findById(assetId);
+    if (!asset) throw new AppError(404, 'ASSET_NOT_FOUND', 'Asset was not found');
+    if (asset.status === 'disposed') {
+      throw new AppError(422, 'ASSET_DISPOSED', 'A disposed asset cannot be classified');
+    }
+
+    const rawScore =
+      input.confidentialityImpact * 0.25 +
+      input.integrityImpact * 0.25 +
+      input.availabilityImpact * 0.3 +
+      input.businessImpact * 0.2;
+    const score = Math.round((rawScore + Number.EPSILON) * 100) / 100;
+    const criticality = criticalityFromScore(score);
+    const classifiedAt = new Date();
+    const changed = criticality !== asset.criticality;
+    await assetManagementRepository.classifyCriticality(
+      assetId,
+      {
+        previousCriticality: asset.criticality,
+        criticality,
+        score,
+        changed,
+        classifiedAt,
+        criteria: {
+          confidentialityImpact: input.confidentialityImpact,
+          integrityImpact: input.integrityImpact,
+          availabilityImpact: input.availabilityImpact,
+          businessImpact: input.businessImpact,
+        },
+        reason: input.reason,
+      },
+      {
+        actorUserId: actor.userId,
+        ipAddress: context.ipAddress,
+        userAgent: context.userAgent,
+      },
+    );
+
+    return {
+      assetId,
+      previousCriticality: asset.criticality,
+      criticality,
+      score,
+      changed,
+      classifiedAt,
+    };
   },
 };

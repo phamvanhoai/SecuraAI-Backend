@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../../database/prisma.js';
 import type { ListAssetsQuery } from './dto/list-assets-query.dto.js';
 import type { CreateAssetBody } from './dto/create-asset.dto.js';
+import type { ClassifyAssetCriticalityBody } from './dto/classify-asset-criticality.dto.js';
 import type { UpdateAssetBody } from './dto/update-asset.dto.js';
 
 export const assetListSelect = {
@@ -55,6 +56,16 @@ export type AssetUpdateChanges = UpdateAssetBody & { retiredAt?: Date | null };
 type UpdateAssetContext = CreateAssetContext & {
   beforeData: Prisma.InputJsonObject;
   afterData: Prisma.InputJsonObject;
+};
+
+export type CriticalityClassification = {
+  previousCriticality: string;
+  criticality: string;
+  score: number;
+  changed: boolean;
+  classifiedAt: Date;
+  criteria: Omit<ClassifyAssetCriticalityBody, 'reason'>;
+  reason: string;
 };
 
 export type AssetDependencyCounts = {
@@ -219,7 +230,6 @@ export const assetManagementRepository = {
           ...(changes.description !== undefined && { description: changes.description }),
           ...(changes.departmentId !== undefined && { department_id: changes.departmentId }),
           ...(changes.ownerUserId !== undefined && { owner_user_id: changes.ownerUserId }),
-          ...(changes.criticality !== undefined && { criticality: changes.criticality }),
           ...(changes.hostname !== undefined && { hostname: changes.hostname }),
           ...(changes.ipAddress !== undefined && { ip_address: changes.ipAddress }),
           ...(changes.location !== undefined && { location: changes.location }),
@@ -347,5 +357,57 @@ export const assetManagementRepository = {
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
     );
+  },
+
+  classifyCriticality(
+    assetId: string,
+    classification: CriticalityClassification,
+    context: CreateAssetContext,
+  ): Promise<void> {
+    return prisma.$transaction(async (transaction) => {
+      if (classification.changed) {
+        await transaction.assets.update({
+          where: { asset_id: assetId, deleted_at: null },
+          data: {
+            criticality: classification.criticality,
+            updated_at: classification.classifiedAt,
+          },
+        });
+      }
+
+      const beforeData: Prisma.InputJsonObject = {
+        criticality: classification.previousCriticality,
+      };
+      const afterData: Prisma.InputJsonObject = {
+        criticality: classification.criticality,
+        score: classification.score,
+        criteria: classification.criteria,
+        reason: classification.reason,
+        changed: classification.changed,
+        classifiedAt: classification.classifiedAt.toISOString(),
+      };
+      await transaction.asset_change_history.create({
+        data: {
+          asset_id: assetId,
+          changed_by_user_id: context.actorUserId,
+          action: 'classified',
+          before_data: beforeData,
+          after_data: afterData,
+        },
+      });
+      await transaction.audit_logs.create({
+        data: {
+          actor_user_id: context.actorUserId,
+          module: 'asset-management',
+          action: 'asset.criticality_classified',
+          entity_type: 'asset',
+          entity_id: assetId,
+          before_data: beforeData,
+          after_data: afterData,
+          ip_address: context.ipAddress,
+          user_agent: context.userAgent,
+        },
+      });
+    });
   },
 };

@@ -149,10 +149,6 @@ export const openApiSpec = swaggerJsdoc({
             description: { type: 'string', maxLength: 10000, nullable: true },
             departmentId: { type: 'string', format: 'uuid', nullable: true },
             ownerUserId: { type: 'string', format: 'uuid', nullable: true },
-            criticality: {
-              type: 'string',
-              enum: ['low', 'medium', 'high', 'critical'],
-            },
             hostname: { type: 'string', maxLength: 255, nullable: true },
             ipAddress: { type: 'string', format: 'ip', nullable: true },
             location: { type: 'string', maxLength: 255, nullable: true },
@@ -161,6 +157,49 @@ export const openApiSpec = swaggerJsdoc({
               enum: ['active', 'inactive', 'retired', 'disposed'],
             },
             metadata: { type: 'object', description: 'JSON object up to 20 KB.' },
+          },
+        },
+        ClassifyAssetCriticalityRequest: {
+          type: 'object',
+          additionalProperties: false,
+          required: [
+            'confidentialityImpact',
+            'integrityImpact',
+            'availabilityImpact',
+            'businessImpact',
+            'reason',
+          ],
+          properties: {
+            confidentialityImpact: { type: 'integer', minimum: 1, maximum: 5 },
+            integrityImpact: { type: 'integer', minimum: 1, maximum: 5 },
+            availabilityImpact: { type: 'integer', minimum: 1, maximum: 5 },
+            businessImpact: { type: 'integer', minimum: 1, maximum: 5 },
+            reason: { type: 'string', minLength: 1, maxLength: 1000 },
+          },
+        },
+        AssetCriticalityClassification: {
+          type: 'object',
+          required: [
+            'assetId',
+            'previousCriticality',
+            'criticality',
+            'score',
+            'changed',
+            'classifiedAt',
+          ],
+          properties: {
+            assetId: { type: 'string', format: 'uuid' },
+            previousCriticality: {
+              type: 'string',
+              enum: ['low', 'medium', 'high', 'critical'],
+            },
+            criticality: {
+              type: 'string',
+              enum: ['low', 'medium', 'high', 'critical'],
+            },
+            score: { type: 'number', minimum: 1, maximum: 5, example: 4.55 },
+            changed: { type: 'boolean' },
+            classifiedAt: { type: 'string', format: 'date-time' },
           },
         },
       },
@@ -489,6 +528,54 @@ export const openApiSpec = swaggerJsdoc({
             '404': { description: 'Asset was not found or was already deleted' },
             '409': { description: 'Asset has active business dependencies' },
             '422': { description: 'Invalid asset ID' },
+            '429': { description: 'Too many requests' },
+            '500': { description: 'Unexpected server error' },
+          },
+        },
+      },
+      '/assets/{assetId}/classify-criticality': {
+        post: {
+          tags: ['Assets'],
+          summary: 'Classify asset criticality',
+          description:
+            'Calculates criticality from confidentiality, integrity, availability and business impact scores. Every classification is recorded in history and audit logs. Requires the assets.classify permission.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'assetId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ClassifyAssetCriticalityRequest' },
+              },
+            },
+          },
+          responses: {
+            '200': {
+              description: 'Criticality classified',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    required: ['success', 'data'],
+                    properties: {
+                      success: { type: 'boolean', example: true },
+                      data: { $ref: '#/components/schemas/AssetCriticalityClassification' },
+                    },
+                  },
+                },
+              },
+            },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'The assets.classify permission is required' },
+            '404': { description: 'Asset was not found' },
+            '422': { description: 'Invalid scores, reason, asset ID or disposed asset' },
             '429': { description: 'Too many requests' },
             '500': { description: 'Unexpected server error' },
           },
