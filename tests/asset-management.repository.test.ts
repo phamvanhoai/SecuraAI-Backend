@@ -334,6 +334,57 @@ describe('assetManagementRepository.classifyCriticality', () => {
   });
 });
 
+describe('assetManagementRepository.assignOwner', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    transactionMock.mockImplementation((callback: (transaction: unknown) => Promise<unknown>) =>
+      callback({
+        assets: { update: assetUpdateMock },
+        asset_change_history: { create: historyCreateMock },
+        audit_logs: { create: auditCreateMock },
+      }),
+    );
+    assetUpdateMock.mockResolvedValue({ asset_id: 'asset-1' });
+  });
+
+  it.each([
+    ['owner_assigned', null, 'owner-1'],
+    ['owner_reassigned', 'owner-old', 'owner-1'],
+    ['owner_unassigned', 'owner-old', null],
+  ] as const)('atomically records %s', async (action, previousOwnerId, ownerUserId) => {
+    const assignedAt = new Date('2026-09-08T10:00:00.000Z');
+    await assetManagementRepository.assignOwner(
+      'asset-1',
+      {
+        ownerUserId,
+        reason: 'Responsibility changed',
+        previousOwnerId,
+        action,
+        assignedAt,
+      },
+      { actorUserId: 'user-1', ipAddress: '127.0.0.1', userAgent: 'vitest' },
+    );
+
+    const updateArgument: unknown = assetUpdateMock.mock.calls[0]?.[0];
+    const historyArgument: unknown = historyCreateMock.mock.calls[0]?.[0];
+    const auditArgument: unknown = auditCreateMock.mock.calls[0]?.[0];
+    expect(updateArgument).toMatchObject({
+      where: { asset_id: 'asset-1', deleted_at: null, owner_user_id: previousOwnerId },
+      data: { owner_user_id: ownerUserId, updated_at: assignedAt },
+    });
+    expect(historyArgument).toMatchObject({
+      data: {
+        action,
+        before_data: { ownerUserId: previousOwnerId },
+        after_data: { ownerUserId, reason: 'Responsibility changed' },
+      },
+    });
+    expect(auditArgument).toMatchObject({
+      data: { action: `asset.${action}`, entity_id: 'asset-1' },
+    });
+  });
+});
+
 describe('assetManagementRepository.create', () => {
   beforeEach(() => {
     vi.clearAllMocks();

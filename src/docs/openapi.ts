@@ -209,6 +209,40 @@ export const openApiSpec = swaggerJsdoc({
             classifiedAt: { type: 'string', format: 'date-time' },
           },
         },
+        AssignAssetOwnerRequest: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['ownerUserId', 'reason'],
+          properties: {
+            ownerUserId: { type: 'string', format: 'uuid', nullable: true },
+            reason: { type: 'string', minLength: 1, maxLength: 1000 },
+          },
+        },
+        AssetOwnerAssignment: {
+          type: 'object',
+          required: ['assetId', 'previousOwner', 'owner', 'changed', 'assignedAt'],
+          properties: {
+            assetId: { type: 'string', format: 'uuid' },
+            previousOwner: {
+              type: 'object',
+              nullable: true,
+              properties: {
+                id: { type: 'string', format: 'uuid' },
+                fullName: { type: 'string' },
+              },
+            },
+            owner: {
+              type: 'object',
+              nullable: true,
+              properties: {
+                id: { type: 'string', format: 'uuid' },
+                fullName: { type: 'string' },
+              },
+            },
+            changed: { type: 'boolean' },
+            assignedAt: { type: 'string', format: 'date-time', nullable: true },
+          },
+        },
         LogSourceConfiguration: {
           type: 'object',
           additionalProperties: false,
@@ -717,6 +751,55 @@ export const openApiSpec = swaggerJsdoc({
             '403': { description: 'The assets.classify permission is required' },
             '404': { description: 'Asset was not found' },
             '422': { description: 'Invalid scores, reason, asset ID or disposed asset' },
+            '429': { description: 'Too many requests' },
+            '500': { description: 'Unexpected server error' },
+          },
+        },
+      },
+      '/assets/{assetId}/owner': {
+        put: {
+          tags: ['Assets'],
+          summary: 'Assign an asset owner',
+          description:
+            'Assigns, reassigns or unassigns an asset owner with a mandatory reason and atomic history/audit records. Requires the assets.assign-owner permission.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'assetId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/AssignAssetOwnerRequest' },
+              },
+            },
+          },
+          responses: {
+            '200': {
+              description: 'Owner assignment result',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    required: ['success', 'data'],
+                    properties: {
+                      success: { type: 'boolean', example: true },
+                      data: { $ref: '#/components/schemas/AssetOwnerAssignment' },
+                    },
+                  },
+                },
+              },
+            },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'The assets.assign-owner permission is required' },
+            '404': { description: 'Asset or owner was not found' },
+            '409': { description: 'Asset owner changed concurrently' },
+            '422': { description: 'Invalid input, inactive owner or disposed asset' },
             '429': { description: 'Too many requests' },
             '500': { description: 'Unexpected server error' },
           },
