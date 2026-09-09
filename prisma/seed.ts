@@ -16,6 +16,25 @@ async function main(): Promise<void> {
     update: {},
     create: { code: 'ADMIN', name: 'System Administrator', is_system: true },
   });
+  const securityOfficerRole = await prisma.roles.upsert({
+    where: { code: 'SECURITY_OFFICER' },
+    update: {},
+    create: { code: 'SECURITY_OFFICER', name: 'Security Officer', is_system: true },
+  });
+  const createPolicyPermission = await prisma.permissions.upsert({
+    where: { code: 'policies.create' },
+    update: {
+      module: 'policy-compliance',
+      action: 'create',
+      description: 'Create information security policy drafts',
+    },
+    create: {
+      code: 'policies.create',
+      module: 'policy-compliance',
+      action: 'create',
+      description: 'Create information security policy drafts',
+    },
+  });
   const assetReadPermission = await prisma.permissions.upsert({
     where: { code: 'assets.read' },
     update: {
@@ -199,6 +218,21 @@ async function main(): Promise<void> {
     update: {},
     create: { user_id: user.user_id, role_id: role.role_id },
   });
+  for (const policyAuthorRole of [role, securityOfficerRole]) {
+    await prisma.role_permissions.upsert({
+      where: {
+        role_id_permission_id: {
+          role_id: policyAuthorRole.role_id,
+          permission_id: createPolicyPermission.permission_id,
+        },
+      },
+      update: {},
+      create: {
+        role_id: policyAuthorRole.role_id,
+        permission_id: createPolicyPermission.permission_id,
+      },
+    });
+  }
   await prisma.role_permissions.upsert({
     where: {
       role_id_permission_id: {

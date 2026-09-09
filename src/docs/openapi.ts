@@ -209,6 +209,64 @@ export const openApiSpec = swaggerJsdoc({
             classifiedAt: { type: 'string', format: 'date-time' },
           },
         },
+        CreatePolicyDraftRequest: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['policyCode', 'title', 'content'],
+          properties: {
+            policyCode: {
+              type: 'string',
+              minLength: 2,
+              maxLength: 50,
+              pattern: '^[A-Za-z0-9][A-Za-z0-9._-]*$',
+              example: 'ISP-001',
+            },
+            title: {
+              type: 'string',
+              minLength: 3,
+              maxLength: 255,
+              example: 'Information Security Policy',
+            },
+            description: { type: 'string', maxLength: 2000 },
+            versionNumber: { type: 'string', minLength: 1, maxLength: 30, default: '1.0' },
+            content: { type: 'string', minLength: 1, maxLength: 500000 },
+          },
+        },
+        PolicyDraft: {
+          type: 'object',
+          required: [
+            'id',
+            'policyCode',
+            'title',
+            'description',
+            'ownerUserId',
+            'status',
+            'currentVersion',
+            'createdAt',
+            'updatedAt',
+          ],
+          properties: {
+            id: { type: 'string', format: 'uuid' },
+            policyCode: { type: 'string', example: 'ISP-001' },
+            title: { type: 'string', example: 'Information Security Policy' },
+            description: { type: 'string', nullable: true },
+            ownerUserId: { type: 'string', format: 'uuid', nullable: true },
+            status: { type: 'string', enum: ['draft'] },
+            currentVersion: {
+              type: 'object',
+              required: ['id', 'versionNumber', 'content', 'status', 'createdAt'],
+              properties: {
+                id: { type: 'string', format: 'uuid' },
+                versionNumber: { type: 'string', example: '1.0' },
+                content: { type: 'string' },
+                status: { type: 'string', enum: ['draft'] },
+                createdAt: { type: 'string', format: 'date-time' },
+              },
+            },
+            createdAt: { type: 'string', format: 'date-time' },
+            updatedAt: { type: 'string', format: 'date-time' },
+          },
+        },
         AssignAssetOwnerRequest: {
           type: 'object',
           additionalProperties: false,
@@ -802,6 +860,43 @@ export const openApiSpec = swaggerJsdoc({
             '422': { description: 'Invalid input, inactive owner or disposed asset' },
             '429': { description: 'Too many requests' },
             '500': { description: 'Unexpected server error' },
+          },
+        },
+      },
+      '/compliance/policies': {
+        post: {
+          tags: ['Policies'],
+          summary: 'Create an information security policy draft',
+          description: 'Requires the policies.create permission.',
+          security: [{ bearerAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/CreatePolicyDraftRequest' },
+              },
+            },
+          },
+          responses: {
+            '201': {
+              description: 'Policy draft created',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    required: ['success', 'data'],
+                    properties: {
+                      success: { type: 'boolean', example: true },
+                      data: { $ref: '#/components/schemas/PolicyDraft' },
+                    },
+                  },
+                },
+              },
+            },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'The policies.create permission is required' },
+            '409': { description: 'Policy code already exists' },
+            '422': { description: 'Request validation failed' },
           },
         },
       },
