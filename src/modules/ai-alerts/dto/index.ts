@@ -18,3 +18,5 @@ export {
   evaluateAlertReliabilityBodySchema,
 } from './alert-feedback.dto.js';
 export type { EvaluateAlertReliabilityBody } from './alert-feedback.dto.js';
+export { confirmAlertBodySchema } from './confirm-alert.dto.js';
+export type { ConfirmAlertBody } from './confirm-alert.dto.js';

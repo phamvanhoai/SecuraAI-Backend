@@ -11,6 +11,7 @@ import {
   alertIdParamsSchema,
   evaluateAlertReliabilityBodySchema,
 } from './dto/alert-feedback.dto.js';
+import { confirmAlertBodySchema } from './dto/confirm-alert.dto.js';
 
 const requestContext = (req: Request) => ({
   ipAddress: req.ip ?? null,
@@ -44,6 +45,19 @@ export const evaluateAlertReliability: RequestHandler = async (req, res) => {
   res.status(201).json({ success: true, data });
 };
 
+export const confirmAlertAsIncident: RequestHandler = async (req, res) => {
+  if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+  const { alertId } = alertIdParamsSchema.parse(req.params);
+  const body = confirmAlertBodySchema.parse(req.body);
+  const data = await aiAlertsService.confirmAlertAsIncident(
+    alertId,
+    body,
+    req.auth,
+    requestContext(req),
+  );
+  res.status(200).json({ success: true, data });
+};
+
 export const createModelConfiguration: RequestHandler = async (req, res) => {
   if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
   const body = createModelConfigurationBodySchema.parse(req.body);
@@ -68,4 +82,5 @@ export const aiAlertsController = {
   listAlerts,
   listModelConfigurations,
   evaluateAlertReliability,
+  confirmAlertAsIncident,
 } as const;
