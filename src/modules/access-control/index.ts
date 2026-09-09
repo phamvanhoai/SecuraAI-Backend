@@ -1,4 +1,4 @@
-import type { ModuleManifest } from '@/modules/module.types.js';
+import type { ModuleManifest } from '../module.types.js';
 import { accessControlRouter } from './access-control.routes.js';
 
 export const accessControlModule: ModuleManifest = {

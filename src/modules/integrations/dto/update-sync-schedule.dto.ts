@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { isValidCronExpression } from '@/common/utils/cron.js';
+import { isValidCronExpression } from '../../../common/utils/cron.js';
 
 export const updateSyncScheduleSchema = z
   .object({

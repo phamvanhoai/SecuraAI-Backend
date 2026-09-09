@@ -1,7 +1,7 @@
 import { describe, expect, it, vi, beforeEach } from 'vitest';
-import { integrationsService } from '@/modules/integrations/integrations.service.js';
-import { integrationsRepository } from '@/modules/integrations/integrations.repository.js';
-import * as ssrfValidator from '@/common/utils/ssrf-validator.js';
+import { integrationsService } from '../src/modules/integrations/integrations.service.js';
+import { integrationsRepository } from '../src/modules/integrations/integrations.repository.js';
+import * as ssrfValidator from '../src/common/utils/ssrf-validator.js';
 
 describe('Integrations Service (UC 13.1 - Connect SIEM/Firewall)', () => {
   beforeEach(() => {

@@ -4,7 +4,7 @@ import {
   queryIntegrationsSchema,
   testConnectionSchema,
   updateIntegrationSchema,
-} from '@/modules/integrations/dto/index.js';
+} from '../src/modules/integrations/dto/index.js';
 
 describe('Integrations DTO Validation', () => {
   describe('createIntegrationSchema', () => {

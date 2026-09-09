@@ -1,9 +1,9 @@
 import argon2 from 'argon2';
 import type { Request } from 'express';
-import { prisma } from '@/database/prisma.js';
-import { env } from '@/config/env.js';
-import { AppError } from '@/common/errors/app-error.js';
-import { createRefreshToken, hashToken, signAccessToken } from '@/common/utils/tokens.js';
+import { prisma } from '../../database/prisma.js';
+import { env } from '../../config/env.js';
+import { AppError } from '../../common/errors/app-error.js';
+import { createRefreshToken, hashToken, signAccessToken } from '../../common/utils/tokens.js';
 import type { LoginInput } from './auth.schema.js';
 
 const authUserInclude = {

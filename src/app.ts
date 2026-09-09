@@ -6,12 +6,12 @@ import rateLimit from 'express-rate-limit';
 import helmet from 'helmet';
 import hpp from 'hpp';
 import pinoHttp from 'pino-http';
-import swaggerUi from 'swagger-ui-express';
-import { env } from '@/config/env.js';
-import { logger } from '@/config/logger.js';
-import { errorHandler, notFoundHandler } from '@/common/middleware/error-handler.js';
-import { openApiSpec } from '@/docs/openapi.js';
-import { apiRouter } from '@/routes/index.js';
+import { env } from './config/env.js';
+import { logger } from './config/logger.js';
+import { errorHandler, notFoundHandler } from './common/middleware/error-handler.js';
+import { openApiSpec } from './docs/openapi.js';
+import { swaggerUiAssets, swaggerUiHtml } from './docs/swagger-ui.js';
+import { apiRouter } from './routes/index.js';
 
 export const createApp = () => {
   const app = express();
@@ -31,11 +31,24 @@ export const createApp = () => {
   app.use(hpp());
   app.use(compression());
   if (env.SWAGGER_ENABLED) {
+    app.get('/swagger-ui/swagger-ui.css', (_req, res) =>
+      res.type('text/css').send(swaggerUiAssets.stylesheet),
+    );
+    app.get('/swagger-ui/swagger-ui-bundle.js', (_req, res) =>
+      res.type('application/javascript').send(swaggerUiAssets.bundle),
+    );
+    app.get('/swagger-ui/swagger-ui-standalone-preset.js', (_req, res) =>
+      res.type('application/javascript').send(swaggerUiAssets.standalonePreset),
+    );
     app.get('/docs/openapi.json', (_req, res) => res.json(openApiSpec));
-    app.use('/docs', swaggerUi.serve, swaggerUi.setup(openApiSpec, { explorer: true }));
+    app.get(['/docs', '/docs/'], (_req, res) => res.type('html').send(swaggerUiHtml));
   }
   app.use(env.API_PREFIX, apiRouter);
   app.use(notFoundHandler);
   app.use(errorHandler);
   return app;
 };
+
+const app = createApp();
+
+export default app;

@@ -1,9 +1,9 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { integrationsRepository } from '@/modules/integrations/integrations.repository.js';
-import { prisma } from '@/database/prisma.js';
-import { AppError } from '@/common/errors/app-error.js';
+import { integrationsRepository } from '../src/modules/integrations/integrations.repository.js';
+import { prisma } from '../src/database/prisma.js';
+import { AppError } from '../src/common/errors/app-error.js';
 
-vi.mock('@/database/prisma.js', () => ({
+vi.mock('../src/database/prisma.js', () => ({
   prisma: {
     $transaction: vi.fn(),
     $queryRaw: vi.fn(),

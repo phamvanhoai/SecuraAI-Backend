@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
-import { buildWhereClause, integrationsRepository } from '@/modules/integrations/integrations.repository.js';
-import { prisma } from '@/database/prisma.js';
+import { buildWhereClause, integrationsRepository } from '../src/modules/integrations/integrations.repository.js';
+import { prisma } from '../src/database/prisma.js';
 
 describe('Integrations Repository', () => {
   it('calls prisma.integrations.create with explicit select fields', async () => {

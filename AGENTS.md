@@ -98,7 +98,7 @@ The domain folders already contain empty layer scaffolds so team members can sta
 - Do not use `any`, `@ts-ignore`, non-null assertions, or unsafe casts to silence errors.
 - Prefer `unknown` at untrusted boundaries and narrow it safely.
 - Use `import type` for type-only imports.
-- Use the `@/` path alias for imports across directories and `.js` extensions in source imports because output uses NodeNext modules.
+- Use relative imports with `.js` extensions so the same source works with NodeNext locally and in Vercel Functions.
 - Prefer small named functions and explicit return types on exported functions.
 - Use existing naming: kebab-case directories, dot-suffixed files, camelCase values, PascalCase types/classes.
 - Do not expose Prisma model types directly as public API contracts when a response DTO is appropriate.
@@ -204,6 +204,9 @@ If a database-dependent test is intentionally not run, state that clearly in the
 
 - Use `develop` only as the integration base. Do not implement features directly on `develop` or `main`.
 - Create or switch to a dedicated branch for each feature/fix before editing code, using names such as `feature/risk-assessment`, `feature/incident-reporting`, or `fix/login-validation`.
+- Create a separate feature branch for each assigned use case. Do not reuse one feature branch for multiple completed use cases, even when those use cases belong to the same module.
+- After a feature branch is merged, create the next feature branch from the latest `origin/develop`. Do not branch from an older feature branch or continue new use-case work on a branch that has already been merged.
+- Name use-case branches after the specific behavior, for example `feature/configure-log-source`, `feature/configure-anomaly-rules`, or `feature/view-real-time-ai-alerts`.
 - Never commit automatically. Commit only when the user explicitly requests a commit in the current conversation.
 - Never push automatically. Push only when the user explicitly requests a push and names or clearly confirms the target branch.
 - A request to implement, fix, verify, or finish code does not implicitly authorize committing or pushing it.

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { encryptSecret, decryptSecret } from '@/common/utils/encryption.js';
+import { encryptSecret, decryptSecret } from '../src/common/utils/encryption.js';
 
 describe('Encryption Utility', () => {
   it('encrypts and decrypts secrets using AES-256-GCM', () => {

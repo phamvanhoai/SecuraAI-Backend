@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   isValidCronExpression,
   getNextCronRunDate,
-} from '@/common/utils/cron.js';
+} from '../src/common/utils/cron.js';
 
 describe('Cron Utility (UTC)', () => {
   it('validates and parses standard 5-field cron expressions', () => {

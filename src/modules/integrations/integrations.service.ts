@@ -1,7 +1,7 @@
-import { AppError } from '@/common/errors/app-error.js';
-import { executeSafeHttpRequest, validateExternalUrl } from '@/common/utils/ssrf-validator.js';
-import { getNextCronRunDate } from '@/common/utils/cron.js';
-import { decryptSecret } from '@/common/utils/encryption.js';
+import { AppError } from '../../common/errors/app-error.js';
+import { executeSafeHttpRequest, validateExternalUrl } from '../../common/utils/ssrf-validator.js';
+import { getNextCronRunDate } from '../../common/utils/cron.js';
+import { decryptSecret } from '../../common/utils/encryption.js';
 import { integrationsRepository } from './integrations.repository.js';
 import {
   toIntegrationResponseDto,

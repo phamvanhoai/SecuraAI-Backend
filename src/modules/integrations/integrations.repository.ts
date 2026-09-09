@@ -1,6 +1,6 @@
 import { Prisma } from '@prisma/client';
-import { prisma } from '@/database/prisma.js';
-import { AppError } from '@/common/errors/app-error.js';
+import { prisma } from '../../database/prisma.js';
+import { AppError } from '../../common/errors/app-error.js';
 
 const integrationSelect = {
   integration_id: true,

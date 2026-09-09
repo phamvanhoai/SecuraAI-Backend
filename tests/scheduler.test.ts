@@ -4,10 +4,10 @@ import {
   stopScheduler,
   getSchedulerStatus,
   runSchedulerTick,
-} from '@/modules/integrations/scheduler.js';
-import { integrationsService } from '@/modules/integrations/integrations.service.js';
+} from '../src/modules/integrations/scheduler.js';
+import { integrationsService } from '../src/modules/integrations/integrations.service.js';
 
-vi.mock('@/modules/integrations/integrations.service.js', () => ({
+vi.mock('../src/modules/integrations/integrations.service.js', () => ({
   integrationsService: {
     processDueSyncSchedules: vi.fn(),
   },

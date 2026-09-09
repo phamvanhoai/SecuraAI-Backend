@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import { env } from '@/config/env.js';
+import { env } from '../../config/env.js';
 
 const ALGORITHM = 'aes-256-gcm';
 const IV_LENGTH = 12;
@@ -30,9 +30,10 @@ export function decryptSecret(ciphertext: string): string {
     return ciphertext;
   }
 
-  const ivHex = parts[0]!;
-  const authTagHex = parts[1]!;
-  const encryptedHex = parts[2]!;
+  const [ivHex, authTagHex, encryptedHex] = parts;
+  if (ivHex === undefined || authTagHex === undefined || encryptedHex === undefined) {
+    return ciphertext;
+  }
 
   try {
     const iv = Buffer.from(ivHex, 'hex');

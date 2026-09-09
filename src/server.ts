@@ -1,14 +1,16 @@
 import { createServer } from 'node:http';
-import { createApp } from '@/app.js';
-import { env } from '@/config/env.js';
-import { logger } from '@/config/logger.js';
-import { prisma } from '@/database/prisma.js';
+import { createApp } from './app.js';
+import { env } from './config/env.js';
+import { logger } from './config/logger.js';
+import { prisma } from './database/prisma.js';
+import { startScheduler, stopScheduler } from './modules/integrations/scheduler.js';
 
 const server = createServer(createApp());
 
 const startServer = async (): Promise<void> => {
   try {
     await prisma.$connect();
+    startScheduler();
     logger.info({ database: 'postgresql' }, 'Database connection established');
 
     server.listen(env.PORT, () =>
@@ -32,6 +34,7 @@ const startServer = async (): Promise<void> => {
 
 const shutdown = (signal: string): void => {
   logger.info({ signal }, 'Graceful shutdown started');
+  stopScheduler();
   server.close(async (error) => {
     await prisma.$disconnect();
     if (error) { logger.error({ err: error }, 'HTTP server shutdown failed'); process.exit(1); }

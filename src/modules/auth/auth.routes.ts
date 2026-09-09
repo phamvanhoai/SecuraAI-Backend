@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
-import { asyncHandler } from '@/common/utils/async-handler.js';
-import { validate } from '@/common/middleware/validate.js';
+import { asyncHandler } from '../../common/utils/async-handler.js';
+import { validate } from '../../common/middleware/validate.js';
 import { loginSchema, refreshSchema } from './auth.schema.js';
 import * as controller from './auth.controller.js';
 

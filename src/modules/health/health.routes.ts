@@ -1,6 +1,6 @@
 import { Router } from 'express';
-import { prisma } from '@/database/prisma.js';
-import { asyncHandler } from '@/common/utils/async-handler.js';
+import { prisma } from '../../database/prisma.js';
+import { asyncHandler } from '../../common/utils/async-handler.js';
 
 export const healthRouter = Router();
 healthRouter.get('/live', (_req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }));

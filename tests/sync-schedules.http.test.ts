@@ -1,10 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import { describe, expect, it, vi, beforeEach } from 'vitest';
 import request from 'supertest';
-import { createApp } from '@/app.js';
-import { signAccessToken } from '@/common/utils/tokens.js';
-import { integrationsRepository } from '@/modules/integrations/integrations.repository.js';
-import * as ssrfValidator from '@/common/utils/ssrf-validator.js';
+import { createApp } from '../src/app.js';
+import { signAccessToken } from '../src/common/utils/tokens.js';
+import { integrationsRepository } from '../src/modules/integrations/integrations.repository.js';
+import * as ssrfValidator from '../src/common/utils/ssrf-validator.js';
 
 describe('Sync Schedules & Execution HTTP API (UC 13.2)', () => {
   const app = createApp();

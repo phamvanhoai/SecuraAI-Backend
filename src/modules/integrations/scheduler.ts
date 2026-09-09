@@ -1,4 +1,4 @@
-import { logger } from '@/config/logger.js';
+import { logger } from '../../config/logger.js';
 import { integrationsService } from './integrations.service.js';
 
 let schedulerTimer: NodeJS.Timeout | null = null;

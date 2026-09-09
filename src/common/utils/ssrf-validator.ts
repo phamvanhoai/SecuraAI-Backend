@@ -3,7 +3,7 @@ import type { LookupAddress, LookupOptions } from 'node:dns';
 import net from 'node:net';
 import http from 'node:http';
 import https from 'node:https';
-import { AppError } from '@/common/errors/app-error.js';
+import { AppError } from '../errors/app-error.js';
 
 /**
  * Checks whether an IPv4 or IPv6 address belongs to a private, loopback, link-local,

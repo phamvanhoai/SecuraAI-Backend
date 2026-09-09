@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { integrationsService } from '@/modules/integrations/integrations.service.js';
-import { integrationsRepository } from '@/modules/integrations/integrations.repository.js';
-import * as ssrfValidator from '@/common/utils/ssrf-validator.js';
-import { AppError } from '@/common/errors/app-error.js';
+import { integrationsService } from '../src/modules/integrations/integrations.service.js';
+import { integrationsRepository } from '../src/modules/integrations/integrations.repository.js';
+import * as ssrfValidator from '../src/common/utils/ssrf-validator.js';
+import { AppError } from '../src/common/errors/app-error.js';
 
-vi.mock('@/modules/integrations/integrations.repository.js', () => ({
+vi.mock('../src/modules/integrations/integrations.repository.js', () => ({
   integrationsRepository: {
     create: vi.fn(),
     findById: vi.fn(),
@@ -29,7 +29,7 @@ vi.mock('@/modules/integrations/integrations.repository.js', () => ({
   },
 }));
 
-vi.mock('@/common/utils/ssrf-validator.js', () => ({
+vi.mock('../src/common/utils/ssrf-validator.js', () => ({
   validateExternalUrl: vi.fn().mockResolvedValue(true),
   executeSafeHttpRequest: vi.fn(),
 }));
