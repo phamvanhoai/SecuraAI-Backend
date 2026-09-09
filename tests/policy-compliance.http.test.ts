@@ -55,7 +55,7 @@ describe('POST /api/v1/compliance/policies', () => {
 
     const response = await request(createApp())
       .post('/api/v1/compliance/policies')
-      .set('authorization', `Bearer ${createAccessToken(['policies:create'])}`)
+      .set('authorization', `Bearer ${createAccessToken(['policies.create'])}`)
       .send({
         policyCode: 'isp-001',
         title: 'Information Security Policy',
@@ -103,7 +103,7 @@ describe('POST /api/v1/compliance/policies', () => {
     const { createApp } = await import('../src/app.js');
     const response = await request(createApp())
       .post('/api/v1/compliance/policies')
-      .set('authorization', `Bearer ${createAccessToken(['policies:create'])}`)
+      .set('authorization', `Bearer ${createAccessToken(['policies.create'])}`)
       .send({ policyCode: 'invalid code', title: 'x', content: '' });
 
     expect(response.status).toBe(422);

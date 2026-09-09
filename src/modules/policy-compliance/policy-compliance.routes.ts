@@ -10,7 +10,7 @@ export const policyComplianceRouter = Router();
 policyComplianceRouter.post(
   '/policies',
   authenticate,
-  authorize('policies:create'),
+  authorize('policies.create'),
   validate({ body: createPolicyDraftSchema }),
   asyncHandler(createPolicyDraft),
 );

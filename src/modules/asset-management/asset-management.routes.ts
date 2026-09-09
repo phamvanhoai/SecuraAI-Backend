@@ -1,5 +1,67 @@
 import { Router } from 'express';
+import { authenticate, authorize } from '../../common/middleware/authenticate.js';
+import { validate } from '../../common/middleware/validate.js';
+import { asyncHandler } from '../../common/utils/async-handler.js';
+import {
+  assignAssetOwner,
+  classifyAssetCriticality,
+  createAsset,
+  deleteAsset,
+  listAssets,
+  updateAsset,
+} from './asset-management.controller.js';
+import { assignAssetOwnerBodySchema } from './dto/assign-asset-owner.dto.js';
+import { classifyAssetCriticalityBodySchema } from './dto/classify-asset-criticality.dto.js';
+import { createAssetBodySchema } from './dto/create-asset.dto.js';
+import { listAssetsQuerySchema } from './dto/list-assets-query.dto.js';
+import { updateAssetBodySchema, updateAssetParamsSchema } from './dto/update-asset.dto.js';
 
 export const assetManagementRouter = Router();
 
-// Register asset-management endpoints here. Apply authentication, authorization and DTO validation per route.
+assetManagementRouter.post(
+  '/',
+  authenticate,
+  authorize('assets.create'),
+  validate({ body: createAssetBodySchema }),
+  asyncHandler(createAsset),
+);
+
+assetManagementRouter.get(
+  '/',
+  authenticate,
+  authorize('assets.read'),
+  validate({ query: listAssetsQuerySchema }),
+  asyncHandler(listAssets),
+);
+
+assetManagementRouter.patch(
+  '/:assetId',
+  authenticate,
+  authorize('assets.update'),
+  validate({ params: updateAssetParamsSchema, body: updateAssetBodySchema }),
+  asyncHandler(updateAsset),
+);
+
+assetManagementRouter.delete(
+  '/:assetId',
+  authenticate,
+  authorize('assets.delete'),
+  validate({ params: updateAssetParamsSchema }),
+  asyncHandler(deleteAsset),
+);
+
+assetManagementRouter.post(
+  '/:assetId/classify-criticality',
+  authenticate,
+  authorize('assets.classify'),
+  validate({ params: updateAssetParamsSchema, body: classifyAssetCriticalityBodySchema }),
+  asyncHandler(classifyAssetCriticality),
+);
+
+assetManagementRouter.put(
+  '/:assetId/owner',
+  authenticate,
+  authorize('assets.assign-owner'),
+  validate({ params: updateAssetParamsSchema, body: assignAssetOwnerBodySchema }),
+  asyncHandler(assignAssetOwner),
+);
