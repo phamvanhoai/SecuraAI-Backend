@@ -2,6 +2,7 @@ import type { RequestHandler } from 'express';
 import { AppError } from '../../common/errors/app-error.js';
 import { assetManagementService } from './asset-management.service.js';
 import { classifyAssetCriticalityBodySchema } from './dto/classify-asset-criticality.dto.js';
+import { assignAssetOwnerBodySchema } from './dto/assign-asset-owner.dto.js';
 import { createAssetBodySchema } from './dto/create-asset.dto.js';
 import { listAssetsQuerySchema } from './dto/list-assets-query.dto.js';
 import { updateAssetBodySchema, updateAssetParamsSchema } from './dto/update-asset.dto.js';
@@ -60,7 +61,20 @@ export const classifyAssetCriticality: RequestHandler = async (req, res) => {
   res.status(200).json({ success: true, data });
 };
 
+export const assignAssetOwner: RequestHandler = async (req, res) => {
+  if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+
+  const { assetId } = updateAssetParamsSchema.parse(req.params);
+  const body = assignAssetOwnerBodySchema.parse(req.body);
+  const data = await assetManagementService.assignOwner(assetId, body, req.auth, {
+    ipAddress: req.ip ?? null,
+    userAgent: req.get('user-agent')?.slice(0, 1000) ?? null,
+  });
+  res.status(200).json({ success: true, data });
+};
+
 export const assetManagementController = {
+  assignAssetOwner,
   classifyAssetCriticality,
   createAsset,
   deleteAsset,

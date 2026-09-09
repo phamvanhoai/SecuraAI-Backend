@@ -10,6 +10,7 @@ const {
   listAssetsMock,
   softDeleteMock,
   updateAssetMock,
+  assignOwnerMock,
 } = vi.hoisted(() => ({
   createAssetMock: vi.fn(),
   classifyCriticalityMock: vi.fn(),
@@ -20,10 +21,12 @@ const {
   listAssetsMock: vi.fn(),
   softDeleteMock: vi.fn(),
   updateAssetMock: vi.fn(),
+  assignOwnerMock: vi.fn(),
 }));
 
 vi.mock('../src/modules/asset-management/asset-management.repository.js', () => ({
   assetManagementRepository: {
+    assignOwner: assignOwnerMock,
     classifyCriticality: classifyCriticalityMock,
     create: createAssetMock,
     findByCode: findByCodeMock,
@@ -96,6 +99,146 @@ describe('assetManagementService.list', () => {
       ],
       pagination: { page: 1, limit: 20, total: 21, totalPages: 2 },
     });
+  });
+});
+
+describe('assetManagementService.assignOwner', () => {
+  const assetId = '00000000-0000-4000-8000-000000000010';
+  const ownerId = '00000000-0000-4000-8000-000000000020';
+  const actor = { userId: 'user-1', permissions: ['assets.assign-owner'] };
+  const context = { ipAddress: '127.0.0.1', userAgent: 'vitest' };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    findByIdMock.mockResolvedValue(existingAsset);
+    findOwnerByIdMock.mockResolvedValue({
+      user_id: ownerId,
+      full_name: 'Asset Owner',
+      status: 'active',
+    });
+    assignOwnerMock.mockResolvedValue({
+      ...existingAsset,
+      owner_user_id: ownerId,
+      users_assets_owner_user_idTousers: { user_id: ownerId, full_name: 'Asset Owner' },
+    });
+  });
+
+  it('requires assets.assign-owner and an existing usable asset', async () => {
+    await expect(
+      assetManagementService.assignOwner(
+        assetId,
+        { ownerUserId: ownerId, reason: 'Assign' },
+        { userId: 'user-1', permissions: [] },
+        context,
+      ),
+    ).rejects.toMatchObject({ statusCode: 403, code: 'FORBIDDEN' });
+
+    findByIdMock.mockResolvedValueOnce(null);
+    await expect(
+      assetManagementService.assignOwner(
+        assetId,
+        { ownerUserId: ownerId, reason: 'Assign' },
+        actor,
+        context,
+      ),
+    ).rejects.toMatchObject({ statusCode: 404, code: 'ASSET_NOT_FOUND' });
+
+    findByIdMock.mockResolvedValueOnce({ ...existingAsset, status: 'disposed' });
+    await expect(
+      assetManagementService.assignOwner(
+        assetId,
+        { ownerUserId: ownerId, reason: 'Assign' },
+        actor,
+        context,
+      ),
+    ).rejects.toMatchObject({ statusCode: 422, code: 'ASSET_DISPOSED' });
+  });
+
+  it('rejects a missing or inactive owner', async () => {
+    findOwnerByIdMock.mockResolvedValueOnce(null);
+    await expect(
+      assetManagementService.assignOwner(
+        assetId,
+        { ownerUserId: ownerId, reason: 'Assign' },
+        actor,
+        context,
+      ),
+    ).rejects.toMatchObject({ statusCode: 404, code: 'ASSET_OWNER_NOT_FOUND' });
+
+    findOwnerByIdMock.mockResolvedValueOnce({
+      user_id: ownerId,
+      full_name: 'Inactive Owner',
+      status: 'inactive',
+    });
+    await expect(
+      assetManagementService.assignOwner(
+        assetId,
+        { ownerUserId: ownerId, reason: 'Assign' },
+        actor,
+        context,
+      ),
+    ).rejects.toMatchObject({ statusCode: 422, code: 'ASSET_OWNER_INACTIVE' });
+  });
+
+  it('returns changed=false without writing when the owner is unchanged', async () => {
+    const result = await assetManagementService.assignOwner(
+      assetId,
+      { ownerUserId: null, reason: 'No owner required' },
+      actor,
+      context,
+    );
+
+    expect(result).toEqual({
+      assetId,
+      previousOwner: null,
+      owner: null,
+      changed: false,
+      assignedAt: null,
+    });
+    expect(assignOwnerMock).not.toHaveBeenCalled();
+  });
+
+  it('assigns, reassigns and unassigns with the correct business action', async () => {
+    await assetManagementService.assignOwner(
+      assetId,
+      { ownerUserId: ownerId, reason: 'Initial assignment' },
+      actor,
+      context,
+    );
+    let assignment: unknown = assignOwnerMock.mock.calls[0]?.[1];
+    expect(assignment).toMatchObject({ action: 'owner_assigned', previousOwnerId: null });
+
+    const ownedAsset = {
+      ...existingAsset,
+      owner_user_id: '00000000-0000-4000-8000-000000000019',
+      users_assets_owner_user_idTousers: {
+        user_id: '00000000-0000-4000-8000-000000000019',
+        full_name: 'Previous Owner',
+      },
+    };
+    findByIdMock.mockResolvedValue(ownedAsset);
+    await assetManagementService.assignOwner(
+      assetId,
+      { ownerUserId: ownerId, reason: 'Responsibility changed' },
+      actor,
+      context,
+    );
+    assignment = assignOwnerMock.mock.calls[1]?.[1];
+    expect(assignment).toMatchObject({ action: 'owner_reassigned' });
+
+    assignOwnerMock.mockResolvedValue({
+      ...ownedAsset,
+      owner_user_id: null,
+      users_assets_owner_user_idTousers: null,
+    });
+    await assetManagementService.assignOwner(
+      assetId,
+      { ownerUserId: null, reason: 'Unassign responsibility' },
+      actor,
+      context,
+    );
+    assignment = assignOwnerMock.mock.calls[2]?.[1];
+    expect(assignment).toMatchObject({ action: 'owner_unassigned' });
   });
 });
 

@@ -1,4 +1,4 @@
-/** Export Zod schemas and inferred DTO types for PolicyCompliance use cases from this file. */
+export { createPolicyDraftSchema, type CreatePolicyDraftInput } from './create-policy-draft.dto.js';
 export {
   publishPolicyVersionBodySchema,
   publishPolicyVersionParamsSchema,
