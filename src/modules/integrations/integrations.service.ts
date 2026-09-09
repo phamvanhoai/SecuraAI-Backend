@@ -1,5 +1,5 @@
-import { AppError } from '@/common/errors/app-error.js';
-import { executeSafeHttpRequest, validateExternalUrl } from '@/common/utils/ssrf-validator.js';
+import { AppError } from '../../common/errors/app-error.js';
+import { executeSafeHttpRequest, validateExternalUrl } from '../../common/utils/ssrf-validator.js';
 import { integrationsRepository } from './integrations.repository.js';
 import { toIntegrationResponseDto, type IntegrationResponseDto } from './integrations.mapper.js';
 import type {

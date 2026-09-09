@@ -16,13 +16,13 @@ import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import request from 'supertest';
 import type { Express } from 'express';
-import type * as SsrfValidator from '@/common/utils/ssrf-validator.js';
-import { createApp } from '@/app.js';
-import { signAccessToken } from '@/common/utils/tokens.js';
-import { AppError } from '@/common/errors/app-error.js';
-import { prisma } from '@/database/prisma.js';
+import type * as SsrfValidator from '../src/common/utils/ssrf-validator.js';
+import { createApp } from '../src/app.js';
+import { signAccessToken } from '../src/common/utils/tokens.js';
+import { AppError } from '../src/common/errors/app-error.js';
+import { prisma } from '../src/database/prisma.js';
 
-vi.mock('@/common/utils/ssrf-validator.js', async (importOriginal) => {
+vi.mock('../src/common/utils/ssrf-validator.js', async (importOriginal) => {
   const original = await importOriginal<typeof SsrfValidator>();
   return {
     ...original,
@@ -387,7 +387,7 @@ describe('UC 13.1 – System Test: Connect Third-Party SIEM and Firewall API (E2
       // Mock the SSRF validator to allow the test URL through,
       // since the e2e test environment cannot actually reach external endpoints.
       // The full SSRF logic is tested separately in service unit tests.
-      const ssrfModule = await import('@/common/utils/ssrf-validator.js');
+      const ssrfModule = await import('../src/common/utils/ssrf-validator.js');
       vi.spyOn(ssrfModule, 'validateExternalUrl').mockResolvedValue(
         new URL('https://wazuh.example.com:55000'),
       );
@@ -430,7 +430,7 @@ describe('UC 13.1 – System Test: Connect Third-Party SIEM and Firewall API (E2
     it('marks integration as error when external endpoint fails', async () => {
       const id = createdIntegrationIds[0]!;
 
-      const ssrfModule = await import('@/common/utils/ssrf-validator.js');
+      const ssrfModule = await import('../src/common/utils/ssrf-validator.js');
       vi.spyOn(ssrfModule, 'validateExternalUrl').mockResolvedValue(
         new URL('https://wazuh.example.com:55000'),
       );

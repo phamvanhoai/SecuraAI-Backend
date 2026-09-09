@@ -1,9 +1,9 @@
 import { Router } from 'express';
 import rateLimit from 'express-rate-limit';
 import { z } from 'zod';
-import { authenticate, authorize } from '@/common/middleware/authenticate.js';
-import { validate } from '@/common/middleware/validate.js';
-import { asyncHandler } from '@/common/utils/async-handler.js';
+import { authenticate, authorize } from '../../common/middleware/authenticate.js';
+import { validate } from '../../common/middleware/validate.js';
+import { asyncHandler } from '../../common/utils/async-handler.js';
 import * as controller from './integrations.controller.js';
 import {
   createIntegrationSchema,
