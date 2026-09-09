@@ -217,6 +217,20 @@ async function main(): Promise<void> {
       description: 'Evaluate the reliability of generated AI alerts',
     },
   });
+  const aiAlertConfirmPermission = await prisma.permissions.upsert({
+    where: { code: 'ai-alerts.confirm' },
+    update: {
+      module: 'ai-alerts',
+      action: 'confirm-incident',
+      description: 'Confirm that an AI alert represents a real security incident',
+    },
+    create: {
+      code: 'ai-alerts.confirm',
+      module: 'ai-alerts',
+      action: 'confirm-incident',
+      description: 'Confirm that an AI alert represents a real security incident',
+    },
+  });
   const policyPublishPermission = await prisma.permissions.upsert({
     where: { code: 'policies.publish' },
     update: {
@@ -371,6 +385,7 @@ async function main(): Promise<void> {
     aiModelManagePermission,
     aiAlertReadPermission,
     aiAlertFeedbackPermission,
+    aiAlertConfirmPermission,
     policyPublishPermission,
   ]) {
     await prisma.role_permissions.upsert({

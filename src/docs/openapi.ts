@@ -409,6 +409,11 @@ export const openApiSpec = swaggerJsdoc({
             comment: { type: 'string', minLength: 1, maxLength: 2000 },
           },
         },
+        ConfirmAlertIncidentRequest: {
+          type: 'object',
+          additionalProperties: false,
+          properties: { comment: { type: 'string', minLength: 1, maxLength: 2000 } },
+        },
         CreateLogSourceRequest: {
           type: 'object',
           additionalProperties: false,
@@ -1225,6 +1230,30 @@ CreateSyncScheduleRequest: {
             '403': { description: 'The ai-alerts.feedback permission is required' },
             '404': { description: 'AI alert was not found' },
             '422': { description: 'Invalid alert ID or feedback' },
+          },
+        },
+      },
+      '/ai-alerts/{alertId}/confirm-incident': {
+        post: {
+          tags: ['AI Alerts'],
+          summary: 'Confirm an AI alert as a real incident',
+          description:
+            'Moves a new or reviewing alert to confirmed and records analyst feedback atomically. This does not create an incident draft. Requires ai-alerts.confirm.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'alertId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+          ],
+          requestBody: {
+            required: false,
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/ConfirmAlertIncidentRequest' } } },
+          },
+          responses: {
+            '200': { description: 'Alert confirmed or already confirmed' },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'The ai-alerts.confirm permission is required' },
+            '404': { description: 'AI alert was not found' },
+            '409': { description: 'Current alert status cannot transition to confirmed' },
+            '422': { description: 'Invalid alert ID or request body' },
           },
         },
       },

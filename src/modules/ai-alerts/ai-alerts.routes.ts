@@ -6,6 +6,7 @@ import {
   activateModelConfiguration,
   createModelConfiguration,
   evaluateAlertReliability,
+  confirmAlertAsIncident,
   listAlerts,
   listModelConfigurations,
 } from './ai-alerts.controller.js';
@@ -19,6 +20,7 @@ import {
   alertIdParamsSchema,
   evaluateAlertReliabilityBodySchema,
 } from './dto/alert-feedback.dto.js';
+import { confirmAlertBodySchema } from './dto/confirm-alert.dto.js';
 
 export const aiAlertsRouter = Router();
 
@@ -36,6 +38,14 @@ aiAlertsRouter.post(
   authorize('ai-alerts.feedback'),
   validate({ params: alertIdParamsSchema, body: evaluateAlertReliabilityBodySchema }),
   asyncHandler(evaluateAlertReliability),
+);
+
+aiAlertsRouter.post(
+  '/:alertId/confirm-incident',
+  authenticate,
+  authorize('ai-alerts.confirm'),
+  validate({ params: alertIdParamsSchema, body: confirmAlertBodySchema }),
+  asyncHandler(confirmAlertAsIncident),
 );
 
 aiAlertsRouter.get(
