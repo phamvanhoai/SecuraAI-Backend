@@ -98,6 +98,7 @@ describe('Integrations Service (UC 13.1 - Connect SIEM/Firewall)', () => {
         statusText: 'OK',
         latencyMs: 150,
         ok: true,
+        body: null,
       });
 
       const updateSpy = vi.spyOn(integrationsRepository, 'update').mockResolvedValue({
@@ -148,6 +149,7 @@ describe('Integrations Service (UC 13.1 - Connect SIEM/Firewall)', () => {
         statusText: 'Internal Server Error',
         latencyMs: 320,
         ok: false,
+        body: null,
       });
 
       const updateSpy = vi.spyOn(integrationsRepository, 'update').mockResolvedValue({

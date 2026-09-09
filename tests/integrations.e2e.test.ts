@@ -47,16 +47,18 @@ vi.mock('../src/common/utils/ssrf-validator.js', async (importOriginal) => {
       if (url.includes('fail') || url.includes('nonexistent')) {
         return Promise.resolve({
           statusCode: 503,
-          headers: {},
-          body: 'Service Unavailable',
+          statusText: 'Service Unavailable',
           latencyMs: 50,
+          ok: false,
+          body: null,
         });
       }
       return Promise.resolve({
         statusCode: 200,
-        headers: { 'content-type': 'application/json' },
-        body: '{"status":"ok"}',
+        statusText: 'OK',
         latencyMs: 42,
+        ok: true,
+        body: { status: 'ok' },
       });
     }),
   };
@@ -396,6 +398,7 @@ describe('UC 13.1 – System Test: Connect Third-Party SIEM and Firewall API (E2
         statusText: 'OK',
         latencyMs: 120,
         ok: true,
+        body: null,
       });
 
       const res = await request(app)
@@ -439,6 +442,7 @@ describe('UC 13.1 – System Test: Connect Third-Party SIEM and Firewall API (E2
         statusText: 'Service Unavailable',
         latencyMs: 2500,
         ok: false,
+        body: null,
       });
 
       const res = await request(app)
