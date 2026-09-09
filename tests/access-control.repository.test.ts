@@ -16,10 +16,10 @@ describe('accessControlRepository', () => {
       Promise.all(operations),
     );
   });
-  it('always limits role listings to custom roles', async () => {
+  it('lists both system and custom roles with pagination and search', async () => {
     mocks.findMany.mockResolvedValue([]);
     mocks.count.mockResolvedValue(0);
-    await accessControlRepository.listCustomRoles({
+    await accessControlRepository.listRoles({
       page: 2,
       limit: 10,
       search: 'risk',
@@ -28,13 +28,13 @@ describe('accessControlRepository', () => {
     });
     expect(mocks.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: expect.objectContaining({ is_system: false }),
+        where: expect.objectContaining({ OR: expect.any(Array) }),
         skip: 10,
         take: 10,
       }),
     );
     expect(mocks.count).toHaveBeenCalledWith({
-      where: expect.objectContaining({ is_system: false }),
+      where: expect.not.objectContaining({ is_system: false }),
     });
   });
 });
