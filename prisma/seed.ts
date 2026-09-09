@@ -287,6 +287,22 @@ async function main(): Promise<void> {
       description: 'Publish official information security policy versions',
     },
   });
+  const roleManagementPermissions = await Promise.all(
+    (
+      [
+        ['roles.create', 'create', 'Create custom roles'],
+        ['roles.read', 'read', 'View custom roles'],
+        ['roles.update', 'update', 'Update custom roles'],
+        ['roles.delete', 'delete', 'Delete custom roles'],
+      ] as const
+    ).map(([code, action, description]) =>
+      prisma.permissions.upsert({
+        where: { code },
+        update: { module: 'access-control', action, description },
+        create: { code, module: 'access-control', action, description },
+      }),
+    ),
+  );
   const passwordHash = await argon2.hash(password, { type: argon2.argon2id });
   const user = await prisma.users.upsert({
     where: { email },
@@ -490,6 +506,7 @@ async function main(): Promise<void> {
     aiAlertFeedbackPermission,
     aiAlertConfirmPermission,
     policyPublishPermission,
+    ...roleManagementPermissions,
   ]) {
     await prisma.role_permissions.upsert({
       where: {
