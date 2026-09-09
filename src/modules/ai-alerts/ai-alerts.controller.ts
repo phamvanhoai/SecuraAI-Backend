@@ -6,6 +6,7 @@ import {
   listModelConfigurationsQuerySchema,
   modelVersionParamsSchema,
 } from './dto/model-configuration.dto.js';
+import { listAlertsQuerySchema } from './dto/alert-query.dto.js';
 
 const requestContext = (req: Request) => ({
   ipAddress: req.ip ?? null,
@@ -16,6 +17,13 @@ export const listModelConfigurations: RequestHandler = async (req, res) => {
   if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
   const query = listModelConfigurationsQuerySchema.parse(req.query);
   const data = await aiAlertsService.listModelConfigurations(query, req.auth);
+  res.status(200).json({ success: true, data });
+};
+
+export const listAlerts: RequestHandler = async (req, res) => {
+  if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+  const query = listAlertsQuerySchema.parse(req.query);
+  const data = await aiAlertsService.listAlerts(query, req.auth);
   res.status(200).json({ success: true, data });
 };
 
@@ -40,5 +48,6 @@ export const activateModelConfiguration: RequestHandler = async (req, res) => {
 export const aiAlertsController = {
   activateModelConfiguration,
   createModelConfiguration,
+  listAlerts,
   listModelConfigurations,
 } as const;

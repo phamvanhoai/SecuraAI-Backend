@@ -12,6 +12,12 @@ const { createMock, findIngestionSourceMock, ingestMock, listMock, updateMock } 
   }),
 );
 
+const { detectAlertsMock } = vi.hoisted(() => ({ detectAlertsMock: vi.fn() }));
+
+vi.mock('../src/modules/ai-alerts/ai-alerts.service.js', () => ({
+  aiAlertsService: { detectAlertsForEvents: detectAlertsMock },
+}));
+
 vi.mock('../src/modules/security-monitoring/security-monitoring.repository.js', () => ({
   securityMonitoringRepository: {
     createLogSource: createMock,
@@ -63,7 +69,21 @@ describe('security monitoring log source HTTP API', () => {
       status: 'active',
       configuration: { format: 'json' },
     });
-    ingestMock.mockResolvedValue({ ingested: 1, duplicates: 0 });
+    ingestMock.mockResolvedValue({
+      ingested: 1,
+      duplicates: 0,
+      eventsForDetection: [
+        {
+          id: 'event-1',
+          logSourceId: sourceRecord.log_source_id,
+          assetId: null,
+          eventType: 'login.failed',
+          eventTime: new Date('2026-09-08T00:00:00Z'),
+          sourceIp: null,
+        },
+      ],
+    });
+    detectAlertsMock.mockResolvedValue({ alertsCreated: 1 });
   });
 
   it('requires authentication and read permission', async () => {
@@ -149,7 +169,7 @@ describe('security monitoring log source HTTP API', () => {
     expect(response.status).toBe(202);
     expect(response.body).toEqual({
       success: true,
-      data: { received: 1, ingested: 1, duplicates: 0 },
+      data: { received: 1, ingested: 1, duplicates: 0, alertsCreated: 1 },
     });
   });
 });

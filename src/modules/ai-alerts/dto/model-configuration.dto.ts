@@ -2,7 +2,7 @@ import { z } from 'zod';
 
 export const alertRiskLevels = ['low', 'medium', 'high', 'critical'] as const;
 
-const detectionRuleSchema = z
+export const detectionRuleSchema = z
   .object({
     id: z
       .string()
@@ -17,6 +17,13 @@ const detectionRuleSchema = z
     groupBy: z.enum(['sourceIp', 'logSource']),
     severity: z.enum(alertRiskLevels),
     enabled: z.boolean().default(true),
+  })
+  .strict();
+
+export const modelParametersSchema = z
+  .object({
+    ollamaModel: z.string().trim().min(1).max(150),
+    rules: z.array(detectionRuleSchema).max(100),
   })
   .strict();
 

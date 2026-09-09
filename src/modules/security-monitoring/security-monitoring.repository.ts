@@ -24,6 +24,15 @@ export const logSourceSelect = {
 
 export type LogSourceRecord = Prisma.log_sourcesGetPayload<{ select: typeof logSourceSelect }>;
 
+export type IngestedSecurityEvent = {
+  id: string;
+  logSourceId: string;
+  assetId: string | null;
+  eventType: string;
+  eventTime: Date;
+  sourceIp: string | null;
+};
+
 const ingestionSourceSelect = {
   log_source_id: true,
   configuration: true,
@@ -116,11 +125,15 @@ export const securityMonitoringRepository = {
     logSourceId: string,
     events: NormalizedSecurityEvent[],
     context: RequestContext,
-  ): Promise<{ ingested: number; duplicates: number } | null> {
+  ): Promise<{
+    ingested: number;
+    duplicates: number;
+    eventsForDetection: IngestedSecurityEvent[];
+  } | null> {
     return prisma.$transaction(async (transaction) => {
       const source = await transaction.log_sources.findUnique({
         where: { log_source_id: logSourceId },
-        select: { log_source_id: true, status: true },
+        select: { log_source_id: true, asset_id: true, status: true },
       });
       if (!source || source.status !== 'active') return null;
 
@@ -132,7 +145,14 @@ export const securityMonitoringRepository = {
       const existing = externalIds.length
         ? await transaction.security_events.findMany({
             where: { log_source_id: logSourceId, external_event_id: { in: externalIds } },
-            select: { external_event_id: true },
+            select: {
+              security_event_id: true,
+              log_source_id: true,
+              external_event_id: true,
+              event_type: true,
+              event_time: true,
+              source_ip: true,
+            },
           })
         : [];
       const knownIds = new Set(
@@ -146,20 +166,30 @@ export const securityMonitoringRepository = {
         return true;
       });
 
-      if (accepted.length > 0) {
-        await transaction.security_events.createMany({
-          data: accepted.map((event) => ({
-            log_source_id: logSourceId,
-            external_event_id: event.externalEventId,
-            event_type: event.eventType,
-            severity: event.severity,
-            event_time: event.eventTime,
-            source_ip: event.sourceIp,
-            destination_ip: event.destinationIp,
-            ...(event.rawPayload !== null && { raw_payload: event.rawPayload }),
-            normalized_data: event.normalizedData,
-          })),
-        });
+      const createdEvents =
+        accepted.length > 0
+          ? await transaction.security_events.createManyAndReturn({
+              data: accepted.map((event) => ({
+                log_source_id: logSourceId,
+                external_event_id: event.externalEventId,
+                event_type: event.eventType,
+                severity: event.severity,
+                event_time: event.eventTime,
+                source_ip: event.sourceIp,
+                destination_ip: event.destinationIp,
+                ...(event.rawPayload !== null && { raw_payload: event.rawPayload }),
+                normalized_data: event.normalizedData,
+              })),
+              select: {
+                security_event_id: true,
+                log_source_id: true,
+                event_type: true,
+                event_time: true,
+                source_ip: true,
+              },
+            })
+          : [];
+      if (createdEvents.length > 0) {
         await transaction.log_sources.update({
           where: { log_source_id: logSourceId },
           data: { last_received_at: new Date(), updated_at: new Date() },
@@ -182,7 +212,18 @@ export const securityMonitoringRepository = {
           user_agent: context.userAgent,
         },
       });
-      return { ingested: accepted.length, duplicates: events.length - accepted.length };
+      return {
+        ingested: createdEvents.length,
+        duplicates: events.length - accepted.length,
+        eventsForDetection: [...existing, ...createdEvents].map((event) => ({
+          id: event.security_event_id,
+          logSourceId: event.log_source_id,
+          assetId: source.asset_id,
+          eventType: event.event_type,
+          eventTime: event.event_time,
+          sourceIp: event.source_ip,
+        })),
+      };
     });
   },
 
