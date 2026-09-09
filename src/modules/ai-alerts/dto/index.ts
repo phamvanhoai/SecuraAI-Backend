@@ -12,3 +12,11 @@ export type {
 } from './model-configuration.dto.js';
 export { alertStatuses, listAlertsQuerySchema } from './alert-query.dto.js';
 export type { ListAlertsQuery } from './alert-query.dto.js';
+export {
+  alertFeedbackLabels,
+  alertIdParamsSchema,
+  evaluateAlertReliabilityBodySchema,
+} from './alert-feedback.dto.js';
+export type { EvaluateAlertReliabilityBody } from './alert-feedback.dto.js';
+export { confirmAlertBodySchema } from './confirm-alert.dto.js';
+export type { ConfirmAlertBody } from './confirm-alert.dto.js';

@@ -5,6 +5,8 @@ import type {
   ListModelConfigurationsQuery,
 } from './dto/model-configuration.dto.js';
 import type { ListAlertsQuery } from './dto/alert-query.dto.js';
+import type { EvaluateAlertReliabilityBody } from './dto/alert-feedback.dto.js';
+import type { ConfirmAlertBody } from './dto/confirm-alert.dto.js';
 
 export const alertSelect = {
   ai_alert_id: true,
@@ -68,12 +70,144 @@ export type AlertCandidate = {
   anomalyScore: number;
 };
 
+export const feedbackSelect = {
+  ai_feedback_id: true,
+  ai_alert_id: true,
+  reviewed_by_user_id: true,
+  feedback_label: true,
+  comment: true,
+  created_at: true,
+} satisfies Prisma.ai_feedbackSelect;
+
+export type FeedbackRecord = Prisma.ai_feedbackGetPayload<{ select: typeof feedbackSelect }>;
+
+const alertConfirmationSelect = {
+  ai_alert_id: true,
+  alert_code: true,
+  status: true,
+  reviewed_by_user_id: true,
+  reviewed_at: true,
+} satisfies Prisma.ai_alertsSelect;
+
+export type AlertConfirmationRecord = Prisma.ai_alertsGetPayload<{
+  select: typeof alertConfirmationSelect;
+}>;
+
+export type ConfirmAlertResult =
+  | { kind: 'confirmed' | 'already_confirmed'; alert: AlertConfirmationRecord }
+  | { kind: 'not_found' }
+  | { kind: 'invalid_status'; status: string };
+
 const toParametersJson = (input: CreateModelConfigurationBody): Prisma.InputJsonObject => ({
   ollamaModel: input.ollamaModel,
   rules: input.rules.map((rule) => ({ ...rule })),
 });
 
 export const aiAlertsRepository = {
+  confirmAlertAsIncident(
+    alertId: string,
+    input: ConfirmAlertBody,
+    context: RequestContext,
+  ): Promise<ConfirmAlertResult> {
+    return prisma.$transaction(async (transaction) => {
+      const existing = await transaction.ai_alerts.findUnique({
+        where: { ai_alert_id: alertId },
+        select: alertConfirmationSelect,
+      });
+      if (!existing) return { kind: 'not_found' };
+      if (existing.status === 'confirmed') return { kind: 'already_confirmed', alert: existing };
+      if (existing.status !== 'new' && existing.status !== 'reviewing') {
+        return { kind: 'invalid_status', status: existing.status };
+      }
+
+      const reviewedAt = new Date();
+      const updated = await transaction.ai_alerts.updateMany({
+        where: { ai_alert_id: alertId, status: { in: ['new', 'reviewing'] } },
+        data: {
+          status: 'confirmed',
+          reviewed_by_user_id: context.actorUserId,
+          reviewed_at: reviewedAt,
+        },
+      });
+      if (updated.count === 0) {
+        const current = await transaction.ai_alerts.findUnique({
+          where: { ai_alert_id: alertId },
+          select: alertConfirmationSelect,
+        });
+        if (current?.status === 'confirmed') return { kind: 'already_confirmed', alert: current };
+        return { kind: 'invalid_status', status: current?.status ?? 'unknown' };
+      }
+
+      await transaction.ai_feedback.create({
+        data: {
+          ai_alert_id: alertId,
+          reviewed_by_user_id: context.actorUserId,
+          feedback_label: 'confirmed_incident',
+          ...(input.comment !== undefined && { comment: input.comment }),
+        },
+      });
+      await transaction.audit_logs.create({
+        data: {
+          actor_user_id: context.actorUserId,
+          module: 'ai-alerts',
+          action: 'ai_alert.confirmed_as_incident',
+          entity_type: 'ai_alert',
+          entity_id: alertId,
+          before_data: { status: existing.status },
+          after_data: { status: 'confirmed', reviewedAt: reviewedAt.toISOString() },
+          ip_address: context.ipAddress,
+          user_agent: context.userAgent,
+        },
+      });
+      const confirmed: AlertConfirmationRecord = {
+        ...existing,
+        status: 'confirmed',
+        reviewed_by_user_id: context.actorUserId,
+        reviewed_at: reviewedAt,
+      };
+      return { kind: 'confirmed', alert: confirmed };
+    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+  },
+
+  evaluateAlertReliability(
+    alertId: string,
+    input: EvaluateAlertReliabilityBody,
+    context: RequestContext,
+  ): Promise<FeedbackRecord | null> {
+    return prisma.$transaction(async (transaction) => {
+      const alert = await transaction.ai_alerts.findUnique({
+        where: { ai_alert_id: alertId },
+        select: { ai_alert_id: true },
+      });
+      if (!alert) return null;
+      const feedback = await transaction.ai_feedback.create({
+        data: {
+          ai_alert_id: alertId,
+          reviewed_by_user_id: context.actorUserId,
+          feedback_label: input.feedbackLabel,
+          ...(input.comment !== undefined && { comment: input.comment }),
+        },
+        select: feedbackSelect,
+      });
+      await transaction.audit_logs.create({
+        data: {
+          actor_user_id: context.actorUserId,
+          module: 'ai-alerts',
+          action: 'ai_alert.reliability_evaluated',
+          entity_type: 'ai_alert',
+          entity_id: alertId,
+          after_data: {
+            feedbackId: feedback.ai_feedback_id,
+            feedbackLabel: feedback.feedback_label,
+          },
+          ip_address: context.ipAddress,
+          user_agent: context.userAgent,
+        },
+      });
+      return feedback;
+    });
+  },
+
   async listAlerts(query: ListAlertsQuery): Promise<{ items: AlertRecord[]; total: number }> {
     const where: Prisma.ai_alertsWhereInput = {
       ...(query.status !== undefined && { status: query.status }),
