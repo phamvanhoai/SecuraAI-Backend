@@ -119,6 +119,48 @@ async function main(): Promise<void> {
       description: 'Assign or unassign an asset owner',
     },
   });
+  const assetImportPermission = await prisma.permissions.upsert({
+    where: { code: 'assets.import' },
+    update: {
+      module: 'asset-management',
+      action: 'import',
+      description: 'Import IT assets from Excel',
+    },
+    create: {
+      code: 'assets.import',
+      module: 'asset-management',
+      action: 'import',
+      description: 'Import IT assets from Excel',
+    },
+  });
+  const assetExportPermission = await prisma.permissions.upsert({
+    where: { code: 'assets.export' },
+    update: {
+      module: 'asset-management',
+      action: 'export',
+      description: 'Export the IT asset list to Excel',
+    },
+    create: {
+      code: 'assets.export',
+      module: 'asset-management',
+      action: 'export',
+      description: 'Export the IT asset list to Excel',
+    },
+  });
+  const assetHistoryReadPermission = await prisma.permissions.upsert({
+    where: { code: 'assets.history.read' },
+    update: {
+      module: 'asset-management',
+      action: 'history.read',
+      description: 'View asset change history',
+    },
+    create: {
+      code: 'assets.history.read',
+      module: 'asset-management',
+      action: 'history.read',
+      description: 'View asset change history',
+    },
+  });
   const logSourceReadPermission = await prisma.permissions.upsert({
     where: { code: 'log-sources.read' },
     update: {
@@ -217,6 +259,20 @@ async function main(): Promise<void> {
       description: 'Evaluate the reliability of generated AI alerts',
     },
   });
+  const aiAlertConfirmPermission = await prisma.permissions.upsert({
+    where: { code: 'ai-alerts.confirm' },
+    update: {
+      module: 'ai-alerts',
+      action: 'confirm-incident',
+      description: 'Confirm that an AI alert represents a real security incident',
+    },
+    create: {
+      code: 'ai-alerts.confirm',
+      module: 'ai-alerts',
+      action: 'confirm-incident',
+      description: 'Confirm that an AI alert represents a real security incident',
+    },
+  });
   const policyPublishPermission = await prisma.permissions.upsert({
     where: { code: 'policies.publish' },
     update: {
@@ -246,10 +302,30 @@ async function main(): Promise<void> {
     },
   });
   const integrationPermissions = [
-    { code: 'integrations.create', module: 'integrations', action: 'create', description: 'Create third-party SIEM and Firewall integration configurations' },
-    { code: 'integrations.read', module: 'integrations', action: 'read', description: 'View integration configurations and status' },
-    { code: 'integrations.update', module: 'integrations', action: 'update', description: 'Update integration configurations' },
-    { code: 'integrations.connect', module: 'integrations', action: 'connect', description: 'Test external connection to SIEM and Firewall' },
+    {
+      code: 'integrations.create',
+      module: 'integrations',
+      action: 'create',
+      description: 'Create third-party SIEM and Firewall integration configurations',
+    },
+    {
+      code: 'integrations.read',
+      module: 'integrations',
+      action: 'read',
+      description: 'View integration configurations and status',
+    },
+    {
+      code: 'integrations.update',
+      module: 'integrations',
+      action: 'update',
+      description: 'Update integration configurations',
+    },
+    {
+      code: 'integrations.connect',
+      module: 'integrations',
+      action: 'connect',
+      description: 'Test external connection to SIEM and Firewall',
+    },
   ];
 
   for (const perm of integrationPermissions) {
@@ -259,7 +335,9 @@ async function main(): Promise<void> {
       create: perm,
     });
     await prisma.role_permissions.upsert({
-      where: { role_id_permission_id: { role_id: role.role_id, permission_id: permission.permission_id } },
+      where: {
+        role_id_permission_id: { role_id: role.role_id, permission_id: permission.permission_id },
+      },
       update: {},
       create: { role_id: role.role_id, permission_id: permission.permission_id },
     });
@@ -363,6 +441,45 @@ async function main(): Promise<void> {
       permission_id: assetAssignOwnerPermission.permission_id,
     },
   });
+  await prisma.role_permissions.upsert({
+    where: {
+      role_id_permission_id: {
+        role_id: role.role_id,
+        permission_id: assetImportPermission.permission_id,
+      },
+    },
+    update: {},
+    create: {
+      role_id: role.role_id,
+      permission_id: assetImportPermission.permission_id,
+    },
+  });
+  await prisma.role_permissions.upsert({
+    where: {
+      role_id_permission_id: {
+        role_id: role.role_id,
+        permission_id: assetExportPermission.permission_id,
+      },
+    },
+    update: {},
+    create: {
+      role_id: role.role_id,
+      permission_id: assetExportPermission.permission_id,
+    },
+  });
+  await prisma.role_permissions.upsert({
+    where: {
+      role_id_permission_id: {
+        role_id: role.role_id,
+        permission_id: assetHistoryReadPermission.permission_id,
+      },
+    },
+    update: {},
+    create: {
+      role_id: role.role_id,
+      permission_id: assetHistoryReadPermission.permission_id,
+    },
+  });
   for (const permission of [
     logSourceReadPermission,
     logSourceManagePermission,
@@ -371,6 +488,7 @@ async function main(): Promise<void> {
     aiModelManagePermission,
     aiAlertReadPermission,
     aiAlertFeedbackPermission,
+    aiAlertConfirmPermission,
     policyPublishPermission,
   ]) {
     await prisma.role_permissions.upsert({

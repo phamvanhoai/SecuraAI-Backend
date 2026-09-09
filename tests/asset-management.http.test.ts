@@ -12,6 +12,11 @@ const {
   softDeleteMock,
   updateAssetMock,
   assignOwnerMock,
+  importAssetsMock,
+  getImportJobMock,
+  exportAssetsMock,
+  findAssetForHistoryMock,
+  listHistoryMock,
 } = vi.hoisted(() => ({
   createAssetMock: vi.fn(),
   classifyCriticalityMock: vi.fn(),
@@ -22,6 +27,11 @@ const {
   softDeleteMock: vi.fn(),
   updateAssetMock: vi.fn(),
   assignOwnerMock: vi.fn(),
+  importAssetsMock: vi.fn(),
+  getImportJobMock: vi.fn(),
+  exportAssetsMock: vi.fn(),
+  findAssetForHistoryMock: vi.fn(),
+  listHistoryMock: vi.fn(),
 }));
 
 vi.mock('../src/modules/asset-management/asset-management.repository.js', () => ({
@@ -36,7 +46,20 @@ vi.mock('../src/modules/asset-management/asset-management.repository.js', () => 
     list: listAssetsMock,
     softDelete: softDeleteMock,
     update: updateAssetMock,
+    findAssetForHistory: findAssetForHistoryMock,
+    listHistory: listHistoryMock,
   },
+}));
+
+vi.mock('../src/modules/asset-management/import/asset-import.service.js', () => ({
+  assetImportService: {
+    importAssets: importAssetsMock,
+    getImportJob: getImportJobMock,
+  },
+}));
+
+vi.mock('../src/modules/asset-management/export/asset-export.service.js', () => ({
+  assetExportService: { exportAssets: exportAssetsMock },
 }));
 
 import { createApp } from '../src/app.js';
@@ -53,6 +76,175 @@ const accessToken = (permissions: string[]): string =>
       expiresIn: '15m',
     },
   );
+
+describe('GET /api/v1/assets/export', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    exportAssetsMock.mockResolvedValue({
+      buffer: Buffer.from('xlsx'),
+      filename: 'assets-20260909-120000.xlsx',
+      exportedRows: 2,
+    });
+  });
+
+  it('requires authentication and assets.export', async () => {
+    const unauthenticated = await request(createApp()).get('/api/v1/assets/export');
+    const forbidden = await request(createApp())
+      .get('/api/v1/assets/export')
+      .set('authorization', `Bearer ${accessToken([])}`);
+
+    expect(unauthenticated.status).toBe(401);
+    expect(forbidden.status).toBe(403);
+    expect(exportAssetsMock).not.toHaveBeenCalled();
+  });
+
+  it('validates filters and returns the generated Excel attachment', async () => {
+    const response = await request(createApp())
+      .get('/api/v1/assets/export?assetType=server&status=active&sortBy=name&sortOrder=desc')
+      .set('authorization', `Bearer ${accessToken(['assets.export'])}`);
+
+    expect(response.status).toBe(200);
+    expect(response.headers['content-type']).toContain(
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    );
+    expect(response.headers['content-disposition']).toContain('assets-20260909-120000.xlsx');
+    expect(response.headers['x-exported-rows']).toBe('2');
+    expect(exportAssetsMock).toHaveBeenCalledWith(
+      { assetType: 'server', status: 'active', sortBy: 'name', sortOrder: 'desc' },
+      expect.objectContaining({ permissions: ['assets.export'] }),
+      expect.any(Object),
+    );
+  });
+
+  it('rejects invalid filters before generating a workbook', async () => {
+    const response = await request(createApp())
+      .get('/api/v1/assets/export?status=deleted')
+      .set('authorization', `Bearer ${accessToken(['assets.export'])}`);
+
+    expect(response.status).toBe(422);
+    expect(exportAssetsMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('GET /api/v1/assets/:assetId/history', () => {
+  const assetId = '00000000-0000-4000-8000-000000000010';
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    findAssetForHistoryMock.mockResolvedValue({
+      asset_id: assetId,
+      asset_code: 'AST-001',
+      name: 'Server',
+      deleted_at: null,
+    });
+    listHistoryMock.mockResolvedValue({ items: [], total: 0 });
+  });
+
+  it('requires authentication and assets.history.read', async () => {
+    const unauthenticated = await request(createApp()).get(`/api/v1/assets/${assetId}/history`);
+    const forbidden = await request(createApp())
+      .get(`/api/v1/assets/${assetId}/history`)
+      .set('authorization', `Bearer ${accessToken([])}`);
+
+    expect(unauthenticated.status).toBe(401);
+    expect(forbidden.status).toBe(403);
+    expect(listHistoryMock).not.toHaveBeenCalled();
+  });
+
+  it('returns paginated history using normalized filters', async () => {
+    const response = await request(createApp())
+      .get(`/api/v1/assets/${assetId}/history?page=2&limit=10&action=updated&sortOrder=asc`)
+      .set('authorization', `Bearer ${accessToken(['assets.history.read'])}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.pagination).toEqual({
+      page: 2,
+      limit: 10,
+      total: 0,
+      totalPages: 0,
+    });
+    expect(listHistoryMock).toHaveBeenCalledWith(assetId, {
+      page: 2,
+      limit: 10,
+      action: 'updated',
+      sortOrder: 'asc',
+    });
+  });
+
+  it('rejects invalid asset IDs, actions and date ranges', async () => {
+    const token = accessToken(['assets.history.read']);
+    const invalidId = await request(createApp())
+      .get('/api/v1/assets/not-a-uuid/history')
+      .set('authorization', `Bearer ${token}`);
+    const invalidAction = await request(createApp())
+      .get(`/api/v1/assets/${assetId}/history?action=changed`)
+      .set('authorization', `Bearer ${token}`);
+    const invalidRange = await request(createApp())
+      .get(
+        `/api/v1/assets/${assetId}/history?from=2026-10-01T00%3A00%3A00.000Z&to=2026-09-01T00%3A00%3A00.000Z`,
+      )
+      .set('authorization', `Bearer ${token}`);
+
+    expect(invalidId.status).toBe(422);
+    expect(invalidAction.status).toBe(422);
+    expect(invalidRange.status).toBe(422);
+    expect(listHistoryMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('asset Excel import HTTP endpoints', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    importAssetsMock.mockResolvedValue({ id: 'job-1', status: 'completed' });
+    getImportJobMock.mockResolvedValue({ id: '00000000-0000-4000-8000-000000000010' });
+  });
+
+  it('requires assets.import before accepting a workbook', async () => {
+    const response = await request(createApp())
+      .post('/api/v1/assets/import')
+      .set('authorization', `Bearer ${accessToken([])}`)
+      .attach('file', Buffer.from([0x50, 0x4b, 0x03, 0x04]), 'assets.xlsx');
+
+    expect(response.status).toBe(403);
+    expect(importAssetsMock).not.toHaveBeenCalled();
+  });
+
+  it('passes an uploaded .xlsx file to the import use case', async () => {
+    const response = await request(createApp())
+      .post('/api/v1/assets/import')
+      .set('authorization', `Bearer ${accessToken(['assets.import'])}`)
+      .attach('file', Buffer.from([0x50, 0x4b, 0x03, 0x04]), {
+        filename: 'assets.xlsx',
+        contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      success: true,
+      data: { id: 'job-1', status: 'completed' },
+    });
+    expect(importAssetsMock).toHaveBeenCalledWith(
+      expect.objectContaining({ originalName: 'assets.xlsx' }),
+      expect.objectContaining({ permissions: ['assets.import'] }),
+      expect.any(Object),
+    );
+  });
+
+  it('rejects a missing file and an invalid import job ID', async () => {
+    const token = accessToken(['assets.import']);
+    const missingFile = await request(createApp())
+      .post('/api/v1/assets/import')
+      .set('authorization', `Bearer ${token}`);
+    const invalidId = await request(createApp())
+      .get('/api/v1/assets/imports/not-a-uuid')
+      .set('authorization', `Bearer ${token}`);
+
+    expect(missingFile.status).toBe(422);
+    expect(missingFile.body.error.code).toBe('INVALID_IMPORT_FILE');
+    expect(invalidId.status).toBe(422);
+    expect(getImportJobMock).not.toHaveBeenCalled();
+  });
+});
 
 describe('GET /api/v1/assets', () => {
   beforeEach(() => {

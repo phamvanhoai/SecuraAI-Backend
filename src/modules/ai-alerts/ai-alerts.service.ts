@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { AppError } from '../../common/errors/app-error.js';
 import {
   toAlertFeedbackResponse,
+  toAlertConfirmationResponse,
   toAlertResponse,
   toModelConfigurationResponse,
 } from './ai-alerts.mapper.js';
@@ -15,6 +16,7 @@ import type { ListAlertsQuery } from './dto/alert-query.dto.js';
 import { modelParametersSchema } from './dto/model-configuration.dto.js';
 import type { DetectionEvent } from './ai-alerts.repository.js';
 import type { EvaluateAlertReliabilityBody } from './dto/alert-feedback.dto.js';
+import type { ConfirmAlertBody } from './dto/confirm-alert.dto.js';
 
 type Actor = { userId: string; permissions: readonly string[] };
 type RequestContext = { ipAddress: string | null; userAgent: string | null };
@@ -33,6 +35,33 @@ const alertCodeFor = (eventId: string, modelVersionId: string, ruleId: string): 
     .slice(0, 40)}`;
 
 export const aiAlertsService = {
+  async confirmAlertAsIncident(
+    alertId: string,
+    input: ConfirmAlertBody,
+    actor: Actor,
+    context: RequestContext,
+  ) {
+    requirePermission(actor, 'ai-alerts.confirm');
+    const result = await aiAlertsRepository.confirmAlertAsIncident(alertId, input, {
+      actorUserId: actor.userId,
+      ...context,
+    });
+    if (result.kind === 'not_found') {
+      throw new AppError(404, 'AI_ALERT_NOT_FOUND', 'AI alert was not found');
+    }
+    if (result.kind === 'invalid_status') {
+      throw new AppError(
+        409,
+        'AI_ALERT_STATUS_CONFLICT',
+        `An alert with status "${result.status}" cannot be confirmed as an incident`,
+      );
+    }
+    return {
+      ...toAlertConfirmationResponse(result.alert),
+      changed: result.kind === 'confirmed',
+    };
+  },
+
   async evaluateAlertReliability(
     alertId: string,
     input: EvaluateAlertReliabilityBody,
