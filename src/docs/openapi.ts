@@ -17,6 +17,8 @@ export const openApiSpec = swaggerJsdoc({
       { name: 'Assets' },
       { name: 'Security Monitoring' },
       { name: 'AI Alerts' },
+      { name: 'Policies' },
+      { name: 'Integrations' },
     ],
     components: {
       securitySchemes: { bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' } },
@@ -40,6 +42,36 @@ export const openApiSpec = swaggerJsdoc({
             accessToken: { type: 'string' },
             refreshToken: { type: 'string' },
             expiresIn: { type: 'string', example: '15m' },
+          },
+        },
+        PublishPolicyVersionRequest: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            effectiveDate: { type: 'string', format: 'date', example: '2026-09-09' },
+          },
+        },
+        PublishedPolicyVersion: {
+          type: 'object',
+          required: ['policyId', 'policyCode', 'title', 'status', 'publishedVersion'],
+          properties: {
+            policyId: { type: 'string', format: 'uuid' },
+            policyCode: { type: 'string', example: 'ISP-001' },
+            title: { type: 'string' },
+            status: { type: 'string', enum: ['published'] },
+            publishedVersion: {
+              type: 'object',
+              required: ['id', 'versionNumber', 'status', 'effectiveDate', 'publishedAt'],
+              properties: {
+                id: { type: 'string', format: 'uuid' },
+                versionNumber: { type: 'string', example: '1.0' },
+                status: { type: 'string', enum: ['published'] },
+                effectiveDate: { type: 'string', format: 'date', nullable: true },
+                publishedByUserId: { type: 'string', format: 'uuid', nullable: true },
+                publishedAt: { type: 'string', format: 'date-time', nullable: true },
+                createdAt: { type: 'string', format: 'date-time' },
+              },
+            },
           },
         },
         Error: {
@@ -209,6 +241,98 @@ export const openApiSpec = swaggerJsdoc({
             classifiedAt: { type: 'string', format: 'date-time' },
           },
         },
+        CreatePolicyDraftRequest: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['policyCode', 'title', 'content'],
+          properties: {
+            policyCode: {
+              type: 'string',
+              minLength: 2,
+              maxLength: 50,
+              pattern: '^[A-Za-z0-9][A-Za-z0-9._-]*$',
+              example: 'ISP-001',
+            },
+            title: {
+              type: 'string',
+              minLength: 3,
+              maxLength: 255,
+              example: 'Information Security Policy',
+            },
+            description: { type: 'string', maxLength: 2000 },
+            versionNumber: { type: 'string', minLength: 1, maxLength: 30, default: '1.0' },
+            content: { type: 'string', minLength: 1, maxLength: 500000 },
+          },
+        },
+        PolicyDraft: {
+          type: 'object',
+          required: [
+            'id',
+            'policyCode',
+            'title',
+            'description',
+            'ownerUserId',
+            'status',
+            'currentVersion',
+            'createdAt',
+            'updatedAt',
+          ],
+          properties: {
+            id: { type: 'string', format: 'uuid' },
+            policyCode: { type: 'string', example: 'ISP-001' },
+            title: { type: 'string', example: 'Information Security Policy' },
+            description: { type: 'string', nullable: true },
+            ownerUserId: { type: 'string', format: 'uuid', nullable: true },
+            status: { type: 'string', enum: ['draft'] },
+            currentVersion: {
+              type: 'object',
+              required: ['id', 'versionNumber', 'content', 'status', 'createdAt'],
+              properties: {
+                id: { type: 'string', format: 'uuid' },
+                versionNumber: { type: 'string', example: '1.0' },
+                content: { type: 'string' },
+                status: { type: 'string', enum: ['draft'] },
+                createdAt: { type: 'string', format: 'date-time' },
+              },
+            },
+            createdAt: { type: 'string', format: 'date-time' },
+            updatedAt: { type: 'string', format: 'date-time' },
+          },
+        },
+        AssignAssetOwnerRequest: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['ownerUserId', 'reason'],
+          properties: {
+            ownerUserId: { type: 'string', format: 'uuid', nullable: true },
+            reason: { type: 'string', minLength: 1, maxLength: 1000 },
+          },
+        },
+        AssetOwnerAssignment: {
+          type: 'object',
+          required: ['assetId', 'previousOwner', 'owner', 'changed', 'assignedAt'],
+          properties: {
+            assetId: { type: 'string', format: 'uuid' },
+            previousOwner: {
+              type: 'object',
+              nullable: true,
+              properties: {
+                id: { type: 'string', format: 'uuid' },
+                fullName: { type: 'string' },
+              },
+            },
+            owner: {
+              type: 'object',
+              nullable: true,
+              properties: {
+                id: { type: 'string', format: 'uuid' },
+                fullName: { type: 'string' },
+              },
+            },
+            changed: { type: 'boolean' },
+            assignedAt: { type: 'string', format: 'date-time', nullable: true },
+          },
+        },
         LogSourceConfiguration: {
           type: 'object',
           additionalProperties: false,
@@ -341,6 +465,53 @@ export const openApiSpec = swaggerJsdoc({
             lastReceivedAt: { type: 'string', format: 'date-time', nullable: true },
             createdAt: { type: 'string', format: 'date-time' },
             updatedAt: { type: 'string', format: 'date-time' },
+          },
+        },
+        CreateIntegrationRequest: {
+          type: 'object',
+          required: ['name', 'integrationType'],
+          properties: {
+            name: { type: 'string' },
+            integrationType: { type: 'string', enum: ['siem', 'firewall', 'log_source', 'api'] },
+            baseUrl: { type: 'string', format: 'uri' },
+            configuration: { type: 'object' },
+          },
+        },
+        UpdateIntegrationRequest: {
+          type: 'object',
+          properties: {
+            name: { type: 'string' },
+            baseUrl: { type: 'string', format: 'uri' },
+            configuration: { type: 'object' },
+            status: { type: 'string', enum: ['active', 'inactive', 'disabled'] },
+          },
+        },
+        TestConnectionRequest: {
+          type: 'object',
+          properties: { timeoutMs: { type: 'integer', minimum: 1000, maximum: 10000, default: 5000 } },
+        },
+        IntegrationResponse: {
+          type: 'object',
+          properties: {
+            id: { type: 'string', format: 'uuid' },
+            name: { type: 'string' },
+            integrationType: { type: 'string' },
+            baseUrl: { type: 'string', nullable: true },
+            configuration: { type: 'object', nullable: true },
+            status: { type: 'string' },
+            lastConnectedAt: { type: 'string', format: 'date-time', nullable: true },
+            createdByUserId: { type: 'string', format: 'uuid', nullable: true },
+            createdAt: { type: 'string', format: 'date-time' },
+            updatedAt: { type: 'string', format: 'date-time' },
+          },
+        },
+        TestConnectionResponse: {
+          type: 'object',
+          properties: {
+            connected: { type: 'boolean' },
+            statusCode: { type: 'integer', nullable: true },
+            latencyMs: { type: 'integer' },
+            message: { type: 'string' },
           },
         },
       },
@@ -722,6 +893,92 @@ export const openApiSpec = swaggerJsdoc({
           },
         },
       },
+      '/assets/{assetId}/owner': {
+        put: {
+          tags: ['Assets'],
+          summary: 'Assign an asset owner',
+          description:
+            'Assigns, reassigns or unassigns an asset owner with a mandatory reason and atomic history/audit records. Requires the assets.assign-owner permission.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'assetId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/AssignAssetOwnerRequest' },
+              },
+            },
+          },
+          responses: {
+            '200': {
+              description: 'Owner assignment result',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    required: ['success', 'data'],
+                    properties: {
+                      success: { type: 'boolean', example: true },
+                      data: { $ref: '#/components/schemas/AssetOwnerAssignment' },
+                    },
+                  },
+                },
+              },
+            },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'The assets.assign-owner permission is required' },
+            '404': { description: 'Asset or owner was not found' },
+            '409': { description: 'Asset owner changed concurrently' },
+            '422': { description: 'Invalid input, inactive owner or disposed asset' },
+            '429': { description: 'Too many requests' },
+            '500': { description: 'Unexpected server error' },
+          },
+        },
+      },
+      '/compliance/policies': {
+        post: {
+          tags: ['Policies'],
+          summary: 'Create an information security policy draft',
+          description: 'Requires the policies.create permission.',
+          security: [{ bearerAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/CreatePolicyDraftRequest' },
+              },
+            },
+          },
+          responses: {
+            '201': {
+              description: 'Policy draft created',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    required: ['success', 'data'],
+                    properties: {
+                      success: { type: 'boolean', example: true },
+                      data: { $ref: '#/components/schemas/PolicyDraft' },
+                    },
+                  },
+                },
+              },
+            },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'The policies.create permission is required' },
+            '409': { description: 'Policy code already exists' },
+            '422': { description: 'Request validation failed' },
+          },
+        },
+      },
       '/security-monitoring/log-sources': {
         get: {
           tags: ['Security Monitoring'],
@@ -866,6 +1123,56 @@ export const openApiSpec = swaggerJsdoc({
           },
         },
       },
+      '/compliance/policies/{policyId}/versions/{versionId}/publish': {
+        post: {
+          tags: ['Policies'],
+          summary: 'Publish an official policy version',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'policyId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+            {
+              name: 'versionId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          requestBody: {
+            required: false,
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/PublishPolicyVersionRequest' },
+              },
+            },
+          },
+          responses: {
+            '200': {
+              description: 'Official policy version published',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      success: { type: 'boolean', example: true },
+                      data: { $ref: '#/components/schemas/PublishedPolicyVersion' },
+                    },
+                  },
+                },
+              },
+            },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'The policies.publish permission is required' },
+            '404': { description: 'Policy version was not found' },
+            '409': { description: 'Policy version cannot be published in its current state' },
+            '422': { description: 'Invalid IDs or request body' },
+          },
+        },
+      },
       '/security-monitoring/log-sources/{logSourceId}': {
         patch: {
           tags: ['Security Monitoring'],
@@ -895,6 +1202,38 @@ export const openApiSpec = swaggerJsdoc({
             '404': { description: 'Log source, asset or integration was not found' },
             '422': { description: 'Invalid request body or log source ID' },
           },
+        },
+      },
+      '/integrations': {
+        post: {
+          tags: ['Integrations'], summary: 'Create external integration configuration', security: [{ bearerAuth: [] }],
+          requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/CreateIntegrationRequest' } } } },
+          responses: { '201': { description: 'Integration created' }, '400': { description: 'Validation or SSRF error' }, '401': { description: 'Unauthorized' }, '403': { description: 'Forbidden' } },
+        },
+        get: {
+          tags: ['Integrations'], summary: 'List external integrations', security: [{ bearerAuth: [] }],
+          responses: { '200': { description: 'List of integrations' }, '401': { description: 'Unauthorized' }, '403': { description: 'Forbidden' } },
+        },
+      },
+      '/integrations/{id}': {
+        get: {
+          tags: ['Integrations'], summary: 'Get integration by ID', security: [{ bearerAuth: [] }],
+          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+          responses: { '200': { description: 'Integration details' }, '404': { description: 'Integration not found' } },
+        },
+        patch: {
+          tags: ['Integrations'], summary: 'Update integration configuration', security: [{ bearerAuth: [] }],
+          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+          requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/UpdateIntegrationRequest' } } } },
+          responses: { '200': { description: 'Integration updated' }, '404': { description: 'Integration not found' } },
+        },
+      },
+      '/integrations/{id}/test-connection': {
+        post: {
+          tags: ['Integrations'], summary: 'Test external connection to SIEM or Firewall', security: [{ bearerAuth: [] }],
+          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+          requestBody: { required: false, content: { 'application/json': { schema: { $ref: '#/components/schemas/TestConnectionRequest' } } } },
+          responses: { '200': { description: 'Connection test outcome' }, '400': { description: 'SSRF rejected or no base URL configured' }, '404': { description: 'Integration not found' }, '429': { description: 'Rate limit exceeded' } },
         },
       },
       '/security-monitoring/log-sources/{logSourceId}/events': {

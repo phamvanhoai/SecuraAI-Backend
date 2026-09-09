@@ -7,27 +7,32 @@ const {
   classifyCriticalityMock,
   findByCodeMock,
   findByIdMock,
+  findOwnerByIdMock,
   listAssetsMock,
   softDeleteMock,
   updateAssetMock,
+  assignOwnerMock,
 } = vi.hoisted(() => ({
   createAssetMock: vi.fn(),
   classifyCriticalityMock: vi.fn(),
   findByCodeMock: vi.fn(),
   findByIdMock: vi.fn(),
+  findOwnerByIdMock: vi.fn(),
   listAssetsMock: vi.fn(),
   softDeleteMock: vi.fn(),
   updateAssetMock: vi.fn(),
+  assignOwnerMock: vi.fn(),
 }));
 
 vi.mock('../src/modules/asset-management/asset-management.repository.js', () => ({
   assetManagementRepository: {
+    assignOwner: assignOwnerMock,
     classifyCriticality: classifyCriticalityMock,
     create: createAssetMock,
     findByCode: findByCodeMock,
     findById: findByIdMock,
     findDepartmentById: vi.fn(),
-    findOwnerById: vi.fn(),
+    findOwnerById: findOwnerByIdMock,
     list: listAssetsMock,
     softDelete: softDeleteMock,
     update: updateAssetMock,
@@ -348,6 +353,88 @@ describe('POST /api/v1/assets/:assetId/classify-criticality', () => {
     expect(response.status).toBe(422);
     expect(response.body.error.code).toBe('ASSET_DISPOSED');
     expect(classifyCriticalityMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('PUT /api/v1/assets/:assetId/owner', () => {
+  const assetId = '00000000-0000-4000-8000-000000000010';
+  const ownerId = '00000000-0000-4000-8000-000000000020';
+  const record = {
+    asset_id: assetId,
+    owner_user_id: null,
+    status: 'active',
+    users_assets_owner_user_idTousers: null,
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    findByIdMock.mockResolvedValue(record);
+    const owner = { user_id: ownerId, full_name: 'Asset Owner', status: 'active' };
+    findOwnerByIdMock.mockResolvedValue(owner);
+    assignOwnerMock.mockResolvedValue({
+      ...record,
+      owner_user_id: ownerId,
+      users_assets_owner_user_idTousers: owner,
+    });
+  });
+
+  it('requires authentication and assets.assign-owner', async () => {
+    const body = { ownerUserId: ownerId, reason: 'Assign responsibility' };
+    const unauthorized = await request(createApp())
+      .put(`/api/v1/assets/${assetId}/owner`)
+      .send(body);
+    const forbidden = await request(createApp())
+      .put(`/api/v1/assets/${assetId}/owner`)
+      .set('authorization', `Bearer ${accessToken([])}`)
+      .send(body);
+
+    expect(unauthorized.status).toBe(401);
+    expect(forbidden.status).toBe(403);
+    expect(assignOwnerMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects an invalid ID, missing reason and direct PATCH owner updates', async () => {
+    const invalid = await request(createApp())
+      .put('/api/v1/assets/not-a-uuid/owner')
+      .set('authorization', `Bearer ${accessToken(['assets.assign-owner'])}`)
+      .send({ ownerUserId: ownerId, reason: '' });
+    const directPatch = await request(createApp())
+      .patch(`/api/v1/assets/${assetId}`)
+      .set('authorization', `Bearer ${accessToken(['assets.update'])}`)
+      .send({ ownerUserId: ownerId });
+
+    expect(invalid.status).toBe(422);
+    expect(directPatch.status).toBe(422);
+    expect(assignOwnerMock).not.toHaveBeenCalled();
+  });
+
+  it('assigns an active owner and returns 200', async () => {
+    const response = await request(createApp())
+      .put(`/api/v1/assets/${assetId}/owner`)
+      .set('authorization', `Bearer ${accessToken(['assets.assign-owner'])}`)
+      .send({ ownerUserId: ownerId, reason: 'Assign responsibility' });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      success: true,
+      data: {
+        assetId,
+        previousOwner: null,
+        owner: { id: ownerId, fullName: 'Asset Owner' },
+        changed: true,
+      },
+    });
+  });
+
+  it('supports unassignment with ownerUserId=null', async () => {
+    const response = await request(createApp())
+      .put(`/api/v1/assets/${assetId}/owner`)
+      .set('authorization', `Bearer ${accessToken(['assets.assign-owner'])}`)
+      .send({ ownerUserId: null, reason: 'Remove responsibility' });
+
+    expect(response.status).toBe(200);
+    expect(response.body.data).toMatchObject({ changed: false, owner: null, assignedAt: null });
+    expect(assignOwnerMock).not.toHaveBeenCalled();
   });
 });
 

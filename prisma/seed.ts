@@ -16,6 +16,25 @@ async function main(): Promise<void> {
     update: {},
     create: { code: 'ADMIN', name: 'System Administrator', is_system: true },
   });
+  const securityOfficerRole = await prisma.roles.upsert({
+    where: { code: 'SECURITY_OFFICER' },
+    update: {},
+    create: { code: 'SECURITY_OFFICER', name: 'Security Officer', is_system: true },
+  });
+  const createPolicyPermission = await prisma.permissions.upsert({
+    where: { code: 'policies.create' },
+    update: {
+      module: 'policy-compliance',
+      action: 'create',
+      description: 'Create information security policy drafts',
+    },
+    create: {
+      code: 'policies.create',
+      module: 'policy-compliance',
+      action: 'create',
+      description: 'Create information security policy drafts',
+    },
+  });
   const assetReadPermission = await prisma.permissions.upsert({
     where: { code: 'assets.read' },
     update: {
@@ -84,6 +103,20 @@ async function main(): Promise<void> {
       module: 'asset-management',
       action: 'classify',
       description: 'Classify asset criticality',
+    },
+  });
+  const assetAssignOwnerPermission = await prisma.permissions.upsert({
+    where: { code: 'assets.assign-owner' },
+    update: {
+      module: 'asset-management',
+      action: 'assign-owner',
+      description: 'Assign or unassign an asset owner',
+    },
+    create: {
+      code: 'assets.assign-owner',
+      module: 'asset-management',
+      action: 'assign-owner',
+      description: 'Assign or unassign an asset owner',
     },
   });
   const logSourceReadPermission = await prisma.permissions.upsert({
@@ -170,21 +203,74 @@ async function main(): Promise<void> {
       description: 'View generated AI alerts in near real time',
     },
   });
+  const policyPublishPermission = await prisma.permissions.upsert({
+    where: { code: 'policies.publish' },
+    update: {
+      module: 'policy-compliance',
+      action: 'publish',
+      description: 'Publish official information security policy versions',
+    },
+    create: {
+      code: 'policies.publish',
+      module: 'policy-compliance',
+      action: 'publish',
+      description: 'Publish official information security policy versions',
+    },
+  });
   const passwordHash = await argon2.hash(password, { type: argon2.argon2id });
   const user = await prisma.users.upsert({
     where: { email },
-    update: {},
+    update: {
+      password_hash: passwordHash,
+      status: 'active',
+    },
     create: {
       email,
       password_hash: passwordHash,
       full_name: 'SecuraAI Administrator',
+      status: 'active',
     },
   });
+  const integrationPermissions = [
+    { code: 'integrations.create', module: 'integrations', action: 'create', description: 'Create third-party SIEM and Firewall integration configurations' },
+    { code: 'integrations.read', module: 'integrations', action: 'read', description: 'View integration configurations and status' },
+    { code: 'integrations.update', module: 'integrations', action: 'update', description: 'Update integration configurations' },
+    { code: 'integrations.connect', module: 'integrations', action: 'connect', description: 'Test external connection to SIEM and Firewall' },
+  ];
+
+  for (const perm of integrationPermissions) {
+    const permission = await prisma.permissions.upsert({
+      where: { code: perm.code },
+      update: { module: perm.module, action: perm.action, description: perm.description },
+      create: perm,
+    });
+    await prisma.role_permissions.upsert({
+      where: { role_id_permission_id: { role_id: role.role_id, permission_id: permission.permission_id } },
+      update: {},
+      create: { role_id: role.role_id, permission_id: permission.permission_id },
+    });
+  }
+
   await prisma.user_roles.upsert({
     where: { user_id_role_id: { user_id: user.user_id, role_id: role.role_id } },
     update: {},
     create: { user_id: user.user_id, role_id: role.role_id },
   });
+  for (const policyAuthorRole of [role, securityOfficerRole]) {
+    await prisma.role_permissions.upsert({
+      where: {
+        role_id_permission_id: {
+          role_id: policyAuthorRole.role_id,
+          permission_id: createPolicyPermission.permission_id,
+        },
+      },
+      update: {},
+      create: {
+        role_id: policyAuthorRole.role_id,
+        permission_id: createPolicyPermission.permission_id,
+      },
+    });
+  }
   await prisma.role_permissions.upsert({
     where: {
       role_id_permission_id: {
@@ -250,6 +336,19 @@ async function main(): Promise<void> {
       permission_id: assetClassifyPermission.permission_id,
     },
   });
+  await prisma.role_permissions.upsert({
+    where: {
+      role_id_permission_id: {
+        role_id: role.role_id,
+        permission_id: assetAssignOwnerPermission.permission_id,
+      },
+    },
+    update: {},
+    create: {
+      role_id: role.role_id,
+      permission_id: assetAssignOwnerPermission.permission_id,
+    },
+  });
   for (const permission of [
     logSourceReadPermission,
     logSourceManagePermission,
@@ -257,6 +356,7 @@ async function main(): Promise<void> {
     aiModelReadPermission,
     aiModelManagePermission,
     aiAlertReadPermission,
+    policyPublishPermission,
   ]) {
     await prisma.role_permissions.upsert({
       where: {
