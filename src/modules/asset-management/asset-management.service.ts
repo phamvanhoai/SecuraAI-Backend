@@ -1,7 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { isDeepStrictEqual } from 'node:util';
 import { AppError } from '../../common/errors/app-error.js';
-import { toAssetDetail, toAssetListItem } from './asset-management.mapper.js';
+import { toAssetDetail, toAssetHistoryItem, toAssetListItem } from './asset-management.mapper.js';
 import { assetManagementRepository } from './asset-management.repository.js';
 import type { CreateAssetBody } from './dto/create-asset.dto.js';
 import type { ClassifyAssetCriticalityBody } from './dto/classify-asset-criticality.dto.js';
@@ -9,6 +9,7 @@ import type { AssignAssetOwnerBody } from './dto/assign-asset-owner.dto.js';
 import type { ListAssetsQuery } from './dto/list-assets-query.dto.js';
 import type { UpdateAssetBody } from './dto/update-asset.dto.js';
 import type { AssetUpdateChanges } from './asset-management.repository.js';
+import type { ListAssetHistoryQuery } from './dto/list-asset-history-query.dto.js';
 
 type AssetListActor = {
   userId: string;
@@ -43,6 +44,30 @@ export const assetManagementService = {
     const result = await assetManagementRepository.list(query);
     return {
       items: result.items.map(toAssetListItem),
+      pagination: {
+        page: query.page,
+        limit: query.limit,
+        total: result.total,
+        totalPages: Math.ceil(result.total / query.limit),
+      },
+    };
+  },
+
+  async listHistory(assetId: string, query: ListAssetHistoryQuery, actor: AssetListActor) {
+    if (!actor.permissions.includes('assets.history.read')) {
+      throw new AppError(403, 'FORBIDDEN', 'Insufficient permissions');
+    }
+    const asset = await assetManagementRepository.findAssetForHistory(assetId);
+    if (!asset) throw new AppError(404, 'ASSET_NOT_FOUND', 'Asset was not found');
+    const result = await assetManagementRepository.listHistory(assetId, query);
+    return {
+      asset: {
+        id: asset.asset_id,
+        assetCode: asset.asset_code,
+        name: asset.name,
+        deleted: asset.deleted_at !== null,
+      },
+      items: result.items.map(toAssetHistoryItem),
       pagination: {
         page: query.page,
         limit: query.limit,

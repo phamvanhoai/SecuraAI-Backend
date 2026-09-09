@@ -3,6 +3,10 @@ import { listAssetsQuerySchema } from '../src/modules/asset-management/dto/list-
 import { createAssetBodySchema } from '../src/modules/asset-management/dto/create-asset.dto.js';
 import { classifyAssetCriticalityBodySchema } from '../src/modules/asset-management/dto/classify-asset-criticality.dto.js';
 import { assignAssetOwnerBodySchema } from '../src/modules/asset-management/dto/assign-asset-owner.dto.js';
+import { importAssetRowSchema } from '../src/modules/asset-management/dto/import-asset-row.dto.js';
+import { exportAssetsQuerySchema } from '../src/modules/asset-management/dto/export-assets-query.dto.js';
+import { listAssetHistoryQuerySchema } from '../src/modules/asset-management/dto/list-asset-history-query.dto.js';
+import { assetHistoryActions } from '../src/modules/asset-management/dto/list-asset-history-query.dto.js';
 import {
   updateAssetBodySchema,
   updateAssetParamsSchema,
@@ -53,6 +57,60 @@ describe('listAssetsQuerySchema', () => {
   });
 });
 
+describe('exportAssetsQuerySchema', () => {
+  it('uses list filter and sorting rules without pagination', () => {
+    expect(
+      exportAssetsQuerySchema.parse({ q: ' server ', status: 'active', sortBy: 'name' }),
+    ).toEqual({ q: 'server', status: 'active', sortBy: 'name', sortOrder: 'asc' });
+  });
+
+  it.each([{ page: '1' }, { limit: '20' }, { status: 'deleted' }, { sortBy: 'metadata' }])(
+    'rejects unsupported export query values: %o',
+    (candidate) => expect(exportAssetsQuerySchema.safeParse(candidate).success).toBe(false),
+  );
+});
+
+describe('listAssetHistoryQuerySchema', () => {
+  it('applies pagination and newest-first defaults', () => {
+    expect(listAssetHistoryQuerySchema.parse({})).toEqual({
+      page: 1,
+      limit: 20,
+      sortOrder: 'desc',
+    });
+  });
+
+  it.each(assetHistoryActions)('accepts the supported %s action', (action) => {
+    expect(listAssetHistoryQuerySchema.parse({ action }).action).toBe(action);
+  });
+
+  it('parses supported filters and inclusive UTC dates', () => {
+    const result = listAssetHistoryQuerySchema.parse({
+      page: '2',
+      limit: '50',
+      action: 'classified',
+      changedByUserId: '00000000-0000-4000-8000-000000000001',
+      from: '2026-09-01T00:00:00.000Z',
+      to: '2026-09-30T23:59:59.999Z',
+      sortOrder: 'asc',
+    });
+    expect(result).toMatchObject({ page: 2, limit: 50, action: 'classified', sortOrder: 'asc' });
+    expect(result.from?.toISOString()).toBe('2026-09-01T00:00:00.000Z');
+    expect(result.to?.toISOString()).toBe('2026-09-30T23:59:59.999Z');
+  });
+
+  it.each([
+    { page: '0' },
+    { limit: '101' },
+    { action: 'changed' },
+    { changedByUserId: 'invalid' },
+    { from: 'yesterday' },
+    { sortOrder: 'newest' },
+    { from: '2026-10-01T00:00:00.000Z', to: '2026-09-01T00:00:00.000Z' },
+  ])('rejects invalid history filters: %o', (candidate) => {
+    expect(listAssetHistoryQuerySchema.safeParse(candidate).success).toBe(false);
+  });
+});
+
 describe('createAssetBodySchema', () => {
   it('normalizes the code, defaults criticality and removes blank optional text', () => {
     expect(
@@ -78,6 +136,48 @@ describe('createAssetBodySchema', () => {
     { assetCode: 'AST-001', name: 'Server', assetType: 'server', metadata: [] },
   ])('rejects invalid create data: %o', (body) => {
     expect(createAssetBodySchema.safeParse(body).success).toBe(false);
+  });
+});
+
+describe('importAssetRowSchema', () => {
+  const row = {
+    assetCode: ' ast-import-001 ',
+    name: ' Imported Server ',
+    assetType: ' server ',
+    description: '',
+    departmentCode: '',
+    ownerEmployeeCode: '',
+    criticality: '',
+    hostname: '',
+    ipAddress: '',
+    location: '',
+    metadata: '{"environment":"test"}',
+  };
+
+  it('normalizes Excel text, defaults criticality and parses metadata', () => {
+    expect(importAssetRowSchema.parse(row)).toEqual({
+      assetCode: 'AST-IMPORT-001',
+      name: 'Imported Server',
+      assetType: 'server',
+      description: undefined,
+      departmentCode: undefined,
+      ownerEmployeeCode: undefined,
+      criticality: 'medium',
+      hostname: undefined,
+      ipAddress: undefined,
+      location: undefined,
+      metadata: { environment: 'test' },
+    });
+  });
+
+  it.each([
+    { ...row, assetCode: 'BAD CODE' },
+    { ...row, ipAddress: '999.1.1.1' },
+    { ...row, criticality: 'urgent' },
+    { ...row, metadata: '[]' },
+    { ...row, metadata: '{not-json}' },
+  ])('rejects invalid imported row data', (candidate) => {
+    expect(importAssetRowSchema.safeParse(candidate).success).toBe(false);
   });
 });
 

@@ -11,6 +11,8 @@ const {
   softDeleteMock,
   updateAssetMock,
   assignOwnerMock,
+  findAssetForHistoryMock,
+  listHistoryMock,
 } = vi.hoisted(() => ({
   createAssetMock: vi.fn(),
   classifyCriticalityMock: vi.fn(),
@@ -22,6 +24,8 @@ const {
   softDeleteMock: vi.fn(),
   updateAssetMock: vi.fn(),
   assignOwnerMock: vi.fn(),
+  findAssetForHistoryMock: vi.fn(),
+  listHistoryMock: vi.fn(),
 }));
 
 vi.mock('../src/modules/asset-management/asset-management.repository.js', () => ({
@@ -36,6 +40,8 @@ vi.mock('../src/modules/asset-management/asset-management.repository.js', () => 
     list: listAssetsMock,
     softDelete: softDeleteMock,
     update: updateAssetMock,
+    findAssetForHistory: findAssetForHistoryMock,
+    listHistory: listHistoryMock,
   },
 }));
 
@@ -47,6 +53,119 @@ const query = {
   sortBy: 'assetCode',
   sortOrder: 'asc',
 } as const;
+
+describe('assetManagementService.listHistory', () => {
+  const historyQuery = { page: 1, limit: 20, sortOrder: 'desc' as const };
+
+  beforeEach(() => vi.clearAllMocks());
+
+  it('requires permission and returns 404 only when the asset never existed', async () => {
+    await expect(
+      assetManagementService.listHistory('asset-1', historyQuery, {
+        userId: 'user-1',
+        permissions: [],
+      }),
+    ).rejects.toMatchObject({ statusCode: 403, code: 'FORBIDDEN' });
+
+    findAssetForHistoryMock.mockResolvedValue(null);
+    await expect(
+      assetManagementService.listHistory('asset-1', historyQuery, {
+        userId: 'user-1',
+        permissions: ['assets.history.read'],
+      }),
+    ).rejects.toMatchObject({ statusCode: 404, code: 'ASSET_NOT_FOUND' });
+  });
+
+  it('returns deleted assets, pagination and sanitized history data', async () => {
+    findAssetForHistoryMock.mockResolvedValue({
+      asset_id: 'asset-1',
+      asset_code: 'AST-001',
+      name: 'Server',
+      deleted_at: new Date('2026-09-09T00:00:00.000Z'),
+    });
+    listHistoryMock.mockResolvedValue({
+      total: 21,
+      items: [
+        {
+          asset_change_history_id: 'history-1',
+          action: 'updated',
+          before_data: { name: 'Old', password: 'hidden', unknown: 'removed' },
+          after_data: {
+            name: 'New',
+            metadata: { environment: 'test', accessToken: 'hidden' },
+          },
+          changed_at: new Date('2026-09-09T10:00:00.000Z'),
+          users: {
+            user_id: 'deleted-user',
+            full_name: 'Former User',
+            deleted_at: new Date('2026-09-09T11:00:00.000Z'),
+          },
+        },
+      ],
+    });
+
+    const result = await assetManagementService.listHistory('asset-1', historyQuery, {
+      userId: 'user-1',
+      permissions: ['assets.history.read'],
+    });
+
+    expect(result).toEqual({
+      asset: { id: 'asset-1', assetCode: 'AST-001', name: 'Server', deleted: true },
+      items: [
+        {
+          id: 'history-1',
+          action: 'updated',
+          changedBy: null,
+          before: { name: 'Old' },
+          after: { name: 'New', metadata: { environment: 'test' } },
+          changedAt: new Date('2026-09-09T10:00:00.000Z'),
+        },
+      ],
+      pagination: { page: 1, limit: 20, total: 21, totalPages: 2 },
+    });
+  });
+
+  it('maps an active actor, null snapshots and an empty page correctly', async () => {
+    findAssetForHistoryMock.mockResolvedValue({
+      asset_id: 'asset-1',
+      asset_code: 'AST-001',
+      name: 'Server',
+      deleted_at: null,
+    });
+    listHistoryMock.mockResolvedValueOnce({
+      total: 1,
+      items: [
+        {
+          asset_change_history_id: 'history-1',
+          action: 'created',
+          before_data: null,
+          after_data: null,
+          changed_at: new Date('2026-09-09T10:00:00.000Z'),
+          users: { user_id: 'user-1', full_name: 'Administrator', deleted_at: null },
+        },
+      ],
+    });
+    const populated = await assetManagementService.listHistory('asset-1', historyQuery, {
+      userId: 'user-1',
+      permissions: ['assets.history.read'],
+    });
+
+    expect(populated.asset.deleted).toBe(false);
+    expect(populated.items[0]).toMatchObject({
+      changedBy: { id: 'user-1', fullName: 'Administrator' },
+      before: null,
+      after: null,
+    });
+
+    listHistoryMock.mockResolvedValueOnce({ total: 0, items: [] });
+    const empty = await assetManagementService.listHistory('asset-1', historyQuery, {
+      userId: 'user-1',
+      permissions: ['assets.history.read'],
+    });
+    expect(empty.items).toEqual([]);
+    expect(empty.pagination).toEqual({ page: 1, limit: 20, total: 0, totalPages: 0 });
+  });
+});
 
 describe('assetManagementService.list', () => {
   beforeEach(() => vi.clearAllMocks());
