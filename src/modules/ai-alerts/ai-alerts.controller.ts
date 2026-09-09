@@ -12,6 +12,19 @@ import {
   evaluateAlertReliabilityBodySchema,
 } from './dto/alert-feedback.dto.js';
 import { confirmAlertBodySchema } from './dto/confirm-alert.dto.js';
+import { falsePositiveBodySchema } from './dto/false-positive.dto.js';
+
+export const markFalsePositive: RequestHandler = async (req, res) => {
+  if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+  const { alertId } = alertIdParamsSchema.parse(req.params);
+  const data = await aiAlertsService.markFalsePositive(
+    alertId,
+    falsePositiveBodySchema.parse(req.body),
+    req.auth,
+    requestContext(req),
+  );
+  res.status(200).json({ success: true, data });
+};
 
 const requestContext = (req: Request) => ({
   ipAddress: req.ip ?? null,

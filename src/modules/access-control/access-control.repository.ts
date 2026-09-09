@@ -35,9 +35,8 @@ export const accessControlRepository = {
       isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
     });
   },
-  async listCustomRoles(query: ListRolesQuery) {
+  async listRoles(query: ListRolesQuery) {
     const where: Prisma.rolesWhereInput = {
-      is_system: false,
       ...(query.search
         ? {
             OR: [

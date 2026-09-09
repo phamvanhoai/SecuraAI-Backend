@@ -319,6 +319,32 @@ async function main(): Promise<void> {
       description: 'Confirm that an AI alert represents a real security incident',
     },
   });
+  const falsePositivePermissionData = {
+    code: 'ai-alerts.mark-false-positive',
+    module: 'ai-alerts',
+    action: 'mark-false-positive',
+    description: 'Mark an AI alert as a false positive',
+  };
+  const falsePositivePermission = await prisma.permissions.upsert({
+    where: { code: falsePositivePermissionData.code },
+    update: falsePositivePermissionData,
+    create: falsePositivePermissionData,
+  });
+  for (const reviewerRole of [role, securityOfficerRole]) {
+    await prisma.role_permissions.upsert({
+      where: {
+        role_id_permission_id: {
+          role_id: reviewerRole.role_id,
+          permission_id: falsePositivePermission.permission_id,
+        },
+      },
+      update: {},
+      create: {
+        role_id: reviewerRole.role_id,
+        permission_id: falsePositivePermission.permission_id,
+      },
+    });
+  }
   const policyPublishPermission = await prisma.permissions.upsert({
     where: { code: 'policies.publish' },
     update: {
