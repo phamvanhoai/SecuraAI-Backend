@@ -3,7 +3,7 @@ import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
-  listCustomRoles: vi.fn(),
+  listRoles: vi.fn(),
   findById: vi.fn(),
   findByCode: vi.fn(),
   countPermissions: vi.fn(),
@@ -48,7 +48,7 @@ describe('custom role HTTP API', () => {
     mocks.transaction.mockImplementation(
       async (operation: (database: object) => Promise<unknown>) => operation({}),
     );
-    mocks.listCustomRoles.mockResolvedValue({ items: [record], total: 1 });
+    mocks.listRoles.mockResolvedValue({ items: [record], total: 1 });
     mocks.findByCode.mockResolvedValue(null);
     mocks.countPermissions.mockResolvedValue(0);
     mocks.create.mockResolvedValue(record);

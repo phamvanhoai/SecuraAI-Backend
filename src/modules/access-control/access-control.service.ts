@@ -27,7 +27,7 @@ const auditSnapshot = (role: ReturnType<typeof toRoleResponse>): Prisma.InputJso
 export const accessControlService = {
   async listRoles(query: ListRolesQuery, actor: RoleActor) {
     requirePermission(actor, 'roles.read');
-    const result = await accessControlRepository.listCustomRoles(query);
+    const result = await accessControlRepository.listRoles(query);
     return {
       items: result.items.map(toRoleResponse),
       pagination: {
@@ -41,8 +41,7 @@ export const accessControlService = {
   async getRole(roleId: string, actor: RoleActor) {
     requirePermission(actor, 'roles.read');
     const role = await accessControlRepository.findById(roleId);
-    if (!role || role.is_system)
-      throw new AppError(404, 'ROLE_NOT_FOUND', 'Custom role was not found');
+    if (!role) throw new AppError(404, 'ROLE_NOT_FOUND', 'Role was not found');
     return toRoleResponse(role);
   },
   async createRole(input: CreateRoleBody, actor: RoleActor) {

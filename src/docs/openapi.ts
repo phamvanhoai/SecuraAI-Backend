@@ -120,7 +120,7 @@ export const openApiSpec = swaggerJsdoc({
             code: { type: 'string' },
             name: { type: 'string' },
             description: { type: 'string', nullable: true },
-            isSystem: { type: 'boolean', enum: [false] },
+            isSystem: { type: 'boolean' },
             permissions: {
               type: 'array',
               items: {
@@ -801,7 +801,7 @@ export const openApiSpec = swaggerJsdoc({
       '/access-control/roles': {
         get: {
           tags: ['Role Management'],
-          summary: 'View custom roles',
+          summary: 'View system and custom roles',
           security: [{ bearerAuth: [] }],
           parameters: [
             { name: 'page', in: 'query', schema: { type: 'integer', default: 1, minimum: 1 } },
@@ -815,7 +815,7 @@ export const openApiSpec = swaggerJsdoc({
             { name: 'sortOrder', in: 'query', schema: { type: 'string', enum: ['asc', 'desc'] } },
           ],
           responses: {
-            '200': { description: 'Paginated custom roles' },
+            '200': { description: 'Paginated system and custom roles' },
             '401': { description: 'Unauthorized' },
             '403': { description: 'Missing roles.read permission' },
           },
@@ -850,13 +850,13 @@ export const openApiSpec = swaggerJsdoc({
         ],
         get: {
           tags: ['Role Management'],
-          summary: 'View custom role details',
+          summary: 'View role details',
           security: [{ bearerAuth: [] }],
           responses: {
-            '200': { description: 'Custom role details' },
+            '200': { description: 'System or custom role details' },
             '401': { description: 'Unauthorized' },
             '403': { description: 'Missing roles.read permission' },
-            '404': { description: 'Custom role not found' },
+            '404': { description: 'Role not found' },
           },
         },
         patch: {

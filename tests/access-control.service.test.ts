@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
-  listCustomRoles: vi.fn(),
+  listRoles: vi.fn(),
   findById: vi.fn(),
   findByCode: vi.fn(),
   countPermissions: vi.fn(),
@@ -43,14 +43,21 @@ describe('accessControlService', () => {
     mocks.findByCode.mockResolvedValue(null);
     mocks.audit.mockResolvedValue({ audit_log_id: 'audit-1' });
   });
-  it('lists only repository-provided custom roles with pagination', async () => {
-    mocks.listCustomRoles.mockResolvedValue({ items: [role()], total: 1 });
+  it('lists system and custom roles with pagination', async () => {
+    mocks.listRoles.mockResolvedValue({ items: [role({ is_system: true })], total: 1 });
     const result = await accessControlService.listRoles(
       { page: 1, limit: 20, sortBy: 'name', sortOrder: 'asc' },
       actor,
     );
-    expect(result.items[0]?.isSystem).toBe(false);
+    expect(result.items[0]?.isSystem).toBe(true);
     expect(result.pagination).toEqual({ page: 1, limit: 20, total: 1, totalPages: 1 });
+  });
+  it('returns system role details as read-only data', async () => {
+    mocks.findById.mockResolvedValue(role({ is_system: true, code: 'ADMIN' }));
+    await expect(accessControlService.getRole(role().role_id, actor)).resolves.toMatchObject({
+      code: 'ADMIN',
+      isSystem: true,
+    });
   });
   it('creates a role and audit record atomically', async () => {
     mocks.create.mockResolvedValue(role());
