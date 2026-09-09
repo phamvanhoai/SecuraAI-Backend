@@ -737,6 +737,67 @@ export const openApiSpec = swaggerJsdoc({
       },
     },
     paths: {
+      '/ai-alerts/{alertId}/false-positive': {
+        post: {
+          tags: ['AI Alerts'],
+          summary: 'Mark an AI alert as false positive',
+          description:
+            'Requires ai-alerts.mark-false-positive. Transitions new/reviewing alerts to false_positive and atomically records reviewer, feedback and audit. Repeating the action returns changed=false without duplicate feedback. Confirmed/closed alerts return 409. Feedback is retained for analysis; no model training is triggered.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'alertId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  additionalProperties: false,
+                  properties: { comment: { type: 'string', minLength: 1, maxLength: 2000 } },
+                },
+              },
+            },
+          },
+          responses: {
+            '200': {
+              description: 'Review result',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      success: { type: 'boolean', enum: [true] },
+                      data: {
+                        type: 'object',
+                        properties: {
+                          id: { type: 'string', format: 'uuid' },
+                          alertCode: { type: 'string' },
+                          status: { type: 'string', enum: ['false_positive'] },
+                          reviewedByUserId: { type: 'string', format: 'uuid', nullable: true },
+                          reviewedAt: { type: 'string', format: 'date-time', nullable: true },
+                          changed: { type: 'boolean' },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'Missing permission' },
+            '404': { description: 'Alert not found' },
+            '409': { description: 'Incompatible alert status' },
+            '422': { description: 'Invalid UUID or body' },
+            '500': { description: 'Internal error; transaction rolled back' },
+          },
+        },
+      },
       '/access-control/roles': {
         get: {
           tags: ['Role Management'],

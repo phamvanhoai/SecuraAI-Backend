@@ -17,6 +17,7 @@ import { modelParametersSchema } from './dto/model-configuration.dto.js';
 import type { DetectionEvent } from './ai-alerts.repository.js';
 import type { EvaluateAlertReliabilityBody } from './dto/alert-feedback.dto.js';
 import type { ConfirmAlertBody } from './dto/confirm-alert.dto.js';
+import type { FalsePositiveBody } from './dto/false-positive.dto.js';
 
 type Actor = { userId: string; permissions: readonly string[] };
 type RequestContext = { ipAddress: string | null; userAgent: string | null };
@@ -35,6 +36,28 @@ const alertCodeFor = (eventId: string, modelVersionId: string, ruleId: string): 
     .slice(0, 40)}`;
 
 export const aiAlertsService = {
+  async markFalsePositive(
+    alertId: string,
+    input: FalsePositiveBody,
+    actor: Actor,
+    context: RequestContext,
+  ) {
+    requirePermission(actor, 'ai-alerts.mark-false-positive');
+    const result = await aiAlertsRepository.markFalsePositive(alertId, input, {
+      actorUserId: actor.userId,
+      ...context,
+    });
+    if (result.kind === 'not_found')
+      throw new AppError(404, 'AI_ALERT_NOT_FOUND', 'AI alert was not found');
+    if (result.kind === 'invalid_status') {
+      throw new AppError(
+        409,
+        'AI_ALERT_STATUS_CONFLICT',
+        'Alert cannot be marked false positive in its current status',
+      );
+    }
+    return { ...toAlertConfirmationResponse(result.alert), changed: result.kind === 'marked' };
+  },
   async confirmAlertAsIncident(
     alertId: string,
     input: ConfirmAlertBody,

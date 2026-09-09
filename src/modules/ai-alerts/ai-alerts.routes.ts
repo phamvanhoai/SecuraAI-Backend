@@ -4,6 +4,7 @@ import { validate } from '../../common/middleware/validate.js';
 import { asyncHandler } from '../../common/utils/async-handler.js';
 import {
   activateModelConfiguration,
+  markFalsePositive,
   createModelConfiguration,
   evaluateAlertReliability,
   confirmAlertAsIncident,
@@ -21,8 +22,16 @@ import {
   evaluateAlertReliabilityBodySchema,
 } from './dto/alert-feedback.dto.js';
 import { confirmAlertBodySchema } from './dto/confirm-alert.dto.js';
+import { falsePositiveBodySchema } from './dto/false-positive.dto.js';
 
 export const aiAlertsRouter = Router();
+aiAlertsRouter.post(
+  '/:alertId/false-positive',
+  authenticate,
+  authorize('ai-alerts.mark-false-positive'),
+  validate({ params: alertIdParamsSchema, body: falsePositiveBodySchema }),
+  asyncHandler(markFalsePositive),
+);
 
 aiAlertsRouter.get(
   '/',
