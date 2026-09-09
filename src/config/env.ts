@@ -15,6 +15,7 @@ const envSchema = z.object({
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
   TRUST_PROXY: booleanString.default(false),
   SWAGGER_ENABLED: booleanString.default(true),
+  FILE_STORAGE_DIR: z.string().trim().min(1).default('uploads'),
 });
 
 const result = envSchema.safeParse(process.env);

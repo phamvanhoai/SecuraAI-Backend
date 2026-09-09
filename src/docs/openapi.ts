@@ -333,6 +333,88 @@ export const openApiSpec = swaggerJsdoc({
             assignedAt: { type: 'string', format: 'date-time', nullable: true },
           },
         },
+        AssetImportJob: {
+          type: 'object',
+          required: [
+            'id',
+            'importType',
+            'status',
+            'totalRows',
+            'successRows',
+            'failedRows',
+            'errors',
+            'file',
+            'createdAt',
+            'completedAt',
+          ],
+          properties: {
+            id: { type: 'string', format: 'uuid' },
+            importType: { type: 'string', enum: ['assets'] },
+            status: { type: 'string', enum: ['pending', 'processing', 'completed', 'failed'] },
+            totalRows: { type: 'integer', minimum: 0 },
+            successRows: { type: 'integer', minimum: 0 },
+            failedRows: { type: 'integer', minimum: 0 },
+            errors: {
+              type: 'array',
+              items: {
+                type: 'object',
+                required: ['row', 'code', 'message'],
+                properties: {
+                  row: { type: 'integer', minimum: 2 },
+                  assetCode: { type: 'string' },
+                  field: { type: 'string' },
+                  code: { type: 'string' },
+                  message: { type: 'string' },
+                },
+              },
+            },
+            file: {
+              type: 'object',
+              required: ['id', 'originalName', 'mimeType', 'sizeBytes', 'checksum'],
+              properties: {
+                id: { type: 'string', format: 'uuid' },
+                originalName: { type: 'string' },
+                mimeType: { type: 'string' },
+                sizeBytes: { type: 'integer', nullable: true },
+                checksum: { type: 'string', nullable: true },
+              },
+            },
+            createdAt: { type: 'string', format: 'date-time' },
+            completedAt: { type: 'string', format: 'date-time', nullable: true },
+          },
+        },
+        AssetHistoryItem: {
+          type: 'object',
+          required: ['id', 'action', 'changedBy', 'before', 'after', 'changedAt'],
+          properties: {
+            id: { type: 'string', format: 'uuid' },
+            action: {
+              type: 'string',
+              enum: [
+                'created',
+                'imported',
+                'updated',
+                'classified',
+                'owner_assigned',
+                'owner_reassigned',
+                'owner_unassigned',
+                'deleted',
+              ],
+            },
+            changedBy: {
+              type: 'object',
+              nullable: true,
+              required: ['id', 'fullName'],
+              properties: {
+                id: { type: 'string', format: 'uuid' },
+                fullName: { type: 'string' },
+              },
+            },
+            before: { type: 'object', nullable: true, additionalProperties: true },
+            after: { type: 'object', nullable: true, additionalProperties: true },
+            changedAt: { type: 'string', format: 'date-time' },
+          },
+        },
         LogSourceConfiguration: {
           type: 'object',
           additionalProperties: false,
@@ -505,7 +587,9 @@ export const openApiSpec = swaggerJsdoc({
         },
         TestConnectionRequest: {
           type: 'object',
-          properties: { timeoutMs: { type: 'integer', minimum: 1000, maximum: 10000, default: 5000 } },
+          properties: {
+            timeoutMs: { type: 'integer', minimum: 1000, maximum: 10000, default: 5000 },
+          },
         },
         IntegrationResponse: {
           type: 'object',
@@ -850,6 +934,184 @@ CreateSyncScheduleRequest: {
           },
         },
       },
+      '/assets/import-template': {
+        get: {
+          tags: ['Assets'],
+          summary: 'Download the asset import Excel template',
+          description:
+            'Downloads the supported .xlsx template. Requires the assets.import permission.',
+          security: [{ bearerAuth: [] }],
+          responses: {
+            '200': {
+              description: 'Excel template',
+              content: {
+                'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': {
+                  schema: { type: 'string', format: 'binary' },
+                },
+              },
+            },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'The assets.import permission is required' },
+            '500': { description: 'Unexpected server error' },
+          },
+        },
+      },
+      '/assets/export': {
+        get: {
+          tags: ['Assets'],
+          summary: 'Export the asset list to Excel',
+          description:
+            'Exports up to 10000 non-deleted assets using the same search, filter and sorting rules as the asset list. Requires the assets.export permission.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'q',
+              in: 'query',
+              description: 'Case-insensitive search by code, name, hostname or location.',
+              schema: { type: 'string', minLength: 1, maxLength: 100 },
+            },
+            { name: 'assetType', in: 'query', schema: { type: 'string', maxLength: 50 } },
+            {
+              name: 'criticality',
+              in: 'query',
+              schema: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] },
+            },
+            {
+              name: 'status',
+              in: 'query',
+              schema: { type: 'string', enum: ['active', 'inactive', 'retired', 'disposed'] },
+            },
+            {
+              name: 'departmentId',
+              in: 'query',
+              schema: { type: 'string', format: 'uuid' },
+            },
+            {
+              name: 'ownerUserId',
+              in: 'query',
+              schema: { type: 'string', format: 'uuid' },
+            },
+            {
+              name: 'sortBy',
+              in: 'query',
+              schema: {
+                type: 'string',
+                enum: ['assetCode', 'name', 'createdAt', 'updatedAt'],
+                default: 'assetCode',
+              },
+            },
+            {
+              name: 'sortOrder',
+              in: 'query',
+              schema: { type: 'string', enum: ['asc', 'desc'], default: 'asc' },
+            },
+          ],
+          responses: {
+            '200': {
+              description: 'Asset Excel file, including a header-only file when no assets match',
+              headers: {
+                'X-Exported-Rows': {
+                  description: 'Number of asset rows written to the workbook',
+                  schema: { type: 'integer' },
+                },
+              },
+              content: {
+                'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': {
+                  schema: { type: 'string', format: 'binary' },
+                },
+              },
+            },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'The assets.export permission is required' },
+            '422': { description: 'Invalid filters or the 10000-row limit was exceeded' },
+            '429': { description: 'Too many export requests' },
+            '500': { description: 'Excel generation, audit or database failure' },
+          },
+        },
+      },
+      '/assets/import': {
+        post: {
+          tags: ['Assets'],
+          summary: 'Import IT assets from Excel',
+          description:
+            'Creates valid assets from an .xlsx file and returns per-row errors without updating existing assets. Maximum 5 MB and 1000 non-empty rows. Requires the assets.import permission.',
+          security: [{ bearerAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              'multipart/form-data': {
+                schema: {
+                  type: 'object',
+                  required: ['file'],
+                  properties: { file: { type: 'string', format: 'binary' } },
+                },
+              },
+            },
+          },
+          responses: {
+            '200': {
+              description: 'Import completed, including any row-level failures',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    required: ['success', 'data'],
+                    properties: {
+                      success: { type: 'boolean', example: true },
+                      data: { $ref: '#/components/schemas/AssetImportJob' },
+                    },
+                  },
+                },
+              },
+            },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'The assets.import permission is required' },
+            '413': { description: 'The file exceeds 5 MB' },
+            '422': { description: 'Missing, invalid or unsupported workbook' },
+            '429': { description: 'Too many import requests' },
+            '500': { description: 'Import processing failed' },
+          },
+        },
+      },
+      '/assets/imports/{importJobId}': {
+        get: {
+          tags: ['Assets'],
+          summary: 'Get an asset import result',
+          description:
+            'Returns counts and row-level errors. Requires the assets.import permission.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'importJobId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          responses: {
+            '200': {
+              description: 'Import job result',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    required: ['success', 'data'],
+                    properties: {
+                      success: { type: 'boolean', example: true },
+                      data: { $ref: '#/components/schemas/AssetImportJob' },
+                    },
+                  },
+                },
+              },
+            },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'The assets.import permission is required' },
+            '404': { description: 'Import job was not found' },
+            '422': { description: 'Invalid import job ID' },
+            '500': { description: 'Unexpected server error' },
+          },
+        },
+      },
       '/assets/{assetId}': {
         patch: {
           tags: ['Assets'],
@@ -1016,6 +1278,109 @@ CreateSyncScheduleRequest: {
             '409': { description: 'Asset owner changed concurrently' },
             '422': { description: 'Invalid input, inactive owner or disposed asset' },
             '429': { description: 'Too many requests' },
+            '500': { description: 'Unexpected server error' },
+          },
+        },
+      },
+      '/assets/{assetId}/history': {
+        get: {
+          tags: ['Assets'],
+          summary: 'View asset change history',
+          description:
+            'Returns a paginated timeline for an existing asset, including soft-deleted assets. Sensitive and unsupported JSON fields are removed. Requires the assets.history.read permission.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'assetId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+            { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
+            {
+              name: 'limit',
+              in: 'query',
+              schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
+            },
+            {
+              name: 'action',
+              in: 'query',
+              schema: {
+                type: 'string',
+                enum: [
+                  'created',
+                  'imported',
+                  'updated',
+                  'classified',
+                  'owner_assigned',
+                  'owner_reassigned',
+                  'owner_unassigned',
+                  'deleted',
+                ],
+              },
+            },
+            {
+              name: 'changedByUserId',
+              in: 'query',
+              schema: { type: 'string', format: 'uuid' },
+            },
+            { name: 'from', in: 'query', schema: { type: 'string', format: 'date-time' } },
+            { name: 'to', in: 'query', schema: { type: 'string', format: 'date-time' } },
+            {
+              name: 'sortOrder',
+              in: 'query',
+              schema: { type: 'string', enum: ['asc', 'desc'], default: 'desc' },
+            },
+          ],
+          responses: {
+            '200': {
+              description: 'Paginated asset change history',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    required: ['success', 'data'],
+                    properties: {
+                      success: { type: 'boolean', example: true },
+                      data: {
+                        type: 'object',
+                        required: ['asset', 'items', 'pagination'],
+                        properties: {
+                          asset: {
+                            type: 'object',
+                            required: ['id', 'assetCode', 'name', 'deleted'],
+                            properties: {
+                              id: { type: 'string', format: 'uuid' },
+                              assetCode: { type: 'string' },
+                              name: { type: 'string' },
+                              deleted: { type: 'boolean' },
+                            },
+                          },
+                          items: {
+                            type: 'array',
+                            items: { $ref: '#/components/schemas/AssetHistoryItem' },
+                          },
+                          pagination: {
+                            type: 'object',
+                            required: ['page', 'limit', 'total', 'totalPages'],
+                            properties: {
+                              page: { type: 'integer' },
+                              limit: { type: 'integer' },
+                              total: { type: 'integer' },
+                              totalPages: { type: 'integer' },
+                            },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'The assets.history.read permission is required' },
+            '404': { description: 'Asset was not found' },
+            '422': { description: 'Invalid asset ID, filter, pagination or date range' },
             '500': { description: 'Unexpected server error' },
           },
         },
@@ -1340,34 +1705,91 @@ CreateSyncScheduleRequest: {
       },
       '/integrations': {
         post: {
-          tags: ['Integrations'], summary: 'Create external integration configuration', security: [{ bearerAuth: [] }],
-          requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/CreateIntegrationRequest' } } } },
-          responses: { '201': { description: 'Integration created' }, '400': { description: 'Validation or SSRF error' }, '401': { description: 'Unauthorized' }, '403': { description: 'Forbidden' } },
+          tags: ['Integrations'],
+          summary: 'Create external integration configuration',
+          security: [{ bearerAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/CreateIntegrationRequest' },
+              },
+            },
+          },
+          responses: {
+            '201': { description: 'Integration created' },
+            '400': { description: 'Validation or SSRF error' },
+            '401': { description: 'Unauthorized' },
+            '403': { description: 'Forbidden' },
+          },
         },
         get: {
-          tags: ['Integrations'], summary: 'List external integrations', security: [{ bearerAuth: [] }],
-          responses: { '200': { description: 'List of integrations' }, '401': { description: 'Unauthorized' }, '403': { description: 'Forbidden' } },
+          tags: ['Integrations'],
+          summary: 'List external integrations',
+          security: [{ bearerAuth: [] }],
+          responses: {
+            '200': { description: 'List of integrations' },
+            '401': { description: 'Unauthorized' },
+            '403': { description: 'Forbidden' },
+          },
         },
       },
       '/integrations/{id}': {
         get: {
-          tags: ['Integrations'], summary: 'Get integration by ID', security: [{ bearerAuth: [] }],
-          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
-          responses: { '200': { description: 'Integration details' }, '404': { description: 'Integration not found' } },
+          tags: ['Integrations'],
+          summary: 'Get integration by ID',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+          ],
+          responses: {
+            '200': { description: 'Integration details' },
+            '404': { description: 'Integration not found' },
+          },
         },
         patch: {
-          tags: ['Integrations'], summary: 'Update integration configuration', security: [{ bearerAuth: [] }],
-          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
-          requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/UpdateIntegrationRequest' } } } },
-          responses: { '200': { description: 'Integration updated' }, '404': { description: 'Integration not found' } },
+          tags: ['Integrations'],
+          summary: 'Update integration configuration',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/UpdateIntegrationRequest' },
+              },
+            },
+          },
+          responses: {
+            '200': { description: 'Integration updated' },
+            '404': { description: 'Integration not found' },
+          },
         },
       },
       '/integrations/{id}/test-connection': {
         post: {
-          tags: ['Integrations'], summary: 'Test external connection to SIEM or Firewall', security: [{ bearerAuth: [] }],
-          parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
-          requestBody: { required: false, content: { 'application/json': { schema: { $ref: '#/components/schemas/TestConnectionRequest' } } } },
-          responses: { '200': { description: 'Connection test outcome' }, '400': { description: 'SSRF rejected or no base URL configured' }, '404': { description: 'Integration not found' }, '429': { description: 'Rate limit exceeded' } },
+          tags: ['Integrations'],
+          summary: 'Test external connection to SIEM or Firewall',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+          ],
+          requestBody: {
+            required: false,
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/TestConnectionRequest' },
+              },
+            },
+          },
+          responses: {
+            '200': { description: 'Connection test outcome' },
+            '400': { description: 'SSRF rejected or no base URL configured' },
+            '404': { description: 'Integration not found' },
+            '429': { description: 'Rate limit exceeded' },
+          },
         },
       },
       '/security-monitoring/log-sources/{logSourceId}/events': {

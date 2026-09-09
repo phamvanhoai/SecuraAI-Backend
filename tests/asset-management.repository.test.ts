@@ -15,6 +15,9 @@ const {
   thresholdCountMock,
   incidentCountMock,
   assetLookupMock,
+  assetFindUniqueMock,
+  historyCountMock,
+  historyFindManyMock,
 } = vi.hoisted(() => ({
   assetCreateMock: vi.fn(),
   auditCreateMock: vi.fn(),
@@ -30,6 +33,9 @@ const {
   thresholdCountMock: vi.fn(),
   incidentCountMock: vi.fn(),
   assetLookupMock: vi.fn(),
+  assetFindUniqueMock: vi.fn(),
+  historyCountMock: vi.fn(),
+  historyFindManyMock: vi.fn(),
 }));
 
 vi.mock('../src/database/prisma.js', () => ({
@@ -38,10 +44,12 @@ vi.mock('../src/database/prisma.js', () => ({
       count: countMock,
       findFirst: assetLookupMock,
       findMany: findManyMock,
-      findUnique: vi.fn(),
+      findUnique: assetFindUniqueMock,
     },
+    asset_change_history: { count: historyCountMock, findMany: historyFindManyMock },
     departments: { findUnique: vi.fn() },
     users: { findFirst: vi.fn() },
+    audit_logs: { create: auditCreateMock },
     $transaction: transactionMock,
   },
 }));
@@ -444,6 +452,151 @@ describe('assetManagementRepository.create', () => {
         action: 'asset.created',
         entity_id: 'asset-1',
       },
+    });
+  });
+});
+
+describe('assetManagementRepository.importAsset', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    transactionMock.mockImplementation((callback: (transaction: unknown) => Promise<unknown>) =>
+      callback({
+        assets: { create: assetCreateMock },
+        asset_change_history: { create: historyCreateMock },
+        audit_logs: { create: auditCreateMock },
+      }),
+    );
+    assetCreateMock.mockResolvedValue({ asset_id: 'asset-import-1' });
+  });
+
+  it('atomically creates the asset with imported history and audit context', async () => {
+    await assetManagementRepository.importAsset(
+      {
+        assetCode: 'AST-IMPORT-001',
+        name: 'Imported Server',
+        assetType: 'server',
+        criticality: 'medium',
+      },
+      {
+        actorUserId: 'user-1',
+        importJobId: 'job-1',
+        rowNumber: 2,
+        ipAddress: '127.0.0.1',
+        userAgent: 'vitest',
+      },
+    );
+
+    const assetArgument: unknown = assetCreateMock.mock.calls[0]?.[0];
+    const historyArgument: unknown = historyCreateMock.mock.calls[0]?.[0];
+    const auditArgument: unknown = auditCreateMock.mock.calls[0]?.[0];
+    expect(assetArgument).toMatchObject({
+      data: { asset_code: 'AST-IMPORT-001', status: 'active' },
+    });
+    expect(historyArgument).toMatchObject({ data: { action: 'imported' } });
+    expect(auditArgument).toMatchObject({
+      data: { action: 'asset.imported', entity_id: 'asset-import-1' },
+    });
+  });
+});
+
+describe('assetManagementRepository asset export', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    findManyMock.mockResolvedValue([]);
+    auditCreateMock.mockResolvedValue({ audit_log_id: 'audit-1' });
+  });
+
+  it('reuses safe filters, excludes deleted assets and applies the hard query limit', async () => {
+    await assetManagementRepository.findForExport(
+      {
+        q: 'server',
+        status: 'active',
+        sortBy: 'updatedAt',
+        sortOrder: 'desc',
+      },
+      10_001,
+    );
+
+    const argument: unknown = findManyMock.mock.calls[0]?.[0];
+    expect(argument).toMatchObject({
+      where: {
+        deleted_at: null,
+        status: 'active',
+        OR: [
+          { asset_code: { contains: 'server', mode: 'insensitive' } },
+          { name: { contains: 'server', mode: 'insensitive' } },
+          { hostname: { contains: 'server', mode: 'insensitive' } },
+          { location: { contains: 'server', mode: 'insensitive' } },
+        ],
+      },
+      orderBy: [{ updated_at: 'desc' }, { asset_id: 'asc' }],
+      take: 10_001,
+    });
+  });
+
+  it('records only the export summary and filters in the audit log', async () => {
+    await assetManagementRepository.recordExport(
+      {
+        format: 'xlsx',
+        exportedRows: 2,
+        filters: { status: 'active', sortBy: 'assetCode', sortOrder: 'asc' },
+      },
+      { actorUserId: 'user-1', ipAddress: '127.0.0.1', userAgent: 'vitest' },
+    );
+
+    const argument: unknown = auditCreateMock.mock.calls[0]?.[0];
+    expect(argument).toMatchObject({
+      data: {
+        actor_user_id: 'user-1',
+        action: 'asset.exported',
+        entity_type: 'asset_export',
+        after_data: { format: 'xlsx', exportedRows: 2, filters: { status: 'active' } },
+      },
+    });
+  });
+});
+
+describe('assetManagementRepository.listHistory', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    historyCountMock.mockResolvedValue(1);
+    historyFindManyMock.mockResolvedValue([]);
+    transactionMock.mockImplementation((operations: Promise<unknown>[]) => Promise.all(operations));
+  });
+
+  it('finds assets including soft-deleted records', async () => {
+    assetFindUniqueMock.mockResolvedValue(null);
+    await assetManagementRepository.findAssetForHistory('asset-1');
+
+    const argument: unknown = assetFindUniqueMock.mock.calls[0]?.[0];
+    expect(argument).toMatchObject({ where: { asset_id: 'asset-1' } });
+    expect(argument).not.toMatchObject({ where: { deleted_at: null } });
+  });
+
+  it('applies filters, inclusive dates, pagination and deterministic sorting', async () => {
+    const from = new Date('2026-09-01T00:00:00.000Z');
+    const to = new Date('2026-09-30T23:59:59.999Z');
+    await assetManagementRepository.listHistory('asset-1', {
+      page: 2,
+      limit: 10,
+      action: 'updated',
+      changedByUserId: '00000000-0000-4000-8000-000000000001',
+      from,
+      to,
+      sortOrder: 'asc',
+    });
+
+    const argument: unknown = historyFindManyMock.mock.calls[0]?.[0];
+    expect(argument).toMatchObject({
+      where: {
+        asset_id: 'asset-1',
+        action: 'updated',
+        changed_by_user_id: '00000000-0000-4000-8000-000000000001',
+        changed_at: { gte: from, lte: to },
+      },
+      orderBy: [{ changed_at: 'asc' }, { asset_change_history_id: 'asc' }],
+      skip: 10,
+      take: 10,
     });
   });
 });
