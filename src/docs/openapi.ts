@@ -62,7 +62,35 @@ export const openApiSpec = swaggerJsdoc({
           additionalProperties: false,
           properties: {
             token: { type: 'string', pattern: '^\\d{6}$', example: '123456' },
-            newPassword: { type: 'string', format: 'password', minLength: 8, maxLength: 128 },
+            newPassword: {
+              type: 'string',
+              format: 'password',
+              minLength: 8,
+              maxLength: 128,
+              description: 'At least 8 characters, one uppercase letter, and one special character.',
+            },
+            confirmPassword: {
+              type: 'string',
+              format: 'password',
+              minLength: 8,
+              maxLength: 128,
+              description: 'Must match newPassword.',
+            },
+          },
+        },
+        ChangePasswordRequest: {
+          type: 'object',
+          required: ['currentPassword', 'newPassword', 'confirmPassword'],
+          additionalProperties: false,
+          properties: {
+            currentPassword: { type: 'string', format: 'password', minLength: 1 },
+            newPassword: {
+              type: 'string',
+              format: 'password',
+              minLength: 8,
+              maxLength: 128,
+              description: 'At least 8 characters, one uppercase letter, and one special character.',
+            },
             confirmPassword: { type: 'string', format: 'password', minLength: 8, maxLength: 128 },
           },
         },
@@ -1068,6 +1096,44 @@ export const openApiSpec = swaggerJsdoc({
           },
         },
       },
+      '/auth/change-password': {
+        post: {
+          tags: ['Authentication'],
+          summary: 'Change the authenticated user password',
+          security: [{ bearerAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': { schema: { $ref: '#/components/schemas/ChangePasswordRequest' } },
+            },
+          },
+          responses: {
+            '200': {
+              description: 'Password changed and existing refresh sessions revoked',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      success: { type: 'boolean', example: true },
+                      data: {
+                        type: 'object',
+                        properties: {
+                          message: { type: 'string', example: 'Password changed successfully. Please log in again.' },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            '400': { description: 'Current password is incorrect or new password is unchanged' },
+            '401': { description: 'Unauthorized' },
+            '403': { description: 'Account is inactive' },
+            '422': { description: 'Invalid password policy or confirmation' },
+          },
+        },
+      },
       '/auth/password-reset/confirm': {
         post: {
           tags: ['Authentication'],
@@ -1079,7 +1145,25 @@ export const openApiSpec = swaggerJsdoc({
             },
           },
           responses: {
-            '204': { description: 'Password reset and existing sessions revoked' },
+            '200': {
+              description: 'Password reset and existing sessions revoked',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      success: { type: 'boolean', example: true },
+                      data: {
+                        type: 'object',
+                        properties: {
+                          message: { type: 'string', example: 'Password reset successfully. Please log in with your new password.' },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
             '400': { description: 'Reset token is invalid or expired' },
             '422': { description: 'Invalid reset request' },
             '429': { description: 'Too many attempts' },
