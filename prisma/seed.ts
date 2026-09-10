@@ -30,13 +30,13 @@ async function main(): Promise<void> {
     update: {
       name: 'Security Officer',
       description: 'Security Officer role defined by the approved project use cases',
-      is_system: true,
+      is_system: false,
     },
     create: {
       code: 'SECURITY_OFFICER',
       name: 'Security Officer',
       description: 'Security Officer role defined by the approved project use cases',
-      is_system: true,
+      is_system: false,
     },
   });
   await prisma.roles.upsert({
@@ -44,13 +44,13 @@ async function main(): Promise<void> {
     update: {
       name: 'Employee',
       description: 'Employee role defined by the approved project use cases',
-      is_system: true,
+      is_system: false,
     },
     create: {
       code: 'EMPLOYEE',
       name: 'Employee',
       description: 'Employee role defined by the approved project use cases',
-      is_system: true,
+      is_system: false,
     },
   });
   await prisma.roles.upsert({
@@ -58,13 +58,13 @@ async function main(): Promise<void> {
     update: {
       name: 'Executive',
       description: 'Executive role defined by the approved project use cases',
-      is_system: true,
+      is_system: false,
     },
     create: {
       code: 'EXECUTIVE',
       name: 'Executive',
       description: 'Executive role defined by the approved project use cases',
-      is_system: true,
+      is_system: false,
     },
   });
   const createPolicyPermission = await prisma.permissions.upsert({
