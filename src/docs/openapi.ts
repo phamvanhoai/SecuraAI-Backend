@@ -32,10 +32,39 @@ export const openApiSpec = swaggerJsdoc({
             password: { type: 'string', format: 'password', minLength: 8 },
           },
         },
+        InitializeUserAccountRequest: {
+          type: 'object',
+          required: ['email', 'fullName', 'roleCodes'],
+          additionalProperties: false,
+          properties: {
+            email: { type: 'string', format: 'email' },
+            fullName: { type: 'string', minLength: 2, maxLength: 150 },
+            phone: { type: 'string', maxLength: 30 },
+            employeeCode: { type: 'string', maxLength: 50 },
+            departmentId: { type: 'string', format: 'uuid' },
+            roleCodes: { type: 'array', minItems: 1, maxItems: 10, items: { type: 'string' } },
+          },
+        },
         RefreshRequest: {
           type: 'object',
           required: ['refreshToken'],
           properties: { refreshToken: { type: 'string' } },
+        },
+        RequestPasswordReset: {
+          type: 'object',
+          required: ['email'],
+          additionalProperties: false,
+          properties: { email: { type: 'string', format: 'email' } },
+        },
+        ConfirmPasswordReset: {
+          type: 'object',
+          required: ['token', 'newPassword', 'confirmPassword'],
+          additionalProperties: false,
+          properties: {
+            token: { type: 'string', pattern: '^\\d{6}$', example: '123456' },
+            newPassword: { type: 'string', format: 'password', minLength: 8, maxLength: 128 },
+            confirmPassword: { type: 'string', format: 'password', minLength: 8, maxLength: 128 },
+          },
         },
         TokenPair: {
           type: 'object',
@@ -996,6 +1025,41 @@ export const openApiSpec = swaggerJsdoc({
           },
         },
       },
+      '/auth/password-reset/request': {
+        post: {
+          tags: ['Authentication'],
+          summary: 'Request a password reset',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': { schema: { $ref: '#/components/schemas/RequestPasswordReset' } },
+            },
+          },
+          responses: {
+            '202': { description: 'Reset request accepted without revealing account existence' },
+            '422': { description: 'Invalid email address' },
+            '429': { description: 'Too many attempts' },
+          },
+        },
+      },
+      '/auth/password-reset/confirm': {
+        post: {
+          tags: ['Authentication'],
+          summary: 'Set a new password with a reset token',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': { schema: { $ref: '#/components/schemas/ConfirmPasswordReset' } },
+            },
+          },
+          responses: {
+            '204': { description: 'Password reset and existing sessions revoked' },
+            '400': { description: 'Reset token is invalid or expired' },
+            '422': { description: 'Invalid reset request' },
+            '429': { description: 'Too many attempts' },
+          },
+        },
+      },
       '/auth/refresh': {
         post: {
           tags: ['Authentication'],
@@ -1033,6 +1097,31 @@ export const openApiSpec = swaggerJsdoc({
           responses: {
             '200': { description: 'Current user' },
             '401': { description: 'Unauthorized' },
+          },
+        },
+      },
+      '/users': {
+        post: {
+          tags: ['Users'],
+          summary: 'Initialize a user account',
+          description:
+            'Admin-only account initialization. Creates the account and emails an eight-digit temporary password that the user must change after signing in.',
+          security: [{ bearerAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/InitializeUserAccountRequest' },
+              },
+            },
+          },
+          responses: {
+            '201': { description: 'User account created and temporary password email sent' },
+            '401': { description: 'Unauthorized' },
+            '403': { description: 'Missing users.create permission' },
+            '409': { description: 'Email or employee code already exists' },
+            '422': { description: 'Invalid role, department, or request body' },
+            '503': { description: 'Email service is not configured or unavailable' },
           },
         },
       },
