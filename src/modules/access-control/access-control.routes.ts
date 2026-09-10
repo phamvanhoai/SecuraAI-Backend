@@ -6,9 +6,11 @@ import {
   createRole,
   deleteRole,
   getRole,
+  listPermissions,
   listRoles,
   updateRole,
 } from './access-control.controller.js';
+import { listPermissionsQuerySchema } from './dto/permission.dto.js';
 import {
   createRoleBodySchema,
   listRolesQuerySchema,
@@ -17,6 +19,13 @@ import {
 } from './dto/role.dto.js';
 
 export const accessControlRouter = Router();
+accessControlRouter.get(
+  '/permissions',
+  authenticate,
+  authorize('roles.read'),
+  validate({ query: listPermissionsQuerySchema }),
+  asyncHandler(listPermissions),
+);
 accessControlRouter.get(
   '/roles',
   authenticate,

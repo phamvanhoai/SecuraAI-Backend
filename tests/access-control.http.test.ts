@@ -3,6 +3,7 @@ import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
+  listPermissions: vi.fn(),
   listRoles: vi.fn(),
   findById: vi.fn(),
   findByCode: vi.fn(),
@@ -49,10 +50,34 @@ describe('custom role HTTP API', () => {
       async (operation: (database: object) => Promise<unknown>) => operation({}),
     );
     mocks.listRoles.mockResolvedValue({ items: [record], total: 1 });
+    mocks.listPermissions.mockResolvedValue({
+      items: [
+        {
+          permission_id: '00000000-0000-4000-8000-000000000020',
+          code: 'roles.read',
+          module: 'access-control',
+          action: 'read',
+          description: null,
+        },
+      ],
+      total: 1,
+    });
     mocks.findByCode.mockResolvedValue(null);
     mocks.countPermissions.mockResolvedValue(0);
     mocks.create.mockResolvedValue(record);
     mocks.audit.mockResolvedValue({ audit_log_id: 'audit-1' });
+  });
+  it('protects and returns the paginated permission catalog', async () => {
+    expect((await request(createApp()).get('/api/v1/access-control/permissions')).status).toBe(401);
+    const forbidden = await request(createApp())
+      .get('/api/v1/access-control/permissions')
+      .set('authorization', `Bearer ${token([])}`);
+    const response = await request(createApp())
+      .get('/api/v1/access-control/permissions?module=access-control')
+      .set('authorization', `Bearer ${token(['roles.read'])}`);
+    expect(forbidden.status).toBe(403);
+    expect(response.status).toBe(200);
+    expect(response.body.data.items[0]).toMatchObject({ code: 'roles.read' });
   });
   it('requires authentication and roles.read', async () => {
     expect((await request(createApp()).get('/api/v1/access-control/roles')).status).toBe(401);

@@ -4,8 +4,19 @@ import {
   listRolesQuerySchema,
   updateRoleBodySchema,
 } from '../src/modules/access-control/dto/role.dto.js';
+import { listPermissionsQuerySchema } from '../src/modules/access-control/dto/permission.dto.js';
 
 describe('role DTOs', () => {
+  it('bounds and normalizes permission catalog queries', () => {
+    expect(listPermissionsQuerySchema.parse({ module: 'access-control' })).toEqual({
+      page: 1,
+      limit: 100,
+      module: 'access-control',
+      sortBy: 'code',
+      sortOrder: 'asc',
+    });
+    expect(listPermissionsQuerySchema.safeParse({ limit: 201 }).success).toBe(false);
+  });
   it('normalizes pagination and accepts a unique permission set', () => {
     expect(listRolesQuerySchema.parse({})).toEqual({
       page: 1,

@@ -1,5 +1,6 @@
 import { Prisma, type PrismaClient } from '@prisma/client';
 import { prisma } from '../../database/prisma.js';
+import type { ListPermissionsQuery } from './dto/permission.dto.js';
 import type { CreateRoleBody, ListRolesQuery, UpdateRoleBody } from './dto/role.dto.js';
 
 type DatabaseClient = PrismaClient | Prisma.TransactionClient;
@@ -28,6 +29,14 @@ const sortFields = {
   createdAt: 'created_at',
   updatedAt: 'updated_at',
 } as const;
+const permissionSortFields = { code: 'code', module: 'module', action: 'action' } as const;
+const permissionSelect = {
+  permission_id: true,
+  code: true,
+  module: true,
+  action: true,
+  description: true,
+} satisfies Prisma.permissionsSelect;
 
 export const accessControlRepository = {
   transaction<T>(operation: (database: Prisma.TransactionClient) => Promise<T>): Promise<T> {
@@ -55,6 +64,32 @@ export const accessControlRepository = {
         orderBy: { [sortFields[query.sortBy]]: query.sortOrder },
       }),
       prisma.roles.count({ where }),
+    ]);
+    return { items, total };
+  },
+  async listPermissions(query: ListPermissionsQuery) {
+    const where: Prisma.permissionsWhereInput = {
+      ...(query.module ? { module: query.module } : {}),
+      ...(query.search
+        ? {
+            OR: [
+              { code: { contains: query.search, mode: 'insensitive' } },
+              { module: { contains: query.search, mode: 'insensitive' } },
+              { action: { contains: query.search, mode: 'insensitive' } },
+              { description: { contains: query.search, mode: 'insensitive' } },
+            ],
+          }
+        : {}),
+    };
+    const [items, total] = await prisma.$transaction([
+      prisma.permissions.findMany({
+        where,
+        select: permissionSelect,
+        skip: (query.page - 1) * query.limit,
+        take: query.limit,
+        orderBy: { [permissionSortFields[query.sortBy]]: query.sortOrder },
+      }),
+      prisma.permissions.count({ where }),
     ]);
     return { items, total };
   },
