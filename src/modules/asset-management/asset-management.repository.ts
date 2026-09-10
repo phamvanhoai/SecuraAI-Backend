@@ -143,6 +143,15 @@ export type DeleteAssetResult =
   | { kind: 'blocked'; dependencies: AssetDependencyCounts }
   | { kind: 'deleted' };
 
+export type AssetCreateOptionRecords = {
+  departments: { department_id: string; code: string; name: string }[];
+  owners: { user_id: string; full_name: string; employee_code: string | null }[];
+  departmentsTruncated: boolean;
+  ownersTruncated: boolean;
+};
+
+const createOptionsLimit = 200;
+
 const buildWhere = (query: ListAssetsQuery): Prisma.assetsWhereInput => ({
   deleted_at: null,
   ...(query.assetType !== undefined && { asset_type: query.assetType }),
@@ -183,6 +192,30 @@ type ExportAuditInput = {
 };
 
 export const assetManagementRepository = {
+  async listCreateOptions(): Promise<AssetCreateOptionRecords> {
+    const [departments, owners] = await Promise.all([
+      prisma.departments.findMany({
+        where: { status: 'active' },
+        select: { department_id: true, code: true, name: true },
+        orderBy: [{ name: 'asc' }, { department_id: 'asc' }],
+        take: createOptionsLimit + 1,
+      }),
+      prisma.users.findMany({
+        where: { status: 'active', deleted_at: null },
+        select: { user_id: true, full_name: true, employee_code: true },
+        orderBy: [{ full_name: 'asc' }, { user_id: 'asc' }],
+        take: createOptionsLimit + 1,
+      }),
+    ]);
+
+    return {
+      departments: departments.slice(0, createOptionsLimit),
+      owners: owners.slice(0, createOptionsLimit),
+      departmentsTruncated: departments.length > createOptionsLimit,
+      ownersTruncated: owners.length > createOptionsLimit,
+    };
+  },
+
   async list(query: ListAssetsQuery): Promise<{ items: AssetListRecord[]; total: number }> {
     const where = buildWhere(query);
     const [total, items] = await prisma.$transaction([
@@ -303,7 +336,7 @@ export const assetManagementRepository = {
           asset_code: input.assetCode,
           name: input.name,
           asset_type: input.assetType,
-          criticality: input.criticality,
+          criticality: 'medium',
           status: 'active',
           created_by_user_id: context.actorUserId,
           ...(input.description !== undefined && { description: input.description }),

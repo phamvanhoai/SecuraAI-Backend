@@ -86,6 +86,37 @@ export const openApiSpec = swaggerJsdoc({
             requestId: { type: 'string' },
           },
         },
+        CurrentUser: {
+          type: 'object',
+          required: [
+            'id',
+            'email',
+            'fullName',
+            'status',
+            'mustChangePassword',
+            'roles',
+            'permissions',
+          ],
+          properties: {
+            id: { type: 'string', format: 'uuid' },
+            email: { type: 'string', format: 'email' },
+            fullName: { type: 'string' },
+            status: { type: 'string' },
+            mustChangePassword: { type: 'boolean' },
+            roles: {
+              type: 'array',
+              items: {
+                type: 'object',
+                required: ['code', 'name'],
+                properties: {
+                  code: { type: 'string' },
+                  name: { type: 'string' },
+                },
+              },
+            },
+            permissions: { type: 'array', items: { type: 'string' }, uniqueItems: true },
+          },
+        },
         CustomRoleInput: {
           type: 'object',
           required: ['code', 'name'],
@@ -218,11 +249,6 @@ export const openApiSpec = swaggerJsdoc({
             description: { type: 'string', maxLength: 10000 },
             departmentId: { type: 'string', format: 'uuid' },
             ownerUserId: { type: 'string', format: 'uuid' },
-            criticality: {
-              type: 'string',
-              enum: ['low', 'medium', 'high', 'critical'],
-              default: 'medium',
-            },
             hostname: { type: 'string', maxLength: 255 },
             ipAddress: { type: 'string', format: 'ip' },
             location: { type: 'string', maxLength: 255 },
@@ -1031,7 +1057,21 @@ export const openApiSpec = swaggerJsdoc({
           summary: 'Get current user',
           security: [{ bearerAuth: [] }],
           responses: {
-            '200': { description: 'Current user' },
+            '200': {
+              description: 'Current user and effective permissions',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    required: ['success', 'data'],
+                    properties: {
+                      success: { type: 'boolean', example: true },
+                      data: { $ref: '#/components/schemas/CurrentUser' },
+                    },
+                  },
+                },
+              },
+            },
             '401': { description: 'Unauthorized' },
           },
         },
@@ -1041,7 +1081,7 @@ export const openApiSpec = swaggerJsdoc({
           tags: ['Assets'],
           summary: 'Create an IT asset',
           description:
-            'Creates an active asset and atomically records its change history and audit log. Requires the assets.create permission.',
+            'Creates an active asset with medium criticality and atomically records its change history and audit log. Criticality can only be changed through the classification endpoint. Requires the assets.create permission.',
           security: [{ bearerAuth: [] }],
           requestBody: {
             required: true,
@@ -1201,6 +1241,72 @@ export const openApiSpec = swaggerJsdoc({
                 'application/json': { schema: { $ref: '#/components/schemas/Error' } },
               },
             },
+          },
+        },
+      },
+      '/assets/create-options': {
+        get: {
+          tags: ['Assets'],
+          summary: 'List options for creating an asset',
+          description:
+            'Returns up to 200 active departments and active, non-deleted users for the Create, Edit or Assign Asset Owner form. Requires the assets.create, assets.update or assets.assign-owner permission.',
+          security: [{ bearerAuth: [] }],
+          responses: {
+            '200': {
+              description: 'Active department and owner options',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    required: ['success', 'data'],
+                    properties: {
+                      success: { type: 'boolean', example: true },
+                      data: {
+                        type: 'object',
+                        required: ['departments', 'owners', 'truncated'],
+                        properties: {
+                          departments: {
+                            type: 'array',
+                            items: {
+                              type: 'object',
+                              required: ['id', 'code', 'name'],
+                              properties: {
+                                id: { type: 'string', format: 'uuid' },
+                                code: { type: 'string' },
+                                name: { type: 'string' },
+                              },
+                            },
+                          },
+                          owners: {
+                            type: 'array',
+                            items: {
+                              type: 'object',
+                              required: ['id', 'fullName', 'employeeCode'],
+                              properties: {
+                                id: { type: 'string', format: 'uuid' },
+                                fullName: { type: 'string' },
+                                employeeCode: { type: ['string', 'null'] },
+                              },
+                            },
+                          },
+                          truncated: {
+                            type: 'object',
+                            required: ['departments', 'owners'],
+                            properties: {
+                              departments: { type: 'boolean' },
+                              owners: { type: 'boolean' },
+                            },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'The assets.create, assets.update or assets.assign-owner permission is required' },
+            '500': { description: 'Unexpected server error' },
           },
         },
       },

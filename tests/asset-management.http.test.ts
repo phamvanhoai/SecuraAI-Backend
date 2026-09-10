@@ -17,6 +17,7 @@ const {
   exportAssetsMock,
   findAssetForHistoryMock,
   listHistoryMock,
+  listCreateOptionsMock,
 } = vi.hoisted(() => ({
   createAssetMock: vi.fn(),
   classifyCriticalityMock: vi.fn(),
@@ -32,6 +33,7 @@ const {
   exportAssetsMock: vi.fn(),
   findAssetForHistoryMock: vi.fn(),
   listHistoryMock: vi.fn(),
+  listCreateOptionsMock: vi.fn(),
 }));
 
 vi.mock('../src/modules/asset-management/asset-management.repository.js', () => ({
@@ -48,6 +50,7 @@ vi.mock('../src/modules/asset-management/asset-management.repository.js', () => 
     update: updateAssetMock,
     findAssetForHistory: findAssetForHistoryMock,
     listHistory: listHistoryMock,
+    listCreateOptions: listCreateOptionsMock,
   },
 }));
 
@@ -76,6 +79,45 @@ const accessToken = (permissions: string[]): string =>
       expiresIn: '15m',
     },
   );
+
+describe('GET /api/v1/assets/create-options', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    listCreateOptionsMock.mockResolvedValue({
+      departments: [{ department_id: 'department-1', code: 'IT', name: 'IT' }],
+      owners: [{ user_id: 'owner-1', full_name: 'Duong', employee_code: null }],
+      departmentsTruncated: false,
+      ownersTruncated: false,
+    });
+  });
+
+  it('requires authentication and an asset form permission', async () => {
+    const unauthenticated = await request(createApp()).get('/api/v1/assets/create-options');
+    const forbidden = await request(createApp())
+      .get('/api/v1/assets/create-options')
+      .set('authorization', `Bearer ${accessToken([])}`);
+
+    expect(unauthenticated.status).toBe(401);
+    expect(forbidden.status).toBe(403);
+    expect(listCreateOptionsMock).not.toHaveBeenCalled();
+  });
+
+  it('returns safe active department and owner fields', async () => {
+    const response = await request(createApp())
+      .get('/api/v1/assets/create-options')
+      .set('authorization', `Bearer ${accessToken(['assets.assign-owner'])}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({
+      success: true,
+      data: {
+        departments: [{ id: 'department-1', code: 'IT', name: 'IT' }],
+        owners: [{ id: 'owner-1', fullName: 'Duong', employeeCode: null }],
+        truncated: { departments: false, owners: false },
+      },
+    });
+  });
+});
 
 describe('GET /api/v1/assets/export', () => {
   beforeEach(() => {
