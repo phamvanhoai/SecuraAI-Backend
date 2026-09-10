@@ -41,6 +41,13 @@ export const updateLogSource: RequestHandler = async (req, res) => {
   res.status(200).json({ success: true, data });
 };
 
+export const deleteLogSource: RequestHandler = async (req, res) => {
+  if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+  const { logSourceId } = logSourceParamsSchema.parse(req.params);
+  await securityMonitoringService.deleteLogSource(logSourceId, req.auth, requestContext(req));
+  res.status(204).send();
+};
+
 export const ingestSecurityEvents: RequestHandler = async (req, res) => {
   if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
   const { logSourceId } = logSourceParamsSchema.parse(req.params);
@@ -56,6 +63,7 @@ export const ingestSecurityEvents: RequestHandler = async (req, res) => {
 
 export const securityMonitoringController = {
   createLogSource,
+  deleteLogSource,
   ingestSecurityEvents,
   listLogSources,
   updateLogSource,
