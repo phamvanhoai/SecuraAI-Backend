@@ -1,5 +1,4 @@
 import { z } from 'zod';
-import { assetCriticalities } from './list-assets-query.dto.js';
 
 const optionalText = (maxLength: number) =>
   z.preprocess(
@@ -27,7 +26,6 @@ export const createAssetBodySchema = z
     description: optionalText(10_000),
     departmentId: z.uuid().optional(),
     ownerUserId: z.uuid().optional(),
-    criticality: z.enum(assetCriticalities).default('medium'),
     hostname: optionalText(255),
     ipAddress: z.union([z.ipv4(), z.ipv6()]).optional(),
     location: optionalText(255),

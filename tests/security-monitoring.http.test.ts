@@ -2,15 +2,15 @@ import jwt from 'jsonwebtoken';
 import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { createMock, findIngestionSourceMock, ingestMock, listMock, updateMock } = vi.hoisted(
-  () => ({
+const { createMock, deleteMock, findIngestionSourceMock, ingestMock, listMock, updateMock } =
+  vi.hoisted(() => ({
     createMock: vi.fn(),
+    deleteMock: vi.fn(),
     findIngestionSourceMock: vi.fn(),
     ingestMock: vi.fn(),
     listMock: vi.fn(),
     updateMock: vi.fn(),
-  }),
-);
+  }));
 
 const { detectAlertsMock } = vi.hoisted(() => ({ detectAlertsMock: vi.fn() }));
 
@@ -21,6 +21,7 @@ vi.mock('../src/modules/ai-alerts/ai-alerts.service.js', () => ({
 vi.mock('../src/modules/security-monitoring/security-monitoring.repository.js', () => ({
   securityMonitoringRepository: {
     createLogSource: createMock,
+    deleteLogSource: deleteMock,
     findActiveAsset: vi.fn(),
     findUsableIntegration: vi.fn(),
     findLogSourceForIngestion: findIngestionSourceMock,
@@ -63,6 +64,7 @@ describe('security monitoring log source HTTP API', () => {
     vi.clearAllMocks();
     listMock.mockResolvedValue({ items: [], total: 0 });
     createMock.mockResolvedValue(sourceRecord);
+    deleteMock.mockResolvedValue({ kind: 'deleted' });
     updateMock.mockResolvedValue(sourceRecord);
     findIngestionSourceMock.mockResolvedValue({
       log_source_id: sourceRecord.log_source_id,
@@ -144,6 +146,27 @@ describe('security monitoring log source HTTP API', () => {
       .send({});
     expect(response.status).toBe(422);
     expect(updateMock).not.toHaveBeenCalled();
+  });
+
+  it('protects and deletes an unused log source', async () => {
+    const path = `/api/v1/security-monitoring/log-sources/${sourceRecord.log_source_id}`;
+    expect((await request(createApp()).delete(path)).status).toBe(401);
+    expect(
+      (
+        await request(createApp())
+          .delete(path)
+          .set('authorization', `Bearer ${token([])}`)
+      ).status,
+    ).toBe(403);
+    const response = await request(createApp())
+      .delete(path)
+      .set('authorization', `Bearer ${token(['log-sources.manage'])}`);
+    expect(response.status).toBe(204);
+    expect(response.body).toEqual({});
+    expect(deleteMock).toHaveBeenCalledWith(
+      sourceRecord.log_source_id,
+      expect.objectContaining({ actorUserId: '00000000-0000-4000-8000-000000000001' }),
+    );
   });
 
   it('protects, validates and accepts security event ingestion', async () => {

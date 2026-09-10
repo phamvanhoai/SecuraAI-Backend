@@ -11,6 +11,21 @@ async function main(): Promise<void> {
     throw new Error('ADMIN_EMAIL and ADMIN_PASSWORD (minimum 12 characters) are required');
   }
 
+  await prisma.departments.upsert({
+    where: { code: 'IT' },
+    update: {
+      name: 'Phòng Công nghệ thông tin',
+      description: 'Phòng ban mẫu phụ trách hạ tầng và tài sản công nghệ thông tin',
+      status: 'active',
+    },
+    create: {
+      code: 'IT',
+      name: 'Phòng Công nghệ thông tin',
+      description: 'Phòng ban mẫu phụ trách hạ tầng và tài sản công nghệ thông tin',
+      status: 'active',
+    },
+  });
+
   const role = await prisma.roles.upsert({
     where: { code: 'ADMIN' },
     update: {
@@ -30,41 +45,41 @@ async function main(): Promise<void> {
     update: {
       name: 'Security Officer',
       description: 'Security Officer role defined by the approved project use cases',
-      is_system: true,
+      is_system: false,
     },
     create: {
       code: 'SECURITY_OFFICER',
       name: 'Security Officer',
       description: 'Security Officer role defined by the approved project use cases',
-      is_system: true,
+      is_system: false,
     },
   });
-  await prisma.roles.upsert({
+  const employeeRole = await prisma.roles.upsert({
     where: { code: 'EMPLOYEE' },
     update: {
       name: 'Employee',
       description: 'Employee role defined by the approved project use cases',
-      is_system: true,
+      is_system: false,
     },
     create: {
       code: 'EMPLOYEE',
       name: 'Employee',
       description: 'Employee role defined by the approved project use cases',
-      is_system: true,
+      is_system: false,
     },
   });
-  await prisma.roles.upsert({
+  const executiveRole = await prisma.roles.upsert({
     where: { code: 'EXECUTIVE' },
     update: {
       name: 'Executive',
       description: 'Executive role defined by the approved project use cases',
-      is_system: true,
+      is_system: false,
     },
     create: {
       code: 'EXECUTIVE',
       name: 'Executive',
       description: 'Executive role defined by the approved project use cases',
-      is_system: true,
+      is_system: false,
     },
   });
   const createPolicyPermission = await prisma.permissions.upsert({
@@ -452,123 +467,50 @@ async function main(): Promise<void> {
       },
     });
   }
-  await prisma.role_permissions.upsert({
-    where: {
-      role_id_permission_id: {
-        role_id: role.role_id,
-        permission_id: assetReadPermission.permission_id,
+  const assetPermissions = [
+    assetReadPermission,
+    assetCreatePermission,
+    assetUpdatePermission,
+    assetDeletePermission,
+    assetClassifyPermission,
+    assetAssignOwnerPermission,
+    assetImportPermission,
+    assetExportPermission,
+    assetHistoryReadPermission,
+  ];
+  const assetRolePermissions = [
+    { targetRole: securityOfficerRole, permissions: assetPermissions },
+    { targetRole: employeeRole, permissions: [assetReadPermission] },
+    { targetRole: executiveRole, permissions: [assetReadPermission, assetExportPermission] },
+    { targetRole: role, permissions: [assetHistoryReadPermission] },
+  ];
+  await prisma.$transaction([
+    prisma.role_permissions.deleteMany({
+      where: {
+        role_id: {
+          in: [
+            role.role_id,
+            securityOfficerRole.role_id,
+            employeeRole.role_id,
+            executiveRole.role_id,
+          ],
+        },
+        permission_id: {
+          in: assetPermissions.map(({ permission_id }) => permission_id),
+        },
       },
-    },
-    update: {},
-    create: {
-      role_id: role.role_id,
-      permission_id: assetReadPermission.permission_id,
-    },
-  });
-  await prisma.role_permissions.upsert({
-    where: {
-      role_id_permission_id: {
-        role_id: role.role_id,
-        permission_id: assetCreatePermission.permission_id,
-      },
-    },
-    update: {},
-    create: {
-      role_id: role.role_id,
-      permission_id: assetCreatePermission.permission_id,
-    },
-  });
-  await prisma.role_permissions.upsert({
-    where: {
-      role_id_permission_id: {
-        role_id: role.role_id,
-        permission_id: assetUpdatePermission.permission_id,
-      },
-    },
-    update: {},
-    create: {
-      role_id: role.role_id,
-      permission_id: assetUpdatePermission.permission_id,
-    },
-  });
-  await prisma.role_permissions.upsert({
-    where: {
-      role_id_permission_id: {
-        role_id: role.role_id,
-        permission_id: assetDeletePermission.permission_id,
-      },
-    },
-    update: {},
-    create: {
-      role_id: role.role_id,
-      permission_id: assetDeletePermission.permission_id,
-    },
-  });
-  await prisma.role_permissions.upsert({
-    where: {
-      role_id_permission_id: {
-        role_id: role.role_id,
-        permission_id: assetClassifyPermission.permission_id,
-      },
-    },
-    update: {},
-    create: {
-      role_id: role.role_id,
-      permission_id: assetClassifyPermission.permission_id,
-    },
-  });
-  await prisma.role_permissions.upsert({
-    where: {
-      role_id_permission_id: {
-        role_id: role.role_id,
-        permission_id: assetAssignOwnerPermission.permission_id,
-      },
-    },
-    update: {},
-    create: {
-      role_id: role.role_id,
-      permission_id: assetAssignOwnerPermission.permission_id,
-    },
-  });
-  await prisma.role_permissions.upsert({
-    where: {
-      role_id_permission_id: {
-        role_id: role.role_id,
-        permission_id: assetImportPermission.permission_id,
-      },
-    },
-    update: {},
-    create: {
-      role_id: role.role_id,
-      permission_id: assetImportPermission.permission_id,
-    },
-  });
-  await prisma.role_permissions.upsert({
-    where: {
-      role_id_permission_id: {
-        role_id: role.role_id,
-        permission_id: assetExportPermission.permission_id,
-      },
-    },
-    update: {},
-    create: {
-      role_id: role.role_id,
-      permission_id: assetExportPermission.permission_id,
-    },
-  });
-  await prisma.role_permissions.upsert({
-    where: {
-      role_id_permission_id: {
-        role_id: role.role_id,
-        permission_id: assetHistoryReadPermission.permission_id,
-      },
-    },
-    update: {},
-    create: {
-      role_id: role.role_id,
-      permission_id: assetHistoryReadPermission.permission_id,
-    },
-  });
+    }),
+    ...assetRolePermissions.flatMap((mapping) =>
+      mapping.permissions.map((permission) =>
+        prisma.role_permissions.create({
+          data: {
+            role_id: mapping.targetRole.role_id,
+            permission_id: permission.permission_id,
+          },
+        }),
+      ),
+    ),
+  ]);
   for (const permission of [
     logSourceReadPermission,
     logSourceManagePermission,

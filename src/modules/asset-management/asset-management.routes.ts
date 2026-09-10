@@ -1,6 +1,7 @@
-import { Router } from 'express';
+import { Router, type RequestHandler } from 'express';
 import rateLimit from 'express-rate-limit';
 import { authenticate, authorize } from '../../common/middleware/authenticate.js';
+import { AppError } from '../../common/errors/app-error.js';
 import { validate } from '../../common/middleware/validate.js';
 import { asyncHandler } from '../../common/utils/async-handler.js';
 import {
@@ -16,6 +17,7 @@ import {
   exportAssets,
   getAssetDetail,
   listAssetHistory,
+  listAssetCreateOptions,
 } from './asset-management.controller.js';
 import { assignAssetOwnerBodySchema } from './dto/assign-asset-owner.dto.js';
 import { classifyAssetCriticalityBodySchema } from './dto/classify-asset-criticality.dto.js';
@@ -28,6 +30,18 @@ import { exportAssetsQuerySchema } from './dto/export-assets-query.dto.js';
 import { listAssetHistoryQuerySchema } from './dto/list-asset-history-query.dto.js';
 
 export const assetManagementRouter = Router();
+
+const authorizeAssetFormOptions: RequestHandler = (req, _res, next) => {
+  const permissions = req.auth?.permissions ?? [];
+  if (
+    !permissions.includes('assets.create') &&
+    !permissions.includes('assets.update') &&
+    !permissions.includes('assets.assign-owner')
+  ) {
+    throw new AppError(403, 'FORBIDDEN', 'Insufficient permissions');
+  }
+  next();
+};
 
 const assetImportRateLimit = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -82,6 +96,13 @@ assetManagementRouter.post(
   authorize('assets.create'),
   validate({ body: createAssetBodySchema }),
   asyncHandler(createAsset),
+);
+
+assetManagementRouter.get(
+  '/create-options',
+  authenticate,
+  authorizeAssetFormOptions,
+  asyncHandler(listAssetCreateOptions),
 );
 
 assetManagementRouter.get(

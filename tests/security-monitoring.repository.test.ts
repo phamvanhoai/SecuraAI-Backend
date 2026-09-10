@@ -4,22 +4,28 @@ const {
   auditCreateMock,
   countMock,
   createMock,
+  deleteMock,
   findManyMock,
   findUniqueMock,
   transactionMock,
   updateMock,
   eventFindManyMock,
   eventCreateManyAndReturnMock,
+  eventCountMock,
+  alertCountMock,
 } = vi.hoisted(() => ({
   auditCreateMock: vi.fn(),
   countMock: vi.fn(),
   createMock: vi.fn(),
+  deleteMock: vi.fn(),
   findManyMock: vi.fn(),
   findUniqueMock: vi.fn(),
   transactionMock: vi.fn(),
   updateMock: vi.fn(),
   eventFindManyMock: vi.fn(),
   eventCreateManyAndReturnMock: vi.fn(),
+  eventCountMock: vi.fn(),
+  alertCountMock: vi.fn(),
 }));
 
 vi.mock('../src/database/prisma.js', () => ({
@@ -131,6 +137,44 @@ describe('securityMonitoringRepository', () => {
     const updateArgument: unknown = updateMock.mock.calls[0]?.[0];
     expect(updateArgument).toMatchObject({ data: { status: 'inactive' } });
     expect(auditCreateMock).toHaveBeenCalledOnce();
+  });
+
+  it('blocks deletion with dependencies and otherwise deletes with an audit entry', async () => {
+    transactionMock.mockImplementation((callback: (transaction: unknown) => Promise<unknown>) =>
+      callback({
+        log_sources: { findUnique: findUniqueMock, delete: deleteMock },
+        security_events: { count: eventCountMock },
+        ai_alerts: { count: alertCountMock },
+        audit_logs: { create: auditCreateMock },
+      }),
+    );
+    findUniqueMock.mockResolvedValue(sourceRecord);
+    eventCountMock.mockResolvedValueOnce(2).mockResolvedValueOnce(0);
+    alertCountMock.mockResolvedValue(0);
+
+    await expect(
+      securityMonitoringRepository.deleteLogSource('source-1', {
+        actorUserId: 'user-1',
+        ipAddress: null,
+        userAgent: null,
+      }),
+    ).resolves.toEqual({
+      kind: 'blocked',
+      dependencies: { securityEvents: 2, aiAlerts: 0 },
+    });
+    expect(deleteMock).not.toHaveBeenCalled();
+
+    await expect(
+      securityMonitoringRepository.deleteLogSource('source-1', {
+        actorUserId: 'user-1',
+        ipAddress: null,
+        userAgent: null,
+      }),
+    ).resolves.toEqual({ kind: 'deleted' });
+    expect(deleteMock).toHaveBeenCalledWith({ where: { log_source_id: 'source-1' } });
+    expect(auditCreateMock).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ action: 'log_source.deleted' }) }),
+    );
   });
 
   it('deduplicates event IDs and persists events, source timestamp and audit atomically', async () => {
