@@ -78,6 +78,20 @@ describe('user account initialization HTTP API', () => {
     );
   });
 
+  it('supports the admin users endpoint alias', async () => {
+    const response = await request(createApp())
+      .post('/api/v1/admin/users')
+      .set('authorization', `Bearer ${token(['users.create'])}`)
+      .send({
+        email: 'new-user@example.com',
+        fullName: 'New User',
+        roleCodes: ['EMPLOYEE'],
+      });
+
+    expect(response.status).toBe(201);
+    expect(mocks.createInitializedUser).toHaveBeenCalled();
+  });
+
   it('rejects invalid initialization input before the repository', async () => {
     const response = await request(createApp())
       .post('/api/v1/users')
