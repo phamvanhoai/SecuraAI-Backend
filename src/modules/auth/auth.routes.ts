@@ -10,6 +10,7 @@ import {
 import { changePasswordBodySchema } from './dto/change-password.dto.js';
 import * as controller from './auth.controller.js';
 import { authenticate } from '../../common/middleware/authenticate.js';
+import { setupMfaBodySchema, verifyMfaBodySchema } from './dto/mfa.dto.js';
 
 export const authRouter = Router();
 const authLimiter = rateLimit({
@@ -38,6 +39,19 @@ authRouter.post(
   authenticate,
   validate({ body: changePasswordBodySchema }),
   asyncHandler(controller.changePassword),
+);
+authRouter.post(
+  '/mfa/setup',
+  authenticate,
+  validate({ body: setupMfaBodySchema }),
+  asyncHandler(controller.setupMfa),
+);
+authRouter.post(
+  '/mfa/verify',
+  authenticate,
+  authLimiter,
+  validate({ body: verifyMfaBodySchema }),
+  asyncHandler(controller.verifyMfa),
 );
 authRouter.post('/refresh', authLimiter, validate({ body: refreshSchema }), asyncHandler(controller.refresh));
 authRouter.post('/logout', validate({ body: refreshSchema }), asyncHandler(controller.logout));

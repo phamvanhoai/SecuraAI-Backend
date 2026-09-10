@@ -1,10 +1,13 @@
 import argon2 from 'argon2';
 import { randomInt } from 'node:crypto';
+import { generateSecret, generateURI, verify } from 'otplib';
+import QRCode from 'qrcode';
 import type { Request } from 'express';
 import { prisma } from '../../database/prisma.js';
 import { env } from '../../config/env.js';
 import { AppError } from '../../common/errors/app-error.js';
 import { createRefreshToken, hashToken, signAccessToken } from '../../common/utils/tokens.js';
+import { decryptSecret, encryptSecret } from '../../common/utils/encryption.js';
 import { authEmailService } from './auth.email.service.js';
 import { authRepository } from './auth.repository.js';
 import type {
@@ -12,6 +15,7 @@ import type {
   RequestPasswordResetBody,
 } from './dto/password-reset.dto.js';
 import type { ChangePasswordBody } from './dto/change-password.dto.js';
+import type { SetupMfaBody, VerifyMfaBody } from './dto/mfa.dto.js';
 import type { LoginInput } from './auth.schema.js';
 
 const authUserInclude = {
@@ -48,6 +52,39 @@ const sessionMetadata = (req: Request) => ({
 });
 
 export const authService = {
+  async setupMfa(userId: string, input: SetupMfaBody) {
+    const user = await authRepository.findUserForPasswordChange(userId);
+    if (!user) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+    if (user.status !== 'active' || user.deleted_at)
+      throw new AppError(403, 'ACCOUNT_INACTIVE', 'Account is not active');
+    if (!(await argon2.verify(user.password_hash, input.currentPassword))) {
+      throw new AppError(400, 'INVALID_CURRENT_PASSWORD', 'Current password is incorrect');
+    }
+
+    const existing = await authRepository.findTotpMethod(userId);
+    if (existing?.is_enabled) {
+      throw new AppError(409, 'MFA_ALREADY_ENABLED', 'MFA is already enabled for this account');
+    }
+
+    const secret = generateSecret();
+    await authRepository.saveTotpSecret(userId, encryptSecret(secret));
+    const otpauthUri = generateURI({ issuer: env.APP_NAME, label: user.email, secret });
+    return { otpauthUri, qrCodeDataUrl: await QRCode.toDataURL(otpauthUri) };
+  },
+
+  async verifyMfa(userId: string, input: VerifyMfaBody): Promise<void> {
+    const method = await authRepository.findTotpMethod(userId);
+    if (!method?.secret_encrypted) {
+      throw new AppError(404, 'MFA_SETUP_REQUIRED', 'MFA setup is required before verification');
+    }
+    const result = await verify({
+      secret: decryptSecret(method.secret_encrypted),
+      token: input.code,
+    });
+    if (!result.valid) throw new AppError(400, 'INVALID_MFA_CODE', 'MFA code is invalid or expired');
+    await authRepository.enableTotpMethod(userId);
+  },
+
   async changePassword(userId: string, input: ChangePasswordBody): Promise<void> {
     const user = await authRepository.findUserForPasswordChange(userId);
     if (!user) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
@@ -106,6 +143,17 @@ export const authService = {
     if (!user || !valid) throw new AppError(401, 'INVALID_CREDENTIALS', 'Email or password is incorrect');
     if (user.status !== 'active' || user.deleted_at)
       throw new AppError(403, 'ACCOUNT_INACTIVE', 'Account is not active');
+
+    const mfaMethod = await authRepository.findTotpMethod(user.user_id);
+    if (mfaMethod?.is_enabled) {
+      if (!input.mfaCode) throw new AppError(401, 'MFA_REQUIRED', 'MFA code is required');
+      if (!mfaMethod.secret_encrypted) throw new AppError(500, 'MFA_CONFIGURATION_ERROR', 'MFA configuration is invalid');
+      const result = await verify({
+        secret: decryptSecret(mfaMethod.secret_encrypted),
+        token: input.mfaCode,
+      });
+      if (!result.valid) throw new AppError(401, 'INVALID_MFA_CODE', 'MFA code is invalid or expired');
+    }
 
     const claims = getAccessClaims(user);
     const refreshToken = createRefreshToken();
