@@ -382,6 +382,57 @@ const existingAsset = {
   users_assets_owner_user_idTousers: null,
 };
 
+describe('assetManagementService.getById', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('requires assets.read without revealing whether the asset exists', async () => {
+    await expect(
+      assetManagementService.getById(existingAsset.asset_id, {
+        userId: 'user-1',
+        permissions: [],
+      }),
+    ).rejects.toMatchObject({ statusCode: 403, code: 'FORBIDDEN' });
+    expect(findByIdMock).not.toHaveBeenCalled();
+  });
+
+  it('returns 404 when the active asset cannot be found', async () => {
+    findByIdMock.mockResolvedValue(null);
+
+    await expect(
+      assetManagementService.getById(existingAsset.asset_id, {
+        userId: 'user-1',
+        permissions: ['assets.read'],
+      }),
+    ).rejects.toMatchObject({ statusCode: 404, code: 'ASSET_NOT_FOUND' });
+  });
+
+  it('maps all response-safe asset details', async () => {
+    findByIdMock.mockResolvedValue(existingAsset);
+
+    const result = await assetManagementService.getById(existingAsset.asset_id, {
+      userId: 'user-1',
+      permissions: ['assets.read'],
+    });
+
+    expect(result).toEqual({
+      id: existingAsset.asset_id,
+      assetCode: 'AST-001',
+      name: 'Database Server',
+      assetType: 'server',
+      criticality: 'medium',
+      status: 'active',
+      location: 'Server Room',
+      department: null,
+      owner: null,
+      updatedAt: existingAsset.updated_at,
+      description: null,
+      hostname: 'db-01',
+      ipAddress: '192.168.1.10',
+      createdAt: existingAsset.created_at,
+    });
+  });
+});
+
 describe('assetManagementService.update', () => {
   const actor = { userId: 'user-1', permissions: ['assets.update'] };
   const context = { ipAddress: '127.0.0.1', userAgent: 'vitest' };

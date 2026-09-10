@@ -14,6 +14,7 @@ import {
   getAssetImportJob,
   downloadAssetImportTemplate,
   exportAssets,
+  getAssetDetail,
   listAssetHistory,
 } from './asset-management.controller.js';
 import { assignAssetOwnerBodySchema } from './dto/assign-asset-owner.dto.js';
@@ -89,6 +90,14 @@ assetManagementRouter.get(
   authorize('assets.read'),
   validate({ query: listAssetsQuerySchema }),
   asyncHandler(listAssets),
+);
+
+assetManagementRouter.get(
+  '/:assetId',
+  authenticate,
+  authorize('assets.read'),
+  validate({ params: updateAssetParamsSchema }),
+  asyncHandler(getAssetDetail),
 );
 
 assetManagementRouter.patch(
