@@ -14,7 +14,15 @@ const publicUserSelect = {
   created_at: true,
   departments: { select: { department_id: true, code: true, name: true } },
   user_roles_user_roles_user_idTousers: {
-    select: { roles: { select: { code: true, name: true } } },
+    select: {
+      roles: {
+        select: {
+          code: true,
+          name: true,
+          role_permissions: { select: { permissions: { select: { code: true } } } },
+        },
+      },
+    },
   },
 } as const;
 
@@ -43,7 +51,17 @@ export const usersService = {
             name: user.departments.name,
           }
         : null,
-      roles: user.user_roles_user_roles_user_idTousers.map(({ roles }) => roles),
+      roles: user.user_roles_user_roles_user_idTousers.map(({ roles }) => ({
+        code: roles.code,
+        name: roles.name,
+      })),
+      permissions: [
+        ...new Set(
+          user.user_roles_user_roles_user_idTousers.flatMap(({ roles }) =>
+            roles.role_permissions.map(({ permissions }) => permissions.code),
+          ),
+        ),
+      ].sort(),
     };
   },
 };
