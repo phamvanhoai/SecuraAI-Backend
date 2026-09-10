@@ -13,6 +13,7 @@ const {
   assignOwnerMock,
   findAssetForHistoryMock,
   listHistoryMock,
+  listCreateOptionsMock,
 } = vi.hoisted(() => ({
   createAssetMock: vi.fn(),
   classifyCriticalityMock: vi.fn(),
@@ -26,6 +27,7 @@ const {
   assignOwnerMock: vi.fn(),
   findAssetForHistoryMock: vi.fn(),
   listHistoryMock: vi.fn(),
+  listCreateOptionsMock: vi.fn(),
 }));
 
 vi.mock('../src/modules/asset-management/asset-management.repository.js', () => ({
@@ -42,6 +44,7 @@ vi.mock('../src/modules/asset-management/asset-management.repository.js', () => 
     update: updateAssetMock,
     findAssetForHistory: findAssetForHistoryMock,
     listHistory: listHistoryMock,
+    listCreateOptions: listCreateOptionsMock,
   },
 }));
 
@@ -53,6 +56,34 @@ const query = {
   sortBy: 'assetCode',
   sortOrder: 'asc',
 } as const;
+
+describe('assetManagementService.listCreateOptions', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('requires an asset form permission and maps bounded active reference records', async () => {
+    await expect(
+      assetManagementService.listCreateOptions({ userId: 'user-1', permissions: [] }),
+    ).rejects.toMatchObject({ statusCode: 403, code: 'FORBIDDEN' });
+
+    listCreateOptionsMock.mockResolvedValue({
+      departments: [{ department_id: 'department-1', code: 'IT', name: 'Information Technology' }],
+      owners: [{ user_id: 'owner-1', full_name: 'Nguyen Van A', employee_code: 'EMP-001' }],
+      departmentsTruncated: false,
+      ownersTruncated: true,
+    });
+
+    await expect(
+      assetManagementService.listCreateOptions({
+        userId: 'user-1',
+        permissions: ['assets.assign-owner'],
+      }),
+    ).resolves.toEqual({
+      departments: [{ id: 'department-1', code: 'IT', name: 'Information Technology' }],
+      owners: [{ id: 'owner-1', fullName: 'Nguyen Van A', employeeCode: 'EMP-001' }],
+      truncated: { departments: false, owners: true },
+    });
+  });
+});
 
 describe('assetManagementService.listHistory', () => {
   const historyQuery = { page: 1, limit: 20, sortOrder: 'desc' as const };
@@ -663,7 +694,6 @@ describe('assetManagementService.create', () => {
     assetCode: 'AST-001',
     name: 'Database Server',
     assetType: 'server',
-    criticality: 'critical',
   } as const;
 
   beforeEach(() => {
@@ -702,7 +732,7 @@ describe('assetManagementService.create', () => {
       asset_code: 'AST-001',
       name: 'Database Server',
       asset_type: 'server',
-      criticality: 'critical',
+      criticality: 'medium',
       status: 'active',
       location: null,
       description: null,

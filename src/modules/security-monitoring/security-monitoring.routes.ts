@@ -5,6 +5,7 @@ import { validate } from '../../common/middleware/validate.js';
 import { asyncHandler } from '../../common/utils/async-handler.js';
 import {
   createLogSource,
+  deleteLogSource,
   ingestSecurityEvents,
   listLogSources,
   updateLogSource,
@@ -52,6 +53,14 @@ securityMonitoringRouter.patch(
   authorize('log-sources.manage'),
   validate({ params: logSourceParamsSchema, body: updateLogSourceBodySchema }),
   asyncHandler(updateLogSource),
+);
+
+securityMonitoringRouter.delete(
+  '/log-sources/:logSourceId',
+  authenticate,
+  authorize('log-sources.manage'),
+  validate({ params: logSourceParamsSchema }),
+  asyncHandler(deleteLogSource),
 );
 
 securityMonitoringRouter.post(

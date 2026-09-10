@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const {
   createMock,
+  deleteMock,
   findAssetMock,
   findIntegrationMock,
   findIngestionSourceMock,
@@ -10,6 +11,7 @@ const {
   updateMock,
 } = vi.hoisted(() => ({
   createMock: vi.fn(),
+  deleteMock: vi.fn(),
   findAssetMock: vi.fn(),
   findIntegrationMock: vi.fn(),
   findIngestionSourceMock: vi.fn(),
@@ -27,6 +29,7 @@ vi.mock('../src/modules/ai-alerts/ai-alerts.service.js', () => ({
 vi.mock('../src/modules/security-monitoring/security-monitoring.repository.js', () => ({
   securityMonitoringRepository: {
     createLogSource: createMock,
+    deleteLogSource: deleteMock,
     findActiveAsset: findAssetMock,
     findUsableIntegration: findIntegrationMock,
     findLogSourceForIngestion: findIngestionSourceMock,
@@ -56,6 +59,7 @@ describe('securityMonitoringService', () => {
     vi.clearAllMocks();
     listMock.mockResolvedValue({ items: [sourceRecord], total: 1 });
     createMock.mockResolvedValue(sourceRecord);
+    deleteMock.mockResolvedValue({ kind: 'deleted' });
     updateMock.mockResolvedValue(sourceRecord);
     findAssetMock.mockResolvedValue({ asset_id: 'asset-1' });
     findIntegrationMock.mockResolvedValue({ integration_id: 'integration-1' });
@@ -142,6 +146,42 @@ describe('securityMonitoringService', () => {
         { ipAddress: null, userAgent: null },
       ),
     ).rejects.toMatchObject({ statusCode: 404, code: 'LOG_SOURCE_NOT_FOUND' });
+  });
+
+  it('deletes only unused log sources with manage permission', async () => {
+    const context = { ipAddress: null, userAgent: null };
+    await expect(
+      securityMonitoringService.deleteLogSource(
+        sourceRecord.log_source_id,
+        { userId: 'user-1', permissions: [] },
+        context,
+      ),
+    ).rejects.toMatchObject({ statusCode: 403, code: 'FORBIDDEN' });
+
+    deleteMock.mockResolvedValueOnce({ kind: 'not_found' });
+    await expect(
+      securityMonitoringService.deleteLogSource(
+        sourceRecord.log_source_id,
+        { userId: 'user-1', permissions: ['log-sources.manage'] },
+        context,
+      ),
+    ).rejects.toMatchObject({ statusCode: 404, code: 'LOG_SOURCE_NOT_FOUND' });
+
+    deleteMock.mockResolvedValueOnce({
+      kind: 'blocked',
+      dependencies: { securityEvents: 2, aiAlerts: 1 },
+    });
+    await expect(
+      securityMonitoringService.deleteLogSource(
+        sourceRecord.log_source_id,
+        { userId: 'user-1', permissions: ['log-sources.manage'] },
+        context,
+      ),
+    ).rejects.toMatchObject({
+      statusCode: 409,
+      code: 'LOG_SOURCE_HAS_DEPENDENCIES',
+      details: { securityEvents: 2, aiAlerts: 1 },
+    });
   });
 
   it('normalizes and ingests events only with the ingest permission', async () => {

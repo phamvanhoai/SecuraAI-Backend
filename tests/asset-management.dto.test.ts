@@ -112,7 +112,7 @@ describe('listAssetHistoryQuerySchema', () => {
 });
 
 describe('createAssetBodySchema', () => {
-  it('normalizes the code, defaults criticality and removes blank optional text', () => {
+  it('normalizes the code and removes blank optional text', () => {
     expect(
       createAssetBodySchema.parse({
         assetCode: ' ast-001 ',
@@ -124,7 +124,6 @@ describe('createAssetBodySchema', () => {
       assetCode: 'AST-001',
       name: 'Database Server',
       assetType: 'server',
-      criticality: 'medium',
     });
   });
 
@@ -134,6 +133,7 @@ describe('createAssetBodySchema', () => {
     { assetCode: 'AST-001', name: 'Server', assetType: 'server', status: 'retired' },
     { assetCode: 'AST-001', name: 'Server', assetType: 'server', ipAddress: '999.1.1.1' },
     { assetCode: 'AST-001', name: 'Server', assetType: 'server', metadata: [] },
+    { assetCode: 'AST-001', name: 'Server', assetType: 'server', criticality: 'critical' },
   ])('rejects invalid create data: %o', (body) => {
     expect(createAssetBodySchema.safeParse(body).success).toBe(false);
   });

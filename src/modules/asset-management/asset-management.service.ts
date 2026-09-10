@@ -36,6 +36,34 @@ const criticalityFromScore = (score: number): 'low' | 'medium' | 'high' | 'criti
 };
 
 export const assetManagementService = {
+  async listCreateOptions(actor: AssetListActor) {
+    if (
+      !actor.permissions.includes('assets.create') &&
+      !actor.permissions.includes('assets.update') &&
+      !actor.permissions.includes('assets.assign-owner')
+    ) {
+      throw new AppError(403, 'FORBIDDEN', 'Insufficient permissions');
+    }
+
+    const options = await assetManagementRepository.listCreateOptions();
+    return {
+      departments: options.departments.map((department) => ({
+        id: department.department_id,
+        code: department.code,
+        name: department.name,
+      })),
+      owners: options.owners.map((owner) => ({
+        id: owner.user_id,
+        fullName: owner.full_name,
+        employeeCode: owner.employee_code,
+      })),
+      truncated: {
+        departments: options.departmentsTruncated,
+        owners: options.ownersTruncated,
+      },
+    };
+  },
+
   async getById(assetId: string, actor: AssetListActor) {
     if (!actor.permissions.includes('assets.read')) {
       throw new AppError(403, 'FORBIDDEN', 'Insufficient permissions');

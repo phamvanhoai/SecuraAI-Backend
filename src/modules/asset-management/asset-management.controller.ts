@@ -29,6 +29,13 @@ export const getAssetDetail: RequestHandler = async (req, res) => {
   res.status(200).json({ success: true, data });
 };
 
+export const listAssetCreateOptions: RequestHandler = async (req, res) => {
+  if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+
+  const data = await assetManagementService.listCreateOptions(req.auth);
+  res.status(200).json({ success: true, data });
+};
+
 export const createAsset: RequestHandler = async (req, res) => {
   if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
 
@@ -162,4 +169,5 @@ export const assetManagementController = {
   exportAssets,
   getAssetDetail,
   listAssetHistory,
+  listAssetCreateOptions,
 } as const;

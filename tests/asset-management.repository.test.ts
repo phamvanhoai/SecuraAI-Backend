@@ -18,6 +18,8 @@ const {
   assetFindUniqueMock,
   historyCountMock,
   historyFindManyMock,
+  departmentFindManyMock,
+  userFindManyMock,
 } = vi.hoisted(() => ({
   assetCreateMock: vi.fn(),
   auditCreateMock: vi.fn(),
@@ -36,6 +38,8 @@ const {
   assetFindUniqueMock: vi.fn(),
   historyCountMock: vi.fn(),
   historyFindManyMock: vi.fn(),
+  departmentFindManyMock: vi.fn(),
+  userFindManyMock: vi.fn(),
 }));
 
 vi.mock('../src/database/prisma.js', () => ({
@@ -47,14 +51,36 @@ vi.mock('../src/database/prisma.js', () => ({
       findUnique: assetFindUniqueMock,
     },
     asset_change_history: { count: historyCountMock, findMany: historyFindManyMock },
-    departments: { findUnique: vi.fn() },
-    users: { findFirst: vi.fn() },
+    departments: { findUnique: vi.fn(), findMany: departmentFindManyMock },
+    users: { findFirst: vi.fn(), findMany: userFindManyMock },
     audit_logs: { create: auditCreateMock },
     $transaction: transactionMock,
   },
 }));
 
 import { assetManagementRepository } from '../src/modules/asset-management/asset-management.repository.js';
+
+describe('assetManagementRepository.listCreateOptions', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('returns only bounded active departments and non-deleted active owners', async () => {
+    departmentFindManyMock.mockResolvedValue([]);
+    userFindManyMock.mockResolvedValue([]);
+
+    await expect(assetManagementRepository.listCreateOptions()).resolves.toEqual({
+      departments: [],
+      owners: [],
+      departmentsTruncated: false,
+      ownersTruncated: false,
+    });
+    expect(departmentFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { status: 'active' }, take: 201 }),
+    );
+    expect(userFindManyMock).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { status: 'active', deleted_at: null }, take: 201 }),
+    );
+  });
+});
 
 describe('assetManagementRepository.findById', () => {
   beforeEach(() => {
@@ -427,7 +453,6 @@ describe('assetManagementRepository.create', () => {
         assetCode: 'AST-001',
         name: 'Server',
         assetType: 'server',
-        criticality: 'medium',
       },
       { actorUserId: 'user-1', ipAddress: '127.0.0.1', userAgent: 'vitest' },
     );
@@ -439,6 +464,7 @@ describe('assetManagementRepository.create', () => {
     expect(assetCreateArgument).toMatchObject({
       data: {
         asset_code: 'AST-001',
+        criticality: 'medium',
         status: 'active',
         created_by_user_id: 'user-1',
       },
