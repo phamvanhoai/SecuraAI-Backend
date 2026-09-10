@@ -328,6 +328,80 @@ describe('GET /api/v1/assets', () => {
   });
 });
 
+describe('GET /api/v1/assets/:assetId', () => {
+  const assetId = '00000000-0000-4000-8000-000000000010';
+  const record = {
+    asset_id: assetId,
+    asset_code: 'AST-DETAIL-001',
+    name: 'Frontend Test Server',
+    asset_type: 'server',
+    description: 'Asset detail test',
+    department_id: null,
+    owner_user_id: null,
+    criticality: 'medium',
+    hostname: 'fe-test-server',
+    ip_address: '192.168.1.50',
+    location: 'Server Room',
+    status: 'active',
+    metadata: { environment: 'test' },
+    retired_at: null,
+    created_at: new Date('2026-09-10T08:00:00.000Z'),
+    updated_at: new Date('2026-09-10T08:30:00.000Z'),
+    departments: null,
+    users_assets_owner_user_idTousers: null,
+  };
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    findByIdMock.mockResolvedValue(record);
+  });
+
+  it('requires authentication and assets.read', async () => {
+    const unauthenticated = await request(createApp()).get(`/api/v1/assets/${assetId}`);
+    const forbidden = await request(createApp())
+      .get(`/api/v1/assets/${assetId}`)
+      .set('authorization', `Bearer ${accessToken([])}`);
+
+    expect(unauthenticated.status).toBe(401);
+    expect(forbidden.status).toBe(403);
+    expect(findByIdMock).not.toHaveBeenCalled();
+  });
+
+  it('returns complete asset details', async () => {
+    const response = await request(createApp())
+      .get(`/api/v1/assets/${assetId}`)
+      .set('authorization', `Bearer ${accessToken(['assets.read'])}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      success: true,
+      data: {
+        id: assetId,
+        hostname: 'fe-test-server',
+        ipAddress: '192.168.1.50',
+        location: 'Server Room',
+        metadata: { environment: 'test' },
+        retiredAt: null,
+      },
+    });
+  });
+
+  it('rejects invalid IDs and returns 404 for missing or deleted assets', async () => {
+    const token = accessToken(['assets.read']);
+    const invalid = await request(createApp())
+      .get('/api/v1/assets/not-a-uuid')
+      .set('authorization', `Bearer ${token}`);
+    findByIdMock.mockResolvedValueOnce(null);
+    const missing = await request(createApp())
+      .get(`/api/v1/assets/${assetId}`)
+      .set('authorization', `Bearer ${token}`);
+
+    expect(invalid.status).toBe(422);
+    expect(missing.status).toBe(404);
+    expect(missing.body.error.code).toBe('ASSET_NOT_FOUND');
+  });
+});
+
 describe('PATCH /api/v1/assets/:assetId', () => {
   const assetId = '00000000-0000-4000-8000-000000000010';
   const record = {

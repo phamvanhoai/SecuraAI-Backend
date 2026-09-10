@@ -223,11 +223,20 @@ export const openApiSpec = swaggerJsdoc({
             { $ref: '#/components/schemas/AssetSummary' },
             {
               type: 'object',
-              required: ['description', 'hostname', 'ipAddress', 'createdAt'],
+              required: [
+                'description',
+                'hostname',
+                'ipAddress',
+                'metadata',
+                'retiredAt',
+                'createdAt',
+              ],
               properties: {
                 description: { type: 'string', nullable: true },
                 hostname: { type: 'string', nullable: true },
                 ipAddress: { type: 'string', nullable: true },
+                metadata: { type: 'object', nullable: true },
+                retiredAt: { type: 'string', format: 'date-time', nullable: true },
                 createdAt: { type: 'string', format: 'date-time' },
               },
             },
@@ -1331,6 +1340,44 @@ export const openApiSpec = swaggerJsdoc({
         },
       },
       '/assets/{assetId}': {
+        get: {
+          tags: ['Assets'],
+          summary: 'View IT asset details',
+          description:
+            'Returns complete details for one non-deleted asset. Requires the assets.read permission.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'assetId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          responses: {
+            '200': {
+              description: 'Asset details',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    required: ['success', 'data'],
+                    properties: {
+                      success: { type: 'boolean', example: true },
+                      data: { $ref: '#/components/schemas/AssetDetail' },
+                    },
+                  },
+                },
+              },
+            },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'The assets.read permission is required' },
+            '404': { description: 'Asset was not found or was deleted' },
+            '422': { description: 'Invalid asset ID' },
+            '429': { description: 'Too many requests' },
+            '500': { description: 'Unexpected server error' },
+          },
+        },
         patch: {
           tags: ['Assets'],
           summary: 'Update an IT asset',

@@ -36,6 +36,17 @@ const criticalityFromScore = (score: number): 'low' | 'medium' | 'high' | 'criti
 };
 
 export const assetManagementService = {
+  async getById(assetId: string, actor: AssetListActor) {
+    if (!actor.permissions.includes('assets.read')) {
+      throw new AppError(403, 'FORBIDDEN', 'Insufficient permissions');
+    }
+
+    const asset = await assetManagementRepository.findById(assetId);
+    if (!asset) throw new AppError(404, 'ASSET_NOT_FOUND', 'Asset was not found');
+
+    return toAssetDetail(asset);
+  },
+
   async list(query: ListAssetsQuery, actor: AssetListActor) {
     if (!actor.permissions.includes('assets.read')) {
       throw new AppError(403, 'FORBIDDEN', 'Insufficient permissions');
