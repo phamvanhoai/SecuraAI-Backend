@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
+  listPermissions: vi.fn(),
   listRoles: vi.fn(),
   findById: vi.fn(),
   findByCode: vi.fn(),
@@ -42,6 +43,26 @@ describe('accessControlService', () => {
     mocks.countPermissions.mockResolvedValue(0);
     mocks.findByCode.mockResolvedValue(null);
     mocks.audit.mockResolvedValue({ audit_log_id: 'audit-1' });
+  });
+  it('lists the permission catalog with stable API fields', async () => {
+    mocks.listPermissions.mockResolvedValue({
+      items: [
+        {
+          permission_id: '00000000-0000-4000-8000-000000000020',
+          code: 'roles.read',
+          module: 'access-control',
+          action: 'read',
+          description: 'View roles',
+        },
+      ],
+      total: 1,
+    });
+    const result = await accessControlService.listPermissions(
+      { page: 1, limit: 100, sortBy: 'code', sortOrder: 'asc' },
+      actor,
+    );
+    expect(result.items[0]).toMatchObject({ code: 'roles.read', module: 'access-control' });
+    expect(result.pagination.totalPages).toBe(1);
   });
   it('lists system and custom roles with pagination', async () => {
     mocks.listRoles.mockResolvedValue({ items: [role({ is_system: true })], total: 1 });

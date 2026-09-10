@@ -9,6 +9,7 @@ export const accessControlModule: ModuleManifest = {
   capabilities: [
     'Create custom role',
     'View system and custom roles',
+    'List permissions',
     'Update custom role',
     'Delete custom role',
   ],

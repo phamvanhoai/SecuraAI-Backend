@@ -1,7 +1,8 @@
 import { Prisma } from '@prisma/client';
 import { AppError } from '../../common/errors/app-error.js';
-import { toRoleResponse } from './access-control.mapper.js';
+import { toPermissionResponse, toRoleResponse } from './access-control.mapper.js';
 import { accessControlRepository } from './access-control.repository.js';
+import type { ListPermissionsQuery } from './dto/permission.dto.js';
 import type { CreateRoleBody, ListRolesQuery, UpdateRoleBody } from './dto/role.dto.js';
 
 type RoleActor = { userId: string; permissions: readonly string[] };
@@ -25,6 +26,19 @@ const auditSnapshot = (role: ReturnType<typeof toRoleResponse>): Prisma.InputJso
 });
 
 export const accessControlService = {
+  async listPermissions(query: ListPermissionsQuery, actor: RoleActor) {
+    requirePermission(actor, 'roles.read');
+    const result = await accessControlRepository.listPermissions(query);
+    return {
+      items: result.items.map(toPermissionResponse),
+      pagination: {
+        page: query.page,
+        limit: query.limit,
+        total: result.total,
+        totalPages: Math.ceil(result.total / query.limit),
+      },
+    };
+  },
   async listRoles(query: ListRolesQuery, actor: RoleActor) {
     requirePermission(actor, 'roles.read');
     const result = await accessControlRepository.listRoles(query);

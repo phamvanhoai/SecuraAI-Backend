@@ -140,6 +140,17 @@ export const openApiSpec = swaggerJsdoc({
             updatedAt: { type: 'string', format: 'date-time' },
           },
         },
+        Permission: {
+          type: 'object',
+          required: ['id', 'code', 'module', 'action', 'description'],
+          properties: {
+            id: { type: 'string', format: 'uuid' },
+            code: { type: 'string' },
+            module: { type: 'string' },
+            action: { type: 'string' },
+            description: { type: 'string', nullable: true },
+          },
+        },
         AssetSummary: {
           type: 'object',
           required: [
@@ -795,6 +806,47 @@ export const openApiSpec = swaggerJsdoc({
             '409': { description: 'Incompatible alert status' },
             '422': { description: 'Invalid UUID or body' },
             '500': { description: 'Internal error; transaction rolled back' },
+          },
+        },
+      },
+      '/access-control/permissions': {
+        get: {
+          tags: ['Role Management'],
+          summary: 'List the permission catalog',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'page', in: 'query', schema: { type: 'integer', default: 1, minimum: 1 } },
+            {
+              name: 'limit',
+              in: 'query',
+              schema: { type: 'integer', default: 100, minimum: 1, maximum: 200 },
+            },
+            {
+              name: 'search',
+              in: 'query',
+              schema: { type: 'string', minLength: 1, maxLength: 100 },
+            },
+            {
+              name: 'module',
+              in: 'query',
+              schema: { type: 'string', minLength: 1, maxLength: 100 },
+            },
+            {
+              name: 'sortBy',
+              in: 'query',
+              schema: { type: 'string', enum: ['code', 'module', 'action'], default: 'code' },
+            },
+            {
+              name: 'sortOrder',
+              in: 'query',
+              schema: { type: 'string', enum: ['asc', 'desc'], default: 'asc' },
+            },
+          ],
+          responses: {
+            '200': { description: 'Paginated permission catalog' },
+            '401': { description: 'Unauthorized' },
+            '403': { description: 'Missing roles.read permission' },
+            '422': { description: 'Invalid query parameters' },
           },
         },
       },
