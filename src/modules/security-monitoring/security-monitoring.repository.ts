@@ -24,6 +24,11 @@ export const logSourceSelect = {
 
 export type LogSourceRecord = Prisma.log_sourcesGetPayload<{ select: typeof logSourceSelect }>;
 
+export type DeleteLogSourceResult =
+  | { kind: 'not_found' }
+  | { kind: 'blocked'; dependencies: { securityEvents: number; aiAlerts: number } }
+  | { kind: 'deleted' };
+
 export type IngestedSecurityEvent = {
   id: string;
   logSourceId: string;
@@ -322,6 +327,52 @@ export const securityMonitoringRepository = {
         },
       });
       return source;
+    });
+  },
+
+  deleteLogSource(logSourceId: string, context: RequestContext): Promise<DeleteLogSourceResult> {
+    return prisma.$transaction(async (transaction) => {
+      const source = await transaction.log_sources.findUnique({
+        where: { log_source_id: logSourceId },
+        select: {
+          log_source_id: true,
+          name: true,
+          source_type: true,
+          status: true,
+          asset_id: true,
+          integration_id: true,
+        },
+      });
+      if (!source) return { kind: 'not_found' };
+
+      const [securityEvents, aiAlerts] = await Promise.all([
+        transaction.security_events.count({ where: { log_source_id: logSourceId } }),
+        transaction.ai_alerts.count({ where: { log_source_id: logSourceId } }),
+      ]);
+      if (securityEvents > 0 || aiAlerts > 0) {
+        return { kind: 'blocked', dependencies: { securityEvents, aiAlerts } };
+      }
+
+      await transaction.log_sources.delete({ where: { log_source_id: logSourceId } });
+      await transaction.audit_logs.create({
+        data: {
+          actor_user_id: context.actorUserId,
+          module: 'security-monitoring',
+          action: 'log_source.deleted',
+          entity_type: 'log_source',
+          entity_id: logSourceId,
+          before_data: {
+            name: source.name,
+            sourceType: source.source_type,
+            status: source.status,
+            assetId: source.asset_id,
+            integrationId: source.integration_id,
+          },
+          ip_address: context.ipAddress,
+          user_agent: context.userAgent,
+        },
+      });
+      return { kind: 'deleted' };
     });
   },
 };

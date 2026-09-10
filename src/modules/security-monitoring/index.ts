@@ -7,7 +7,7 @@ export const securityMonitoringModule: ModuleManifest = {
   description: 'Log sources and normalized security events',
   tables: ['log_sources', 'security_events'],
   capabilities: [
-    'Configure and list log sources',
+    'Configure, list and delete unused log sources',
     'Ingest events',
     'Normalize/search events',
     'Event traceability',

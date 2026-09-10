@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { AppError } from '../../common/errors/app-error.js';
 import { toLogSourceResponse } from './security-monitoring.mapper.js';
 import { securityMonitoringRepository } from './security-monitoring.repository.js';
@@ -75,6 +76,36 @@ export const securityMonitoringService = {
     });
     if (!source) throw new AppError(404, 'LOG_SOURCE_NOT_FOUND', 'Log source was not found');
     return toLogSourceResponse(source);
+  },
+
+  async deleteLogSource(logSourceId: string, actor: Actor, context: RequestContext): Promise<void> {
+    requirePermission(actor, 'log-sources.manage');
+    try {
+      const result = await securityMonitoringRepository.deleteLogSource(logSourceId, {
+        actorUserId: actor.userId,
+        ...context,
+      });
+      if (result.kind === 'not_found') {
+        throw new AppError(404, 'LOG_SOURCE_NOT_FOUND', 'Log source was not found');
+      }
+      if (result.kind === 'blocked') {
+        throw new AppError(
+          409,
+          'LOG_SOURCE_HAS_DEPENDENCIES',
+          'Log source has security events or alerts and cannot be deleted',
+          result.dependencies,
+        );
+      }
+    } catch (error: unknown) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2003') {
+        throw new AppError(
+          409,
+          'LOG_SOURCE_HAS_DEPENDENCIES',
+          'Log source has dependent records and cannot be deleted',
+        );
+      }
+      throw error;
+    }
   },
 
   async ingestSecurityEvents(

@@ -2019,6 +2019,29 @@ export const openApiSpec = swaggerJsdoc({
             '422': { description: 'Invalid request body or log source ID' },
           },
         },
+        delete: {
+          tags: ['Security Monitoring'],
+          summary: 'Delete an unused log source',
+          description:
+            'Permanently deletes a log source only when it has no security events or AI alerts. Requires the log-sources.manage permission.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'logSourceId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          responses: {
+            '204': { description: 'Log source deleted' },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'The log-sources.manage permission is required' },
+            '404': { description: 'Log source was not found' },
+            '409': { description: 'Log source has security events or alerts' },
+            '422': { description: 'Invalid log source ID' },
+          },
+        },
       },
       '/integrations': {
         post: {
