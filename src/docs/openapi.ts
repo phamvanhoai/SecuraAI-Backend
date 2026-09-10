@@ -1285,6 +1285,24 @@ export const openApiSpec = swaggerJsdoc({
         },
       },
       '/users': {
+        get: {
+          tags: ['Users'],
+          summary: 'List user accounts',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
+            { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 } },
+            { name: 'q', in: 'query', schema: { type: 'string' }, description: 'Search name, email, or employee code' },
+            { name: 'departmentId', in: 'query', schema: { type: 'string', format: 'uuid' } },
+            { name: 'roleCode', in: 'query', schema: { type: 'string' } },
+            { name: 'status', in: 'query', schema: { type: 'string', enum: ['active', 'inactive', 'locked', 'disabled'] } },
+          ],
+          responses: {
+            '200': { description: 'Paginated user list and status summary' },
+            '401': { description: 'Unauthorized' },
+            '403': { description: 'Missing users.read permission' },
+          },
+        },
         post: {
           tags: ['Users'],
           summary: 'Initialize a user account',

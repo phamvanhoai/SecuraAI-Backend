@@ -5,6 +5,7 @@ import { prisma } from '../../database/prisma.js';
 import { AppError } from '../../common/errors/app-error.js';
 import { authEmailService } from '../auth/auth.email.service.js';
 import type { CreateUserBody } from './dto/create-user.dto.js';
+import type { ListUsersQuery } from './dto/list-users-query.dto.js';
 import { usersRepository } from './users.repository.js';
 
 const publicUserSelect = {
@@ -33,6 +34,34 @@ const publicUserSelect = {
 } as const;
 
 export const usersService = {
+  async list(query: ListUsersQuery) {
+    const result = await usersRepository.list(query);
+    return {
+      items: result.items.map((user) => ({
+        id: user.user_id,
+        email: user.email,
+        fullName: user.full_name,
+        employeeCode: user.employee_code,
+        status: user.status,
+        createdAt: user.created_at,
+        department: user.departments
+          ? { id: user.departments.department_id, code: user.departments.code, name: user.departments.name }
+          : null,
+        roles: user.user_roles_user_roles_user_idTousers.map(({ roles }) => ({
+          code: roles.code,
+          name: roles.name,
+        })),
+      })),
+      pagination: {
+        page: query.page,
+        limit: query.limit,
+        total: result.total,
+        totalPages: Math.ceil(result.total / query.limit),
+      },
+      summary: result.summary,
+    };
+  },
+
   async initializeAccount(input: CreateUserBody, actorUserId: string) {
     const temporaryPassword = String(randomInt(10_000_000, 100_000_000));
     const temporaryPasswordHash = await argon2.hash(temporaryPassword, {
