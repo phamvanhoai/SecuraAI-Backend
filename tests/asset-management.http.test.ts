@@ -380,10 +380,9 @@ describe('GET /api/v1/assets/:assetId', () => {
         hostname: 'fe-test-server',
         ipAddress: '192.168.1.50',
         location: 'Server Room',
-        metadata: { environment: 'test' },
-        retiredAt: null,
       },
     });
+    expect(response.body.data).not.toHaveProperty('metadata');
   });
 
   it('rejects invalid IDs and returns 404 for missing or deleted assets', async () => {

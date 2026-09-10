@@ -46,8 +46,6 @@ export type AssetDetail = AssetListItem & {
   description: string | null;
   hostname: string | null;
   ipAddress: string | null;
-  metadata: Prisma.JsonValue;
-  retiredAt: Date | null;
   createdAt: Date;
 };
 
@@ -56,8 +54,6 @@ export const toAssetDetail = (asset: AssetDetailRecord): AssetDetail => ({
   description: asset.description,
   hostname: asset.hostname,
   ipAddress: asset.ip_address,
-  metadata: asset.metadata,
-  retiredAt: asset.retired_at,
   createdAt: asset.created_at,
 });
 

@@ -223,20 +223,11 @@ export const openApiSpec = swaggerJsdoc({
             { $ref: '#/components/schemas/AssetSummary' },
             {
               type: 'object',
-              required: [
-                'description',
-                'hostname',
-                'ipAddress',
-                'metadata',
-                'retiredAt',
-                'createdAt',
-              ],
+              required: ['description', 'hostname', 'ipAddress', 'createdAt'],
               properties: {
                 description: { type: 'string', nullable: true },
                 hostname: { type: 'string', nullable: true },
                 ipAddress: { type: 'string', nullable: true },
-                metadata: { type: 'object', nullable: true },
-                retiredAt: { type: 'string', format: 'date-time', nullable: true },
                 createdAt: { type: 'string', format: 'date-time' },
               },
             },

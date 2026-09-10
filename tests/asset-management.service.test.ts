@@ -428,8 +428,6 @@ describe('assetManagementService.getById', () => {
       description: null,
       hostname: 'db-01',
       ipAddress: '192.168.1.10',
-      metadata: {},
-      retiredAt: null,
       createdAt: existingAsset.created_at,
     });
   });
