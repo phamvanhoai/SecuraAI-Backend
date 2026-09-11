@@ -11,6 +11,7 @@ import type {
   ConfirmPasswordResetBody,
   RequestPasswordResetBody,
 } from './dto/password-reset.dto.js';
+import type { ChangePasswordBody } from './dto/change-password.dto.js';
 import type { LoginInput } from './auth.schema.js';
 
 const authUserInclude = {
@@ -47,6 +48,25 @@ const sessionMetadata = (req: Request) => ({
 });
 
 export const authService = {
+  async changePassword(userId: string, input: ChangePasswordBody): Promise<void> {
+    const user = await authRepository.findUserForPasswordChange(userId);
+    if (!user) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+    if (user.status !== 'active' || user.deleted_at)
+      throw new AppError(403, 'ACCOUNT_INACTIVE', 'Account is not active');
+
+    const currentPasswordMatches = await argon2.verify(user.password_hash, input.currentPassword);
+    if (!currentPasswordMatches) {
+      throw new AppError(400, 'INVALID_CURRENT_PASSWORD', 'Current password is incorrect');
+    }
+
+    if (await argon2.verify(user.password_hash, input.newPassword)) {
+      throw new AppError(400, 'PASSWORD_UNCHANGED', 'New password must be different from the current password');
+    }
+
+    const passwordHash = await argon2.hash(input.newPassword, { type: argon2.argon2id });
+    await authRepository.updatePassword(userId, passwordHash);
+  },
+
   async issuePasswordReset(userId: string, email: string): Promise<void> {
     const resetToken = String(randomInt(100_000, 1_000_000));
     const tokenHash = hashToken(resetToken);

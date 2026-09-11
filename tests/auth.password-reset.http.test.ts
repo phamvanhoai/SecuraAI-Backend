@@ -71,7 +71,11 @@ describe('password reset HTTP API', () => {
         newPassword: 'NewPassword123!',
         confirmPassword: 'NewPassword123!',
       });
-    expect(confirmed.status).toBe(204);
+    expect(confirmed.status).toBe(200);
+    expect(confirmed.body).toEqual({
+      success: true,
+      data: { message: 'Password reset successfully. Please log in with your new password.' },
+    });
     expect(mocks.consumePasswordResetToken).toHaveBeenCalledWith(
       expect.any(String),
       expect.any(String),

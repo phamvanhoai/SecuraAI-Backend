@@ -1,8 +1,33 @@
 import { prisma } from '../../database/prisma.js';
 
 const resetUserSelect = { user_id: true } as const;
+const passwordChangeUserSelect = {
+  password_hash: true,
+  status: true,
+  deleted_at: true,
+} as const;
 
 export const authRepository = {
+  findUserForPasswordChange(userId: string) {
+    return prisma.users.findFirst({
+      where: { user_id: userId },
+      select: passwordChangeUserSelect,
+    });
+  },
+
+  async updatePassword(userId: string, passwordHash: string): Promise<void> {
+    await prisma.$transaction([
+      prisma.users.update({
+        where: { user_id: userId },
+        data: { password_hash: passwordHash, must_change_password: false },
+      }),
+      prisma.auth_sessions.updateMany({
+        where: { user_id: userId, revoked_at: null },
+        data: { revoked_at: new Date() },
+      }),
+    ]);
+  },
+
   findActiveUserByEmail(email: string) {
     return prisma.users.findFirst({
       where: { email, status: 'active', deleted_at: null },
