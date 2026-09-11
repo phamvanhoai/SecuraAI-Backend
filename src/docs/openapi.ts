@@ -30,12 +30,90 @@ export const openApiSpec = swaggerJsdoc({
           properties: {
             email: { type: 'string', format: 'email' },
             password: { type: 'string', format: 'password', minLength: 8 },
+            mfaCode: {
+              type: 'string',
+              pattern: '^\\d{6}$',
+              description: 'Required only when MFA is enabled for the account.',
+            },
+          },
+        },
+        InitializeUserAccountRequest: {
+          type: 'object',
+          required: ['email', 'fullName', 'roleCodes'],
+          additionalProperties: false,
+          properties: {
+            email: { type: 'string', format: 'email' },
+            fullName: { type: 'string', minLength: 2, maxLength: 150 },
+            phone: { type: 'string', maxLength: 30 },
+            employeeCode: { type: 'string', maxLength: 50 },
+            departmentId: { type: 'string', format: 'uuid' },
+            roleCodes: { type: 'array', minItems: 1, maxItems: 10, items: { type: 'string' } },
           },
         },
         RefreshRequest: {
           type: 'object',
           required: ['refreshToken'],
           properties: { refreshToken: { type: 'string' } },
+        },
+        RequestPasswordReset: {
+          type: 'object',
+          required: ['email'],
+          additionalProperties: false,
+          properties: { email: { type: 'string', format: 'email' } },
+        },
+        ConfirmPasswordReset: {
+          type: 'object',
+          required: ['token', 'newPassword', 'confirmPassword'],
+          additionalProperties: false,
+          properties: {
+            token: { type: 'string', pattern: '^\\d{6}$', example: '123456' },
+            newPassword: {
+              type: 'string',
+              format: 'password',
+              minLength: 8,
+              maxLength: 128,
+              description: 'At least 8 characters, one uppercase letter, and one special character.',
+            },
+            confirmPassword: {
+              type: 'string',
+              format: 'password',
+              minLength: 8,
+              maxLength: 128,
+              description: 'Must match newPassword.',
+            },
+          },
+        },
+        ChangePasswordRequest: {
+          type: 'object',
+          required: ['currentPassword', 'newPassword', 'confirmPassword'],
+          additionalProperties: false,
+          properties: {
+            currentPassword: { type: 'string', format: 'password', minLength: 1 },
+            newPassword: {
+              type: 'string',
+              format: 'password',
+              minLength: 8,
+              maxLength: 128,
+              description: 'At least 8 characters, one uppercase letter, and one special character.',
+            },
+            confirmPassword: { type: 'string', format: 'password', minLength: 8, maxLength: 128 },
+          },
+        },
+        SetupMfaRequest: {
+          type: 'object',
+          required: ['currentPassword'],
+          additionalProperties: false,
+          properties: {
+            currentPassword: { type: 'string', format: 'password', minLength: 1 },
+          },
+        },
+        VerifyMfaRequest: {
+          type: 'object',
+          required: ['code'],
+          additionalProperties: false,
+          properties: {
+            code: { type: 'string', pattern: '^\\d{6}$', example: '123456' },
+          },
         },
         TokenPair: {
           type: 'object',
@@ -1022,6 +1100,136 @@ export const openApiSpec = swaggerJsdoc({
           },
         },
       },
+      '/auth/password-reset/request': {
+        post: {
+          tags: ['Authentication'],
+          summary: 'Request a password reset',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': { schema: { $ref: '#/components/schemas/RequestPasswordReset' } },
+            },
+          },
+          responses: {
+            '202': { description: 'Reset request accepted without revealing account existence' },
+            '422': { description: 'Invalid email address' },
+            '429': { description: 'Too many attempts' },
+          },
+        },
+      },
+      '/auth/change-password': {
+        post: {
+          tags: ['Authentication'],
+          summary: 'Change the authenticated user password',
+          security: [{ bearerAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': { schema: { $ref: '#/components/schemas/ChangePasswordRequest' } },
+            },
+          },
+          responses: {
+            '200': {
+              description: 'Password changed and existing refresh sessions revoked',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      success: { type: 'boolean', example: true },
+                      data: {
+                        type: 'object',
+                        properties: {
+                          message: { type: 'string', example: 'Password changed successfully. Please log in again.' },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            '400': { description: 'Current password is incorrect or new password is unchanged' },
+            '401': { description: 'Unauthorized' },
+            '403': { description: 'Account is inactive' },
+            '422': { description: 'Invalid password policy or confirmation' },
+          },
+        },
+      },
+      '/auth/mfa/setup': {
+        post: {
+          tags: ['Authentication'],
+          summary: 'Start authenticator-app MFA setup',
+          security: [{ bearerAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': { schema: { $ref: '#/components/schemas/SetupMfaRequest' } },
+            },
+          },
+          responses: {
+            '200': { description: 'Authenticator URI and QR code data URL returned' },
+            '400': { description: 'Current password is incorrect' },
+            '401': { description: 'Unauthorized' },
+            '409': { description: 'MFA is already enabled' },
+          },
+        },
+      },
+      '/auth/mfa/verify': {
+        post: {
+          tags: ['Authentication'],
+          summary: 'Verify an authenticator code and enable MFA',
+          security: [{ bearerAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': { schema: { $ref: '#/components/schemas/VerifyMfaRequest' } },
+            },
+          },
+          responses: {
+            '200': { description: 'MFA enabled' },
+            '400': { description: 'MFA code is invalid or expired' },
+            '401': { description: 'Unauthorized' },
+            '404': { description: 'MFA setup is required' },
+            '429': { description: 'Too many attempts' },
+          },
+        },
+      },
+      '/auth/password-reset/confirm': {
+        post: {
+          tags: ['Authentication'],
+          summary: 'Set a new password with a reset token',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': { schema: { $ref: '#/components/schemas/ConfirmPasswordReset' } },
+            },
+          },
+          responses: {
+            '200': {
+              description: 'Password reset and existing sessions revoked',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      success: { type: 'boolean', example: true },
+                      data: {
+                        type: 'object',
+                        properties: {
+                          message: { type: 'string', example: 'Password reset successfully. Please log in with your new password.' },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            '400': { description: 'Reset token is invalid or expired' },
+            '422': { description: 'Invalid reset request' },
+            '429': { description: 'Too many attempts' },
+          },
+        },
+      },
       '/auth/refresh': {
         post: {
           tags: ['Authentication'],
@@ -1073,6 +1281,49 @@ export const openApiSpec = swaggerJsdoc({
               },
             },
             '401': { description: 'Unauthorized' },
+          },
+        },
+      },
+      '/users': {
+        get: {
+          tags: ['Users'],
+          summary: 'List user accounts',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
+            { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 } },
+            { name: 'q', in: 'query', schema: { type: 'string' }, description: 'Search name, email, or employee code' },
+            { name: 'departmentId', in: 'query', schema: { type: 'string', format: 'uuid' } },
+            { name: 'roleCode', in: 'query', schema: { type: 'string' } },
+            { name: 'status', in: 'query', schema: { type: 'string', enum: ['active', 'inactive', 'locked', 'disabled'] } },
+          ],
+          responses: {
+            '200': { description: 'Paginated user list and status summary' },
+            '401': { description: 'Unauthorized' },
+            '403': { description: 'Missing users.read permission' },
+          },
+        },
+        post: {
+          tags: ['Users'],
+          summary: 'Initialize a user account',
+          description:
+            'Admin-only account initialization. Creates the account and emails an eight-digit temporary password that the user must change after signing in.',
+          security: [{ bearerAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/InitializeUserAccountRequest' },
+              },
+            },
+          },
+          responses: {
+            '201': { description: 'User account created and temporary password email sent' },
+            '401': { description: 'Unauthorized' },
+            '403': { description: 'Missing users.create permission' },
+            '409': { description: 'Email or employee code already exists' },
+            '422': { description: 'Invalid role, department, or request body' },
+            '503': { description: 'Email service is not configured or unavailable' },
           },
         },
       },
