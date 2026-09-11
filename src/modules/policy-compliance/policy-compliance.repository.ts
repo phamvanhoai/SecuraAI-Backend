@@ -170,7 +170,12 @@ export const policyComplianceRepository = {
 
   getDraftPolicyVersion(policyId: string, versionId: string) {
     return prisma.policy_versions.findFirst({
-      where: { policy_version_id: versionId, policy_id: policyId, status: 'draft' },
+      where: {
+        policy_version_id: versionId,
+        policy_id: policyId,
+        status: 'draft',
+        policies: { status: 'draft' },
+      },
       select: draftPolicyVersionDetailSelect,
     });
   },

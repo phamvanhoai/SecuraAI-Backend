@@ -54,10 +54,10 @@ describe('POST policy version publish endpoint', () => {
   it('allows an admin to list and inspect drafts before publishing', async () => {
     const token = accessToken(['policies.publish']);
     const listResponse = await request(createApp())
-      .get('/api/v1/compliance/policies?page=1&limit=20')
+      .get('/api/v1/compliance/policies/drafts/reviewable?page=1&limit=20')
       .set('authorization', `Bearer ${token}`);
     const detailResponse = await request(createApp())
-      .get(`/api/v1/compliance/policies/${policyId}/versions/${versionId}`)
+      .get(`/api/v1/compliance/policies/${policyId}/versions/${versionId}/review`)
       .set('authorization', `Bearer ${token}`);
     expect(listResponse.status).toBe(200);
     expect(listResponse.body.data.items[0].draftVersion.id).toBe(versionId);
@@ -67,7 +67,7 @@ describe('POST policy version publish endpoint', () => {
 
   it('protects draft review endpoints with policies.publish', async () => {
     const response = await request(createApp())
-      .get('/api/v1/compliance/policies')
+      .get('/api/v1/compliance/policies/drafts/reviewable')
       .set('authorization', `Bearer ${accessToken([])}`);
     expect(response.status).toBe(403);
     expect(listPublishablePoliciesMock).not.toHaveBeenCalled();

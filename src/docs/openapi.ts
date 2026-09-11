@@ -2129,41 +2129,6 @@ export const openApiSpec = swaggerJsdoc({
         },
       },
       '/compliance/policies': {
-        get: {
-          tags: ['Policies'],
-          summary: 'List policy drafts available for publication',
-          description: 'Requires policies.publish and returns only policies with a draft version.',
-          security: [{ bearerAuth: [] }],
-          parameters: [
-            { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
-            {
-              name: 'limit',
-              in: 'query',
-              schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
-            },
-            { name: 'q', in: 'query', schema: { type: 'string', maxLength: 100 } },
-            {
-              name: 'sortBy',
-              in: 'query',
-              schema: {
-                type: 'string',
-                enum: ['policyCode', 'title', 'updatedAt'],
-                default: 'updatedAt',
-              },
-            },
-            {
-              name: 'sortOrder',
-              in: 'query',
-              schema: { type: 'string', enum: ['asc', 'desc'], default: 'desc' },
-            },
-          ],
-          responses: {
-            '200': { description: 'Paginated publishable policy draft list' },
-            '401': { description: 'Authentication required' },
-            '403': { description: 'The policies.publish permission is required' },
-            '422': { description: 'Invalid query parameters' },
-          },
-        },
         post: {
           tags: ['Policies'],
           summary: 'Create an information security policy draft',
@@ -2200,7 +2165,44 @@ export const openApiSpec = swaggerJsdoc({
           },
         },
       },
-      '/compliance/policies/{policyId}/versions/{versionId}': {
+      '/compliance/policies/drafts/reviewable': {
+        get: {
+          tags: ['Policies'],
+          summary: 'List policy drafts available for Admin publication review',
+          description: 'Requires policies.publish and returns only policies with a draft version.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
+            {
+              name: 'limit',
+              in: 'query',
+              schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
+            },
+            { name: 'q', in: 'query', schema: { type: 'string', maxLength: 100 } },
+            {
+              name: 'sortBy',
+              in: 'query',
+              schema: {
+                type: 'string',
+                enum: ['policyCode', 'title', 'updatedAt'],
+                default: 'updatedAt',
+              },
+            },
+            {
+              name: 'sortOrder',
+              in: 'query',
+              schema: { type: 'string', enum: ['asc', 'desc'], default: 'desc' },
+            },
+          ],
+          responses: {
+            '200': { description: 'Paginated publishable policy draft list' },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'The policies.publish permission is required' },
+            '422': { description: 'Invalid query parameters' },
+          },
+        },
+      },
+      '/compliance/policies/{policyId}/versions/{versionId}/review': {
         get: {
           tags: ['Policies'],
           summary: 'Review a draft policy version before publication',

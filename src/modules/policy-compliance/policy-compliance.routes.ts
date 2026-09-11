@@ -27,7 +27,7 @@ policyComplianceRouter.post(
 );
 
 policyComplianceRouter.get(
-  '/policies',
+  '/policies/drafts/reviewable',
   authenticate,
   authorize('policies.publish'),
   validate({ query: listPublishablePoliciesQuerySchema }),
@@ -35,7 +35,7 @@ policyComplianceRouter.get(
 );
 
 policyComplianceRouter.get(
-  '/policies/:policyId/versions/:versionId',
+  '/policies/:policyId/versions/:versionId/review',
   authenticate,
   authorize('policies.publish'),
   validate({ params: getPolicyVersionParamsSchema }),

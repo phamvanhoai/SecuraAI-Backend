@@ -56,6 +56,7 @@ describe('policyComplianceRepository publish review queries', () => {
           policy_id: 'policy-id',
           policy_version_id: 'version-id',
           status: 'draft',
+          policies: { status: 'draft' },
         },
       }),
     );
