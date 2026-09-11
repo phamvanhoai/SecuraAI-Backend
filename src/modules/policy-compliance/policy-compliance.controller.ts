@@ -2,6 +2,8 @@ import type { RequestHandler } from 'express';
 import type { ParamsDictionary } from 'express-serve-static-core';
 import { AppError } from '../../common/errors/app-error.js';
 import type { CreatePolicyDraftInput } from './dto/create-policy-draft.dto.js';
+import { getPolicyVersionParamsSchema } from './dto/get-policy-version.dto.js';
+import { listPublishablePoliciesQuerySchema } from './dto/list-publishable-policies.dto.js';
 import type { PolicyDraftResponse } from './policy-compliance.mapper.js';
 import {
   publishPolicyVersionBodySchema,
@@ -24,6 +26,20 @@ export const createPolicyDraft: RequestHandler<
   res.status(201).json({ success: true, data });
 };
 
+export const listPublishablePolicies: RequestHandler = async (req, res) => {
+  if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+  const query = listPublishablePoliciesQuerySchema.parse(req.query);
+  const data = await policyComplianceService.listPublishablePolicies(query, req.auth);
+  res.status(200).json({ success: true, data });
+};
+
+export const getDraftPolicyVersion: RequestHandler = async (req, res) => {
+  if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+  const { policyId, versionId } = getPolicyVersionParamsSchema.parse(req.params);
+  const data = await policyComplianceService.getDraftPolicyVersion(policyId, versionId, req.auth);
+  res.status(200).json({ success: true, data });
+};
+
 export const publishPolicyVersion: RequestHandler = async (req, res) => {
   if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
   const { policyId, versionId } = publishPolicyVersionParamsSchema.parse(req.params);
@@ -35,4 +51,9 @@ export const publishPolicyVersion: RequestHandler = async (req, res) => {
   res.status(200).json({ success: true, data });
 };
 
-export const policyComplianceController = { createPolicyDraft, publishPolicyVersion } as const;
+export const policyComplianceController = {
+  createPolicyDraft,
+  getDraftPolicyVersion,
+  listPublishablePolicies,
+  publishPolicyVersion,
+} as const;

@@ -2,8 +2,14 @@ import { Prisma } from '@prisma/client';
 import { AppError } from '../../common/errors/app-error.js';
 import { prisma } from '../../database/prisma.js';
 import type { CreatePolicyDraftInput } from './dto/create-policy-draft.dto.js';
+import type { ListPublishablePoliciesQuery } from './dto/list-publishable-policies.dto.js';
 import type { PublishPolicyVersionBody } from './dto/publish-policy-version.dto.js';
-import { mapPolicyDraft, toPublishedPolicyVersionResponse } from './policy-compliance.mapper.js';
+import {
+  mapDraftPolicyVersionDetail,
+  mapPolicyDraft,
+  mapPublishablePolicy,
+  toPublishedPolicyVersionResponse,
+} from './policy-compliance.mapper.js';
 import { policyComplianceRepository } from './policy-compliance.repository.js';
 
 type Actor = { userId: string; permissions: readonly string[] };
@@ -61,6 +67,33 @@ export const policyComplianceService = {
       }
       throw error;
     }
+  },
+
+  async listPublishablePolicies(query: ListPublishablePoliciesQuery, actor: Actor) {
+    requirePublishPermission(actor);
+    const result = await policyComplianceRepository.listPublishablePolicies(query);
+    return {
+      items: result.items.map(mapPublishablePolicy),
+      pagination: {
+        page: query.page,
+        limit: query.limit,
+        total: result.total,
+        totalPages: Math.ceil(result.total / query.limit),
+      },
+    };
+  },
+
+  async getDraftPolicyVersion(policyId: string, versionId: string, actor: Actor) {
+    requirePublishPermission(actor);
+    const version = await policyComplianceRepository.getDraftPolicyVersion(policyId, versionId);
+    if (!version) {
+      throw new AppError(
+        404,
+        'DRAFT_POLICY_VERSION_NOT_FOUND',
+        'Draft policy version was not found',
+      );
+    }
+    return mapDraftPolicyVersionDetail(version);
   },
 
   async publishVersion(

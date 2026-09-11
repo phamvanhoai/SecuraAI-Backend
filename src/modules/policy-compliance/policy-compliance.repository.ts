@@ -1,5 +1,6 @@
 import { Prisma, type PrismaClient } from '@prisma/client';
 import { prisma } from '../../database/prisma.js';
+import type { ListPublishablePoliciesQuery } from './dto/list-publishable-policies.dto.js';
 
 type DatabaseClient = PrismaClient | Prisma.TransactionClient;
 
@@ -51,6 +52,58 @@ export type PublishPolicyVersionRecord = Prisma.policiesGetPayload<{
   select: typeof publishPolicyVersionSelect;
 }>;
 
+export const publishablePolicySelect = {
+  policy_id: true,
+  policy_code: true,
+  title: true,
+  description: true,
+  owner_user_id: true,
+  status: true,
+  updated_at: true,
+  policy_versions: {
+    where: { status: 'draft' },
+    select: {
+      policy_version_id: true,
+      version_number: true,
+      status: true,
+      created_by_user_id: true,
+      created_at: true,
+    },
+    orderBy: { created_at: 'desc' },
+    take: 1,
+  },
+} satisfies Prisma.policiesSelect;
+
+export type PublishablePolicyRecord = Prisma.policiesGetPayload<{
+  select: typeof publishablePolicySelect;
+}>;
+
+export const draftPolicyVersionDetailSelect = {
+  policy_version_id: true,
+  policy_id: true,
+  version_number: true,
+  content: true,
+  change_summary: true,
+  status: true,
+  effective_date: true,
+  created_by_user_id: true,
+  created_at: true,
+  policies: {
+    select: {
+      policy_code: true,
+      title: true,
+      description: true,
+      owner_user_id: true,
+      status: true,
+      updated_at: true,
+    },
+  },
+} satisfies Prisma.policy_versionsSelect;
+
+export type DraftPolicyVersionDetailRecord = Prisma.policy_versionsGetPayload<{
+  select: typeof draftPolicyVersionDetailSelect;
+}>;
+
 export type PublishContext = {
   actorUserId: string;
   ipAddress: string | null;
@@ -80,6 +133,45 @@ export const policyComplianceRepository = {
     return prisma.policies.findUnique({
       where: { policy_code: policyCode },
       select: { policy_id: true },
+    });
+  },
+
+  async listPublishablePolicies(
+    query: ListPublishablePoliciesQuery,
+  ): Promise<{ items: PublishablePolicyRecord[]; total: number }> {
+    const where: Prisma.policiesWhereInput = {
+      status: 'draft',
+      policy_versions: { some: { status: 'draft' } },
+      ...(query.q !== undefined && {
+        OR: [
+          { policy_code: { contains: query.q, mode: 'insensitive' } },
+          { title: { contains: query.q, mode: 'insensitive' } },
+        ],
+      }),
+    };
+    const orderBy: Prisma.policiesOrderByWithRelationInput =
+      query.sortBy === 'policyCode'
+        ? { policy_code: query.sortOrder }
+        : query.sortBy === 'title'
+          ? { title: query.sortOrder }
+          : { updated_at: query.sortOrder };
+    const [total, items] = await prisma.$transaction([
+      prisma.policies.count({ where }),
+      prisma.policies.findMany({
+        where,
+        select: publishablePolicySelect,
+        orderBy: [orderBy, { policy_id: 'asc' }],
+        skip: (query.page - 1) * query.limit,
+        take: query.limit,
+      }),
+    ]);
+    return { items, total };
+  },
+
+  getDraftPolicyVersion(policyId: string, versionId: string) {
+    return prisma.policy_versions.findFirst({
+      where: { policy_version_id: versionId, policy_id: policyId, status: 'draft' },
+      select: draftPolicyVersionDetailSelect,
     });
   },
 

@@ -3,6 +3,8 @@ import {
   publishPolicyVersionBodySchema,
   publishPolicyVersionParamsSchema,
 } from '../src/modules/policy-compliance/dto/publish-policy-version.dto.js';
+import { getPolicyVersionParamsSchema } from '../src/modules/policy-compliance/dto/get-policy-version.dto.js';
+import { listPublishablePoliciesQuerySchema } from '../src/modules/policy-compliance/dto/list-publishable-policies.dto.js';
 
 describe('publish policy version DTO', () => {
   it('accepts UUID parameters and an optional effective date', () => {
@@ -24,5 +26,32 @@ describe('publish policy version DTO', () => {
     ).toThrow();
     expect(() => publishPolicyVersionBodySchema.parse({ effectiveDate: '2026-02-30' })).toThrow();
     expect(() => publishPolicyVersionBodySchema.parse({ status: 'published' })).toThrow();
+  });
+});
+
+describe('publishable policy read DTOs', () => {
+  it('applies bounded pagination and sort defaults', () => {
+    expect(listPublishablePoliciesQuerySchema.parse({})).toEqual({
+      page: 1,
+      limit: 20,
+      sortBy: 'updatedAt',
+      sortOrder: 'desc',
+    });
+    expect(
+      listPublishablePoliciesQuerySchema.parse({ page: '2', limit: '10', q: ' ISP ' }),
+    ).toEqual({
+      page: 2,
+      limit: 10,
+      q: 'ISP',
+      sortBy: 'updatedAt',
+      sortOrder: 'desc',
+    });
+  });
+
+  it('rejects invalid pagination and detail IDs', () => {
+    expect(() => listPublishablePoliciesQuerySchema.parse({ limit: 101 })).toThrow();
+    expect(() =>
+      getPolicyVersionParamsSchema.parse({ policyId: 'bad', versionId: 'bad' }),
+    ).toThrow();
   });
 });

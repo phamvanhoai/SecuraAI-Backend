@@ -8,6 +8,8 @@ const mocks = vi.hoisted(() => ({
   markPolicyPublished: vi.fn(),
   createPublishAudit: vi.fn(),
   getPublishedVersion: vi.fn(),
+  listPublishablePolicies: vi.fn(),
+  getDraftPolicyVersion: vi.fn(),
 }));
 
 vi.mock('../src/modules/policy-compliance/policy-compliance.repository.js', () => ({
@@ -21,6 +23,25 @@ const versionId = '00000000-0000-4000-8000-000000000011';
 const actor = {
   userId: '00000000-0000-4000-8000-000000000001',
   permissions: ['policies.publish'],
+};
+const draftDetail = {
+  policy_version_id: versionId,
+  policy_id: policyId,
+  version_number: '1.0',
+  content: 'Draft content',
+  change_summary: null,
+  status: 'draft',
+  effective_date: null,
+  created_by_user_id: actor.userId,
+  created_at: new Date('2026-09-08T10:00:00.000Z'),
+  policies: {
+    policy_code: 'ISP-001',
+    title: 'Information Security Policy',
+    description: null,
+    owner_user_id: actor.userId,
+    status: 'draft',
+    updated_at: new Date('2026-09-08T10:00:00.000Z'),
+  },
 };
 const draft = {
   policy_version_id: versionId,
@@ -58,6 +79,54 @@ describe('policyComplianceService.publishVersion', () => {
     mocks.markPolicyPublished.mockResolvedValue({ policy_id: policyId });
     mocks.createPublishAudit.mockResolvedValue({ audit_log_id: 'audit-id' });
     mocks.getPublishedVersion.mockResolvedValue(published);
+    mocks.listPublishablePolicies.mockResolvedValue({
+      total: 1,
+      items: [
+        {
+          policy_id: policyId,
+          policy_code: 'ISP-001',
+          title: 'Information Security Policy',
+          description: null,
+          owner_user_id: actor.userId,
+          status: 'draft',
+          updated_at: new Date('2026-09-08T10:00:00.000Z'),
+          policy_versions: [
+            {
+              policy_version_id: versionId,
+              version_number: '1.0',
+              status: 'draft',
+              created_by_user_id: actor.userId,
+              created_at: new Date('2026-09-08T10:00:00.000Z'),
+            },
+          ],
+        },
+      ],
+    });
+    mocks.getDraftPolicyVersion.mockResolvedValue(draftDetail);
+  });
+
+  it('lists publishable drafts with pagination', async () => {
+    const result = await policyComplianceService.listPublishablePolicies(
+      { page: 1, limit: 20, sortBy: 'updatedAt', sortOrder: 'desc' },
+      actor,
+    );
+    expect(result.items[0]).toMatchObject({ id: policyId, draftVersion: { id: versionId } });
+    expect(result.pagination).toEqual({ page: 1, limit: 20, total: 1, totalPages: 1 });
+  });
+
+  it('returns the selected draft content for review', async () => {
+    const result = await policyComplianceService.getDraftPolicyVersion(policyId, versionId, actor);
+    expect(result).toMatchObject({
+      policyId,
+      version: { id: versionId, content: 'Draft content' },
+    });
+  });
+
+  it('does not expose a non-draft or missing version through the review endpoint', async () => {
+    mocks.getDraftPolicyVersion.mockResolvedValue(null);
+    await expect(
+      policyComplianceService.getDraftPolicyVersion(policyId, versionId, actor),
+    ).rejects.toMatchObject({ statusCode: 404, code: 'DRAFT_POLICY_VERSION_NOT_FOUND' });
   });
 
   it('requires the publish permission in the service layer', async () => {
