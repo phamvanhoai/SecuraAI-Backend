@@ -1,6 +1,10 @@
 import { Prisma, type PrismaClient } from '@prisma/client';
 import { prisma } from '../../database/prisma.js';
 import type { ListPublishablePoliciesQuery } from './dto/list-publishable-policies.dto.js';
+import type {
+  ListOwnPolicyDraftsQuery,
+  UpdatePolicyDraftInput,
+} from './dto/manage-policy-draft.dto.js';
 
 type DatabaseClient = PrismaClient | Prisma.TransactionClient;
 
@@ -28,6 +32,32 @@ export const policyDraftSelect = {
 
 export type PolicyDraftRecord = Prisma.policiesGetPayload<{
   select: typeof policyDraftSelect;
+}>;
+
+export const ownedPolicyDraftSelect = {
+  policy_version_id: true,
+  policy_id: true,
+  version_number: true,
+  content: true,
+  change_summary: true,
+  status: true,
+  created_by_user_id: true,
+  created_at: true,
+  policies: {
+    select: {
+      policy_code: true,
+      title: true,
+      description: true,
+      owner_user_id: true,
+      status: true,
+      created_at: true,
+      updated_at: true,
+    },
+  },
+} satisfies Prisma.policy_versionsSelect;
+
+export type OwnedPolicyDraftRecord = Prisma.policy_versionsGetPayload<{
+  select: typeof ownedPolicyDraftSelect;
 }>;
 
 export const publishPolicyVersionSelect = {
@@ -168,6 +198,37 @@ export const policyComplianceRepository = {
     return { items, total };
   },
 
+  async listOwnDrafts(
+    actorUserId: string,
+    query: ListOwnPolicyDraftsQuery,
+  ): Promise<{ items: OwnedPolicyDraftRecord[]; total: number }> {
+    const where: Prisma.policy_versionsWhereInput = {
+      status: 'draft',
+      created_by_user_id: actorUserId,
+      policies: {
+        owner_user_id: actorUserId,
+        status: 'draft',
+        ...(query.q !== undefined && {
+          OR: [
+            { policy_code: { contains: query.q, mode: 'insensitive' } },
+            { title: { contains: query.q, mode: 'insensitive' } },
+          ],
+        }),
+      },
+    };
+    const [total, items] = await prisma.$transaction([
+      prisma.policy_versions.count({ where }),
+      prisma.policy_versions.findMany({
+        where,
+        select: ownedPolicyDraftSelect,
+        orderBy: [{ policies: { updated_at: query.sortOrder } }, { policy_version_id: 'asc' }],
+        skip: (query.page - 1) * query.limit,
+        take: query.limit,
+      }),
+    ]);
+    return { items, total };
+  },
+
   getDraftPolicyVersion(policyId: string, versionId: string) {
     return prisma.policy_versions.findFirst({
       where: {
@@ -177,6 +238,72 @@ export const policyComplianceRepository = {
         policies: { status: 'draft' },
       },
       select: draftPolicyVersionDetailSelect,
+    });
+  },
+
+  findOwnDraft(database: DatabaseClient, policyId: string, versionId: string, actorUserId: string) {
+    return database.policy_versions.findFirst({
+      where: {
+        policy_version_id: versionId,
+        policy_id: policyId,
+        status: 'draft',
+        created_by_user_id: actorUserId,
+        policies: { owner_user_id: actorUserId, status: 'draft' },
+      },
+      select: ownedPolicyDraftSelect,
+    });
+  },
+
+  updateOwnDraft(
+    database: DatabaseClient,
+    policyId: string,
+    versionId: string,
+    input: UpdatePolicyDraftInput,
+    updatedAt: Date,
+  ) {
+    return database.policies.update({
+      where: { policy_id: policyId },
+      data: {
+        ...(input.title !== undefined && { title: input.title }),
+        ...(input.description !== undefined && { description: input.description }),
+        updated_at: updatedAt,
+        policy_versions: {
+          update: {
+            where: { policy_version_id: versionId },
+            data: {
+              ...(input.versionNumber !== undefined && { version_number: input.versionNumber }),
+              ...(input.content !== undefined && { content: input.content }),
+              ...(input.changeSummary !== undefined && { change_summary: input.changeSummary }),
+            },
+          },
+        },
+      },
+      select: { policy_id: true },
+    });
+  },
+
+  createDraftUpdatedAudit(
+    database: DatabaseClient,
+    input: {
+      actorUserId: string;
+      versionId: string;
+      changedFields: string[];
+      ipAddress: string | null;
+      userAgent: string | null;
+    },
+  ) {
+    return database.audit_logs.create({
+      data: {
+        actor_user_id: input.actorUserId,
+        module: 'policy-compliance',
+        action: 'policy.draft.updated',
+        entity_type: 'policy_version',
+        entity_id: input.versionId,
+        after_data: { changedFields: input.changedFields },
+        ip_address: input.ipAddress,
+        user_agent: input.userAgent,
+      },
+      select: { audit_log_id: true },
     });
   },
 
@@ -209,6 +336,8 @@ export const policyComplianceRepository = {
       policyCode: string;
       title: string;
       versionNumber: string;
+      ipAddress: string | null;
+      userAgent: string | null;
     },
   ) {
     return database.audit_logs.create({
@@ -224,6 +353,8 @@ export const policyComplianceRepository = {
           status: 'draft',
           versionNumber: input.versionNumber,
         },
+        ip_address: input.ipAddress,
+        user_agent: input.userAgent,
       },
       select: { audit_log_id: true },
     });

@@ -8,8 +8,13 @@ import {
   mapDraftPolicyVersionDetail,
   mapPolicyDraft,
   mapPublishablePolicy,
+  mapOwnedPolicyDraft,
   toPublishedPolicyVersionResponse,
 } from './policy-compliance.mapper.js';
+import type {
+  ListOwnPolicyDraftsQuery,
+  UpdatePolicyDraftInput,
+} from './dto/manage-policy-draft.dto.js';
 import { policyComplianceRepository } from './policy-compliance.repository.js';
 
 type Actor = { userId: string; permissions: readonly string[] };
@@ -17,6 +22,12 @@ type RequestContext = { ipAddress: string | null; userAgent: string | null };
 
 const requirePublishPermission = (actor: Actor): void => {
   if (!actor.permissions.includes('policies.publish')) {
+    throw new AppError(403, 'FORBIDDEN', 'Insufficient permissions');
+  }
+};
+
+const requireDraftPermission = (actor: Actor): void => {
+  if (!actor.permissions.includes('policies.create')) {
     throw new AppError(403, 'FORBIDDEN', 'Insufficient permissions');
   }
 };
@@ -29,7 +40,8 @@ const publicationConflict = (): AppError =>
   );
 
 export const policyComplianceService = {
-  async createPolicyDraft(input: CreatePolicyDraftInput, actorUserId: string) {
+  async createPolicyDraft(input: CreatePolicyDraftInput, actor: Actor, context: RequestContext) {
+    requireDraftPermission(actor);
     const existingPolicy = await policyComplianceRepository.findPolicyByCode(input.policyCode);
     if (existingPolicy) {
       throw new AppError(409, 'POLICY_CODE_EXISTS', 'A policy with this code already exists');
@@ -43,7 +55,7 @@ export const policyComplianceService = {
           ...(input.description !== undefined ? { description: input.description } : {}),
           versionNumber: input.versionNumber,
           content: input.content,
-          actorUserId,
+          actorUserId: actor.userId,
         });
         const currentVersion = createdPolicy.policy_versions[0];
         if (!currentVersion) {
@@ -51,11 +63,12 @@ export const policyComplianceService = {
         }
 
         await policyComplianceRepository.createPolicyDraftAudit(transaction, {
-          actorUserId,
+          actorUserId: actor.userId,
           policyId: createdPolicy.policy_id,
           policyCode: createdPolicy.policy_code,
           title: createdPolicy.title,
           versionNumber: currentVersion.version_number,
+          ...context,
         });
         return createdPolicy;
       });
@@ -83,6 +96,20 @@ export const policyComplianceService = {
     };
   },
 
+  async listOwnDrafts(query: ListOwnPolicyDraftsQuery, actor: Actor) {
+    requireDraftPermission(actor);
+    const result = await policyComplianceRepository.listOwnDrafts(actor.userId, query);
+    return {
+      items: result.items.map(mapOwnedPolicyDraft),
+      pagination: {
+        page: query.page,
+        limit: query.limit,
+        total: result.total,
+        totalPages: Math.ceil(result.total / query.limit),
+      },
+    };
+  },
+
   async getDraftPolicyVersion(policyId: string, versionId: string, actor: Actor) {
     requirePublishPermission(actor);
     const version = await policyComplianceRepository.getDraftPolicyVersion(policyId, versionId);
@@ -94,6 +121,68 @@ export const policyComplianceService = {
       );
     }
     return mapDraftPolicyVersionDetail(version);
+  },
+
+  async getOwnDraft(policyId: string, versionId: string, actor: Actor) {
+    requireDraftPermission(actor);
+    const draft = await policyComplianceRepository.findOwnDraft(
+      prisma,
+      policyId,
+      versionId,
+      actor.userId,
+    );
+    if (!draft) throw new AppError(404, 'POLICY_DRAFT_NOT_FOUND', 'Policy draft was not found');
+    return mapOwnedPolicyDraft(draft);
+  },
+
+  async updateOwnDraft(
+    policyId: string,
+    versionId: string,
+    input: UpdatePolicyDraftInput,
+    actor: Actor,
+    context: RequestContext,
+  ) {
+    requireDraftPermission(actor);
+    try {
+      const draft = await policyComplianceRepository.transaction(async (database) => {
+        const existing = await policyComplianceRepository.findOwnDraft(
+          database,
+          policyId,
+          versionId,
+          actor.userId,
+        );
+        if (!existing) {
+          throw new AppError(404, 'POLICY_DRAFT_NOT_FOUND', 'Policy draft was not found');
+        }
+        await policyComplianceRepository.updateOwnDraft(
+          database,
+          policyId,
+          versionId,
+          input,
+          new Date(),
+        );
+        await policyComplianceRepository.createDraftUpdatedAudit(database, {
+          actorUserId: actor.userId,
+          versionId,
+          changedFields: Object.keys(input),
+          ...context,
+        });
+        const updated = await policyComplianceRepository.findOwnDraft(
+          database,
+          policyId,
+          versionId,
+          actor.userId,
+        );
+        if (!updated) throw new Error('Updated policy draft could not be loaded');
+        return updated;
+      });
+      return mapOwnedPolicyDraft(draft);
+    } catch (error: unknown) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        throw new AppError(409, 'POLICY_VERSION_EXISTS', 'Policy version number already exists');
+      }
+      throw error;
+    }
   },
 
   async publishVersion(

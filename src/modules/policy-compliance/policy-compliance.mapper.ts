@@ -2,8 +2,51 @@ import type {
   DraftPolicyVersionDetailRecord,
   PolicyDraftRecord,
   PublishablePolicyRecord,
+  OwnedPolicyDraftRecord,
   PublishPolicyVersionRecord,
 } from './policy-compliance.repository.js';
+
+export type OwnedPolicyDraftResponse = {
+  policyId: string;
+  policyCode: string;
+  title: string;
+  description: string | null;
+  ownerUserId: string | null;
+  policyStatus: string;
+  version: {
+    id: string;
+    versionNumber: string;
+    content: string;
+    changeSummary: string | null;
+    status: string;
+    createdByUserId: string | null;
+    createdAt: Date;
+  };
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export function mapOwnedPolicyDraft(draft: OwnedPolicyDraftRecord): OwnedPolicyDraftResponse {
+  return {
+    policyId: draft.policy_id,
+    policyCode: draft.policies.policy_code,
+    title: draft.policies.title,
+    description: draft.policies.description,
+    ownerUserId: draft.policies.owner_user_id,
+    policyStatus: draft.policies.status,
+    version: {
+      id: draft.policy_version_id,
+      versionNumber: draft.version_number,
+      content: draft.content,
+      changeSummary: draft.change_summary,
+      status: draft.status,
+      createdByUserId: draft.created_by_user_id,
+      createdAt: draft.created_at,
+    },
+    createdAt: draft.policies.created_at,
+    updatedAt: draft.policies.updated_at,
+  };
+}
 
 export type PolicyDraftResponse = {
   id: string;
