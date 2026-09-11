@@ -46,7 +46,7 @@ describe('real-time AI alert HTTP API', () => {
   it('normalizes polling filters and returns a server watermark', async () => {
     const response = await request(createApp())
       .get(
-        '/api/v1/ai-alerts?limit=10&status=new&logSourceId=00000000-0000-4000-8000-000000000010&detectedAfter=2026-09-08T00:00:00Z',
+        '/api/v1/ai-alerts?limit=10&q=privileged%20login&status=new&logSourceId=00000000-0000-4000-8000-000000000010&detectedAfter=2026-09-08T00:00:00Z',
       )
       .set('authorization', `Bearer ${token(['ai-alerts.read'])}`);
     expect(response.status).toBe(200);
@@ -62,7 +62,7 @@ describe('real-time AI alert HTTP API', () => {
       expect(new Date(serverTime).toString()).not.toBe('Invalid Date');
     }
     const queryArgument: unknown = listAlertsMock.mock.calls[0]?.[0];
-    expect(queryArgument).toMatchObject({ limit: 10, status: 'new' });
+    expect(queryArgument).toMatchObject({ limit: 10, q: 'privileged login', status: 'new' });
     expect(
       typeof queryArgument === 'object' && queryArgument !== null
         ? Reflect.get(queryArgument, 'detectedAfter')
@@ -73,6 +73,14 @@ describe('real-time AI alert HTTP API', () => {
   it('rejects invalid or unbounded polling queries', async () => {
     const response = await request(createApp())
       .get('/api/v1/ai-alerts?limit=101&detectedAfter=not-a-date')
+      .set('authorization', `Bearer ${token(['ai-alerts.read'])}`);
+    expect(response.status).toBe(422);
+    expect(listAlertsMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects search terms over the bounded query length', async () => {
+    const response = await request(createApp())
+      .get(`/api/v1/ai-alerts?q=${'a'.repeat(101)}`)
       .set('authorization', `Bearer ${token(['ai-alerts.read'])}`);
     expect(response.status).toBe(422);
     expect(listAlertsMock).not.toHaveBeenCalled();

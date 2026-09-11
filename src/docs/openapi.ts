@@ -2457,6 +2457,13 @@ export const openApiSpec = swaggerJsdoc({
               in: 'query',
               schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
             },
+            {
+              name: 'q',
+              in: 'query',
+              description:
+                'Case-insensitive search by alert code, title, log source, or asset name',
+              schema: { type: 'string', minLength: 1, maxLength: 100 },
+            },
             { name: 'status', in: 'query', schema: { type: 'string' } },
             { name: 'assetId', in: 'query', schema: { type: 'string', format: 'uuid' } },
             { name: 'logSourceId', in: 'query', schema: { type: 'string', format: 'uuid' } },
