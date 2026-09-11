@@ -5,11 +5,15 @@ import { asyncHandler } from '../../common/utils/async-handler.js';
 import { createPolicyDraftSchema } from './dto/create-policy-draft.dto.js';
 import {
   createPolicyDraft,
+  getDraftPolicyVersion,
+  listPublishablePolicies,
   getOwnPolicyDraft,
   listOwnPolicyDrafts,
   publishPolicyVersion,
   updateOwnPolicyDraft,
 } from './policy-compliance.controller.js';
+import { getPolicyVersionParamsSchema } from './dto/get-policy-version.dto.js';
+import { listPublishablePoliciesQuerySchema } from './dto/list-publishable-policies.dto.js';
 import {
   listOwnPolicyDraftsQuerySchema,
   policyDraftParamsSchema,
@@ -28,6 +32,22 @@ policyComplianceRouter.post(
   authorize('policies.create'),
   validate({ body: createPolicyDraftSchema }),
   asyncHandler(createPolicyDraft),
+);
+
+policyComplianceRouter.get(
+  '/policies/drafts/reviewable',
+  authenticate,
+  authorize('policies.publish'),
+  validate({ query: listPublishablePoliciesQuerySchema }),
+  asyncHandler(listPublishablePolicies),
+);
+
+policyComplianceRouter.get(
+  '/policies/:policyId/versions/:versionId/review',
+  authenticate,
+  authorize('policies.publish'),
+  validate({ params: getPolicyVersionParamsSchema }),
+  asyncHandler(getDraftPolicyVersion),
 );
 
 policyComplianceRouter.get(

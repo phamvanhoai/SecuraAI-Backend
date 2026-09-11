@@ -132,6 +132,57 @@ export const openApiSpec = swaggerJsdoc({
             effectiveDate: { type: 'string', format: 'date', example: '2026-09-09' },
           },
         },
+        PublishablePolicy: {
+          type: 'object',
+          required: ['id', 'policyCode', 'title', 'status', 'draftVersion', 'updatedAt'],
+          properties: {
+            id: { type: 'string', format: 'uuid' },
+            policyCode: { type: 'string', example: 'ISP-001' },
+            title: { type: 'string' },
+            description: { type: 'string', nullable: true },
+            ownerUserId: { type: 'string', format: 'uuid', nullable: true },
+            status: { type: 'string', enum: ['draft'] },
+            draftVersion: {
+              type: 'object',
+              required: ['id', 'versionNumber', 'status', 'createdAt'],
+              properties: {
+                id: { type: 'string', format: 'uuid' },
+                versionNumber: { type: 'string' },
+                status: { type: 'string', enum: ['draft'] },
+                createdByUserId: { type: 'string', format: 'uuid', nullable: true },
+                createdAt: { type: 'string', format: 'date-time' },
+              },
+            },
+            updatedAt: { type: 'string', format: 'date-time' },
+          },
+        },
+        DraftPolicyVersionDetail: {
+          type: 'object',
+          required: ['policyId', 'policyCode', 'title', 'policyStatus', 'version', 'updatedAt'],
+          properties: {
+            policyId: { type: 'string', format: 'uuid' },
+            policyCode: { type: 'string' },
+            title: { type: 'string' },
+            description: { type: 'string', nullable: true },
+            ownerUserId: { type: 'string', format: 'uuid', nullable: true },
+            policyStatus: { type: 'string', enum: ['draft'] },
+            updatedAt: { type: 'string', format: 'date-time' },
+            version: {
+              type: 'object',
+              required: ['id', 'versionNumber', 'content', 'status', 'createdAt'],
+              properties: {
+                id: { type: 'string', format: 'uuid' },
+                versionNumber: { type: 'string' },
+                content: { type: 'string' },
+                changeSummary: { type: 'string', nullable: true },
+                status: { type: 'string', enum: ['draft'] },
+                effectiveDate: { type: 'string', format: 'date', nullable: true },
+                createdByUserId: { type: 'string', format: 'uuid', nullable: true },
+                createdAt: { type: 'string', format: 'date-time' },
+              },
+            },
+          },
+        },
         PublishedPolicyVersion: {
           type: 'object',
           required: ['policyId', 'policyCode', 'title', 'status', 'publishedVersion'],
@@ -2123,6 +2174,85 @@ export const openApiSpec = swaggerJsdoc({
             '403': { description: 'The policies.create permission is required' },
             '409': { description: 'Policy code already exists' },
             '422': { description: 'Request validation failed' },
+          },
+        },
+      },
+      '/compliance/policies/drafts/reviewable': {
+        get: {
+          tags: ['Policies'],
+          summary: 'List policy drafts available for Admin publication review',
+          description: 'Requires policies.publish and returns only policies with a draft version.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
+            {
+              name: 'limit',
+              in: 'query',
+              schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
+            },
+            { name: 'q', in: 'query', schema: { type: 'string', maxLength: 100 } },
+            {
+              name: 'sortBy',
+              in: 'query',
+              schema: {
+                type: 'string',
+                enum: ['policyCode', 'title', 'updatedAt'],
+                default: 'updatedAt',
+              },
+            },
+            {
+              name: 'sortOrder',
+              in: 'query',
+              schema: { type: 'string', enum: ['asc', 'desc'], default: 'desc' },
+            },
+          ],
+          responses: {
+            '200': { description: 'Paginated publishable policy draft list' },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'The policies.publish permission is required' },
+            '422': { description: 'Invalid query parameters' },
+          },
+        },
+      },
+      '/compliance/policies/{policyId}/versions/{versionId}/review': {
+        get: {
+          tags: ['Policies'],
+          summary: 'Review a draft policy version before publication',
+          description: 'Requires policies.publish and returns the complete draft content.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'policyId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+            {
+              name: 'versionId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          responses: {
+            '200': {
+              description: 'Draft policy version detail',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      success: { type: 'boolean', example: true },
+                      data: { $ref: '#/components/schemas/DraftPolicyVersionDetail' },
+                    },
+                  },
+                },
+              },
+            },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'The policies.publish permission is required' },
+            '404': { description: 'Draft policy version was not found' },
+            '422': { description: 'Invalid policy or version ID' },
           },
         },
       },

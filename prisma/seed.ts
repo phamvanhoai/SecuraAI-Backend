@@ -527,7 +527,6 @@ async function main(): Promise<void> {
     aiAlertReadPermission,
     aiAlertFeedbackPermission,
     aiAlertConfirmPermission,
-    policyPublishPermission,
     ...roleManagementPermissions,
   ]) {
     await prisma.role_permissions.upsert({
@@ -544,6 +543,24 @@ async function main(): Promise<void> {
       },
     });
   }
+  await prisma.$transaction([
+    prisma.role_permissions.deleteMany({
+      where: {
+        role_id: securityOfficerRole.role_id,
+        permission_id: policyPublishPermission.permission_id,
+      },
+    }),
+    prisma.role_permissions.upsert({
+      where: {
+        role_id_permission_id: {
+          role_id: role.role_id,
+          permission_id: policyPublishPermission.permission_id,
+        },
+      },
+      update: {},
+      create: { role_id: role.role_id, permission_id: policyPublishPermission.permission_id },
+    }),
+  ]);
 }
 
 main()
