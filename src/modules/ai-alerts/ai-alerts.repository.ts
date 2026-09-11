@@ -285,6 +285,14 @@ export const aiAlertsRepository = {
 
   async listAlerts(query: ListAlertsQuery): Promise<{ items: AlertRecord[]; total: number }> {
     const where: Prisma.ai_alertsWhereInput = {
+      ...(query.q !== undefined && {
+        OR: [
+          { alert_code: { contains: query.q, mode: 'insensitive' } },
+          { title: { contains: query.q, mode: 'insensitive' } },
+          { log_sources: { name: { contains: query.q, mode: 'insensitive' } } },
+          { assets: { is: { name: { contains: query.q, mode: 'insensitive' } } } },
+        ],
+      }),
       ...(query.status !== undefined && { status: query.status }),
       ...(query.assetId !== undefined && { asset_id: query.assetId }),
       ...(query.logSourceId !== undefined && { log_source_id: query.logSourceId }),

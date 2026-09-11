@@ -13,6 +13,7 @@ export const listAlertsQuerySchema = z
   .object({
     page: z.coerce.number().int().min(1).default(1),
     limit: z.coerce.number().int().min(1).max(100).default(20),
+    q: z.string().trim().min(1).max(100).optional(),
     status: z.enum(alertStatuses).optional(),
     assetId: z.uuid().optional(),
     logSourceId: z.uuid().optional(),
