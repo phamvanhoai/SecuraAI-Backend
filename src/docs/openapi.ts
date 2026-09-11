@@ -72,7 +72,8 @@ export const openApiSpec = swaggerJsdoc({
               format: 'password',
               minLength: 8,
               maxLength: 128,
-              description: 'At least 8 characters, one uppercase letter, and one special character.',
+              description:
+                'At least 8 characters, one uppercase letter, and one special character.',
             },
             confirmPassword: {
               type: 'string',
@@ -94,7 +95,8 @@ export const openApiSpec = swaggerJsdoc({
               format: 'password',
               minLength: 8,
               maxLength: 128,
-              description: 'At least 8 characters, one uppercase letter, and one special character.',
+              description:
+                'At least 8 characters, one uppercase letter, and one special character.',
             },
             confirmPassword: { type: 'string', format: 'password', minLength: 8, maxLength: 128 },
           },
@@ -432,6 +434,18 @@ export const openApiSpec = swaggerJsdoc({
             description: { type: 'string', maxLength: 2000 },
             versionNumber: { type: 'string', minLength: 1, maxLength: 30, default: '1.0' },
             content: { type: 'string', minLength: 1, maxLength: 500000 },
+          },
+        },
+        UpdatePolicyDraftRequest: {
+          type: 'object',
+          additionalProperties: false,
+          minProperties: 1,
+          properties: {
+            title: { type: 'string', minLength: 3, maxLength: 255 },
+            description: { type: 'string', nullable: true, maxLength: 2000 },
+            versionNumber: { type: 'string', minLength: 1, maxLength: 30 },
+            content: { type: 'string', minLength: 1, maxLength: 500000 },
+            changeSummary: { type: 'string', nullable: true, maxLength: 5000 },
           },
         },
         PolicyDraft: {
@@ -1125,7 +1139,9 @@ export const openApiSpec = swaggerJsdoc({
           requestBody: {
             required: true,
             content: {
-              'application/json': { schema: { $ref: '#/components/schemas/ChangePasswordRequest' } },
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ChangePasswordRequest' },
+              },
             },
           },
           responses: {
@@ -1140,7 +1156,10 @@ export const openApiSpec = swaggerJsdoc({
                       data: {
                         type: 'object',
                         properties: {
-                          message: { type: 'string', example: 'Password changed successfully. Please log in again.' },
+                          message: {
+                            type: 'string',
+                            example: 'Password changed successfully. Please log in again.',
+                          },
                         },
                       },
                     },
@@ -1216,7 +1235,11 @@ export const openApiSpec = swaggerJsdoc({
                       data: {
                         type: 'object',
                         properties: {
-                          message: { type: 'string', example: 'Password reset successfully. Please log in with your new password.' },
+                          message: {
+                            type: 'string',
+                            example:
+                              'Password reset successfully. Please log in with your new password.',
+                          },
                         },
                       },
                     },
@@ -1291,11 +1314,24 @@ export const openApiSpec = swaggerJsdoc({
           security: [{ bearerAuth: [] }],
           parameters: [
             { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
-            { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 } },
-            { name: 'q', in: 'query', schema: { type: 'string' }, description: 'Search name, email, or employee code' },
+            {
+              name: 'limit',
+              in: 'query',
+              schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
+            },
+            {
+              name: 'q',
+              in: 'query',
+              schema: { type: 'string' },
+              description: 'Search name, email, or employee code',
+            },
             { name: 'departmentId', in: 'query', schema: { type: 'string', format: 'uuid' } },
             { name: 'roleCode', in: 'query', schema: { type: 'string' } },
-            { name: 'status', in: 'query', schema: { type: 'string', enum: ['active', 'inactive', 'locked', 'disabled'] } },
+            {
+              name: 'status',
+              in: 'query',
+              schema: { type: 'string', enum: ['active', 'inactive', 'locked', 'disabled'] },
+            },
           ],
           responses: {
             '200': { description: 'Paginated user list and status summary' },
@@ -1556,7 +1592,10 @@ export const openApiSpec = swaggerJsdoc({
               },
             },
             '401': { description: 'Authentication required' },
-            '403': { description: 'The assets.create, assets.update or assets.assign-owner permission is required' },
+            '403': {
+              description:
+                'The assets.create, assets.update or assets.assign-owner permission is required',
+            },
             '500': { description: 'Unexpected server error' },
           },
         },
@@ -2084,6 +2123,99 @@ export const openApiSpec = swaggerJsdoc({
             '403': { description: 'The policies.create permission is required' },
             '409': { description: 'Policy code already exists' },
             '422': { description: 'Request validation failed' },
+          },
+        },
+      },
+      '/compliance/policies/drafts/mine': {
+        get: {
+          tags: ['Policies'],
+          summary: 'List policy drafts owned by the current user',
+          description:
+            'Requires policies.create. Results are bounded and never include other owners.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
+            {
+              name: 'limit',
+              in: 'query',
+              schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
+            },
+            { name: 'q', in: 'query', schema: { type: 'string', maxLength: 100 } },
+            {
+              name: 'sortOrder',
+              in: 'query',
+              schema: { type: 'string', enum: ['asc', 'desc'], default: 'desc' },
+            },
+          ],
+          responses: {
+            '200': { description: 'Paginated owned draft list' },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'The policies.create permission is required' },
+            '422': { description: 'Invalid query parameters' },
+          },
+        },
+      },
+      '/compliance/policies/{policyId}/drafts/{versionId}': {
+        get: {
+          tags: ['Policies'],
+          summary: 'Get an owned policy draft',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'policyId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+            {
+              name: 'versionId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          responses: {
+            '200': { description: 'Owned policy draft detail' },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'The policies.create permission is required' },
+            '404': { description: 'Draft not found or not owned by the caller' },
+            '422': { description: 'Invalid policy or version ID' },
+          },
+        },
+        patch: {
+          tags: ['Policies'],
+          summary: 'Update an owned policy draft',
+          description: 'Only a draft owned and created by the caller can be changed.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'policyId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+            {
+              name: 'versionId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/UpdatePolicyDraftRequest' },
+              },
+            },
+          },
+          responses: {
+            '200': { description: 'Policy draft updated and audited' },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'The policies.create permission is required' },
+            '404': { description: 'Draft not found or not editable by the caller' },
+            '409': { description: 'Version number already exists' },
+            '422': { description: 'Invalid IDs or request body' },
           },
         },
       },
