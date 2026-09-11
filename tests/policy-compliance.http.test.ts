@@ -4,13 +4,21 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { env } from '../src/config/env.js';
 
 const createPolicyDraftMock = vi.fn();
+const listOwnDraftsMock = vi.fn();
+const getOwnDraftMock = vi.fn();
+const updateOwnDraftMock = vi.fn();
 
 vi.mock('../src/database/prisma.js', () => ({
   prisma: { $queryRaw: vi.fn().mockResolvedValue([{ value: 1 }]) },
 }));
 
 vi.mock('../src/modules/policy-compliance/policy-compliance.service.js', () => ({
-  policyComplianceService: { createPolicyDraft: createPolicyDraftMock },
+  policyComplianceService: {
+    createPolicyDraft: createPolicyDraftMock,
+    listOwnDrafts: listOwnDraftsMock,
+    getOwnDraft: getOwnDraftMock,
+    updateOwnDraft: updateOwnDraftMock,
+  },
 }));
 
 function createAccessToken(permissions: string[]): string {
@@ -72,7 +80,11 @@ describe('POST /api/v1/compliance/policies', () => {
         versionNumber: '1.0',
         content: 'Policy content',
       },
-      '00000000-0000-4000-8000-000000000001',
+      expect.objectContaining({
+        userId: '00000000-0000-4000-8000-000000000001',
+        permissions: ['policies.create'],
+      }),
+      expect.objectContaining({ ipAddress: expect.any(String), userAgent: null }),
     );
   });
 
@@ -109,5 +121,49 @@ describe('POST /api/v1/compliance/policies', () => {
     expect(response.status).toBe(422);
     expect(response.body.error.code).toBe('VALIDATION_ERROR');
     expect(createPolicyDraftMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('owned policy draft workflow', () => {
+  const policyId = '00000000-0000-4000-8000-000000000010';
+  const versionId = '00000000-0000-4000-8000-000000000011';
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    listOwnDraftsMock.mockResolvedValue({
+      items: [],
+      pagination: { page: 1, limit: 20, total: 0, totalPages: 0 },
+    });
+    getOwnDraftMock.mockResolvedValue({ policyId, version: { id: versionId, content: 'Draft' } });
+    updateOwnDraftMock.mockResolvedValue({
+      policyId,
+      version: { id: versionId, content: 'Updated' },
+    });
+  });
+
+  it('lists, reads, and updates drafts with policies.create', async () => {
+    const { createApp } = await import('../src/app.js');
+    const token = createAccessToken(['policies.create']);
+    const list = await request(createApp())
+      .get('/api/v1/compliance/policies/drafts/mine')
+      .set('authorization', `Bearer ${token}`);
+    const detail = await request(createApp())
+      .get(`/api/v1/compliance/policies/${policyId}/drafts/${versionId}`)
+      .set('authorization', `Bearer ${token}`);
+    const update = await request(createApp())
+      .patch(`/api/v1/compliance/policies/${policyId}/drafts/${versionId}`)
+      .set('authorization', `Bearer ${token}`)
+      .send({ content: 'Updated' });
+    expect([list.status, detail.status, update.status]).toEqual([200, 200, 200]);
+  });
+
+  it('rejects an empty draft update', async () => {
+    const { createApp } = await import('../src/app.js');
+    const response = await request(createApp())
+      .patch(`/api/v1/compliance/policies/${policyId}/drafts/${versionId}`)
+      .set('authorization', `Bearer ${createAccessToken(['policies.create'])}`)
+      .send({});
+    expect(response.status).toBe(422);
+    expect(updateOwnDraftMock).not.toHaveBeenCalled();
   });
 });
