@@ -382,6 +382,7 @@ async function main(): Promise<void> {
         ['roles.update', 'update', 'Update custom roles'],
         ['roles.delete', 'delete', 'Delete custom roles'],
         ['users.create', 'create', 'Initialize user accounts'],
+        ['users.read', 'read', 'View user accounts'],
       ] as const
     ).map(([code, action, description]) =>
       prisma.permissions.upsert({

@@ -8,4 +8,5 @@ export const apiRouter = Router();
 apiRouter.use('/health', healthRouter);
 apiRouter.use('/auth', authRouter);
 apiRouter.use('/users', usersRouter);
+apiRouter.use('/admin/users', usersRouter);
 for (const module of businessModules) apiRouter.use(module.routePrefix, module.router);
