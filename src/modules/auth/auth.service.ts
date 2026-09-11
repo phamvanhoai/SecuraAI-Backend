@@ -1,9 +1,16 @@
 import argon2 from 'argon2';
+import { randomInt } from 'node:crypto';
 import type { Request } from 'express';
 import { prisma } from '../../database/prisma.js';
 import { env } from '../../config/env.js';
 import { AppError } from '../../common/errors/app-error.js';
 import { createRefreshToken, hashToken, signAccessToken } from '../../common/utils/tokens.js';
+import { authEmailService } from './auth.email.service.js';
+import { authRepository } from './auth.repository.js';
+import type {
+  ConfirmPasswordResetBody,
+  RequestPasswordResetBody,
+} from './dto/password-reset.dto.js';
 import type { LoginInput } from './auth.schema.js';
 
 const authUserInclude = {
@@ -40,6 +47,39 @@ const sessionMetadata = (req: Request) => ({
 });
 
 export const authService = {
+  async issuePasswordReset(userId: string, email: string): Promise<void> {
+    const resetToken = String(randomInt(100_000, 1_000_000));
+    const tokenHash = hashToken(resetToken);
+    await authRepository.createPasswordResetToken({
+      userId,
+      tokenHash,
+      expiresAt: new Date(Date.now() + 60 * 60 * 1000),
+    });
+    try {
+      await authEmailService.sendPasswordResetEmail({ to: email, token: resetToken });
+    } catch (error: unknown) {
+      await authRepository.deletePasswordResetToken(tokenHash);
+      throw error;
+    }
+  },
+
+  async requestPasswordReset(input: RequestPasswordResetBody): Promise<void> {
+    const user = await authRepository.findActiveUserByEmail(input.email);
+    if (!user) return;
+    await this.issuePasswordReset(user.user_id, input.email);
+  },
+
+  async confirmPasswordReset(input: ConfirmPasswordResetBody): Promise<void> {
+    const passwordHash = await argon2.hash(input.newPassword, { type: argon2.argon2id });
+    const consumed = await authRepository.consumePasswordResetToken(
+      hashToken(input.token),
+      passwordHash,
+    );
+    if (!consumed) {
+      throw new AppError(400, 'INVALID_PASSWORD_RESET_TOKEN', 'Password reset token is invalid or expired');
+    }
+  },
+
   async login(input: LoginInput, req: Request) {
     const user = await findAuthUser(input.email);
     const valid = user ? await argon2.verify(user.password_hash, input.password) : false;
