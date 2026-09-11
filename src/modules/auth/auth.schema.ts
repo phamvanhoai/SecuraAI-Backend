@@ -10,6 +10,7 @@ export const passwordSchema = z
 export const loginSchema = z.object({
   email: z.email().max(255).transform((value) => value.toLowerCase().trim()),
   password: z.string().min(8).max(128),
+  mfaCode: z.string().regex(/^\d{6}$/, 'MFA code must be a 6-digit code').optional(),
 });
 export const refreshSchema = z.object({ refreshToken: z.string().min(32).max(256) });
 export type LoginInput = z.infer<typeof loginSchema>;

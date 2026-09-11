@@ -30,6 +30,11 @@ export const openApiSpec = swaggerJsdoc({
           properties: {
             email: { type: 'string', format: 'email' },
             password: { type: 'string', format: 'password', minLength: 8 },
+            mfaCode: {
+              type: 'string',
+              pattern: '^\\d{6}$',
+              description: 'Required only when MFA is enabled for the account.',
+            },
           },
         },
         InitializeUserAccountRequest: {
@@ -92,6 +97,22 @@ export const openApiSpec = swaggerJsdoc({
               description: 'At least 8 characters, one uppercase letter, and one special character.',
             },
             confirmPassword: { type: 'string', format: 'password', minLength: 8, maxLength: 128 },
+          },
+        },
+        SetupMfaRequest: {
+          type: 'object',
+          required: ['currentPassword'],
+          additionalProperties: false,
+          properties: {
+            currentPassword: { type: 'string', format: 'password', minLength: 1 },
+          },
+        },
+        VerifyMfaRequest: {
+          type: 'object',
+          required: ['code'],
+          additionalProperties: false,
+          properties: {
+            code: { type: 'string', pattern: '^\\d{6}$', example: '123456' },
           },
         },
         TokenPair: {
@@ -1131,6 +1152,45 @@ export const openApiSpec = swaggerJsdoc({
             '401': { description: 'Unauthorized' },
             '403': { description: 'Account is inactive' },
             '422': { description: 'Invalid password policy or confirmation' },
+          },
+        },
+      },
+      '/auth/mfa/setup': {
+        post: {
+          tags: ['Authentication'],
+          summary: 'Start authenticator-app MFA setup',
+          security: [{ bearerAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': { schema: { $ref: '#/components/schemas/SetupMfaRequest' } },
+            },
+          },
+          responses: {
+            '200': { description: 'Authenticator URI and QR code data URL returned' },
+            '400': { description: 'Current password is incorrect' },
+            '401': { description: 'Unauthorized' },
+            '409': { description: 'MFA is already enabled' },
+          },
+        },
+      },
+      '/auth/mfa/verify': {
+        post: {
+          tags: ['Authentication'],
+          summary: 'Verify an authenticator code and enable MFA',
+          security: [{ bearerAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': { schema: { $ref: '#/components/schemas/VerifyMfaRequest' } },
+            },
+          },
+          responses: {
+            '200': { description: 'MFA enabled' },
+            '400': { description: 'MFA code is invalid or expired' },
+            '401': { description: 'Unauthorized' },
+            '404': { description: 'MFA setup is required' },
+            '429': { description: 'Too many attempts' },
           },
         },
       },

@@ -2,12 +2,57 @@ import { prisma } from '../../database/prisma.js';
 
 const resetUserSelect = { user_id: true } as const;
 const passwordChangeUserSelect = {
+  email: true,
   password_hash: true,
   status: true,
   deleted_at: true,
 } as const;
 
 export const authRepository = {
+  findTotpMethod(userId: string) {
+    return prisma.mfa_methods.findFirst({
+      where: { user_id: userId, method_type: 'totp' },
+      select: {
+        mfa_method_id: true,
+        secret_encrypted: true,
+        is_enabled: true,
+      },
+    });
+  },
+
+  async saveTotpSecret(userId: string, secretEncrypted: string): Promise<void> {
+    const existing = await prisma.mfa_methods.findFirst({
+      where: { user_id: userId, method_type: 'totp' },
+      select: { mfa_method_id: true },
+    });
+    if (existing) {
+      await prisma.mfa_methods.update({
+        where: { mfa_method_id: existing.mfa_method_id },
+        data: {
+          secret_encrypted: secretEncrypted,
+          is_enabled: false,
+          verified_at: null,
+          updated_at: new Date(),
+        },
+      });
+      return;
+    }
+    await prisma.mfa_methods.create({
+      data: {
+        user_id: userId,
+        method_type: 'totp',
+        secret_encrypted: secretEncrypted,
+      },
+    });
+  },
+
+  async enableTotpMethod(userId: string): Promise<void> {
+    await prisma.mfa_methods.updateMany({
+      where: { user_id: userId, method_type: 'totp' },
+      data: { is_enabled: true, verified_at: new Date(), updated_at: new Date() },
+    });
+  },
+
   findUserForPasswordChange(userId: string) {
     return prisma.users.findFirst({
       where: { user_id: userId },
