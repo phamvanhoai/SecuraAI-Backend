@@ -2,6 +2,13 @@ import type { RequestHandler } from 'express';
 import type { ParamsDictionary } from 'express-serve-static-core';
 import { AppError } from '../../common/errors/app-error.js';
 import type { CreatePolicyDraftInput } from './dto/create-policy-draft.dto.js';
+import { getPolicyVersionParamsSchema } from './dto/get-policy-version.dto.js';
+import { listPublishablePoliciesQuerySchema } from './dto/list-publishable-policies.dto.js';
+import {
+  listOwnPolicyDraftsQuerySchema,
+  policyDraftParamsSchema,
+  updatePolicyDraftSchema,
+} from './dto/manage-policy-draft.dto.js';
 import type { PolicyDraftResponse } from './policy-compliance.mapper.js';
 import {
   publishPolicyVersionBodySchema,
@@ -20,8 +27,50 @@ export const createPolicyDraft: RequestHandler<
     throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
   }
 
-  const data = await policyComplianceService.createPolicyDraft(req.body, req.auth.userId);
+  const data = await policyComplianceService.createPolicyDraft(req.body, req.auth, {
+    ipAddress: req.ip ?? null,
+    userAgent: req.get('user-agent')?.slice(0, 1000) ?? null,
+  });
   res.status(201).json({ success: true, data });
+};
+
+export const listPublishablePolicies: RequestHandler = async (req, res) => {
+  if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+  const query = listPublishablePoliciesQuerySchema.parse(req.query);
+  const data = await policyComplianceService.listPublishablePolicies(query, req.auth);
+  res.status(200).json({ success: true, data });
+};
+
+export const getDraftPolicyVersion: RequestHandler = async (req, res) => {
+  if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+  const { policyId, versionId } = getPolicyVersionParamsSchema.parse(req.params);
+  const data = await policyComplianceService.getDraftPolicyVersion(policyId, versionId, req.auth);
+  res.status(200).json({ success: true, data });
+};
+
+export const listOwnPolicyDrafts: RequestHandler = async (req, res) => {
+  if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+  const query = listOwnPolicyDraftsQuerySchema.parse(req.query);
+  const data = await policyComplianceService.listOwnDrafts(query, req.auth);
+  res.status(200).json({ success: true, data });
+};
+
+export const getOwnPolicyDraft: RequestHandler = async (req, res) => {
+  if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+  const { policyId, versionId } = policyDraftParamsSchema.parse(req.params);
+  const data = await policyComplianceService.getOwnDraft(policyId, versionId, req.auth);
+  res.status(200).json({ success: true, data });
+};
+
+export const updateOwnPolicyDraft: RequestHandler = async (req, res) => {
+  if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+  const { policyId, versionId } = policyDraftParamsSchema.parse(req.params);
+  const body = updatePolicyDraftSchema.parse(req.body);
+  const data = await policyComplianceService.updateOwnDraft(policyId, versionId, body, req.auth, {
+    ipAddress: req.ip ?? null,
+    userAgent: req.get('user-agent')?.slice(0, 1000) ?? null,
+  });
+  res.status(200).json({ success: true, data });
 };
 
 export const publishPolicyVersion: RequestHandler = async (req, res) => {
@@ -35,4 +84,12 @@ export const publishPolicyVersion: RequestHandler = async (req, res) => {
   res.status(200).json({ success: true, data });
 };
 
-export const policyComplianceController = { createPolicyDraft, publishPolicyVersion } as const;
+export const policyComplianceController = {
+  createPolicyDraft,
+  getDraftPolicyVersion,
+  listPublishablePolicies,
+  getOwnPolicyDraft,
+  listOwnPolicyDrafts,
+  publishPolicyVersion,
+  updateOwnPolicyDraft,
+} as const;

@@ -16,6 +16,10 @@ export const policyComplianceModule: ModuleManifest = {
     'control_assessments',
     'compliance_evidence',
   ],
-  capabilities: ['Create policy drafts', 'Publish official policy versions'],
+  capabilities: [
+    'Create policy drafts',
+    'Review publishable policy drafts',
+    'Publish official policy versions',
+  ],
   router: policyComplianceRouter,
 };

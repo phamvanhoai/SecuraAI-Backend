@@ -63,7 +63,11 @@ describe('policyComplianceService.createPolicyDraft', () => {
         versionNumber: '1.0',
         content: 'Policy content',
       },
-      '00000000-0000-4000-8000-000000000001',
+      {
+        userId: '00000000-0000-4000-8000-000000000001',
+        permissions: ['policies.create'],
+      },
+      { ipAddress: null, userAgent: null },
     );
 
     expect(mocks.createPolicyDraft).toHaveBeenCalledWith(mocks.transactionClient, {
@@ -79,6 +83,8 @@ describe('policyComplianceService.createPolicyDraft', () => {
       policyCode: policyRecord.policy_code,
       title: policyRecord.title,
       versionNumber: '1.0',
+      ipAddress: null,
+      userAgent: null,
     });
     expect(result.currentVersion.versionNumber).toBe('1.0');
   });
@@ -94,7 +100,11 @@ describe('policyComplianceService.createPolicyDraft', () => {
           versionNumber: '1.0',
           content: 'Policy content',
         },
-        '00000000-0000-4000-8000-000000000001',
+        {
+          userId: '00000000-0000-4000-8000-000000000001',
+          permissions: ['policies.create'],
+        },
+        { ipAddress: null, userAgent: null },
       ),
     ).rejects.toMatchObject({
       statusCode: 409,
