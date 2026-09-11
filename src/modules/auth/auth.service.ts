@@ -1,6 +1,5 @@
 import argon2 from 'argon2';
 import { randomInt } from 'node:crypto';
-import { generateSecret, generateURI, verify } from 'otplib';
 import QRCode from 'qrcode';
 import type { Request } from 'express';
 import { prisma } from '../../database/prisma.js';
@@ -46,6 +45,11 @@ const getAccessClaims = (user: Awaited<ReturnType<typeof findAuthUser>>) => {
 const findAuthUser = (email: string) =>
   prisma.users.findUnique({ where: { email }, include: authUserInclude });
 
+// Vercel's function bundler can select otplib's CommonJS entry, whose base32
+// plugin cannot require the ESM-only @scure/base package. Keeping this as a
+// native dynamic import forces the ESM entry and avoids a cold-start crash.
+const loadOtp = () => import('otplib');
+
 const sessionMetadata = (req: Request) => ({
   ipAddress: req.ip ?? null,
   userAgent: req.get('user-agent')?.slice(0, 1000) ?? null,
@@ -53,6 +57,7 @@ const sessionMetadata = (req: Request) => ({
 
 export const authService = {
   async setupMfa(userId: string, input: SetupMfaBody) {
+    const { generateSecret, generateURI } = await loadOtp();
     const user = await authRepository.findUserForPasswordChange(userId);
     if (!user) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
     if (user.status !== 'active' || user.deleted_at)
@@ -73,6 +78,7 @@ export const authService = {
   },
 
   async verifyMfa(userId: string, input: VerifyMfaBody): Promise<void> {
+    const { verify } = await loadOtp();
     const method = await authRepository.findTotpMethod(userId);
     if (!method?.secret_encrypted) {
       throw new AppError(404, 'MFA_SETUP_REQUIRED', 'MFA setup is required before verification');
@@ -146,6 +152,7 @@ export const authService = {
 
     const mfaMethod = await authRepository.findTotpMethod(user.user_id);
     if (mfaMethod?.is_enabled) {
+      const { verify } = await loadOtp();
       if (!input.mfaCode) throw new AppError(401, 'MFA_REQUIRED', 'MFA code is required');
       if (!mfaMethod.secret_encrypted) throw new AppError(500, 'MFA_CONFIGURATION_ERROR', 'MFA configuration is invalid');
       const result = await verify({
