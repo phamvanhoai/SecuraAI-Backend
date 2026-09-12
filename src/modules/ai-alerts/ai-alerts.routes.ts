@@ -9,6 +9,7 @@ import {
   evaluateAlertReliability,
   confirmAlertAsIncident,
   listAlerts,
+  listAlertFeedback,
   listModelConfigurations,
 } from './ai-alerts.controller.js';
 import {
@@ -20,6 +21,7 @@ import { listAlertsQuerySchema } from './dto/alert-query.dto.js';
 import {
   alertIdParamsSchema,
   evaluateAlertReliabilityBodySchema,
+  listAlertFeedbackQuerySchema,
 } from './dto/alert-feedback.dto.js';
 import { confirmAlertBodySchema } from './dto/confirm-alert.dto.js';
 import { falsePositiveBodySchema } from './dto/false-positive.dto.js';
@@ -31,6 +33,14 @@ aiAlertsRouter.post(
   authorize('ai-alerts.mark-false-positive'),
   validate({ params: alertIdParamsSchema, body: falsePositiveBodySchema }),
   asyncHandler(markFalsePositive),
+);
+
+aiAlertsRouter.get(
+  '/:alertId/feedback',
+  authenticate,
+  authorize('ai-alerts.feedback'),
+  validate({ params: alertIdParamsSchema, query: listAlertFeedbackQuerySchema }),
+  asyncHandler(listAlertFeedback),
 );
 
 aiAlertsRouter.get(
