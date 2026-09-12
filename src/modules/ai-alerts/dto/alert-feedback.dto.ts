@@ -1,10 +1,12 @@
 import { z } from 'zod';
 
-export const alertFeedbackLabels = ['confirmed_incident', 'false_positive', 'needs_review'] as const;
+export const alertFeedbackLabels = [
+  'confirmed_incident',
+  'false_positive',
+  'needs_review',
+] as const;
 
-export const alertIdParamsSchema = z
-  .object({ alertId: z.string().uuid() })
-  .strict();
+export const alertIdParamsSchema = z.object({ alertId: z.string().uuid() }).strict();
 
 export const evaluateAlertReliabilityBodySchema = z
   .object({
@@ -13,4 +15,13 @@ export const evaluateAlertReliabilityBodySchema = z
   })
   .strict();
 
+export const listAlertFeedbackQuerySchema = z
+  .object({
+    page: z.coerce.number().int().min(1).default(1),
+    limit: z.coerce.number().int().min(1).max(100).default(20),
+    sortOrder: z.enum(['asc', 'desc']).default('desc'),
+  })
+  .strict();
+
 export type EvaluateAlertReliabilityBody = z.infer<typeof evaluateAlertReliabilityBodySchema>;
+export type ListAlertFeedbackQuery = z.infer<typeof listAlertFeedbackQuerySchema>;
