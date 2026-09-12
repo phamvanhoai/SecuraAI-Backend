@@ -10,6 +10,7 @@ import { listAlertsQuerySchema } from './dto/alert-query.dto.js';
 import {
   alertIdParamsSchema,
   evaluateAlertReliabilityBodySchema,
+  listAlertFeedbackQuerySchema,
 } from './dto/alert-feedback.dto.js';
 import { confirmAlertBodySchema } from './dto/confirm-alert.dto.js';
 import { falsePositiveBodySchema } from './dto/false-positive.dto.js';
@@ -56,6 +57,14 @@ export const evaluateAlertReliability: RequestHandler = async (req, res) => {
     requestContext(req),
   );
   res.status(201).json({ success: true, data });
+};
+
+export const listAlertFeedback: RequestHandler = async (req, res) => {
+  if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+  const { alertId } = alertIdParamsSchema.parse(req.params);
+  const query = listAlertFeedbackQuerySchema.parse(req.query);
+  const data = await aiAlertsService.listAlertFeedback(alertId, query, req.auth);
+  res.status(200).json({ success: true, data });
 };
 
 export const confirmAlertAsIncident: RequestHandler = async (req, res) => {

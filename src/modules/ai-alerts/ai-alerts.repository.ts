@@ -5,7 +5,10 @@ import type {
   ListModelConfigurationsQuery,
 } from './dto/model-configuration.dto.js';
 import type { ListAlertsQuery } from './dto/alert-query.dto.js';
-import type { EvaluateAlertReliabilityBody } from './dto/alert-feedback.dto.js';
+import type {
+  EvaluateAlertReliabilityBody,
+  ListAlertFeedbackQuery,
+} from './dto/alert-feedback.dto.js';
 import type { ConfirmAlertBody } from './dto/confirm-alert.dto.js';
 import type { FalsePositiveBody } from './dto/false-positive.dto.js';
 
@@ -281,6 +284,30 @@ export const aiAlertsRepository = {
       });
       return feedback;
     });
+  },
+
+  async listAlertFeedback(
+    alertId: string,
+    query: ListAlertFeedbackQuery,
+  ): Promise<{ exists: boolean; items: FeedbackRecord[]; total: number }> {
+    const alert = await prisma.ai_alerts.findUnique({
+      where: { ai_alert_id: alertId },
+      select: { ai_alert_id: true },
+    });
+    if (!alert) return { exists: false, items: [], total: 0 };
+
+    const where: Prisma.ai_feedbackWhereInput = { ai_alert_id: alertId };
+    const [total, items] = await prisma.$transaction([
+      prisma.ai_feedback.count({ where }),
+      prisma.ai_feedback.findMany({
+        where,
+        select: feedbackSelect,
+        orderBy: [{ created_at: query.sortOrder }, { ai_feedback_id: 'asc' }],
+        skip: (query.page - 1) * query.limit,
+        take: query.limit,
+      }),
+    ]);
+    return { exists: true, items, total };
   },
 
   async listAlerts(query: ListAlertsQuery): Promise<{ items: AlertRecord[]; total: number }> {

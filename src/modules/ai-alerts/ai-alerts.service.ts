@@ -15,7 +15,10 @@ import type {
 import type { ListAlertsQuery } from './dto/alert-query.dto.js';
 import { modelParametersSchema } from './dto/model-configuration.dto.js';
 import type { DetectionEvent } from './ai-alerts.repository.js';
-import type { EvaluateAlertReliabilityBody } from './dto/alert-feedback.dto.js';
+import type {
+  EvaluateAlertReliabilityBody,
+  ListAlertFeedbackQuery,
+} from './dto/alert-feedback.dto.js';
 import type { ConfirmAlertBody } from './dto/confirm-alert.dto.js';
 import type { FalsePositiveBody } from './dto/false-positive.dto.js';
 
@@ -98,6 +101,21 @@ export const aiAlertsService = {
     });
     if (!feedback) throw new AppError(404, 'AI_ALERT_NOT_FOUND', 'AI alert was not found');
     return toAlertFeedbackResponse(feedback);
+  },
+
+  async listAlertFeedback(alertId: string, query: ListAlertFeedbackQuery, actor: Actor) {
+    requirePermission(actor, 'ai-alerts.feedback');
+    const result = await aiAlertsRepository.listAlertFeedback(alertId, query);
+    if (!result.exists) throw new AppError(404, 'AI_ALERT_NOT_FOUND', 'AI alert was not found');
+    return {
+      items: result.items.map(toAlertFeedbackResponse),
+      pagination: {
+        page: query.page,
+        limit: query.limit,
+        total: result.total,
+        totalPages: Math.ceil(result.total / query.limit),
+      },
+    };
   },
 
   async listAlerts(query: ListAlertsQuery, actor: Actor) {

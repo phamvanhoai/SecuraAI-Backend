@@ -726,6 +726,21 @@ export const openApiSpec = swaggerJsdoc({
             comment: { type: 'string', minLength: 1, maxLength: 2000 },
           },
         },
+        AlertFeedback: {
+          type: 'object',
+          required: ['id', 'alertId', 'feedbackLabel', 'createdAt'],
+          properties: {
+            id: { type: 'string', format: 'uuid' },
+            alertId: { type: 'string', format: 'uuid' },
+            reviewedByUserId: { type: 'string', format: 'uuid', nullable: true },
+            feedbackLabel: {
+              type: 'string',
+              enum: ['confirmed_incident', 'false_positive', 'needs_review'],
+            },
+            comment: { type: 'string', nullable: true },
+            createdAt: { type: 'string', format: 'date-time' },
+          },
+        },
         ConfirmAlertIncidentRequest: {
           type: 'object',
           additionalProperties: false,
@@ -2501,6 +2516,39 @@ export const openApiSpec = swaggerJsdoc({
         },
       },
       '/ai-alerts/{alertId}/feedback': {
+        get: {
+          tags: ['AI Alerts'],
+          summary: 'List reliability feedback for an AI alert',
+          description:
+            'Returns a paginated history of analyst assessments. Requires ai-alerts.feedback.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'alertId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+            { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
+            {
+              name: 'limit',
+              in: 'query',
+              schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
+            },
+            {
+              name: 'sortOrder',
+              in: 'query',
+              schema: { type: 'string', enum: ['asc', 'desc'], default: 'desc' },
+            },
+          ],
+          responses: {
+            '200': { description: 'Paginated alert feedback history' },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'The ai-alerts.feedback permission is required' },
+            '404': { description: 'AI alert was not found' },
+            '422': { description: 'Invalid alert ID or pagination query' },
+          },
+        },
         post: {
           tags: ['AI Alerts'],
           summary: 'Evaluate AI alert reliability',
