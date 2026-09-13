@@ -2463,7 +2463,7 @@ export const openApiSpec = swaggerJsdoc({
           tags: ['AI Alerts'],
           summary: 'View AI alerts',
           description:
-            'Returns generated alert summaries. Use detectedAfter and the returned serverTime watermark for near-real-time polling. Requires ai-alerts.read.',
+            'Returns generated alert summaries, including nullable AI-suggested riskScore and riskLevel from the alert record. Use detectedAfter and the returned serverTime watermark for near-real-time polling. Requires ai-alerts.read.',
           security: [{ bearerAuth: [] }],
           parameters: [
             { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
