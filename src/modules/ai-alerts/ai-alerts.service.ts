@@ -5,6 +5,7 @@ import {
   toAlertFeedbackResponse,
   toAlertConfirmationResponse,
   toAlertResponse,
+  toAlertExplanationResponse,
   toModelConfigurationResponse,
 } from './ai-alerts.mapper.js';
 import { aiAlertsRepository } from './ai-alerts.repository.js';
@@ -39,6 +40,12 @@ const alertCodeFor = (eventId: string, modelVersionId: string, ruleId: string): 
     .slice(0, 40)}`;
 
 export const aiAlertsService = {
+  async getAlertExplanation(alertId: string, actor: Actor) {
+    requirePermission(actor, 'ai-alerts.read');
+    const result = await aiAlertsRepository.findLatestExplanation(alertId);
+    if (!result.exists) throw new AppError(404, 'AI_ALERT_NOT_FOUND', 'AI alert was not found');
+    return result.explanation ? toAlertExplanationResponse(result.explanation) : null;
+  },
   async markFalsePositive(
     alertId: string,
     input: FalsePositiveBody,
