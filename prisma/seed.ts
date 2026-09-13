@@ -543,7 +543,11 @@ async function main(): Promise<void> {
       },
     });
   }
-  for (const permission of [aiAlertReadPermission, aiAlertFeedbackPermission]) {
+  for (const permission of [
+    aiAlertReadPermission,
+    aiAlertFeedbackPermission,
+    aiAlertConfirmPermission,
+  ]) {
     await prisma.role_permissions.upsert({
       where: {
         role_id_permission_id: {
