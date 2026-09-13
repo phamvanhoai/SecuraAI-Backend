@@ -20,6 +20,7 @@ export const policyComplianceModule: ModuleManifest = {
     'Create policy drafts',
     'Review publishable policy drafts',
     'Publish official policy versions',
+    'Update policies and create new versions',
   ],
   router: policyComplianceRouter,
 };
