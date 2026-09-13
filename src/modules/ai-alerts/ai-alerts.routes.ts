@@ -7,6 +7,7 @@ import {
   markFalsePositive,
   createModelConfiguration,
   evaluateAlertReliability,
+  getAlertExplanation,
   confirmAlertAsIncident,
   listAlerts,
   listAlertFeedback,
@@ -27,6 +28,13 @@ import { confirmAlertBodySchema } from './dto/confirm-alert.dto.js';
 import { falsePositiveBodySchema } from './dto/false-positive.dto.js';
 
 export const aiAlertsRouter = Router();
+aiAlertsRouter.get(
+  '/:alertId/explanation',
+  authenticate,
+  authorize('ai-alerts.read'),
+  validate({ params: alertIdParamsSchema }),
+  asyncHandler(getAlertExplanation),
+);
 aiAlertsRouter.post(
   '/:alertId/false-positive',
   authenticate,

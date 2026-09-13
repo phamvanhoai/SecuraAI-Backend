@@ -2,8 +2,18 @@ import type { ModelConfigurationRecord } from './ai-alerts.repository.js';
 import type {
   AlertConfirmationRecord,
   AlertRecord,
+  ExplanationRecord,
   FeedbackRecord,
 } from './ai-alerts.repository.js';
+
+export const toAlertExplanationResponse = (explanation: ExplanationRecord) => ({
+  id: explanation.ai_alert_explanation_id,
+  alertId: explanation.ai_alert_id,
+  explanationText: explanation.explanation_text,
+  featureContributions: explanation.feature_contributions,
+  baselineData: explanation.baseline_data,
+  createdAt: explanation.created_at,
+});
 
 export const toAlertConfirmationResponse = (alert: AlertConfirmationRecord) => ({
   id: alert.ai_alert_id,
