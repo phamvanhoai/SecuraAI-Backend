@@ -132,6 +132,49 @@ export const openApiSpec = swaggerJsdoc({
             effectiveDate: { type: 'string', format: 'date', example: '2026-09-09' },
           },
         },
+        UpdatePolicyCreateVersionRequest: {
+          type: 'object',
+          required: ['versionNumber', 'content', 'changeSummary'],
+          additionalProperties: false,
+          properties: {
+            title: { type: 'string', minLength: 3, maxLength: 255 },
+            description: { type: 'string', maxLength: 2000, nullable: true },
+            versionNumber: {
+              type: 'string',
+              minLength: 1,
+              maxLength: 30,
+              example: '1.1',
+            },
+            content: { type: 'string', minLength: 1, maxLength: 500000 },
+            changeSummary: { type: 'string', minLength: 1, maxLength: 5000 },
+          },
+        },
+        NewPolicyVersion: {
+          type: 'object',
+          required: ['policyId', 'policyCode', 'title', 'policyStatus', 'version', 'updatedAt'],
+          properties: {
+            policyId: { type: 'string', format: 'uuid' },
+            policyCode: { type: 'string' },
+            title: { type: 'string' },
+            description: { type: 'string', nullable: true },
+            ownerUserId: { type: 'string', format: 'uuid', nullable: true },
+            policyStatus: { type: 'string', enum: ['draft'] },
+            version: {
+              type: 'object',
+              required: ['id', 'versionNumber', 'content', 'changeSummary', 'status', 'createdAt'],
+              properties: {
+                id: { type: 'string', format: 'uuid' },
+                versionNumber: { type: 'string' },
+                content: { type: 'string' },
+                changeSummary: { type: 'string', nullable: true },
+                status: { type: 'string', enum: ['draft'] },
+                createdByUserId: { type: 'string', format: 'uuid', nullable: true },
+                createdAt: { type: 'string', format: 'date-time' },
+              },
+            },
+            updatedAt: { type: 'string', format: 'date-time' },
+          },
+        },
         PublishablePolicy: {
           type: 'object',
           required: ['id', 'policyCode', 'title', 'status', 'draftVersion', 'updatedAt'],
@@ -2271,6 +2314,18 @@ export const openApiSpec = swaggerJsdoc({
           },
         },
       },
+      '/compliance/policies/published/mine': {
+        get: {
+          tags: ['Policy Compliance'],
+          summary: 'List owned published policies eligible for a new version',
+          security: [{ bearerAuth: [] }],
+          responses: {
+            '200': { description: 'Owned published policies without an existing draft' },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'Missing policies.update permission' },
+          },
+        },
+      },
       '/compliance/policies/drafts/mine': {
         get: {
           tags: ['Policies'],
@@ -2500,7 +2555,12 @@ export const openApiSpec = swaggerJsdoc({
             'Returns the newest stored explanation for an alert, or data=null when no explanation has been recorded. Requires ai-alerts.read, granted to Security Officer and Executive by the role seed.',
           security: [{ bearerAuth: [] }],
           parameters: [
-            { name: 'alertId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+            {
+              name: 'alertId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
           ],
           responses: {
             '200': {
@@ -2515,7 +2575,14 @@ export const openApiSpec = swaggerJsdoc({
                       data: {
                         nullable: true,
                         type: 'object',
-                        required: ['id', 'alertId', 'explanationText', 'featureContributions', 'baselineData', 'createdAt'],
+                        required: [
+                          'id',
+                          'alertId',
+                          'explanationText',
+                          'featureContributions',
+                          'baselineData',
+                          'createdAt',
+                        ],
                         properties: {
                           id: { type: 'string', format: 'uuid' },
                           alertId: { type: 'string', format: 'uuid' },
@@ -2705,6 +2772,56 @@ export const openApiSpec = swaggerJsdoc({
             '404': { description: 'Policy version was not found' },
             '409': { description: 'Policy version cannot be published in its current state' },
             '422': { description: 'Invalid IDs or request body' },
+          },
+        },
+      },
+      '/compliance/policies/{policyId}/versions': {
+        post: {
+          tags: ['Policies'],
+          summary: 'Update a published policy and create a new draft version',
+          description:
+            'Requires policies.update. Only the owning Security Officer can create one draft version at a time from a published policy. The current published version remains unchanged until Admin publishes the new draft.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'policyId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/UpdatePolicyCreateVersionRequest' },
+              },
+            },
+          },
+          responses: {
+            '201': {
+              description: 'Policy updated and new draft version created with an audit record',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    required: ['success', 'data'],
+                    properties: {
+                      success: { type: 'boolean', example: true },
+                      data: { $ref: '#/components/schemas/NewPolicyVersion' },
+                    },
+                  },
+                },
+              },
+            },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'The policies.update permission is required' },
+            '404': { description: 'Owned policy was not found' },
+            '409': {
+              description:
+                'Policy is archived, is not published, already has a draft, or version number exists',
+            },
+            '422': { description: 'Invalid policy ID or request body' },
           },
         },
       },
