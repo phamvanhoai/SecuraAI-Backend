@@ -409,6 +409,34 @@ export const policyComplianceRepository = {
     });
   },
 
+  listOwnedPublishedPoliciesForNewVersion(actorUserId: string) {
+    return prisma.policies.findMany({
+      where: {
+        owner_user_id: actorUserId,
+        status: 'published',
+        policy_versions: {
+          some: { status: 'published' },
+          none: { status: 'draft' },
+        },
+      },
+      select: {
+        policy_id: true,
+        policy_code: true,
+        title: true,
+        description: true,
+        updated_at: true,
+        policy_versions: {
+          where: { status: 'published' },
+          select: { version_number: true },
+          orderBy: { published_at: 'desc' },
+          take: 1,
+        },
+      },
+      orderBy: { updated_at: 'desc' },
+      take: 100,
+    });
+  },
+
   async createNewPolicyVersion(
     database: DatabaseClient,
     policyId: string,

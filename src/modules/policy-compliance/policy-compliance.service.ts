@@ -48,6 +48,21 @@ const publicationConflict = (): AppError =>
   );
 
 export const policyComplianceService = {
+  async listOwnedPublishedPoliciesForNewVersion(actor: Actor) {
+    requireUpdatePermission(actor);
+    const policies = await policyComplianceRepository.listOwnedPublishedPoliciesForNewVersion(
+      actor.userId,
+    );
+    return policies.map((policy) => ({
+      id: policy.policy_id,
+      policyCode: policy.policy_code,
+      title: policy.title,
+      description: policy.description,
+      currentVersion: policy.policy_versions[0]?.version_number ?? null,
+      updatedAt: policy.updated_at.toISOString(),
+    }));
+  },
+
   async updatePolicyAndCreateVersion(
     policyId: string,
     input: UpdatePolicyCreateVersionInput,

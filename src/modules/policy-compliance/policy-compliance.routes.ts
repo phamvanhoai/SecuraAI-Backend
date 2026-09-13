@@ -9,6 +9,7 @@ import {
   listPublishablePolicies,
   getOwnPolicyDraft,
   listOwnPolicyDrafts,
+  listOwnedPublishedPoliciesForNewVersion,
   publishPolicyVersion,
   updateOwnPolicyDraft,
   updatePolicyAndCreateVersion,
@@ -61,6 +62,13 @@ policyComplianceRouter.get(
   authorize('policies.create'),
   validate({ query: listOwnPolicyDraftsQuerySchema }),
   asyncHandler(listOwnPolicyDrafts),
+);
+
+policyComplianceRouter.get(
+  '/policies/published/mine',
+  authenticate,
+  authorize('policies.update'),
+  asyncHandler(listOwnedPublishedPoliciesForNewVersion),
 );
 
 policyComplianceRouter.get(

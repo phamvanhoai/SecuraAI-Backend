@@ -2314,6 +2314,18 @@ export const openApiSpec = swaggerJsdoc({
           },
         },
       },
+      '/compliance/policies/published/mine': {
+        get: {
+          tags: ['Policy Compliance'],
+          summary: 'List owned published policies eligible for a new version',
+          security: [{ bearerAuth: [] }],
+          responses: {
+            '200': { description: 'Owned published policies without an existing draft' },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'Missing policies.update permission' },
+          },
+        },
+      },
       '/compliance/policies/drafts/mine': {
         get: {
           tags: ['Policies'],

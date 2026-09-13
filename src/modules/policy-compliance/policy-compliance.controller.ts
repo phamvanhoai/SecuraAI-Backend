@@ -54,6 +54,12 @@ export const updatePolicyAndCreateVersion: RequestHandler = async (req, res) => 
   res.status(201).json({ success: true, data });
 };
 
+export const listOwnedPublishedPoliciesForNewVersion: RequestHandler = async (req, res) => {
+  if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+  const data = await policyComplianceService.listOwnedPublishedPoliciesForNewVersion(req.auth);
+  res.status(200).json({ success: true, data });
+};
+
 export const listPublishablePolicies: RequestHandler = async (req, res) => {
   if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
   const query = listPublishablePoliciesQuerySchema.parse(req.query);
@@ -110,6 +116,7 @@ export const policyComplianceController = {
   listPublishablePolicies,
   getOwnPolicyDraft,
   listOwnPolicyDrafts,
+  listOwnedPublishedPoliciesForNewVersion,
   publishPolicyVersion,
   updateOwnPolicyDraft,
   updatePolicyAndCreateVersion,

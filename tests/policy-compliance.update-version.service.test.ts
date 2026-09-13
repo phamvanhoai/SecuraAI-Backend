@@ -5,6 +5,7 @@ const mocks = vi.hoisted(() => ({
   findPolicyForNewVersion: vi.fn(),
   createNewPolicyVersion: vi.fn(),
   createNewPolicyVersionAudit: vi.fn(),
+  listOwnedPublishedPoliciesForNewVersion: vi.fn(),
 }));
 
 vi.mock('../src/modules/policy-compliance/policy-compliance.repository.js', () => ({
@@ -158,5 +159,31 @@ describe('policyComplianceService.updatePolicyAndCreateVersion', () => {
         userAgent: null,
       }),
     ).rejects.toMatchObject({ statusCode: 409, code: 'POLICY_NOT_PUBLISHED' });
+  });
+});
+
+describe('policyComplianceService.listOwnedPublishedPoliciesForNewVersion', () => {
+  it('returns eligible published policies owned by the actor', async () => {
+    mocks.listOwnedPublishedPoliciesForNewVersion.mockResolvedValue([
+      {
+        policy_id: policyId,
+        policy_code: 'ISP-001',
+        title: policy.title,
+        description: null,
+        updated_at: new Date('2026-09-13T00:00:00.000Z'),
+        policy_versions: [{ version_number: '1.0' }],
+      },
+    ]);
+
+    await expect(
+      policyComplianceService.listOwnedPublishedPoliciesForNewVersion(actor),
+    ).resolves.toEqual([
+      expect.objectContaining({
+        id: policyId,
+        policyCode: 'ISP-001',
+        currentVersion: '1.0',
+      }),
+    ]);
+    expect(mocks.listOwnedPublishedPoliciesForNewVersion).toHaveBeenCalledWith(actor.userId);
   });
 });

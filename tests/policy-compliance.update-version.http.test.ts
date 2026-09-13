@@ -2,13 +2,16 @@ import jwt from 'jsonwebtoken';
 import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-const { updatePolicyAndCreateVersionMock } = vi.hoisted(() => ({
-  updatePolicyAndCreateVersionMock: vi.fn(),
-}));
+const { updatePolicyAndCreateVersionMock, listOwnedPublishedPoliciesForNewVersionMock } =
+  vi.hoisted(() => ({
+    updatePolicyAndCreateVersionMock: vi.fn(),
+    listOwnedPublishedPoliciesForNewVersionMock: vi.fn(),
+  }));
 
 vi.mock('../src/modules/policy-compliance/policy-compliance.service.js', () => ({
   policyComplianceService: {
     updatePolicyAndCreateVersion: updatePolicyAndCreateVersionMock,
+    listOwnedPublishedPoliciesForNewVersion: listOwnedPublishedPoliciesForNewVersionMock,
   },
 }));
 
@@ -77,5 +80,22 @@ describe('POST update policy and create new version endpoint', () => {
 
     expect(response.status).toBe(422);
     expect(updatePolicyAndCreateVersionMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('GET owned published policies endpoint', () => {
+  it('lists policies eligible for a new version', async () => {
+    listOwnedPublishedPoliciesForNewVersionMock.mockResolvedValue([
+      { id: policyId, policyCode: 'ISP-001', currentVersion: '1.0' },
+    ]);
+    const response = await request(createApp())
+      .get('/api/v1/compliance/policies/published/mine')
+      .set('authorization', `Bearer ${accessToken(['policies.update'])}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      success: true,
+      data: [{ id: policyId, currentVersion: '1.0' }],
+    });
   });
 });
