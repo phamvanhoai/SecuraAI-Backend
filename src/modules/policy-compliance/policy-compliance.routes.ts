@@ -11,6 +11,7 @@ import {
   listOwnPolicyDrafts,
   publishPolicyVersion,
   updateOwnPolicyDraft,
+  updatePolicyAndCreateVersion,
 } from './policy-compliance.controller.js';
 import { getPolicyVersionParamsSchema } from './dto/get-policy-version.dto.js';
 import { listPublishablePoliciesQuerySchema } from './dto/list-publishable-policies.dto.js';
@@ -23,6 +24,10 @@ import {
   publishPolicyVersionBodySchema,
   publishPolicyVersionParamsSchema,
 } from './dto/publish-policy-version.dto.js';
+import {
+  updatePolicyCreateVersionBodySchema,
+  updatePolicyCreateVersionParamsSchema,
+} from './dto/update-policy-create-version.dto.js';
 
 export const policyComplianceRouter = Router();
 
@@ -72,6 +77,17 @@ policyComplianceRouter.patch(
   authorize('policies.create'),
   validate({ params: policyDraftParamsSchema, body: updatePolicyDraftSchema }),
   asyncHandler(updateOwnPolicyDraft),
+);
+
+policyComplianceRouter.post(
+  '/policies/:policyId/versions',
+  authenticate,
+  authorize('policies.update'),
+  validate({
+    params: updatePolicyCreateVersionParamsSchema,
+    body: updatePolicyCreateVersionBodySchema,
+  }),
+  asyncHandler(updatePolicyAndCreateVersion),
 );
 
 policyComplianceRouter.post(

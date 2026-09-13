@@ -5,6 +5,7 @@ import type {
   ListOwnPolicyDraftsQuery,
   UpdatePolicyDraftInput,
 } from './dto/manage-policy-draft.dto.js';
+import type { UpdatePolicyCreateVersionInput } from './dto/update-policy-create-version.dto.js';
 
 type DatabaseClient = PrismaClient | Prisma.TransactionClient;
 
@@ -132,6 +133,31 @@ export const draftPolicyVersionDetailSelect = {
 
 export type DraftPolicyVersionDetailRecord = Prisma.policy_versionsGetPayload<{
   select: typeof draftPolicyVersionDetailSelect;
+}>;
+
+export const newPolicyVersionSelect = {
+  policy_version_id: true,
+  policy_id: true,
+  version_number: true,
+  content: true,
+  change_summary: true,
+  status: true,
+  created_by_user_id: true,
+  created_at: true,
+  policies: {
+    select: {
+      policy_code: true,
+      title: true,
+      description: true,
+      owner_user_id: true,
+      status: true,
+      updated_at: true,
+    },
+  },
+} satisfies Prisma.policy_versionsSelect;
+
+export type NewPolicyVersionRecord = Prisma.policy_versionsGetPayload<{
+  select: typeof newPolicyVersionSelect;
 }>;
 
 export type PublishContext = {
@@ -352,6 +378,100 @@ export const policyComplianceRepository = {
           title: input.title,
           status: 'draft',
           versionNumber: input.versionNumber,
+        },
+        ip_address: input.ipAddress,
+        user_agent: input.userAgent,
+      },
+      select: { audit_log_id: true },
+    });
+  },
+
+  findPolicyForNewVersion(database: DatabaseClient, policyId: string) {
+    return database.policies.findUnique({
+      where: { policy_id: policyId },
+      select: {
+        policy_id: true,
+        policy_code: true,
+        title: true,
+        description: true,
+        owner_user_id: true,
+        status: true,
+        policy_versions: {
+          where: { status: { in: ['draft', 'published'] } },
+          select: {
+            policy_version_id: true,
+            version_number: true,
+            status: true,
+          },
+          orderBy: { created_at: 'desc' },
+        },
+      },
+    });
+  },
+
+  async createNewPolicyVersion(
+    database: DatabaseClient,
+    policyId: string,
+    input: UpdatePolicyCreateVersionInput,
+    actorUserId: string,
+    updatedAt: Date,
+  ) {
+    await database.policies.update({
+      where: { policy_id: policyId },
+      data: {
+        ...(input.title !== undefined && { title: input.title }),
+        ...(input.description !== undefined && {
+          description: input.description,
+        }),
+        status: 'draft',
+        updated_at: updatedAt,
+      },
+      select: { policy_id: true },
+    });
+    return database.policy_versions.create({
+      data: {
+        policy_id: policyId,
+        version_number: input.versionNumber,
+        content: input.content,
+        change_summary: input.changeSummary,
+        status: 'draft',
+        created_by_user_id: actorUserId,
+      },
+      select: newPolicyVersionSelect,
+    });
+  },
+
+  createNewPolicyVersionAudit(
+    database: DatabaseClient,
+    input: {
+      actorUserId: string;
+      policyId: string;
+      versionId: string;
+      previousVersionNumber: string;
+      versionNumber: string;
+      changedPolicyFields: string[];
+      ipAddress: string | null;
+      userAgent: string | null;
+    },
+  ) {
+    return database.audit_logs.create({
+      data: {
+        actor_user_id: input.actorUserId,
+        module: 'policy-compliance',
+        action: 'policy.version.created',
+        entity_type: 'policy_version',
+        entity_id: input.versionId,
+        before_data: {
+          policyId: input.policyId,
+          policyStatus: 'published',
+          versionNumber: input.previousVersionNumber,
+        },
+        after_data: {
+          policyId: input.policyId,
+          policyStatus: 'draft',
+          versionNumber: input.versionNumber,
+          versionStatus: 'draft',
+          changedPolicyFields: input.changedPolicyFields,
         },
         ip_address: input.ipAddress,
         user_agent: input.userAgent,

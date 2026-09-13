@@ -4,6 +4,7 @@ import type {
   PublishablePolicyRecord,
   OwnedPolicyDraftRecord,
   PublishPolicyVersionRecord,
+  NewPolicyVersionRecord,
 } from './policy-compliance.repository.js';
 
 export type OwnedPolicyDraftResponse = {
@@ -210,3 +211,43 @@ export const toPublishedPolicyVersionResponse = (
     },
   };
 };
+
+export type NewPolicyVersionResponse = {
+  policyId: string;
+  policyCode: string;
+  title: string;
+  description: string | null;
+  ownerUserId: string | null;
+  policyStatus: string;
+  version: {
+    id: string;
+    versionNumber: string;
+    content: string;
+    changeSummary: string | null;
+    status: string;
+    createdByUserId: string | null;
+    createdAt: Date;
+  };
+  updatedAt: Date;
+};
+
+export function mapNewPolicyVersion(version: NewPolicyVersionRecord): NewPolicyVersionResponse {
+  return {
+    policyId: version.policy_id,
+    policyCode: version.policies.policy_code,
+    title: version.policies.title,
+    description: version.policies.description,
+    ownerUserId: version.policies.owner_user_id,
+    policyStatus: version.policies.status,
+    version: {
+      id: version.policy_version_id,
+      versionNumber: version.version_number,
+      content: version.content,
+      changeSummary: version.change_summary,
+      status: version.status,
+      createdByUserId: version.created_by_user_id,
+      createdAt: version.created_at,
+    },
+    updatedAt: version.policies.updated_at,
+  };
+}

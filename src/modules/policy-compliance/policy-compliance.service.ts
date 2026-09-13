@@ -4,8 +4,10 @@ import { prisma } from '../../database/prisma.js';
 import type { CreatePolicyDraftInput } from './dto/create-policy-draft.dto.js';
 import type { ListPublishablePoliciesQuery } from './dto/list-publishable-policies.dto.js';
 import type { PublishPolicyVersionBody } from './dto/publish-policy-version.dto.js';
+import type { UpdatePolicyCreateVersionInput } from './dto/update-policy-create-version.dto.js';
 import {
   mapDraftPolicyVersionDetail,
+  mapNewPolicyVersion,
   mapPolicyDraft,
   mapPublishablePolicy,
   mapOwnedPolicyDraft,
@@ -32,6 +34,12 @@ const requireDraftPermission = (actor: Actor): void => {
   }
 };
 
+const requireUpdatePermission = (actor: Actor): void => {
+  if (!actor.permissions.includes('policies.update')) {
+    throw new AppError(403, 'FORBIDDEN', 'Insufficient permissions');
+  }
+};
+
 const publicationConflict = (): AppError =>
   new AppError(
     409,
@@ -40,6 +48,75 @@ const publicationConflict = (): AppError =>
   );
 
 export const policyComplianceService = {
+  async updatePolicyAndCreateVersion(
+    policyId: string,
+    input: UpdatePolicyCreateVersionInput,
+    actor: Actor,
+    context: RequestContext,
+  ) {
+    requireUpdatePermission(actor);
+    try {
+      const version = await policyComplianceRepository.transaction(async (database) => {
+        const policy = await policyComplianceRepository.findPolicyForNewVersion(database, policyId);
+        if (!policy || policy.owner_user_id !== actor.userId) {
+          throw new AppError(404, 'POLICY_NOT_FOUND', 'Policy was not found');
+        }
+        if (policy.status === 'archived') {
+          throw new AppError(409, 'POLICY_ARCHIVED', 'An archived policy cannot be updated');
+        }
+        if (policy.policy_versions.some((item) => item.status === 'draft')) {
+          throw new AppError(
+            409,
+            'POLICY_DRAFT_VERSION_EXISTS',
+            'Complete or publish the existing draft before creating another version',
+          );
+        }
+        const publishedVersion = policy.policy_versions.find((item) => item.status === 'published');
+        if (policy.status !== 'published' || !publishedVersion) {
+          throw new AppError(
+            409,
+            'POLICY_NOT_PUBLISHED',
+            'A new version can only be created from a published policy',
+          );
+        }
+
+        const created = await policyComplianceRepository.createNewPolicyVersion(
+          database,
+          policyId,
+          input,
+          actor.userId,
+          new Date(),
+        );
+        await policyComplianceRepository.createNewPolicyVersionAudit(database, {
+          actorUserId: actor.userId,
+          policyId,
+          versionId: created.policy_version_id,
+          previousVersionNumber: publishedVersion.version_number,
+          versionNumber: created.version_number,
+          changedPolicyFields: [
+            ...(input.title !== undefined ? ['title'] : []),
+            ...(input.description !== undefined ? ['description'] : []),
+          ],
+          ...context,
+        });
+        return created;
+      });
+      return mapNewPolicyVersion(version);
+    } catch (error: unknown) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        throw new AppError(409, 'POLICY_VERSION_EXISTS', 'Policy version number already exists');
+      }
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034') {
+        throw new AppError(
+          409,
+          'POLICY_VERSION_CREATE_CONFLICT',
+          'Policy changed while the new version was being created',
+        );
+      }
+      throw error;
+    }
+  },
+
   async createPolicyDraft(input: CreatePolicyDraftInput, actor: Actor, context: RequestContext) {
     requireDraftPermission(actor);
     const existingPolicy = await policyComplianceRepository.findPolicyByCode(input.policyCode);

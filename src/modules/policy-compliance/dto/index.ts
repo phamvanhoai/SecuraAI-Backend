@@ -20,3 +20,8 @@ export {
   type PublishPolicyVersionBody,
   type PublishPolicyVersionParams,
 } from './publish-policy-version.dto.js';
+export {
+  updatePolicyCreateVersionBodySchema,
+  updatePolicyCreateVersionParamsSchema,
+  type UpdatePolicyCreateVersionInput,
+} from './update-policy-create-version.dto.js';
