@@ -46,6 +46,13 @@ export const listAlerts: RequestHandler = async (req, res) => {
   res.status(200).json({ success: true, data });
 };
 
+export const getAlertExplanation: RequestHandler = async (req, res) => {
+  if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+  const { alertId } = alertIdParamsSchema.parse(req.params);
+  const data = await aiAlertsService.getAlertExplanation(alertId, req.auth);
+  res.status(200).json({ success: true, data });
+};
+
 export const evaluateAlertReliability: RequestHandler = async (req, res) => {
   if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
   const { alertId } = alertIdParamsSchema.parse(req.params);

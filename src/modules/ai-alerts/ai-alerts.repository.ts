@@ -85,6 +85,19 @@ export const feedbackSelect = {
   created_at: true,
 } satisfies Prisma.ai_feedbackSelect;
 
+const explanationSelect = {
+  ai_alert_explanation_id: true,
+  ai_alert_id: true,
+  explanation_text: true,
+  feature_contributions: true,
+  baseline_data: true,
+  created_at: true,
+} satisfies Prisma.ai_alert_explanationsSelect;
+
+export type ExplanationRecord = Prisma.ai_alert_explanationsGetPayload<{
+  select: typeof explanationSelect;
+}>;
+
 export type FeedbackRecord = Prisma.ai_feedbackGetPayload<{ select: typeof feedbackSelect }>;
 
 const alertConfirmationSelect = {
@@ -110,6 +123,26 @@ const toParametersJson = (input: CreateModelConfigurationBody): Prisma.InputJson
 });
 
 export const aiAlertsRepository = {
+  async findLatestExplanation(alertId: string): Promise<{
+    exists: boolean;
+    explanation: ExplanationRecord | null;
+  }> {
+    const alert = await prisma.ai_alerts.findUnique({
+      where: { ai_alert_id: alertId },
+      select: {
+        ai_alert_id: true,
+        ai_alert_explanations: {
+          select: explanationSelect,
+          orderBy: [{ created_at: 'desc' }, { ai_alert_explanation_id: 'desc' }],
+          take: 1,
+        },
+      },
+    });
+    return {
+      exists: alert !== null,
+      explanation: alert?.ai_alert_explanations[0] ?? null,
+    };
+  },
   async markFalsePositive(
     alertId: string,
     input: FalsePositiveBody,

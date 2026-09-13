@@ -2492,6 +2492,51 @@ export const openApiSpec = swaggerJsdoc({
           },
         },
       },
+      '/ai-alerts/{alertId}/explanation': {
+        get: {
+          tags: ['AI Alerts'],
+          summary: 'View the latest explanation of an AI alert decision',
+          description:
+            'Returns the newest stored explanation for an alert, or data=null when no explanation has been recorded. Requires ai-alerts.read, granted to Security Officer and Executive by the role seed.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'alertId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+          ],
+          responses: {
+            '200': {
+              description: 'Latest AI decision explanation, or null if unavailable',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    required: ['success', 'data'],
+                    properties: {
+                      success: { type: 'boolean', enum: [true] },
+                      data: {
+                        nullable: true,
+                        type: 'object',
+                        required: ['id', 'alertId', 'explanationText', 'featureContributions', 'baselineData', 'createdAt'],
+                        properties: {
+                          id: { type: 'string', format: 'uuid' },
+                          alertId: { type: 'string', format: 'uuid' },
+                          explanationText: { type: 'string' },
+                          featureContributions: { nullable: true },
+                          baselineData: { nullable: true },
+                          createdAt: { type: 'string', format: 'date-time' },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'The ai-alerts.read permission is required' },
+            '404': { description: 'AI alert was not found' },
+            '422': { description: 'Invalid alert ID' },
+          },
+        },
+      },
       '/ai-alerts/models/{modelVersionId}/activate': {
         post: {
           tags: ['AI Alerts'],
