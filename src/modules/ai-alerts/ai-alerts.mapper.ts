@@ -38,6 +38,8 @@ export const toAlertResponse = (alert: AlertRecord) => ({
   id: alert.ai_alert_id,
   alertCode: alert.alert_code,
   anomalyScore: alert.anomaly_score.toNumber(),
+  riskScore: alert.risk_score?.toNumber() ?? null,
+  riskLevel: alert.risk_level,
   title: alert.title,
   description: alert.description,
   status: alert.status,

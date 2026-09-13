@@ -16,6 +16,8 @@ export const alertSelect = {
   ai_alert_id: true,
   alert_code: true,
   anomaly_score: true,
+  risk_score: true,
+  risk_level: true,
   title: true,
   description: true,
   status: true,
