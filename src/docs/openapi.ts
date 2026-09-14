@@ -2697,7 +2697,7 @@ export const openApiSpec = swaggerJsdoc({
           tags: ['AI Alerts'],
           summary: 'Confirm an AI alert as a real incident',
           description:
-            'Moves a new or reviewing alert to confirmed and records analyst feedback atomically. This does not create an incident draft. Requires ai-alerts.confirm.',
+            'Moves a new or reviewing alert to confirmed, automatically creates and links an incident draft, and records analyst feedback and audit data atomically. Repeating the action returns the existing linked incident without creating a duplicate. Requires ai-alerts.confirm.',
           security: [{ bearerAuth: [] }],
           parameters: [
             {
@@ -2716,7 +2716,40 @@ export const openApiSpec = swaggerJsdoc({
             },
           },
           responses: {
-            '200': { description: 'Alert confirmed or already confirmed' },
+            '200': {
+              description: 'Alert confirmation and linked incident result',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    required: ['success', 'data'],
+                    properties: {
+                      success: { type: 'boolean', enum: [true] },
+                      data: {
+                        type: 'object',
+                        required: ['id', 'alertCode', 'status', 'changed', 'incident'],
+                        properties: {
+                          id: { type: 'string', format: 'uuid' },
+                          alertCode: { type: 'string' },
+                          status: { type: 'string', enum: ['confirmed'] },
+                          changed: { type: 'boolean' },
+                          incident: {
+                            type: 'object',
+                            required: ['id', 'code', 'status', 'created'],
+                            properties: {
+                              id: { type: 'string', format: 'uuid' },
+                              code: { type: 'string' },
+                              status: { type: 'string' },
+                              created: { type: 'boolean' },
+                            },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
             '401': { description: 'Authentication required' },
             '403': { description: 'The ai-alerts.confirm permission is required' },
             '404': { description: 'AI alert was not found' },

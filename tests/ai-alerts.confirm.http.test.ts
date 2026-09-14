@@ -22,8 +22,12 @@ describe('confirm AI alert HTTP API', () => {
       kind: 'confirmed',
       alert: {
         ai_alert_id: alertId, ai_alert_code: 'AI-1', alert_code: 'AI-1', status: 'confirmed',
+        title: 'Alert', description: 'Description', risk_level: 'high', detected_at: new Date(),
         reviewed_by_user_id: '00000000-0000-4000-8000-000000000001', reviewed_at: new Date(),
+        incident_alert_links: [],
       },
+      incident: { incident_id: 'incident-1', incident_code: `INC-${alertId}`, status: 'draft' },
+      incidentCreated: true,
     });
   });
 
@@ -39,7 +43,13 @@ describe('confirm AI alert HTTP API', () => {
       .set('authorization', `Bearer ${token(['ai-alerts.confirm'])}`)
       .send({ comment: 'Verified by analyst' });
     expect(response.status).toBe(200);
-    expect(response.body).toMatchObject({ success: true, data: { id: alertId, status: 'confirmed', changed: true } });
+    expect(response.body).toMatchObject({
+      success: true,
+      data: {
+        id: alertId, status: 'confirmed', changed: true,
+        incident: { id: 'incident-1', code: `INC-${alertId}`, status: 'draft', created: true },
+      },
+    });
   });
 
   it('rejects malformed IDs before database access', async () => {

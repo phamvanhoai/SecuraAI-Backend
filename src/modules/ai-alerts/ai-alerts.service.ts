@@ -92,6 +92,12 @@ export const aiAlertsService = {
     return {
       ...toAlertConfirmationResponse(result.alert),
       changed: result.kind === 'confirmed',
+      incident: {
+        id: result.incident.incident_id,
+        code: result.incident.incident_code,
+        status: result.incident.status,
+        created: result.incidentCreated,
+      },
     };
   },
 

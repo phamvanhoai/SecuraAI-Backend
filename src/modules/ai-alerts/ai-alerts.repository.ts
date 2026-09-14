@@ -103,9 +103,22 @@ export type FeedbackRecord = Prisma.ai_feedbackGetPayload<{ select: typeof feedb
 const alertConfirmationSelect = {
   ai_alert_id: true,
   alert_code: true,
+  title: true,
+  description: true,
+  risk_level: true,
+  detected_at: true,
   status: true,
   reviewed_by_user_id: true,
   reviewed_at: true,
+  incident_alert_links: {
+    select: {
+      incidents: {
+        select: { incident_id: true, incident_code: true, status: true },
+      },
+    },
+    orderBy: { created_at: 'asc' },
+    take: 1,
+  },
 } satisfies Prisma.ai_alertsSelect;
 
 export type AlertConfirmationRecord = Prisma.ai_alertsGetPayload<{
@@ -113,9 +126,66 @@ export type AlertConfirmationRecord = Prisma.ai_alertsGetPayload<{
 }>;
 
 export type ConfirmAlertResult =
-  | { kind: 'confirmed' | 'already_confirmed'; alert: AlertConfirmationRecord }
+  | {
+      kind: 'confirmed' | 'already_confirmed';
+      alert: AlertConfirmationRecord;
+      incident: IncidentDraftRecord;
+      incidentCreated: boolean;
+    }
   | { kind: 'not_found' }
   | { kind: 'invalid_status'; status: string };
+
+type IncidentDraftRecord = {
+  incident_id: string;
+  incident_code: string;
+  status: string;
+};
+
+const incidentSeverity = (riskLevel: string | null): string =>
+  riskLevel && ['low', 'medium', 'high', 'critical'].includes(riskLevel)
+    ? riskLevel
+    : 'medium';
+
+const ensureIncidentDraft = async (
+  transaction: Prisma.TransactionClient,
+  alert: AlertConfirmationRecord,
+  actorUserId: string,
+): Promise<{ incident: IncidentDraftRecord; created: boolean }> => {
+  const linked = alert.incident_alert_links[0]?.incidents;
+  if (linked) return { incident: linked, created: false };
+
+  const incidentCode = `INC-${alert.ai_alert_id}`;
+  const incident = await transaction.incidents.upsert({
+    where: { incident_code: incidentCode },
+    update: {},
+    create: {
+      incident_code: incidentCode,
+      title: alert.title,
+      description: alert.description ?? `Automatically created from AI alert ${alert.alert_code}.`,
+      category: 'AI anomaly',
+      severity: incidentSeverity(alert.risk_level),
+      status: 'draft',
+      reported_by_user_id: actorUserId,
+      detected_at: alert.detected_at,
+    },
+    select: { incident_id: true, incident_code: true, status: true },
+  });
+  await transaction.incident_alert_links.upsert({
+    where: {
+      incident_id_ai_alert_id: {
+        incident_id: incident.incident_id,
+        ai_alert_id: alert.ai_alert_id,
+      },
+    },
+    update: {},
+    create: {
+      incident_id: incident.incident_id,
+      ai_alert_id: alert.ai_alert_id,
+      created_by_user_id: actorUserId,
+    },
+  });
+  return { incident, created: true };
+};
 
 const toParametersJson = (input: CreateModelConfigurationBody): Prisma.InputJsonObject => ({
   ollamaModel: input.ollamaModel,
@@ -226,7 +296,15 @@ export const aiAlertsRepository = {
           select: alertConfirmationSelect,
         });
         if (!existing) return { kind: 'not_found' };
-        if (existing.status === 'confirmed') return { kind: 'already_confirmed', alert: existing };
+        if (existing.status === 'confirmed') {
+          const draft = await ensureIncidentDraft(transaction, existing, context.actorUserId);
+          return {
+            kind: 'already_confirmed',
+            alert: existing,
+            incident: draft.incident,
+            incidentCreated: draft.created,
+          };
+        }
         if (existing.status !== 'new' && existing.status !== 'reviewing') {
           return { kind: 'invalid_status', status: existing.status };
         }
@@ -245,10 +323,19 @@ export const aiAlertsRepository = {
             where: { ai_alert_id: alertId },
             select: alertConfirmationSelect,
           });
-          if (current?.status === 'confirmed') return { kind: 'already_confirmed', alert: current };
+          if (current?.status === 'confirmed') {
+            const draft = await ensureIncidentDraft(transaction, current, context.actorUserId);
+            return {
+              kind: 'already_confirmed',
+              alert: current,
+              incident: draft.incident,
+              incidentCreated: draft.created,
+            };
+          }
           return { kind: 'invalid_status', status: current?.status ?? 'unknown' };
         }
 
+        const draft = await ensureIncidentDraft(transaction, existing, context.actorUserId);
         await transaction.ai_feedback.create({
           data: {
             ai_alert_id: alertId,
@@ -265,7 +352,12 @@ export const aiAlertsRepository = {
             entity_type: 'ai_alert',
             entity_id: alertId,
             before_data: { status: existing.status },
-            after_data: { status: 'confirmed', reviewedAt: reviewedAt.toISOString() },
+            after_data: {
+              status: 'confirmed',
+              reviewedAt: reviewedAt.toISOString(),
+              incidentId: draft.incident.incident_id,
+              incidentStatus: draft.incident.status,
+            },
             ip_address: context.ipAddress,
             user_agent: context.userAgent,
           },
@@ -276,7 +368,12 @@ export const aiAlertsRepository = {
           reviewed_by_user_id: context.actorUserId,
           reviewed_at: reviewedAt,
         };
-        return { kind: 'confirmed', alert: confirmed };
+        return {
+          kind: 'confirmed',
+          alert: confirmed,
+          incident: draft.incident,
+          incidentCreated: draft.created,
+        };
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
     );
