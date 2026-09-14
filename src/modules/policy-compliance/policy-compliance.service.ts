@@ -5,6 +5,10 @@ import type { CreatePolicyDraftInput } from './dto/create-policy-draft.dto.js';
 import type { ListPublishablePoliciesQuery } from './dto/list-publishable-policies.dto.js';
 import type { PublishPolicyVersionBody } from './dto/publish-policy-version.dto.js';
 import type { UpdatePolicyCreateVersionInput } from './dto/update-policy-create-version.dto.js';
+import type {
+  AssignPolicyDepartmentsInput,
+  ListPolicyDepartmentAssignmentsQuery,
+} from './dto/assign-policy-departments.dto.js';
 import {
   mapDraftPolicyVersionDetail,
   mapNewPolicyVersion,
@@ -40,6 +44,12 @@ const requireUpdatePermission = (actor: Actor): void => {
   }
 };
 
+const requireAssignDepartmentsPermission = (actor: Actor): void => {
+  if (!actor.permissions.includes('policies.assign-department')) {
+    throw new AppError(403, 'FORBIDDEN', 'Insufficient permissions');
+  }
+};
+
 const publicationConflict = (): AppError =>
   new AppError(
     409,
@@ -48,6 +58,85 @@ const publicationConflict = (): AppError =>
   );
 
 export const policyComplianceService = {
+  async listPolicyDepartmentAssignments(query: ListPolicyDepartmentAssignmentsQuery, actor: Actor) {
+    requireAssignDepartmentsPermission(actor);
+    const result = await policyComplianceRepository.listPolicyDepartmentAssignments(query);
+    const departmentLimit = 200;
+    return {
+      items: result.policies.map((policy) => ({
+        id: policy.policy_id,
+        policyCode: policy.policy_code,
+        title: policy.title,
+        updatedAt: policy.updated_at.toISOString(),
+        departments: policy.policy_departments.map((assignment) => ({
+          id: assignment.department_id,
+          code: assignment.departments.code,
+          name: assignment.departments.name,
+        })),
+      })),
+      departments: result.departments.slice(0, departmentLimit).map((department) => ({
+        id: department.department_id,
+        code: department.code,
+        name: department.name,
+      })),
+      departmentsTruncated: result.departments.length > departmentLimit,
+      pagination: {
+        page: query.page,
+        limit: query.limit,
+        total: result.total,
+        totalPages: Math.ceil(result.total / query.limit),
+      },
+    };
+  },
+
+  async assignPolicyDepartments(
+    policyId: string,
+    input: AssignPolicyDepartmentsInput,
+    actor: Actor,
+    context: RequestContext,
+  ) {
+    requireAssignDepartmentsPermission(actor);
+    return policyComplianceRepository.transaction(async (database) => {
+      const policy = await policyComplianceRepository.findPublishedPolicy(database, policyId);
+      if (!policy) {
+        throw new AppError(404, 'PUBLISHED_POLICY_NOT_FOUND', 'Published policy was not found');
+      }
+      const activeDepartmentCount =
+        input.departmentIds.length === 0
+          ? 0
+          : await policyComplianceRepository.countActiveDepartments(database, input.departmentIds);
+      if (activeDepartmentCount !== input.departmentIds.length) {
+        throw new AppError(
+          422,
+          'INVALID_DEPARTMENTS',
+          'Every selected department must exist and be active',
+        );
+      }
+      const beforeDepartmentIds = policy.policy_departments
+        .map((assignment) => assignment.department_id)
+        .sort();
+      const afterDepartmentIds = [...input.departmentIds].sort();
+      await policyComplianceRepository.replacePolicyDepartments(
+        database,
+        policyId,
+        afterDepartmentIds,
+        actor.userId,
+      );
+      await policyComplianceRepository.createPolicyDepartmentsAudit(database, {
+        actorUserId: actor.userId,
+        policyId,
+        beforeDepartmentIds,
+        afterDepartmentIds,
+        ...context,
+      });
+      return {
+        policyId,
+        policyCode: policy.policy_code,
+        departmentIds: afterDepartmentIds,
+      };
+    });
+  },
+
   async listOwnedPublishedPoliciesForNewVersion(actor: Actor) {
     requireUpdatePermission(actor);
     const policies = await policyComplianceRepository.listOwnedPublishedPoliciesForNewVersion(

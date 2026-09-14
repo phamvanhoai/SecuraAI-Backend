@@ -542,6 +542,19 @@ export const openApiSpec = swaggerJsdoc({
             changeSummary: { type: 'string', nullable: true, maxLength: 5000 },
           },
         },
+        AssignPolicyDepartmentsRequest: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['departmentIds'],
+          properties: {
+            departmentIds: {
+              type: 'array',
+              maxItems: 200,
+              uniqueItems: true,
+              items: { type: 'string', format: 'uuid' },
+            },
+          },
+        },
         PolicyDraft: {
           type: 'object',
           required: [
@@ -2352,6 +2365,62 @@ export const openApiSpec = swaggerJsdoc({
             '401': { description: 'Authentication required' },
             '403': { description: 'The policies.create permission is required' },
             '422': { description: 'Invalid query parameters' },
+          },
+        },
+      },
+      '/compliance/policies/department-assignments': {
+        get: {
+          tags: ['Policies'],
+          summary: 'List published policies and their department assignments',
+          description:
+            'Requires policies.assign-department. Returns published policies and active departments.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
+            {
+              name: 'limit',
+              in: 'query',
+              schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
+            },
+            { name: 'q', in: 'query', schema: { type: 'string', maxLength: 100 } },
+          ],
+          responses: {
+            '200': { description: 'Paginated published policies and active departments' },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'The policies.assign-department permission is required' },
+            '422': { description: 'Invalid query parameters' },
+          },
+        },
+      },
+      '/compliance/policies/{policyId}/departments': {
+        put: {
+          tags: ['Policies'],
+          summary: 'Replace a published policy department assignment set',
+          description:
+            'Requires policies.assign-department. An empty list clears all department assignments.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'policyId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/AssignPolicyDepartmentsRequest' },
+              },
+            },
+          },
+          responses: {
+            '200': { description: 'Department assignments replaced and audited' },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'The policies.assign-department permission is required' },
+            '404': { description: 'Published policy not found' },
+            '422': { description: 'Invalid policy ID, body, or inactive department' },
           },
         },
       },

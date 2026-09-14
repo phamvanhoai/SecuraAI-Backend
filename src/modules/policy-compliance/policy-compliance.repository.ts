@@ -6,6 +6,7 @@ import type {
   UpdatePolicyDraftInput,
 } from './dto/manage-policy-draft.dto.js';
 import type { UpdatePolicyCreateVersionInput } from './dto/update-policy-create-version.dto.js';
+import type { ListPolicyDepartmentAssignmentsQuery } from './dto/assign-policy-departments.dto.js';
 
 type DatabaseClient = PrismaClient | Prisma.TransactionClient;
 
@@ -189,6 +190,109 @@ export const policyComplianceRepository = {
     return prisma.policies.findUnique({
       where: { policy_code: policyCode },
       select: { policy_id: true },
+    });
+  },
+
+  async listPolicyDepartmentAssignments(query: ListPolicyDepartmentAssignmentsQuery) {
+    const where: Prisma.policiesWhereInput = {
+      status: 'published',
+      ...(query.q !== undefined && {
+        OR: [
+          { policy_code: { contains: query.q, mode: 'insensitive' } },
+          { title: { contains: query.q, mode: 'insensitive' } },
+        ],
+      }),
+    };
+    const [total, policies, departments] = await prisma.$transaction([
+      prisma.policies.count({ where }),
+      prisma.policies.findMany({
+        where,
+        select: {
+          policy_id: true,
+          policy_code: true,
+          title: true,
+          updated_at: true,
+          policy_departments: {
+            select: {
+              department_id: true,
+              departments: { select: { code: true, name: true } },
+            },
+            orderBy: { departments: { name: 'asc' } },
+          },
+        },
+        orderBy: [{ updated_at: 'desc' }, { policy_id: 'asc' }],
+        skip: (query.page - 1) * query.limit,
+        take: query.limit,
+      }),
+      prisma.departments.findMany({
+        where: { status: 'active' },
+        select: { department_id: true, code: true, name: true },
+        orderBy: [{ name: 'asc' }, { department_id: 'asc' }],
+        take: 201,
+      }),
+    ]);
+    return { total, policies, departments };
+  },
+
+  findPublishedPolicy(database: DatabaseClient, policyId: string) {
+    return database.policies.findFirst({
+      where: { policy_id: policyId, status: 'published' },
+      select: {
+        policy_id: true,
+        policy_code: true,
+        policy_departments: { select: { department_id: true } },
+      },
+    });
+  },
+
+  countActiveDepartments(database: DatabaseClient, departmentIds: string[]) {
+    return database.departments.count({
+      where: { department_id: { in: departmentIds }, status: 'active' },
+    });
+  },
+
+  async replacePolicyDepartments(
+    database: DatabaseClient,
+    policyId: string,
+    departmentIds: string[],
+    actorUserId: string,
+  ) {
+    await database.policy_departments.deleteMany({ where: { policy_id: policyId } });
+    if (departmentIds.length > 0) {
+      await database.policy_departments.createMany({
+        data: departmentIds.map((departmentId) => ({
+          policy_id: policyId,
+          department_id: departmentId,
+          assigned_by_user_id: actorUserId,
+        })),
+      });
+    }
+  },
+
+  createPolicyDepartmentsAudit(
+    database: DatabaseClient,
+    input: {
+      actorUserId: string;
+      policyId: string;
+      beforeDepartmentIds: string[];
+      afterDepartmentIds: string[];
+      ipAddress: string | null;
+      userAgent: string | null;
+    },
+  ) {
+    return database.audit_logs.create({
+      data: {
+        actor_user_id: input.actorUserId,
+        module: 'policy-compliance',
+        action: 'policy.departments.assigned',
+        entity_type: 'policy',
+        entity_id: input.policyId,
+        before_data: { departmentIds: input.beforeDepartmentIds },
+        after_data: { departmentIds: input.afterDepartmentIds },
+        ip_address: input.ipAddress,
+        user_agent: input.userAgent,
+      },
+      select: { audit_log_id: true },
     });
   },
 
