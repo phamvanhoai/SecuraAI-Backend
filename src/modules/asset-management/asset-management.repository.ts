@@ -70,6 +70,14 @@ export const assetExportSelect = {
 
 export type AssetExportRecord = Prisma.assetsGetPayload<{ select: typeof assetExportSelect }>;
 
+export type AssetExportMetadataRecord = {
+  exporter: {
+    full_name: string;
+    user_roles_user_roles_user_idTousers: { roles: { name: string } }[];
+  } | null;
+  organizationProfile: { setting_value: Prisma.JsonValue } | null;
+};
+
 export const assetHistorySelect = {
   asset_change_history_id: true,
   action: true,
@@ -239,6 +247,27 @@ export const assetManagementRepository = {
       orderBy: buildOrderBy(query.sortBy, query.sortOrder),
       take,
     });
+  },
+
+  async findExportMetadata(actorUserId: string): Promise<AssetExportMetadataRecord> {
+    const [exporter, organizationProfile] = await Promise.all([
+      prisma.users.findFirst({
+        where: { user_id: actorUserId, deleted_at: null },
+        select: {
+          full_name: true,
+          user_roles_user_roles_user_idTousers: {
+            select: { roles: { select: { name: true } } },
+            orderBy: { roles: { name: 'asc' } },
+          },
+        },
+      }),
+      prisma.system_settings.findUnique({
+        where: { setting_key: 'organization.profile' },
+        select: { setting_value: true },
+      }),
+    ]);
+
+    return { exporter, organizationProfile };
   },
 
   recordExport(
@@ -636,7 +665,7 @@ export const assetManagementRepository = {
   findExistingAssetCodes(assetCodes: string[]) {
     return prisma.assets.findMany({
       where: { asset_code: { in: assetCodes } },
-      select: { asset_code: true },
+      select: { asset_code: true, deleted_at: true },
     });
   },
 

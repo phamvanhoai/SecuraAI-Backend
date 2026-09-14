@@ -16,7 +16,7 @@ describe('listAssetsQuerySchema', () => {
   it('applies bounded pagination and sorting defaults', () => {
     expect(listAssetsQuerySchema.parse({})).toEqual({
       page: 1,
-      limit: 20,
+      limit: 10,
       sortBy: 'assetCode',
       sortOrder: 'asc',
     });
