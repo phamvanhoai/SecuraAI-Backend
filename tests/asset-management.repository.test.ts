@@ -20,6 +20,8 @@ const {
   historyFindManyMock,
   departmentFindManyMock,
   userFindManyMock,
+  userFindFirstMock,
+  systemSettingFindUniqueMock,
 } = vi.hoisted(() => ({
   assetCreateMock: vi.fn(),
   auditCreateMock: vi.fn(),
@@ -40,6 +42,8 @@ const {
   historyFindManyMock: vi.fn(),
   departmentFindManyMock: vi.fn(),
   userFindManyMock: vi.fn(),
+  userFindFirstMock: vi.fn(),
+  systemSettingFindUniqueMock: vi.fn(),
 }));
 
 vi.mock('../src/database/prisma.js', () => ({
@@ -52,7 +56,8 @@ vi.mock('../src/database/prisma.js', () => ({
     },
     asset_change_history: { count: historyCountMock, findMany: historyFindManyMock },
     departments: { findUnique: vi.fn(), findMany: departmentFindManyMock },
-    users: { findFirst: vi.fn(), findMany: userFindManyMock },
+    users: { findFirst: userFindFirstMock, findMany: userFindManyMock },
+    system_settings: { findUnique: systemSettingFindUniqueMock },
     audit_logs: { create: auditCreateMock },
     $transaction: transactionMock,
   },
@@ -93,6 +98,21 @@ describe('assetManagementRepository.findById', () => {
     expect(assetLookupMock).toHaveBeenCalledWith(
       expect.objectContaining({ where: { asset_id: 'asset-1', deleted_at: null } }),
     );
+  });
+});
+
+describe('assetManagementRepository.findExistingAssetCodes', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('returns deletion state so imports can distinguish soft-deleted assets', async () => {
+    findManyMock.mockResolvedValue([]);
+
+    await assetManagementRepository.findExistingAssetCodes(['AST-001']);
+
+    expect(findManyMock).toHaveBeenCalledWith({
+      where: { asset_code: { in: ['AST-001'] } },
+      select: { asset_code: true, deleted_at: true },
+    });
   });
 });
 
@@ -578,6 +598,40 @@ describe('assetManagementRepository asset export', () => {
         entity_type: 'asset_export',
         after_data: { format: 'xlsx', exportedRows: 2, filters: { status: 'active' } },
       },
+    });
+  });
+
+  it('loads the authenticated exporter and organization profile with safe selects', async () => {
+    userFindFirstMock.mockResolvedValue({
+      full_name: 'Nguyễn Văn A',
+      user_roles_user_roles_user_idTousers: [{ roles: { name: 'Security Officer' } }],
+    });
+    systemSettingFindUniqueMock.mockResolvedValue({
+      setting_value: { name: 'SecuraAI', address: 'Cần Thơ', phone: '0292 730 3636' },
+    });
+
+    await expect(assetManagementRepository.findExportMetadata('user-1')).resolves.toEqual({
+      exporter: {
+        full_name: 'Nguyễn Văn A',
+        user_roles_user_roles_user_idTousers: [{ roles: { name: 'Security Officer' } }],
+      },
+      organizationProfile: {
+        setting_value: { name: 'SecuraAI', address: 'Cần Thơ', phone: '0292 730 3636' },
+      },
+    });
+    expect(userFindFirstMock).toHaveBeenCalledWith({
+      where: { user_id: 'user-1', deleted_at: null },
+      select: {
+        full_name: true,
+        user_roles_user_roles_user_idTousers: {
+          select: { roles: { select: { name: true } } },
+          orderBy: { roles: { name: 'asc' } },
+        },
+      },
+    });
+    expect(systemSettingFindUniqueMock).toHaveBeenCalledWith({
+      where: { setting_key: 'organization.profile' },
+      select: { setting_value: true },
     });
   });
 });
