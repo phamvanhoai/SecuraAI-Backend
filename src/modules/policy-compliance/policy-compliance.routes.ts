@@ -1,19 +1,27 @@
 import { Router } from 'express';
+import { policyAcknowledgementRouter } from './policy-acknowledgement.routes.js';
 import { authenticate, authorize } from '../../common/middleware/authenticate.js';
 import { validate } from '../../common/middleware/validate.js';
 import { asyncHandler } from '../../common/utils/async-handler.js';
 import { createPolicyDraftSchema } from './dto/create-policy-draft.dto.js';
 import {
+  assignPolicyDepartments,
   createPolicyDraft,
   getDraftPolicyVersion,
   listPublishablePolicies,
   getOwnPolicyDraft,
   listOwnPolicyDrafts,
+  listPolicyDepartmentAssignments,
   listOwnedPublishedPoliciesForNewVersion,
   publishPolicyVersion,
   updateOwnPolicyDraft,
   updatePolicyAndCreateVersion,
 } from './policy-compliance.controller.js';
+import {
+  assignPolicyDepartmentsBodySchema,
+  assignPolicyDepartmentsParamsSchema,
+  listPolicyDepartmentAssignmentsQuerySchema,
+} from './dto/assign-policy-departments.dto.js';
 import { getPolicyVersionParamsSchema } from './dto/get-policy-version.dto.js';
 import { listPublishablePoliciesQuerySchema } from './dto/list-publishable-policies.dto.js';
 import {
@@ -31,6 +39,26 @@ import {
 } from './dto/update-policy-create-version.dto.js';
 
 export const policyComplianceRouter = Router();
+policyComplianceRouter.use(policyAcknowledgementRouter);
+
+policyComplianceRouter.get(
+  '/policies/department-assignments',
+  authenticate,
+  authorize('policies.assign-department'),
+  validate({ query: listPolicyDepartmentAssignmentsQuerySchema }),
+  asyncHandler(listPolicyDepartmentAssignments),
+);
+
+policyComplianceRouter.put(
+  '/policies/:policyId/departments',
+  authenticate,
+  authorize('policies.assign-department'),
+  validate({
+    params: assignPolicyDepartmentsParamsSchema,
+    body: assignPolicyDepartmentsBodySchema,
+  }),
+  asyncHandler(assignPolicyDepartments),
+);
 
 policyComplianceRouter.post(
   '/policies',

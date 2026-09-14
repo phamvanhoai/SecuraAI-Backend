@@ -54,6 +54,18 @@ async function main(): Promise<void> {
       is_system: false,
     },
   });
+  for (const permissionData of [
+    { code: 'training-courses.read', module: 'training-awareness', action: 'read-courses', description: 'View security awareness courses' },
+    { code: 'training-courses.create', module: 'training-awareness', action: 'create-course', description: 'Create security awareness course drafts' },
+  ]) {
+    const permission = await prisma.permissions.upsert({
+      where: { code: permissionData.code }, update: permissionData, create: permissionData,
+    });
+    await prisma.role_permissions.upsert({
+      where: { role_id_permission_id: { role_id: securityOfficerRole.role_id, permission_id: permission.permission_id } },
+      update: {}, create: { role_id: securityOfficerRole.role_id, permission_id: permission.permission_id },
+    });
+  }
   const employeeRole = await prisma.roles.upsert({
     where: { code: 'EMPLOYEE' },
     update: {
@@ -108,6 +120,34 @@ async function main(): Promise<void> {
       module: 'policy-compliance',
       action: 'update',
       description: 'Update published policies and create new draft versions',
+    },
+  });
+  const assignPolicyDepartmentPermission = await prisma.permissions.upsert({
+    where: { code: 'policies.assign-department' },
+    update: {
+      module: 'policy-compliance',
+      action: 'assign-department',
+      description: 'Assign published policies to departments or units',
+    },
+    create: {
+      code: 'policies.assign-department',
+      module: 'policy-compliance',
+      action: 'assign-department',
+      description: 'Assign published policies to departments or units',
+    },
+  });
+  const acknowledgePolicyPermission = await prisma.permissions.upsert({
+    where: { code: 'policies.acknowledge' },
+    update: {
+      module: 'policy-compliance',
+      action: 'acknowledge',
+      description: 'Confirm reading and understanding of applicable policies',
+    },
+    create: {
+      code: 'policies.acknowledge',
+      module: 'policy-compliance',
+      action: 'acknowledge',
+      description: 'Confirm reading and understanding of applicable policies',
     },
   });
   const assetReadPermission = await prisma.permissions.upsert({
@@ -488,6 +528,40 @@ async function main(): Promise<void> {
       },
     }),
   ]);
+  await prisma.$transaction([
+    prisma.role_permissions.deleteMany({
+      where: {
+        role_id: role.role_id,
+        permission_id: assignPolicyDepartmentPermission.permission_id,
+      },
+    }),
+    prisma.role_permissions.upsert({
+      where: {
+        role_id_permission_id: {
+          role_id: securityOfficerRole.role_id,
+          permission_id: assignPolicyDepartmentPermission.permission_id,
+        },
+      },
+      update: {},
+      create: {
+        role_id: securityOfficerRole.role_id,
+        permission_id: assignPolicyDepartmentPermission.permission_id,
+      },
+    }),
+  ]);
+  await prisma.role_permissions.upsert({
+    where: {
+      role_id_permission_id: {
+        role_id: employeeRole.role_id,
+        permission_id: acknowledgePolicyPermission.permission_id,
+      },
+    },
+    update: {},
+    create: {
+      role_id: employeeRole.role_id,
+      permission_id: acknowledgePolicyPermission.permission_id,
+    },
+  });
   await prisma.$transaction([
     prisma.role_permissions.deleteMany({
       where: {

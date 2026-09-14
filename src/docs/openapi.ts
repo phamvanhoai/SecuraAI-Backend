@@ -20,10 +20,30 @@ export const openApiSpec = swaggerJsdoc({
       { name: 'AI Alerts' },
       { name: 'Policies' },
       { name: 'Integrations' },
+      { name: 'Training Awareness' },
     ],
     components: {
       securitySchemes: { bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' } },
       schemas: {
+        CreateTrainingCourseRequest: {
+          type: 'object', additionalProperties: false, required: ['title', 'content'],
+          properties: {
+            title: { type: 'string', minLength: 3, maxLength: 255 },
+            description: { type: 'string', nullable: true, maxLength: 2000 },
+            content: { type: 'string', minLength: 10, maxLength: 50000 },
+          },
+        },
+        TrainingCourse: {
+          type: 'object', required: ['id', 'title', 'status', 'createdAt', 'updatedAt'],
+          properties: {
+            id: { type: 'string', format: 'uuid' }, title: { type: 'string' },
+            description: { type: 'string', nullable: true }, content: { type: 'string' },
+            status: { type: 'string', enum: ['draft', 'published', 'archived'] },
+            createdByUserId: { type: 'string', format: 'uuid', nullable: true },
+            createdAt: { type: 'string', format: 'date-time' },
+            updatedAt: { type: 'string', format: 'date-time' },
+          },
+        },
         LoginRequest: {
           type: 'object',
           required: ['email', 'password'],
@@ -542,6 +562,19 @@ export const openApiSpec = swaggerJsdoc({
             changeSummary: { type: 'string', nullable: true, maxLength: 5000 },
           },
         },
+        AssignPolicyDepartmentsRequest: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['departmentIds'],
+          properties: {
+            departmentIds: {
+              type: 'array',
+              maxItems: 200,
+              uniqueItems: true,
+              items: { type: 'string', format: 'uuid' },
+            },
+          },
+        },
         PolicyDraft: {
           type: 'object',
           required: [
@@ -975,6 +1008,35 @@ export const openApiSpec = swaggerJsdoc({
       },
     },
     paths: {
+      '/training/courses': {
+        get: {
+          tags: ['Training Awareness'], summary: 'List security awareness courses',
+          description: 'Requires training-courses.read.', security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
+            { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 } },
+            { name: 'q', in: 'query', schema: { type: 'string', minLength: 1, maxLength: 100 } },
+          ],
+          responses: {
+            '200': { description: 'Paginated training course list' },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'training-courses.read permission required' },
+            '422': { description: 'Invalid query' },
+          },
+        },
+        post: {
+          tags: ['Training Awareness'], summary: 'Create security awareness course draft',
+          description: 'Requires training-courses.create. Creates draft and audit record atomically.',
+          security: [{ bearerAuth: [] }],
+          requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/CreateTrainingCourseRequest' } } } },
+          responses: {
+            '201': { description: 'Draft course created' },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'training-courses.create permission required' },
+            '422': { description: 'Invalid course data' },
+          },
+        },
+      },
       '/ai-alerts/{alertId}/false-positive': {
         post: {
           tags: ['AI Alerts'],
@@ -2352,6 +2414,138 @@ export const openApiSpec = swaggerJsdoc({
             '401': { description: 'Authentication required' },
             '403': { description: 'The policies.create permission is required' },
             '422': { description: 'Invalid query parameters' },
+          },
+        },
+      },
+      '/compliance/policies/department-assignments': {
+        get: {
+          tags: ['Policies'],
+          summary: 'List published policies and their department assignments',
+          description:
+            'Requires policies.assign-department. Returns published policies and active departments.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
+            {
+              name: 'limit',
+              in: 'query',
+              schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
+            },
+            { name: 'q', in: 'query', schema: { type: 'string', maxLength: 100 } },
+          ],
+          responses: {
+            '200': { description: 'Paginated published policies and active departments' },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'The policies.assign-department permission is required' },
+            '422': { description: 'Invalid query parameters' },
+          },
+        },
+      },
+      '/compliance/policies/acknowledgements/mine': {
+        get: {
+          tags: ['Policies'],
+          summary: 'List published policies applicable to the current employee',
+          description: 'Requires policies.acknowledge and scopes results by employee department.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
+            {
+              name: 'limit',
+              in: 'query',
+              schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
+            },
+            { name: 'q', in: 'query', schema: { type: 'string', maxLength: 100 } },
+            {
+              name: 'status',
+              in: 'query',
+              schema: { type: 'string', enum: ['all', 'pending', 'acknowledged'], default: 'all' },
+            },
+          ],
+          responses: {
+            '200': { description: 'Applicable policy list' },
+            '403': { description: 'Missing policies.acknowledge permission' },
+          },
+        },
+      },
+      '/compliance/policies/{policyId}/versions/{versionId}/acknowledgement': {
+        get: {
+          tags: ['Policies'],
+          summary: 'Read an applicable published policy version',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'policyId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+            {
+              name: 'versionId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          responses: {
+            '200': { description: 'Published policy content and acknowledgement state' },
+            '404': { description: 'Policy is unavailable or not applicable to the employee' },
+          },
+        },
+      },
+      '/compliance/policies/{policyId}/versions/{versionId}/acknowledgements': {
+        post: {
+          tags: ['Policies'],
+          summary: 'Confirm reading and understanding of a policy version',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'policyId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+            {
+              name: 'versionId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          responses: {
+            '200': { description: 'Acknowledgement recorded or existing acknowledgement returned' },
+            '404': { description: 'Policy is unavailable or not applicable to the employee' },
+          },
+        },
+      },
+      '/compliance/policies/{policyId}/departments': {
+        put: {
+          tags: ['Policies'],
+          summary: 'Replace a published policy department assignment set',
+          description:
+            'Requires policies.assign-department. An empty list clears all department assignments.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'policyId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/AssignPolicyDepartmentsRequest' },
+              },
+            },
+          },
+          responses: {
+            '200': { description: 'Department assignments replaced and audited' },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'The policies.assign-department permission is required' },
+            '404': { description: 'Published policy not found' },
+            '422': { description: 'Invalid policy ID, body, or inactive department' },
           },
         },
       },
