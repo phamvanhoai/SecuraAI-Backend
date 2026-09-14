@@ -18,24 +18,72 @@ const errorList = (details: Prisma.JsonValue): Prisma.JsonArray => {
   return [];
 };
 
-const toImportJob = (job: ImportJobRecord) => ({
-  id: job.import_job_id,
-  importType: job.import_type,
-  status: job.status,
-  totalRows: job.total_rows,
-  successRows: job.success_rows,
-  failedRows: job.failed_rows,
-  errors: errorList(job.error_details),
-  file: {
-    id: job.files.file_id,
-    originalName: job.files.original_name,
-    mimeType: job.files.mime_type,
-    sizeBytes: job.files.size_bytes === null ? null : Number(job.files.size_bytes),
-    checksum: job.files.checksum,
-  },
-  createdAt: job.created_at,
-  completedAt: job.completed_at,
-});
+const duplicateErrorCodes = new Set([
+  'DUPLICATE_ASSET_CODE_IN_FILE',
+  'ASSET_CODE_EXISTS',
+  'ASSET_CODE_DELETED',
+]);
+
+const duplicateRowCount = (errors: Prisma.JsonArray): number => {
+  const rows = new Set<number>();
+  for (const error of errors) {
+    if (error === null || Array.isArray(error) || typeof error !== 'object') continue;
+    if (
+      typeof error.code === 'string' &&
+      duplicateErrorCodes.has(error.code) &&
+      typeof error.row === 'number'
+    ) {
+      rows.add(error.row);
+    }
+  }
+  return rows.size;
+};
+
+const countLabel = (count: number, singular: string, plural = `${singular}s`): string =>
+  `${count} ${count === 1 ? singular : plural}`;
+
+const importSummaryMessage = (
+  status: string,
+  importedRows: number,
+  duplicateRows: number,
+  invalidRows: number,
+): string => {
+  if (status === 'pending') return 'Import is pending.';
+  if (status === 'processing') return 'Import is processing.';
+  if (status === 'failed') return 'Import failed.';
+  return `Import completed: ${countLabel(importedRows, 'asset')} imported, ${countLabel(duplicateRows, 'duplicate')} skipped, ${countLabel(invalidRows, 'invalid row')}.`;
+};
+
+const toImportJob = (job: ImportJobRecord) => {
+  const errors = errorList(job.error_details);
+  const duplicateRows = duplicateRowCount(errors);
+  const invalidRows = Math.max(0, job.failed_rows - duplicateRows);
+  return {
+    id: job.import_job_id,
+    importType: job.import_type,
+    status: job.status,
+    totalRows: job.total_rows,
+    successRows: job.success_rows,
+    failedRows: job.failed_rows,
+    summary: {
+      totalRows: job.total_rows,
+      importedRows: job.success_rows,
+      duplicateRows,
+      invalidRows,
+      message: importSummaryMessage(job.status, job.success_rows, duplicateRows, invalidRows),
+    },
+    errors,
+    file: {
+      id: job.files.file_id,
+      originalName: job.files.original_name,
+      mimeType: job.files.mime_type,
+      sizeBytes: job.files.size_bytes === null ? null : Number(job.files.size_bytes),
+      checksum: job.files.checksum,
+    },
+    createdAt: job.created_at,
+    completedAt: job.completed_at,
+  };
+};
 
 export const fileManagementService = {
   async createAssetImportJob(

@@ -653,6 +653,7 @@ export const openApiSpec = swaggerJsdoc({
             'totalRows',
             'successRows',
             'failedRows',
+            'summary',
             'errors',
             'file',
             'createdAt',
@@ -665,6 +666,17 @@ export const openApiSpec = swaggerJsdoc({
             totalRows: { type: 'integer', minimum: 0 },
             successRows: { type: 'integer', minimum: 0 },
             failedRows: { type: 'integer', minimum: 0 },
+            summary: {
+              type: 'object',
+              required: ['totalRows', 'importedRows', 'duplicateRows', 'invalidRows', 'message'],
+              properties: {
+                totalRows: { type: 'integer', minimum: 0 },
+                importedRows: { type: 'integer', minimum: 0 },
+                duplicateRows: { type: 'integer', minimum: 0 },
+                invalidRows: { type: 'integer', minimum: 0 },
+                message: { type: 'string' },
+              },
+            },
             errors: {
               type: 'array',
               items: {
@@ -1488,7 +1500,7 @@ export const openApiSpec = swaggerJsdoc({
             {
               name: 'limit',
               in: 'query',
-              schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
+              schema: { type: 'integer', minimum: 1, maximum: 100, default: 10 },
             },
             {
               name: 'q',
@@ -1798,7 +1810,7 @@ export const openApiSpec = swaggerJsdoc({
           tags: ['Assets'],
           summary: 'Export the asset list to Excel',
           description:
-            'Exports up to 10000 non-deleted assets using the same search, filter and sorting rules as the asset list. Requires the assets.export permission.',
+            'Exports up to 10000 non-deleted assets using the same search, filter and sorting rules as the asset list. The workbook includes configured organization details, the export time, and the authenticated exporter role names and full name. Requires the assets.export permission.',
           security: [{ bearerAuth: [] }],
           parameters: [
             {
@@ -1871,7 +1883,7 @@ export const openApiSpec = swaggerJsdoc({
           tags: ['Assets'],
           summary: 'Import IT assets from Excel',
           description:
-            'Creates valid assets from an .xlsx file and returns per-row errors without updating existing assets. Maximum 5 MB and 1000 non-empty rows. Requires the assets.import permission.',
+            'Creates valid assets from an .xlsx file and returns per-row errors without updating existing assets. Asset codes belonging to soft-deleted assets are skipped with ASSET_CODE_DELETED because they cannot be reused. Maximum 5 MB and 1000 non-empty rows. Requires the assets.import permission.',
           security: [{ bearerAuth: [] }],
           requestBody: {
             required: true,

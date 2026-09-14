@@ -155,7 +155,7 @@ describe('assetImportService', () => {
     );
   });
 
-  it('reports existing assets, formula use, missing relations and inactive relations', async () => {
+  it('reports existing and deleted assets, formula use, missing relations and inactive relations', async () => {
     parser.mockResolvedValue([
       {
         rowNumber: 2,
@@ -211,8 +211,21 @@ describe('assetImportService', () => {
         },
         formulaFields: [],
       },
+      {
+        rowNumber: 8,
+        values: {
+          ...emptyValues,
+          assetCode: 'AST-DELETED',
+          name: 'Deleted asset',
+          assetType: 'server',
+        },
+        formulaFields: [],
+      },
     ]);
-    repository.findExistingAssetCodes.mockResolvedValue([{ asset_code: 'AST-EXISTS' }]);
+    repository.findExistingAssetCodes.mockResolvedValue([
+      { asset_code: 'AST-EXISTS', deleted_at: null },
+      { asset_code: 'AST-DELETED', deleted_at: new Date('2026-09-14T00:00:00.000Z') },
+    ]);
     repository.findDepartmentsByCodes.mockResolvedValue([
       { department_id: 'department-1', code: 'OLD', status: 'inactive' },
     ]);
@@ -225,7 +238,7 @@ describe('assetImportService', () => {
     expect(repository.importAsset).not.toHaveBeenCalled();
     expect(fileService.completeImport).toHaveBeenCalledWith(
       'job-1',
-      { totalRows: 6, successRows: 0, failedRows: 6 },
+      { totalRows: 7, successRows: 0, failedRows: 7 },
       expect.arrayContaining([
         expect.objectContaining({ row: 2, code: 'ASSET_CODE_EXISTS' }),
         expect.objectContaining({ row: 3, code: 'FORMULA_NOT_ALLOWED' }),
@@ -233,6 +246,11 @@ describe('assetImportService', () => {
         expect.objectContaining({ row: 5, code: 'DEPARTMENT_INACTIVE' }),
         expect.objectContaining({ row: 6, code: 'ASSET_OWNER_NOT_FOUND' }),
         expect.objectContaining({ row: 7, code: 'ASSET_OWNER_INACTIVE' }),
+        expect.objectContaining({
+          row: 8,
+          code: 'ASSET_CODE_DELETED',
+          message: 'Asset code belongs to a deleted asset and cannot be reused.',
+        }),
       ]),
       expect.any(Object),
     );
