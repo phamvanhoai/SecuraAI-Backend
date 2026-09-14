@@ -10,17 +10,23 @@ const actor = { userId: 'user-1', permissions: ['ai-alerts.confirm'] };
 const context = { ipAddress: null, userAgent: null };
 const alert = {
   ai_alert_id: 'alert-1', alert_code: 'AI-1', status: 'confirmed',
+  title: 'Alert', description: 'Description', risk_level: 'high', detected_at: new Date(),
   reviewed_by_user_id: 'user-1', reviewed_at: new Date('2026-09-09T00:00:00Z'),
+  incident_alert_links: [],
 };
+const incident = { incident_id: 'incident-1', incident_code: 'INC-alert-1', status: 'draft' };
 
 describe('confirm AI alert service', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('maps a confirmation and treats a repeated request as idempotent', async () => {
-    confirmMock.mockResolvedValueOnce({ kind: 'confirmed', alert });
+    confirmMock.mockResolvedValueOnce({ kind: 'confirmed', alert, incident, incidentCreated: true });
     await expect(aiAlertsService.confirmAlertAsIncident('alert-1', {}, actor, context))
-      .resolves.toMatchObject({ id: 'alert-1', status: 'confirmed', changed: true });
-    confirmMock.mockResolvedValueOnce({ kind: 'already_confirmed', alert });
+      .resolves.toMatchObject({
+        id: 'alert-1', status: 'confirmed', changed: true,
+        incident: { id: 'incident-1', code: 'INC-alert-1', status: 'draft', created: true },
+      });
+    confirmMock.mockResolvedValueOnce({ kind: 'already_confirmed', alert, incident, incidentCreated: false });
     await expect(aiAlertsService.confirmAlertAsIncident('alert-1', {}, actor, context))
       .resolves.toMatchObject({ changed: false });
   });
