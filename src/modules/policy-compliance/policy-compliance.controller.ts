@@ -24,6 +24,11 @@ import {
   assignPolicyDepartmentsParamsSchema,
   listPolicyDepartmentAssignmentsQuerySchema,
 } from './dto/assign-policy-departments.dto.js';
+import {
+  employeePolicyQuerySchema,
+  policyAcknowledgementParamsSchema,
+} from './dto/acknowledge-policy.dto.js';
+import { policyAcknowledgementService } from './policy-acknowledgement.service.js';
 
 type CreatePolicyDraftResponse = { success: true; data: PolicyDraftResponse };
 
@@ -42,6 +47,35 @@ export const assignPolicyDepartments: RequestHandler = async (req, res) => {
     ipAddress: req.ip ?? null,
     userAgent: req.get('user-agent')?.slice(0, 1000) ?? null,
   });
+  res.status(200).json({ success: true, data });
+};
+
+export const listMyPolicyAcknowledgements: RequestHandler = async (req, res) => {
+  if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+  const query = employeePolicyQuerySchema.parse(req.query);
+  const data = await policyAcknowledgementService.list(query, req.auth);
+  res.status(200).json({ success: true, data });
+};
+
+export const getMyPolicyAcknowledgement: RequestHandler = async (req, res) => {
+  if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+  const { policyId, versionId } = policyAcknowledgementParamsSchema.parse(req.params);
+  const data = await policyAcknowledgementService.detail(policyId, versionId, req.auth);
+  res.status(200).json({ success: true, data });
+};
+
+export const acknowledgePolicyVersion: RequestHandler = async (req, res) => {
+  if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+  const { policyId, versionId } = policyAcknowledgementParamsSchema.parse(req.params);
+  const data = await policyAcknowledgementService.acknowledge(
+    policyId,
+    versionId,
+    req.auth,
+    {
+      ipAddress: req.ip ?? null,
+      userAgent: req.get('user-agent')?.slice(0, 1000) ?? null,
+    },
+  );
   res.status(200).json({ success: true, data });
 };
 
@@ -134,14 +168,17 @@ export const publishPolicyVersion: RequestHandler = async (req, res) => {
 };
 
 export const policyComplianceController = {
+  acknowledgePolicyVersion,
   assignPolicyDepartments,
   createPolicyDraft,
   getDraftPolicyVersion,
+  getMyPolicyAcknowledgement,
   listPublishablePolicies,
   getOwnPolicyDraft,
   listOwnPolicyDrafts,
   listPolicyDepartmentAssignments,
   listOwnedPublishedPoliciesForNewVersion,
+  listMyPolicyAcknowledgements,
   publishPolicyVersion,
   updateOwnPolicyDraft,
   updatePolicyAndCreateVersion,

@@ -136,6 +136,20 @@ async function main(): Promise<void> {
       description: 'Assign published policies to departments or units',
     },
   });
+  const acknowledgePolicyPermission = await prisma.permissions.upsert({
+    where: { code: 'policies.acknowledge' },
+    update: {
+      module: 'policy-compliance',
+      action: 'acknowledge',
+      description: 'Confirm reading and understanding of applicable policies',
+    },
+    create: {
+      code: 'policies.acknowledge',
+      module: 'policy-compliance',
+      action: 'acknowledge',
+      description: 'Confirm reading and understanding of applicable policies',
+    },
+  });
   const assetReadPermission = await prisma.permissions.upsert({
     where: { code: 'assets.read' },
     update: {
@@ -535,6 +549,19 @@ async function main(): Promise<void> {
       },
     }),
   ]);
+  await prisma.role_permissions.upsert({
+    where: {
+      role_id_permission_id: {
+        role_id: employeeRole.role_id,
+        permission_id: acknowledgePolicyPermission.permission_id,
+      },
+    },
+    update: {},
+    create: {
+      role_id: employeeRole.role_id,
+      permission_id: acknowledgePolicyPermission.permission_id,
+    },
+  });
   await prisma.$transaction([
     prisma.role_permissions.deleteMany({
       where: {
