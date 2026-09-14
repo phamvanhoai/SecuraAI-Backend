@@ -25,3 +25,10 @@ export {
   updatePolicyCreateVersionParamsSchema,
   type UpdatePolicyCreateVersionInput,
 } from './update-policy-create-version.dto.js';
+export {
+  assignPolicyDepartmentsBodySchema,
+  assignPolicyDepartmentsParamsSchema,
+  listPolicyDepartmentAssignmentsQuerySchema,
+  type AssignPolicyDepartmentsInput,
+  type ListPolicyDepartmentAssignmentsQuery,
+} from './assign-policy-departments.dto.js';

@@ -21,6 +21,7 @@ export const policyComplianceModule: ModuleManifest = {
     'Review publishable policy drafts',
     'Publish official policy versions',
     'Update policies and create new versions',
+    'Assign published policies to departments',
   ],
   router: policyComplianceRouter,
 };

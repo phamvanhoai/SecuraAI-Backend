@@ -110,6 +110,20 @@ async function main(): Promise<void> {
       description: 'Update published policies and create new draft versions',
     },
   });
+  const assignPolicyDepartmentPermission = await prisma.permissions.upsert({
+    where: { code: 'policies.assign-department' },
+    update: {
+      module: 'policy-compliance',
+      action: 'assign-department',
+      description: 'Assign published policies to departments or units',
+    },
+    create: {
+      code: 'policies.assign-department',
+      module: 'policy-compliance',
+      action: 'assign-department',
+      description: 'Assign published policies to departments or units',
+    },
+  });
   const assetReadPermission = await prisma.permissions.upsert({
     where: { code: 'assets.read' },
     update: {
@@ -485,6 +499,27 @@ async function main(): Promise<void> {
       create: {
         role_id: securityOfficerRole.role_id,
         permission_id: createPolicyPermission.permission_id,
+      },
+    }),
+  ]);
+  await prisma.$transaction([
+    prisma.role_permissions.deleteMany({
+      where: {
+        role_id: role.role_id,
+        permission_id: assignPolicyDepartmentPermission.permission_id,
+      },
+    }),
+    prisma.role_permissions.upsert({
+      where: {
+        role_id_permission_id: {
+          role_id: securityOfficerRole.role_id,
+          permission_id: assignPolicyDepartmentPermission.permission_id,
+        },
+      },
+      update: {},
+      create: {
+        role_id: securityOfficerRole.role_id,
+        permission_id: assignPolicyDepartmentPermission.permission_id,
       },
     }),
   ]);
