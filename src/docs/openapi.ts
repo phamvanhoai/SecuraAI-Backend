@@ -20,10 +20,30 @@ export const openApiSpec = swaggerJsdoc({
       { name: 'AI Alerts' },
       { name: 'Policies' },
       { name: 'Integrations' },
+      { name: 'Training Awareness' },
     ],
     components: {
       securitySchemes: { bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' } },
       schemas: {
+        CreateTrainingCourseRequest: {
+          type: 'object', additionalProperties: false, required: ['title', 'content'],
+          properties: {
+            title: { type: 'string', minLength: 3, maxLength: 255 },
+            description: { type: 'string', nullable: true, maxLength: 2000 },
+            content: { type: 'string', minLength: 10, maxLength: 50000 },
+          },
+        },
+        TrainingCourse: {
+          type: 'object', required: ['id', 'title', 'status', 'createdAt', 'updatedAt'],
+          properties: {
+            id: { type: 'string', format: 'uuid' }, title: { type: 'string' },
+            description: { type: 'string', nullable: true }, content: { type: 'string' },
+            status: { type: 'string', enum: ['draft', 'published', 'archived'] },
+            createdByUserId: { type: 'string', format: 'uuid', nullable: true },
+            createdAt: { type: 'string', format: 'date-time' },
+            updatedAt: { type: 'string', format: 'date-time' },
+          },
+        },
         LoginRequest: {
           type: 'object',
           required: ['email', 'password'],
@@ -988,6 +1008,35 @@ export const openApiSpec = swaggerJsdoc({
       },
     },
     paths: {
+      '/training/courses': {
+        get: {
+          tags: ['Training Awareness'], summary: 'List security awareness courses',
+          description: 'Requires training-courses.read.', security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
+            { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 } },
+            { name: 'q', in: 'query', schema: { type: 'string', minLength: 1, maxLength: 100 } },
+          ],
+          responses: {
+            '200': { description: 'Paginated training course list' },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'training-courses.read permission required' },
+            '422': { description: 'Invalid query' },
+          },
+        },
+        post: {
+          tags: ['Training Awareness'], summary: 'Create security awareness course draft',
+          description: 'Requires training-courses.create. Creates draft and audit record atomically.',
+          security: [{ bearerAuth: [] }],
+          requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/CreateTrainingCourseRequest' } } } },
+          responses: {
+            '201': { description: 'Draft course created' },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'training-courses.create permission required' },
+            '422': { description: 'Invalid course data' },
+          },
+        },
+      },
       '/ai-alerts/{alertId}/false-positive': {
         post: {
           tags: ['AI Alerts'],

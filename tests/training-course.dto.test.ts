@@ -1,0 +1,15 @@
+import { describe, expect, it } from 'vitest';
+import { createCourseBodySchema, listCoursesQuerySchema } from '../src/modules/training-awareness/dto/course.dto.js';
+
+describe('training course DTOs', () => {
+  it('accepts a bounded draft', () => {
+    expect(createCourseBodySchema.parse({ title: 'Phishing basics', content: 'Learn to identify suspicious messages.' }).title).toBe('Phishing basics');
+  });
+  it('rejects blank content and unknown fields', () => {
+    expect(createCourseBodySchema.safeParse({ title: 'Phishing', content: '   ' }).success).toBe(false);
+    expect(createCourseBodySchema.safeParse({ title: 'Phishing', content: 'Valid course content', status: 'published' }).success).toBe(false);
+  });
+  it('bounds pagination', () => {
+    expect(listCoursesQuerySchema.safeParse({ limit: '101' }).success).toBe(false);
+  });
+});
