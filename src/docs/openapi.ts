@@ -2392,6 +2392,82 @@ export const openApiSpec = swaggerJsdoc({
           },
         },
       },
+      '/compliance/policies/acknowledgements/mine': {
+        get: {
+          tags: ['Policies'],
+          summary: 'List published policies applicable to the current employee',
+          description: 'Requires policies.acknowledge and scopes results by employee department.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
+            {
+              name: 'limit',
+              in: 'query',
+              schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
+            },
+            { name: 'q', in: 'query', schema: { type: 'string', maxLength: 100 } },
+            {
+              name: 'status',
+              in: 'query',
+              schema: { type: 'string', enum: ['all', 'pending', 'acknowledged'], default: 'all' },
+            },
+          ],
+          responses: {
+            '200': { description: 'Applicable policy list' },
+            '403': { description: 'Missing policies.acknowledge permission' },
+          },
+        },
+      },
+      '/compliance/policies/{policyId}/versions/{versionId}/acknowledgement': {
+        get: {
+          tags: ['Policies'],
+          summary: 'Read an applicable published policy version',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'policyId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+            {
+              name: 'versionId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          responses: {
+            '200': { description: 'Published policy content and acknowledgement state' },
+            '404': { description: 'Policy is unavailable or not applicable to the employee' },
+          },
+        },
+      },
+      '/compliance/policies/{policyId}/versions/{versionId}/acknowledgements': {
+        post: {
+          tags: ['Policies'],
+          summary: 'Confirm reading and understanding of a policy version',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'policyId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+            {
+              name: 'versionId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          responses: {
+            '200': { description: 'Acknowledgement recorded or existing acknowledgement returned' },
+            '404': { description: 'Policy is unavailable or not applicable to the employee' },
+          },
+        },
+      },
       '/compliance/policies/{policyId}/departments': {
         put: {
           tags: ['Policies'],

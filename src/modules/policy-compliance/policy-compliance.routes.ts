@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { policyAcknowledgementRouter } from './policy-acknowledgement.routes.js';
 import { authenticate, authorize } from '../../common/middleware/authenticate.js';
 import { validate } from '../../common/middleware/validate.js';
 import { asyncHandler } from '../../common/utils/async-handler.js';
@@ -38,6 +39,7 @@ import {
 } from './dto/update-policy-create-version.dto.js';
 
 export const policyComplianceRouter = Router();
+policyComplianceRouter.use(policyAcknowledgementRouter);
 
 policyComplianceRouter.get(
   '/policies/department-assignments',
