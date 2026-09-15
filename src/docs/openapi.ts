@@ -269,6 +269,62 @@ export const openApiSpec = swaggerJsdoc({
             },
           },
         },
+        CreateApiKeyRequest: {
+          type: 'object',
+          required: ['keyName'],
+          additionalProperties: false,
+          properties: {
+            keyName: { type: 'string', minLength: 1, maxLength: 100 },
+            secret: { type: 'string', minLength: 1, maxLength: 1000 },
+            expiresAt: { type: 'string', format: 'date-time', nullable: true },
+            isActive: { type: 'boolean', default: true },
+          },
+        },
+        UpdateApiKeyRequest: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            keyName: { type: 'string', minLength: 1, maxLength: 100 },
+            expiresAt: { type: 'string', format: 'date-time', nullable: true },
+            isActive: { type: 'boolean' },
+          },
+        },
+        RotateApiKeyRequest: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            secret: { type: 'string', minLength: 1, maxLength: 1000 },
+          },
+        },
+        ApiKeyResponse: {
+          type: 'object',
+          required: ['id', 'integrationId', 'keyName', 'isActive', 'status', 'createdAt'],
+          properties: {
+            id: { type: 'string', format: 'uuid' },
+            integrationId: { type: 'string', format: 'uuid' },
+            keyName: { type: 'string' },
+            keyFingerprint: { type: 'string', nullable: true },
+            expiresAt: { type: 'string', format: 'date-time', nullable: true },
+            isActive: { type: 'boolean' },
+            status: { type: 'string', enum: ['ACTIVE', 'INACTIVE', 'EXPIRED'] },
+            createdAt: { type: 'string', format: 'date-time' },
+          },
+        },
+        ApiKeyCreatedResponse: {
+          type: 'object',
+          required: ['id', 'integrationId', 'keyName', 'isActive', 'status', 'createdAt', 'secret'],
+          properties: {
+            id: { type: 'string', format: 'uuid' },
+            integrationId: { type: 'string', format: 'uuid' },
+            keyName: { type: 'string' },
+            keyFingerprint: { type: 'string', nullable: true },
+            expiresAt: { type: 'string', format: 'date-time', nullable: true },
+            isActive: { type: 'boolean' },
+            status: { type: 'string', enum: ['ACTIVE', 'INACTIVE', 'EXPIRED'] },
+            createdAt: { type: 'string', format: 'date-time' },
+            secret: { type: 'string', description: 'Plaintext secret shown only once upon creation or rotation' },
+          },
+        },
         Error: {
           type: 'object',
           properties: {
@@ -3547,6 +3603,216 @@ export const openApiSpec = swaggerJsdoc({
             '401': { description: 'Unauthorized' },
             '403': { description: 'Forbidden' },
             '404': { description: 'Integration not found' },
+          },
+        },
+      },
+      '/integrations/{id}/api-keys': {
+        post: {
+          tags: ['Integrations'],
+          summary: 'Create and encrypt integration API key',
+          description: 'Requires integrations.update (Admin). Plaintext secret is returned only once in response.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/CreateApiKeyRequest' },
+              },
+            },
+          },
+          responses: {
+            '201': {
+              description: 'API key created with one-time plaintext secret',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      success: { type: 'boolean', example: true },
+                      data: { $ref: '#/components/schemas/ApiKeyCreatedResponse' },
+                    },
+                  },
+                },
+              },
+            },
+            '400': { description: 'Validation error' },
+            '401': { description: 'Unauthorized' },
+            '403': { description: 'Forbidden - requires integrations.update' },
+            '404': { description: 'Integration not found' },
+          },
+        },
+        get: {
+          tags: ['Integrations'],
+          summary: 'List API keys for integration',
+          description: 'Requires integrations.read (Admin). Never returns secrets.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+            { name: 'isActive', in: 'query', schema: { type: 'boolean' } },
+            { name: 'search', in: 'query', schema: { type: 'string' } },
+          ],
+          responses: {
+            '200': {
+              description: 'List of integration API keys',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      success: { type: 'boolean', example: true },
+                      data: {
+                        type: 'array',
+                        items: { $ref: '#/components/schemas/ApiKeyResponse' },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            '401': { description: 'Unauthorized' },
+            '403': { description: 'Forbidden' },
+            '404': { description: 'Integration not found' },
+          },
+        },
+      },
+      '/integrations/{id}/api-keys/{keyId}': {
+        get: {
+          tags: ['Integrations'],
+          summary: 'Get API key metadata',
+          description: 'Requires integrations.read (Admin). Cross-tenant isolated.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+            { name: 'keyId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+          ],
+          responses: {
+            '200': {
+              description: 'API key metadata',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      success: { type: 'boolean', example: true },
+                      data: { $ref: '#/components/schemas/ApiKeyResponse' },
+                    },
+                  },
+                },
+              },
+            },
+            '401': { description: 'Unauthorized' },
+            '403': { description: 'Forbidden' },
+            '404': { description: 'API key or integration not found' },
+          },
+        },
+        patch: {
+          tags: ['Integrations'],
+          summary: 'Update API key metadata',
+          description: 'Requires integrations.update (Admin). Allows updating keyName, expiresAt, and isActive.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+            { name: 'keyId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/UpdateApiKeyRequest' },
+              },
+            },
+          },
+          responses: {
+            '200': {
+              description: 'API key updated',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      success: { type: 'boolean', example: true },
+                      data: { $ref: '#/components/schemas/ApiKeyResponse' },
+                    },
+                  },
+                },
+              },
+            },
+            '401': { description: 'Unauthorized' },
+            '403': { description: 'Forbidden' },
+            '404': { description: 'API key or integration not found' },
+          },
+        },
+      },
+      '/integrations/{id}/api-keys/{keyId}/rotate': {
+        post: {
+          tags: ['Integrations'],
+          summary: 'Rotate API key secret',
+          description: 'Requires integrations.update (Admin). Re-encrypts secret and returns new secret once.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+            { name: 'keyId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+          ],
+          requestBody: {
+            required: false,
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/RotateApiKeyRequest' },
+              },
+            },
+          },
+          responses: {
+            '200': {
+              description: 'API key rotated with one-time plaintext secret',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      success: { type: 'boolean', example: true },
+                      data: { $ref: '#/components/schemas/ApiKeyCreatedResponse' },
+                    },
+                  },
+                },
+              },
+            },
+            '401': { description: 'Unauthorized' },
+            '403': { description: 'Forbidden' },
+            '404': { description: 'API key or integration not found' },
+          },
+        },
+      },
+      '/integrations/{id}/api-keys/{keyId}/revoke': {
+        post: {
+          tags: ['Integrations'],
+          summary: 'Revoke and deactivate API key',
+          description: 'Requires integrations.update (Admin). Sets isActive to false and writes audit log.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+            { name: 'keyId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+          ],
+          responses: {
+            '200': {
+              description: 'API key revoked',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      success: { type: 'boolean', example: true },
+                      data: { $ref: '#/components/schemas/ApiKeyResponse' },
+                    },
+                  },
+                },
+              },
+            },
+            '401': { description: 'Unauthorized' },
+            '403': { description: 'Forbidden' },
+            '404': { description: 'API key or integration not found' },
           },
         },
       },

@@ -190,6 +190,66 @@ export function toIntegrationLogResponseDto(record: RawIntegrationLogRecord): In
   };
 }
 
+export type ApiKeyStatus = 'ACTIVE' | 'INACTIVE' | 'EXPIRED';
+
+export type ApiKeyResponseDto = {
+  id: string;
+  integrationId: string;
+  keyName: string;
+  keyFingerprint: string | null;
+  expiresAt: string | null;
+  isActive: boolean;
+  status: ApiKeyStatus;
+  createdAt: string;
+};
+
+export type ApiKeyCreatedResponseDto = ApiKeyResponseDto & {
+  secret: string;
+};
+
+export type RawApiKeyRecord = {
+  integration_api_key_id: string;
+  integration_id: string;
+  key_name: string;
+  key_fingerprint: string | null;
+  expires_at: Date | null;
+  is_active: boolean;
+  created_at: Date;
+};
+
+export function deriveApiKeyStatus(isActive: boolean, expiresAt: Date | null): ApiKeyStatus {
+  if (!isActive) {
+    return 'INACTIVE';
+  }
+  if (expiresAt !== null && expiresAt.getTime() <= Date.now()) {
+    return 'EXPIRED';
+  }
+  return 'ACTIVE';
+}
+
+export function toApiKeyResponseDto(record: RawApiKeyRecord): ApiKeyResponseDto {
+  return {
+    id: record.integration_api_key_id,
+    integrationId: record.integration_id,
+    keyName: record.key_name,
+    keyFingerprint: record.key_fingerprint,
+    expiresAt: record.expires_at ? record.expires_at.toISOString() : null,
+    isActive: record.is_active,
+    status: deriveApiKeyStatus(record.is_active, record.expires_at),
+    createdAt: record.created_at.toISOString(),
+  };
+}
+
+export function toApiKeyCreatedResponseDto(
+  record: RawApiKeyRecord,
+  plaintextSecret: string,
+): ApiKeyCreatedResponseDto {
+  return {
+    ...toApiKeyResponseDto(record),
+    secret: plaintextSecret,
+  };
+}
+
 export type IntegrationLogStatsResponseDto = {
   totalErrors: number;
   totalWarnings: number;

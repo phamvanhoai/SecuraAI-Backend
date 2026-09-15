@@ -77,6 +77,38 @@ const activeApiKeySelect = {
   created_at: true,
 } as const;
 
+const apiKeySelect = {
+  integration_api_key_id: true,
+  integration_id: true,
+  key_name: true,
+  key_fingerprint: true,
+  expires_at: true,
+  is_active: true,
+  created_at: true,
+} as const;
+
+export type CreateApiKeyRepoInput = {
+  integration_id: string;
+  key_name: string;
+  secret_encrypted: string;
+  key_fingerprint?: string | null | undefined;
+  expires_at?: Date | null | undefined;
+  is_active?: boolean | undefined;
+};
+
+export type UpdateApiKeyRepoInput = {
+  key_name?: string | undefined;
+  secret_encrypted?: string | undefined;
+  key_fingerprint?: string | null | undefined;
+  expires_at?: Date | null | undefined;
+  is_active?: boolean | undefined;
+};
+
+export type FindApiKeysRepoInput = {
+  isActive?: boolean | undefined;
+  search?: string | undefined;
+};
+
 export type CreateIntegrationRepoInput = {
   name: string;
   integration_type: string;
@@ -525,6 +557,82 @@ export const integrationsRepository = {
       },
       orderBy: { created_at: 'desc' },
       select: activeApiKeySelect,
+    });
+  },
+
+  // -------------------------------------------------------------
+  // Integration API Keys Repository Methods
+  // -------------------------------------------------------------
+  createApiKey(data: CreateApiKeyRepoInput) {
+    return prisma.integration_api_keys.create({
+      data: {
+        integration_id: data.integration_id,
+        key_name: data.key_name,
+        secret_encrypted: data.secret_encrypted,
+        key_fingerprint: data.key_fingerprint ?? null,
+        expires_at: data.expires_at ?? null,
+        is_active: data.is_active ?? true,
+      },
+      select: apiKeySelect,
+    });
+  },
+
+  findApiKeysByIntegrationId(integrationId: string, filter?: FindApiKeysRepoInput) {
+    const where: Prisma.integration_api_keysWhereInput = {
+      integration_id: integrationId,
+    };
+    if (filter?.isActive !== undefined) {
+      where.is_active = filter.isActive;
+    }
+    if (filter?.search) {
+      where.key_name = { contains: filter.search, mode: 'insensitive' };
+    }
+
+    return prisma.integration_api_keys.findMany({
+      where,
+      orderBy: { created_at: 'desc' },
+      select: apiKeySelect,
+    });
+  },
+
+  findApiKeyById(integrationId: string, apiKeyId: string) {
+    return prisma.integration_api_keys.findFirst({
+      where: {
+        integration_api_key_id: apiKeyId,
+        integration_id: integrationId,
+      },
+      select: apiKeySelect,
+    });
+  },
+
+  updateApiKey(integrationId: string, apiKeyId: string, data: UpdateApiKeyRepoInput) {
+    const updateData: Prisma.integration_api_keysUpdateInput = {};
+    if (data.key_name !== undefined) updateData.key_name = data.key_name;
+    if (data.secret_encrypted !== undefined) updateData.secret_encrypted = data.secret_encrypted;
+    if (data.key_fingerprint !== undefined) updateData.key_fingerprint = data.key_fingerprint;
+    if (data.expires_at !== undefined) updateData.expires_at = data.expires_at;
+    if (data.is_active !== undefined) updateData.is_active = data.is_active;
+
+    return prisma.integration_api_keys.update({
+      where: {
+        integration_api_key_id: apiKeyId,
+        integration_id: integrationId,
+      },
+      data: updateData,
+      select: apiKeySelect,
+    });
+  },
+
+  revokeApiKey(integrationId: string, apiKeyId: string) {
+    return prisma.integration_api_keys.update({
+      where: {
+        integration_api_key_id: apiKeyId,
+        integration_id: integrationId,
+      },
+      data: {
+        is_active: false,
+      },
+      select: apiKeySelect,
     });
   },
 
