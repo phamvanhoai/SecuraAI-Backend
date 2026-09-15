@@ -16,6 +16,7 @@ export const openApiSpec = swaggerJsdoc({
       { name: 'Users' },
       { name: 'Role Management' },
       { name: 'Assets' },
+      { name: 'Risk Assessments' },
       { name: 'Security Monitoring' },
       { name: 'AI Alerts' },
       { name: 'Policies' },
@@ -1691,6 +1692,190 @@ export const openApiSpec = swaggerJsdoc({
             '409': { description: 'Email or employee code already exists' },
             '422': { description: 'Invalid role, department, or request body' },
             '503': { description: 'Email service is not configured or unavailable' },
+          },
+        },
+      },
+      '/risks': {
+        post: {
+          tags: ['Risk Assessments'],
+          summary: 'Create a risk assessment draft',
+          description:
+            'Requires risks.create. Exactly one asset or business process target is required. The backend assigns the assessor, generates the risk code, and calculates score and level.',
+          security: [{ bearerAuth: [] }],
+          responses: {
+            '201': { description: 'Risk assessment draft created' },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'The risks.create permission is required' },
+            '404': { description: 'Target or linked catalog item not found' },
+            '409': { description: 'Potential duplicate open risk' },
+            '422': { description: 'Invalid request or inactive target' },
+          },
+        },
+        get: {
+          tags: ['Risk Assessments'],
+          summary: 'List risk assessments',
+          description:
+            'Requires risks.read. Search, filtering, sorting and pagination are performed by the backend.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
+            {
+              name: 'limit',
+              in: 'query',
+              schema: { type: 'integer', minimum: 1, maximum: 100, default: 10 },
+            },
+            { name: 'q', in: 'query', schema: { type: 'string', maxLength: 100 } },
+            {
+              name: 'riskLevel',
+              in: 'query',
+              schema: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] },
+            },
+            {
+              name: 'status',
+              in: 'query',
+              schema: {
+                type: 'string',
+                enum: [
+                  'draft',
+                  'pending_approval',
+                  'approved',
+                  'in_treatment',
+                  'closed',
+                  'rejected',
+                  'cancelled',
+                ],
+              },
+            },
+            {
+              name: 'targetType',
+              in: 'query',
+              schema: { type: 'string', enum: ['asset', 'business_process'] },
+            },
+            { name: 'assessedFrom', in: 'query', schema: { type: 'string', format: 'date' } },
+            { name: 'assessedTo', in: 'query', schema: { type: 'string', format: 'date' } },
+            { name: 'hasTreatmentPlan', in: 'query', schema: { type: 'boolean' } },
+            {
+              name: 'sortBy',
+              in: 'query',
+              schema: {
+                type: 'string',
+                enum: ['riskCode', 'title', 'riskScore', 'riskLevel', 'assessedAt', 'updatedAt'],
+                default: 'updatedAt',
+              },
+            },
+            {
+              name: 'sortOrder',
+              in: 'query',
+              schema: { type: 'string', enum: ['asc', 'desc'], default: 'desc' },
+            },
+          ],
+          responses: {
+            '200': { description: 'Paginated risk assessment list' },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'The risks.read permission is required' },
+            '422': { description: 'Invalid query parameters' },
+          },
+        },
+      },
+      '/risks/create-options': {
+        get: {
+          tags: ['Risk Assessments'],
+          summary: 'List valid options for creating a risk assessment',
+          description:
+            'Requires risks.create. Returns bounded active targets and threat/vulnerability catalog entries.',
+          security: [{ bearerAuth: [] }],
+          responses: {
+            '200': { description: 'Risk creation options' },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'The risks.create permission is required' },
+          },
+        },
+      },
+      '/risks/{riskAssessmentId}': {
+        patch: {
+          tags: ['Risk Assessments'],
+          summary: 'Update a draft or rejected risk assessment',
+          description:
+            'Requires risks.update. Recalculates score and level, replaces linked threats and vulnerabilities transactionally, and uses expectedUpdatedAt for optimistic concurrency.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'riskAssessmentId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          responses: {
+            '200': { description: 'Updated risk assessment detail' },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'The risks.update permission is required' },
+            '404': { description: 'Risk assessment or target not found' },
+            '409': { description: 'Potential duplicate or concurrent modification' },
+            '422': { description: 'Invalid input, inactive target, or non-editable status' },
+          },
+        },
+        get: {
+          tags: ['Risk Assessments'],
+          summary: 'View risk assessment details',
+          description:
+            'Requires risks.read. Returns the assessment target, risk analysis, linked threats and vulnerabilities, treatment plans and the previous assessment.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'riskAssessmentId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          responses: {
+            '200': { description: 'Risk assessment details' },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'The risks.read permission is required' },
+            '404': { description: 'Risk assessment not found' },
+            '422': { description: 'Invalid risk assessment ID' },
+          },
+        },
+      },
+      '/risks/{riskAssessmentId}/cancel': {
+        post: {
+          tags: ['Risk Assessments'],
+          summary: 'Cancel a draft or rejected risk assessment',
+          description:
+            'Requires risks.cancel. Only the assessor or an administrator can cancel an assessment without a treatment plan. Uses expectedUpdatedAt for optimistic concurrency and preserves the assessment as an auditable record.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'riskAssessmentId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  additionalProperties: false,
+                  required: ['reason', 'expectedUpdatedAt'],
+                  properties: {
+                    reason: { type: 'string', minLength: 10, maxLength: 1000 },
+                    expectedUpdatedAt: { type: 'string', format: 'date-time' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '200': { description: 'Cancelled risk assessment detail' },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'Missing permission or actor is not the assessor/admin' },
+            '404': { description: 'Risk assessment not found' },
+            '409': { description: 'Treatment plan exists or assessment changed concurrently' },
+            '422': { description: 'Invalid input or assessment status is not cancellable' },
           },
         },
       },
