@@ -16,6 +16,7 @@ import {
   type SyncJobResponseDto,
   type ApiKeyResponseDto,
   type ApiKeyCreatedResponseDto,
+  type IntegrationLogStatsResponseDto,
 } from './integrations.mapper.js';
 import type {
   CreateIntegrationDto,
@@ -30,6 +31,7 @@ import type {
   UpdateApiKeyDto,
   RotateApiKeyDto,
   QueryApiKeysDto,
+  QueryIntegrationLogStatsDto,
 } from './dto/index.js';
 import type { Prisma } from '@prisma/client';
 
@@ -849,10 +851,16 @@ export const integrationsService = {
     const limit = Math.min(100, Math.max(1, Number(query.limit) || 20));
     const skip = (page - 1) * limit;
 
+    const startDate = query.startDate ? new Date(query.startDate) : undefined;
+    const endDate = query.endDate ? new Date(query.endDate) : undefined;
+
     const filter = {
       integrationId,
       level: query.level,
       syncJobId: query.syncJobId,
+      search: query.search,
+      startDate,
+      endDate,
     };
 
     const [items, total] = await Promise.all([
@@ -873,6 +881,68 @@ export const integrationsService = {
         totalPages: Math.ceil(total / limit),
       },
     };
+  },
+
+  async listAllIntegrationLogs(query: QueryIntegrationLogsDto) {
+    if (query.integrationId) {
+      const integration = await integrationsRepository.findById(query.integrationId);
+      if (!integration) {
+        throw new AppError(404, 'INTEGRATION_NOT_FOUND', `Integration with ID "${query.integrationId}" was not found`);
+      }
+    }
+
+    const page = Math.max(1, Number(query.page) || 1);
+    const limit = Math.min(100, Math.max(1, Number(query.limit) || 20));
+    const skip = (page - 1) * limit;
+
+    const startDate = query.startDate ? new Date(query.startDate) : undefined;
+    const endDate = query.endDate ? new Date(query.endDate) : undefined;
+
+    const filter = {
+      integrationId: query.integrationId,
+      level: query.level,
+      syncJobId: query.syncJobId,
+      search: query.search,
+      startDate,
+      endDate,
+    };
+
+    const [items, total] = await Promise.all([
+      integrationsRepository.findIntegrationLogs({
+        ...filter,
+        skip,
+        take: limit,
+      }),
+      integrationsRepository.countIntegrationLogs(filter),
+    ]);
+
+    return {
+      items: items.map(toIntegrationLogResponseDto),
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  },
+
+  async getIntegrationLogStats(query: QueryIntegrationLogStatsDto): Promise<IntegrationLogStatsResponseDto> {
+    if (query.integrationId) {
+      const integration = await integrationsRepository.findById(query.integrationId);
+      if (!integration) {
+        throw new AppError(404, 'INTEGRATION_NOT_FOUND', `Integration with ID "${query.integrationId}" was not found`);
+      }
+    }
+
+    const startDate = query.startDate ? new Date(query.startDate) : undefined;
+    const endDate = query.endDate ? new Date(query.endDate) : undefined;
+
+    return integrationsRepository.getIntegrationLogStats({
+      integrationId: query.integrationId,
+      startDate,
+      endDate,
+    });
   },
 
   // -------------------------------------------------------------
