@@ -846,8 +846,12 @@ model risk_assessments {
   status                          String                            @default("draft") @db.VarChar(30)
   assessed_by_user_id             String?                           @db.Uuid
   previous_risk_assessment_id     String?                           @db.Uuid
-  assessed_at                     DateTime                          @default(now()) @db.Timestamptz(6)
+  assessed_at                     DateTime?                         @db.Timestamptz(6)
   closed_at                       DateTime?                         @db.Timestamptz(6)
+  cancelled_at                    DateTime?                         @db.Timestamptz(6)
+  cancelled_by_user_id            String?                           @db.Uuid
+  cancelled_by_full_name          String?                           @db.VarChar(150)
+  cancellation_reason             String?
   created_at                      DateTime                          @default(now()) @db.Timestamptz(6)
   updated_at                      DateTime                          @default(now()) @db.Timestamptz(6)
   incident_risk_links             incident_risk_links[]
