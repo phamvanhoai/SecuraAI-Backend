@@ -20,6 +20,7 @@ export const trainingAwarenessModule: ModuleManifest = {
   capabilities: [
     'Create and list security awareness course drafts',
     'Assign courses to users and departments',
+    'Take and automatically score post-training assessments',
   ],
   router: trainingAwarenessRouter,
 };

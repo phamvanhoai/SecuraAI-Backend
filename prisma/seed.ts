@@ -104,6 +104,33 @@ async function main(): Promise<void> {
       is_system: false,
     },
   });
+  const takeTrainingAssessmentPermission = await prisma.permissions.upsert({
+    where: { code: 'training-assessments.take' },
+    update: {
+      module: 'training-awareness',
+      action: 'take-assessment',
+      description: 'Take assigned post-training assessments',
+    },
+    create: {
+      code: 'training-assessments.take',
+      module: 'training-awareness',
+      action: 'take-assessment',
+      description: 'Take assigned post-training assessments',
+    },
+  });
+  await prisma.role_permissions.upsert({
+    where: {
+      role_id_permission_id: {
+        role_id: employeeRole.role_id,
+        permission_id: takeTrainingAssessmentPermission.permission_id,
+      },
+    },
+    update: {},
+    create: {
+      role_id: employeeRole.role_id,
+      permission_id: takeTrainingAssessmentPermission.permission_id,
+    },
+  });
   const executiveRole = await prisma.roles.upsert({
     where: { code: 'EXECUTIVE' },
     update: {
