@@ -1,5 +1,16 @@
 import { describe, expect, it } from 'vitest';
-import { assignCourseBodySchema } from './course.dto.js';
+import { assignmentOptionsQuerySchema, assignCourseBodySchema } from './course.dto.js';
+
+describe('assignmentOptionsQuerySchema', () => {
+  it('bounds and trims target searches', () => {
+    expect(assignmentOptionsQuerySchema.parse({ userQ: '  alice  ', limit: '20' })).toEqual({
+      userQ: 'alice',
+      departmentQ: '',
+      limit: 20,
+    });
+    expect(assignmentOptionsQuerySchema.safeParse({ limit: 51 }).success).toBe(false);
+  });
+});
 
 describe('assignCourseBodySchema', () => {
   it('accepts assignments to users or departments', () => {

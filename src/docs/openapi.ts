@@ -1151,6 +1151,15 @@ export const openApiSpec = swaggerJsdoc({
           description:
             'Requires training-courses.assign. Returns bounded active user and department options.',
           security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'userQ', in: 'query', schema: { type: 'string', maxLength: 100 } },
+            { name: 'departmentQ', in: 'query', schema: { type: 'string', maxLength: 100 } },
+            {
+              name: 'limit',
+              in: 'query',
+              schema: { type: 'integer', minimum: 1, maximum: 50, default: 20 },
+            },
+          ],
           responses: {
             '200': { description: 'Active users and departments' },
             '401': { description: 'Authentication required' },
