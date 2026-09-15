@@ -47,14 +47,10 @@ export const openApiSpec = swaggerJsdoc({
         LoginRequest: {
           type: 'object',
           required: ['email', 'password'],
+          additionalProperties: false,
           properties: {
             email: { type: 'string', format: 'email' },
             password: { type: 'string', format: 'password', minLength: 8 },
-            mfaCode: {
-              type: 'string',
-              pattern: '^\\d{6}$',
-              description: 'Required only when MFA is enabled for the account.',
-            },
           },
         },
         InitializeUserAccountRequest: {
@@ -135,6 +131,49 @@ export const openApiSpec = swaggerJsdoc({
           additionalProperties: false,
           properties: {
             code: { type: 'string', pattern: '^\\d{6}$', example: '123456' },
+          },
+        },
+        VerifyMfaChallengeRequest: {
+          type: 'object',
+          required: ['challengeToken', 'code'],
+          additionalProperties: false,
+          properties: {
+            challengeToken: { type: 'string', minLength: 32, maxLength: 256 },
+            code: {
+              type: 'string',
+              pattern: '^(?:\\d{6}|[A-Za-z0-9]{4}(?:-[A-Za-z0-9]{4}){2})$',
+              description: 'A current authenticator code or one unused recovery code.',
+            },
+          },
+        },
+        DisableMfaRequest: {
+          type: 'object',
+          required: ['currentPassword', 'code'],
+          additionalProperties: false,
+          properties: {
+            currentPassword: { type: 'string', format: 'password' },
+            code: { type: 'string', pattern: '^\\d{6}$' },
+          },
+        },
+        CreateMfaRecoveryRequest: {
+          type: 'object',
+          required: ['challengeToken'],
+          additionalProperties: false,
+          properties: { challengeToken: { type: 'string', minLength: 32, maxLength: 256 } },
+        },
+        DecideMfaRecoveryRequest: {
+          type: 'object',
+          required: ['reason'],
+          additionalProperties: false,
+          properties: { reason: { type: 'string', minLength: 10, maxLength: 2000 } },
+        },
+        MfaChallenge: {
+          type: 'object',
+          required: ['mfaRequired', 'challengeToken', 'expiresIn'],
+          properties: {
+            mfaRequired: { type: 'boolean', enum: [true] },
+            challengeToken: { type: 'string' },
+            expiresIn: { type: 'integer', example: 300, description: 'Lifetime in seconds' },
           },
         },
         TokenPair: {
@@ -344,6 +383,7 @@ export const openApiSpec = swaggerJsdoc({
             'fullName',
             'status',
             'mustChangePassword',
+            'mfaEnabled',
             'roles',
             'permissions',
           ],
@@ -353,6 +393,7 @@ export const openApiSpec = swaggerJsdoc({
             fullName: { type: 'string' },
             status: { type: 'string' },
             mustChangePassword: { type: 'boolean' },
+            mfaEnabled: { type: 'boolean' },
             roles: {
               type: 'array',
               items: {
@@ -1335,14 +1376,19 @@ export const openApiSpec = swaggerJsdoc({
           },
           responses: {
             '200': {
-              description: 'Authenticated',
+              description: 'Authenticated, or MFA challenge required before tokens are issued',
               content: {
                 'application/json': {
                   schema: {
                     type: 'object',
                     properties: {
                       success: { type: 'boolean' },
-                      data: { $ref: '#/components/schemas/TokenPair' },
+                      data: {
+                        oneOf: [
+                          { $ref: '#/components/schemas/TokenPair' },
+                          { $ref: '#/components/schemas/MfaChallenge' },
+                        ],
+                      },
                     },
                   },
                 },
@@ -1425,7 +1471,9 @@ export const openApiSpec = swaggerJsdoc({
             },
           },
           responses: {
-            '200': { description: 'Authenticator URI and QR code data URL returned' },
+            '200': {
+              description: 'Authenticator URI, manual key, one-time QR code, and safety warning returned',
+            },
             '400': { description: 'Current password is incorrect' },
             '401': { description: 'Unauthorized' },
             '409': { description: 'MFA is already enabled' },
@@ -1444,11 +1492,137 @@ export const openApiSpec = swaggerJsdoc({
             },
           },
           responses: {
-            '200': { description: 'MFA enabled' },
+            '200': { description: 'MFA enabled and recovery codes returned once' },
             '400': { description: 'MFA code is invalid or expired' },
             '401': { description: 'Unauthorized' },
             '404': { description: 'MFA setup is required' },
             '429': { description: 'Too many attempts' },
+          },
+        },
+      },
+      '/auth/mfa/challenge/verify': {
+        post: {
+          tags: ['Authentication'],
+          summary: 'Complete sign-in using an MFA login challenge',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/VerifyMfaChallengeRequest' },
+              },
+            },
+          },
+          responses: {
+            '200': {
+              description: 'Challenge consumed and access/refresh tokens issued',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      success: { type: 'boolean' },
+                      data: { $ref: '#/components/schemas/TokenPair' },
+                    },
+                  },
+                },
+              },
+            },
+            '401': { description: 'Invalid, expired, used, or exhausted challenge/code' },
+            '403': { description: 'Account is inactive' },
+            '422': { description: 'Invalid challenge or code format' },
+            '429': { description: 'Too many attempts from this IP' },
+          },
+        },
+      },
+      '/auth/mfa/disable': {
+        post: {
+          tags: ['Authentication'],
+          summary: 'Disable authenticator MFA and revoke existing sessions',
+          security: [{ bearerAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': { schema: { $ref: '#/components/schemas/DisableMfaRequest' } },
+            },
+          },
+          responses: {
+            '200': { description: 'MFA disabled and existing sessions revoked' },
+            '400': { description: 'Current password or authenticator code is invalid' },
+            '401': { description: 'Unauthorized' },
+            '403': { description: 'Account is inactive' },
+            '409': { description: 'MFA is not enabled' },
+            '422': { description: 'Invalid request body' },
+            '429': { description: 'Too many attempts' },
+          },
+        },
+      },
+      '/auth/mfa/recovery-requests': {
+        post: {
+          tags: ['Authentication'],
+          summary: 'Request administrator-assisted MFA recovery from a current login challenge',
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': { schema: { $ref: '#/components/schemas/CreateMfaRecoveryRequest' } },
+            },
+          },
+          responses: {
+            '202': { description: 'Recovery request created or existing pending request returned' },
+            '401': { description: 'Challenge is invalid or expired' },
+            '422': { description: 'Invalid request body' },
+            '429': { description: 'Too many requests from this IP' },
+            '503': { description: 'Recovery workflow is unavailable' },
+          },
+        },
+      },
+      '/admin/mfa-recovery-requests': {
+        get: {
+          tags: ['MFA Recovery Administration'],
+          summary: 'List MFA recovery requests',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
+            { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 } },
+            { name: 'status', in: 'query', schema: { type: 'string', enum: ['pending', 'approved', 'rejected'] } },
+          ],
+          responses: {
+            '200': { description: 'Paginated recovery requests with user and latest decision details' },
+            '401': { description: 'Unauthorized' },
+            '403': { description: 'Missing mfa-recovery.manage permission' },
+          },
+        },
+      },
+      '/admin/mfa-recovery-requests/{requestId}/approve': {
+        post: {
+          tags: ['MFA Recovery Administration'],
+          summary: 'Approve an MFA recovery request',
+          security: [{ bearerAuth: [] }],
+          parameters: [{ name: 'requestId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+          requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/DecideMfaRecoveryRequest' } } } },
+          responses: {
+            '200': { description: 'MFA cleared, sessions revoked, action audited, and user notified' },
+            '401': { description: 'Unauthorized' },
+            '403': { description: 'Missing mfa-recovery.manage permission' },
+            '404': { description: 'Request not found' },
+            '409': { description: 'Request was already decided' },
+            '422': { description: 'Invalid request ID or reason' },
+          },
+        },
+      },
+      '/admin/mfa-recovery-requests/{requestId}/reject': {
+        post: {
+          tags: ['MFA Recovery Administration'],
+          summary: 'Reject an MFA recovery request',
+          security: [{ bearerAuth: [] }],
+          parameters: [{ name: 'requestId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+          requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/DecideMfaRecoveryRequest' } } } },
+          responses: {
+            '200': { description: 'Request rejected, action audited, and user notified' },
+            '401': { description: 'Unauthorized' },
+            '403': { description: 'Missing mfa-recovery.manage permission' },
+            '404': { description: 'Request not found' },
+            '409': { description: 'Request was already decided' },
+            '422': { description: 'Invalid request ID or reason' },
           },
         },
       },

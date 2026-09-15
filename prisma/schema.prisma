@@ -552,15 +552,23 @@ model login_history {
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 /// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
 model mfa_methods {
-  mfa_method_id    String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  user_id          String    @db.Uuid
-  method_type      String    @db.VarChar(20)
-  secret_encrypted String?
-  is_enabled       Boolean   @default(false)
-  verified_at      DateTime? @db.Timestamptz(6)
-  created_at       DateTime  @default(now()) @db.Timestamptz(6)
-  updated_at       DateTime  @default(now()) @db.Timestamptz(6)
-  users            users     @relation(fields: [user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+  mfa_method_id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id                    String    @db.Uuid
+  method_type                String    @db.VarChar(20)
+  secret_encrypted           String?
+  is_enabled                 Boolean   @default(false)
+  verified_at                DateTime? @db.Timestamptz(6)
+  login_challenge_token_hash String?   @unique @db.VarChar(64)
+  login_challenge_expires_at DateTime? @db.Timestamptz(6)
+  login_challenge_attempts   Int       @default(0) @db.SmallInt
+  login_challenge_ip         String?   @db.Inet
+  last_used_totp_step        BigInt?
+  recovery_code_hashes       Json?
+  created_at                 DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at                 DateTime  @default(now()) @db.Timestamptz(6)
+  users                      users     @relation(fields: [user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([login_challenge_expires_at])
 }
 
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
