@@ -1101,6 +1101,107 @@ export const openApiSpec = swaggerJsdoc({
       },
     },
     paths: {
+      '/training/assessments': {
+        get: {
+          tags: ['Training Awareness'],
+          summary: 'List post-training assessments assigned to the current employee',
+          description:
+            'Requires training-assessments.take. Results are scoped to authenticated-user enrollments and never expose correct options.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
+            {
+              name: 'limit',
+              in: 'query',
+              schema: { type: 'integer', minimum: 1, maximum: 50, default: 10 },
+            },
+          ],
+          responses: {
+            '200': { description: 'Paginated assigned assessment list' },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'training-assessments.take permission required' },
+          },
+        },
+      },
+      '/training/assessments/{enrollmentId}': {
+        get: {
+          tags: ['Training Awareness'],
+          summary: 'Get an assigned post-training assessment',
+          description:
+            'Requires training-assessments.take. Returns questions and choices only when the enrollment belongs to the current employee.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'enrollmentId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          responses: {
+            '200': { description: 'Assessment questions without answer keys' },
+            '403': { description: 'training-assessments.take permission required' },
+            '404': { description: 'Assigned assessment not found' },
+          },
+        },
+      },
+      '/training/assessments/{enrollmentId}/attempts': {
+        post: {
+          tags: ['Training Awareness'],
+          summary: 'Submit a post-training assessment attempt',
+          description:
+            'Requires training-assessments.take. Validates enrollment ownership and attempt limits, scores answers server-side, updates training progress and records an audit event atomically.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'enrollmentId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['answers'],
+                  additionalProperties: false,
+                  properties: {
+                    answers: {
+                      type: 'array',
+                      minItems: 1,
+                      maxItems: 200,
+                      items: {
+                        type: 'object',
+                        required: ['questionId', 'optionIds'],
+                        additionalProperties: false,
+                        properties: {
+                          questionId: { type: 'string', format: 'uuid' },
+                          optionIds: {
+                            type: 'array',
+                            minItems: 1,
+                            maxItems: 20,
+                            uniqueItems: true,
+                            items: { type: 'string', format: 'uuid' },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '201': { description: 'Assessment scored and attempt recorded' },
+            '404': { description: 'Assigned assessment not found' },
+            '409': { description: 'Maximum attempts reached' },
+            '422': { description: 'Answers are incomplete or invalid' },
+          },
+        },
+      },
       '/training/courses': {
         get: {
           tags: ['Training Awareness'],

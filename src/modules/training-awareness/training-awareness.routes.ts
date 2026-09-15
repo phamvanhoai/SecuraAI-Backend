@@ -7,6 +7,9 @@ import {
   createCourse,
   listAssignmentOptions,
   listCourses,
+  getMyAssessment,
+  listMyAssessments,
+  submitMyAssessment,
 } from './training-awareness.controller.js';
 import {
   assignmentOptionsQuerySchema,
@@ -15,8 +18,35 @@ import {
   createCourseBodySchema,
   listCoursesQuerySchema,
 } from './dto/course.dto.js';
+import {
+  assessmentParamsSchema,
+  listMyAssessmentsQuerySchema,
+  submitAssessmentBodySchema,
+} from './dto/assessment.dto.js';
 
 export const trainingAwarenessRouter = Router();
+
+trainingAwarenessRouter.get(
+  '/assessments',
+  authenticate,
+  authorize('training-assessments.take'),
+  validate({ query: listMyAssessmentsQuerySchema }),
+  asyncHandler(listMyAssessments),
+);
+trainingAwarenessRouter.get(
+  '/assessments/:enrollmentId',
+  authenticate,
+  authorize('training-assessments.take'),
+  validate({ params: assessmentParamsSchema }),
+  asyncHandler(getMyAssessment),
+);
+trainingAwarenessRouter.post(
+  '/assessments/:enrollmentId/attempts',
+  authenticate,
+  authorize('training-assessments.take'),
+  validate({ params: assessmentParamsSchema, body: submitAssessmentBodySchema }),
+  asyncHandler(submitMyAssessment),
+);
 
 trainingAwarenessRouter.get(
   '/courses',

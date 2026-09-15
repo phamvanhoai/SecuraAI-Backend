@@ -1,4 +1,4 @@
-import type { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { prisma } from '../../database/prisma.js';
 import type {
   AssignCourseBody,
@@ -6,6 +6,7 @@ import type {
   CreateCourseBody,
   ListCoursesQuery,
 } from './dto/course.dto.js';
+import type { ListMyAssessmentsQuery, SubmitAssessmentBody } from './dto/assessment.dto.js';
 
 const courseSelect = {
   training_course_id: true,
@@ -22,6 +23,267 @@ export type CourseRecord = Prisma.training_coursesGetPayload<{ select: typeof co
 type RequestContext = { actorUserId: string; ipAddress: string | null; userAgent: string | null };
 
 export const trainingAwarenessRepository = {
+  async listMyAssessments(userId: string, query: ListMyAssessmentsQuery) {
+    const where: Prisma.training_enrollmentsWhereInput = {
+      user_id: userId,
+      training_campaigns: { training_courses: { quizzes: { some: {} } } },
+    };
+    const [total, items] = await prisma.$transaction([
+      prisma.training_enrollments.count({ where }),
+      prisma.training_enrollments.findMany({
+        where,
+        select: {
+          training_enrollment_id: true,
+          status: true,
+          progress_percent: true,
+          training_campaigns: {
+            select: {
+              title: true,
+              start_date: true,
+              due_date: true,
+              training_courses: {
+                select: {
+                  title: true,
+                  description: true,
+                  quizzes: {
+                    orderBy: [{ created_at: 'desc' }, { quiz_id: 'desc' }],
+                    take: 1,
+                    select: {
+                      quiz_id: true,
+                      title: true,
+                      passing_score: true,
+                      max_attempts: true,
+                      quiz_attempts: {
+                        where: { user_id: userId, submitted_at: { not: null } },
+                        select: {
+                          quiz_attempt_id: true,
+                          score: true,
+                          passed: true,
+                          submitted_at: true,
+                        },
+                        orderBy: { submitted_at: 'desc' },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        orderBy: [{ training_campaigns: { due_date: 'asc' } }, { training_enrollment_id: 'asc' }],
+        skip: (query.page - 1) * query.limit,
+        take: query.limit,
+      }),
+    ]);
+    return { items, total };
+  },
+  getMyAssessment(enrollmentId: string, userId: string) {
+    return prisma.training_enrollments.findFirst({
+      where: { training_enrollment_id: enrollmentId, user_id: userId },
+      select: {
+        training_enrollment_id: true,
+        training_campaigns: {
+          select: {
+            title: true,
+            start_date: true,
+            due_date: true,
+            training_courses: {
+              select: {
+                title: true,
+                quizzes: {
+                  orderBy: [{ created_at: 'desc' }, { quiz_id: 'desc' }],
+                  take: 1,
+                  select: {
+                    quiz_id: true,
+                    title: true,
+                    passing_score: true,
+                    max_attempts: true,
+                    quiz_questions: {
+                      orderBy: [{ display_order: 'asc' }, { quiz_question_id: 'asc' }],
+                      select: {
+                        quiz_question_id: true,
+                        question_text: true,
+                        question_type: true,
+                        score: true,
+                        quiz_options: {
+                          orderBy: [{ display_order: 'asc' }, { quiz_option_id: 'asc' }],
+                          select: { quiz_option_id: true, option_text: true },
+                        },
+                      },
+                    },
+                    quiz_attempts: {
+                      where: { user_id: userId, submitted_at: { not: null } },
+                      select: {
+                        quiz_attempt_id: true,
+                        score: true,
+                        passed: true,
+                        submitted_at: true,
+                      },
+                      orderBy: { submitted_at: 'desc' },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    });
+  },
+  submitAssessment(enrollmentId: string, input: SubmitAssessmentBody, context: RequestContext) {
+    return prisma.$transaction(
+      async (transaction) => {
+        const enrollment = await transaction.training_enrollments.findFirst({
+          where: { training_enrollment_id: enrollmentId, user_id: context.actorUserId },
+          select: {
+            training_enrollment_id: true,
+            started_at: true,
+            training_campaigns: {
+              select: {
+                start_date: true,
+                due_date: true,
+                training_courses: {
+                  select: {
+                    quizzes: {
+                      orderBy: [{ created_at: 'desc' }, { quiz_id: 'desc' }],
+                      take: 1,
+                      select: {
+                        quiz_id: true,
+                        passing_score: true,
+                        max_attempts: true,
+                        quiz_questions: {
+                          select: {
+                            quiz_question_id: true,
+                            score: true,
+                            quiz_options: {
+                              select: { quiz_option_id: true, is_correct: true },
+                            },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        });
+        const quiz = enrollment?.training_campaigns.training_courses.quizzes[0];
+        if (!enrollment || !quiz) return { kind: 'not_found' as const };
+
+        const now = new Date();
+        const dueBoundary = new Date(enrollment.training_campaigns.due_date);
+        dueBoundary.setUTCDate(dueBoundary.getUTCDate() + 1);
+        if (now < enrollment.training_campaigns.start_date || now >= dueBoundary)
+          return { kind: 'not_available' as const };
+
+        const previousAttempts = await transaction.quiz_attempts.findMany({
+          where: {
+            quiz_id: quiz.quiz_id,
+            user_id: context.actorUserId,
+            submitted_at: { not: null },
+          },
+          select: { passed: true },
+        });
+        const attemptsUsed = previousAttempts.length;
+        if (previousAttempts.some((attempt) => attempt.passed))
+          return { kind: 'already_passed' as const };
+        if (attemptsUsed >= quiz.max_attempts) return { kind: 'attempt_limit' as const };
+
+        const answerByQuestion = new Map(
+          input.answers.map((answer) => [answer.questionId, answer]),
+        );
+        if (
+          input.answers.length !== quiz.quiz_questions.length ||
+          quiz.quiz_questions.some((question) => {
+            const answer = answerByQuestion.get(question.quiz_question_id);
+            return (
+              !answer ||
+              answer.optionIds.some(
+                (optionId) =>
+                  !question.quiz_options.some((option) => option.quiz_option_id === optionId),
+              )
+            );
+          })
+        ) {
+          return { kind: 'invalid_answers' as const };
+        }
+
+        const totalPoints = quiz.quiz_questions.reduce(
+          (sum, question) => sum + Number(question.score),
+          0,
+        );
+        const scoredQuestions = quiz.quiz_questions.map((question) => {
+          const answer = answerByQuestion.get(question.quiz_question_id);
+          if (!answer) throw new Error('Validated assessment answer is missing');
+          const correctOptionIds = question.quiz_options
+            .filter((option) => option.is_correct)
+            .map((option) => option.quiz_option_id);
+          const isCorrect =
+            answer.optionIds.length === correctOptionIds.length &&
+            answer.optionIds.every((optionId) => correctOptionIds.includes(optionId));
+          return { question, answer, isCorrect };
+        });
+        const answers = scoredQuestions.flatMap(({ question, answer, isCorrect }) =>
+          answer.optionIds.map((optionId, index) => ({
+            quiz_question_id: question.quiz_question_id,
+            selected_quiz_option_id: optionId,
+            is_correct: isCorrect,
+            score_awarded: isCorrect && index === 0 ? question.score : 0,
+          })),
+        );
+        const earnedPoints = scoredQuestions.reduce(
+          (sum, item) => sum + (item.isCorrect ? Number(item.question.score) : 0),
+          0,
+        );
+        const score = totalPoints > 0 ? Number(((earnedPoints / totalPoints) * 100).toFixed(2)) : 0;
+        const passed = score >= Number(quiz.passing_score);
+        const attempt = await transaction.quiz_attempts.create({
+          data: {
+            quiz_id: quiz.quiz_id,
+            user_id: context.actorUserId,
+            score,
+            passed,
+            started_at: now,
+            submitted_at: now,
+            quiz_answers: { create: answers },
+          },
+          select: { quiz_attempt_id: true, score: true, passed: true, submitted_at: true },
+        });
+        await transaction.training_enrollments.update({
+          where: { training_enrollment_id: enrollment.training_enrollment_id },
+          data: {
+            status: passed ? 'completed' : 'in_progress',
+            ...(passed ? { progress_percent: 100, completed_at: now } : {}),
+            started_at: enrollment.started_at ?? now,
+            last_accessed_at: now,
+          },
+        });
+        await transaction.audit_logs.create({
+          data: {
+            actor_user_id: context.actorUserId,
+            module: 'training-awareness',
+            action: 'training_assessment.submitted',
+            entity_type: 'quiz_attempt',
+            entity_id: attempt.quiz_attempt_id,
+            after_data: { enrollmentId, quizId: quiz.quiz_id, score, passed },
+            ip_address: context.ipAddress,
+            user_agent: context.userAgent,
+          },
+        });
+        return {
+          kind: 'submitted' as const,
+          attempt,
+          passingScore: Number(quiz.passing_score),
+          attemptsUsed: attemptsUsed + 1,
+          maxAttempts: quiz.max_attempts,
+          correctCount: scoredQuestions.filter((item) => item.isCorrect).length,
+          totalQuestions: scoredQuestions.length,
+        };
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
+  },
   async listCourses(query: ListCoursesQuery): Promise<{ items: CourseRecord[]; total: number }> {
     const where: Prisma.training_coursesWhereInput = query.q
       ? { title: { contains: query.q, mode: 'insensitive' } }
