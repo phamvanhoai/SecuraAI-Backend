@@ -15,6 +15,7 @@ import {
   querySyncJobsSchema,
   triggerSyncSchema,
   queryIntegrationLogsSchema,
+  queryIntegrationLogStatsSchema,
 } from './dto/index.js';
 
 export const integrationsRouter = Router();
@@ -78,6 +79,26 @@ integrationsRouter.get(
   authorize('integrations.read'),
   validate({ query: queryIntegrationsSchema }),
   asyncHandler((req, res) => controller.listIntegrations(req, res)),
+);
+
+// -------------------------------------------------------------
+// Global Integration Logs & Error Diagnostics Routes (UC13.5)
+// MUST BE REGISTERED BEFORE '/:id' to prevent route param hijacking
+// -------------------------------------------------------------
+integrationsRouter.get(
+  '/logs/stats',
+  authenticate,
+  authorize('integrations.read'),
+  validate({ query: queryIntegrationLogStatsSchema }),
+  asyncHandler((req, res) => controller.getLogStats(req, res)),
+);
+
+integrationsRouter.get(
+  '/logs',
+  authenticate,
+  authorize('integrations.read'),
+  validate({ query: queryIntegrationLogsSchema }),
+  asyncHandler((req, res) => controller.listAllLogs(req, res)),
 );
 
 integrationsRouter.get(
