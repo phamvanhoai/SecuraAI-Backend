@@ -9,6 +9,7 @@ import {
   listCourses,
 } from './training-awareness.controller.js';
 import {
+  assignmentOptionsQuerySchema,
   assignCourseBodySchema,
   assignCourseParamsSchema,
   createCourseBodySchema,
@@ -35,6 +36,7 @@ trainingAwarenessRouter.get(
   '/assignment-options',
   authenticate,
   authorize('training-courses.assign'),
+  validate({ query: assignmentOptionsQuerySchema }),
   asyncHandler(listAssignmentOptions),
 );
 trainingAwarenessRouter.post(

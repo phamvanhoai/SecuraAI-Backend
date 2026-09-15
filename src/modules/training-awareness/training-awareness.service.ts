@@ -1,6 +1,11 @@
 import { AppError } from '../../common/errors/app-error.js';
 import { trainingAwarenessRepository, type CourseRecord } from './training-awareness.repository.js';
-import type { AssignCourseBody, CreateCourseBody, ListCoursesQuery } from './dto/course.dto.js';
+import type {
+  AssignCourseBody,
+  AssignmentOptionsQuery,
+  CreateCourseBody,
+  ListCoursesQuery,
+} from './dto/course.dto.js';
 
 type Actor = { userId: string; permissions: readonly string[] };
 type RequestContext = { ipAddress: string | null; userAgent: string | null };
@@ -40,10 +45,10 @@ export const trainingAwarenessService = {
     });
     return toCourseResponse(course);
   },
-  async listAssignmentOptions(actor: Actor) {
+  async listAssignmentOptions(query: AssignmentOptionsQuery, actor: Actor) {
     if (!actor.permissions.includes('training-courses.assign'))
       throw new AppError(403, 'FORBIDDEN', 'Insufficient permissions');
-    const result = await trainingAwarenessRepository.listAssignmentOptions();
+    const result = await trainingAwarenessRepository.listAssignmentOptions(query);
     return {
       users: result.users.map((user) => ({
         id: user.user_id,
@@ -56,9 +61,9 @@ export const trainingAwarenessService = {
         code: department.code,
         name: department.name,
       })),
-      truncated: {
-        users: result.users.length === 200,
-        departments: result.departments.length === 200,
+      hasMore: {
+        users: result.hasMoreUsers,
+        departments: result.hasMoreDepartments,
       },
     };
   },

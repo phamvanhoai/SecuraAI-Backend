@@ -20,6 +20,12 @@ export const assignCourseParamsSchema = z.object({
   courseId: z.string().uuid(),
 });
 
+export const assignmentOptionsQuerySchema = z.object({
+  userQ: z.string().trim().max(100).default(''),
+  departmentQ: z.string().trim().max(100).default(''),
+  limit: z.coerce.number().int().min(1).max(50).default(20),
+});
+
 export const assignCourseBodySchema = z
   .object({
     title: z.string().trim().min(3).max(255),
@@ -50,3 +56,4 @@ export type CreateCourseBody = z.infer<typeof createCourseBodySchema>;
 export type ListCoursesQuery = z.infer<typeof listCoursesQuerySchema>;
 export type AssignCourseParams = z.infer<typeof assignCourseParamsSchema>;
 export type AssignCourseBody = z.infer<typeof assignCourseBodySchema>;
+export type AssignmentOptionsQuery = z.infer<typeof assignmentOptionsQuerySchema>;

@@ -1,6 +1,11 @@
 import type { Prisma } from '@prisma/client';
 import { prisma } from '../../database/prisma.js';
-import type { AssignCourseBody, CreateCourseBody, ListCoursesQuery } from './dto/course.dto.js';
+import type {
+  AssignCourseBody,
+  AssignmentOptionsQuery,
+  CreateCourseBody,
+  ListCoursesQuery,
+} from './dto/course.dto.js';
 
 const courseSelect = {
   training_course_id: true,
@@ -60,22 +65,49 @@ export const trainingAwarenessRepository = {
       return course;
     });
   },
-  async listAssignmentOptions() {
+  async listAssignmentOptions(query: AssignmentOptionsQuery) {
     const [users, departments] = await prisma.$transaction([
       prisma.users.findMany({
-        where: { status: 'active', deleted_at: null },
+        where: {
+          status: 'active',
+          deleted_at: null,
+          ...(query.userQ
+            ? {
+                OR: [
+                  { full_name: { contains: query.userQ, mode: 'insensitive' } },
+                  { email: { contains: query.userQ, mode: 'insensitive' } },
+                  { employee_code: { contains: query.userQ, mode: 'insensitive' } },
+                ],
+              }
+            : {}),
+        },
         select: { user_id: true, full_name: true, email: true, department_id: true },
         orderBy: [{ full_name: 'asc' }, { email: 'asc' }],
-        take: 200,
+        take: query.limit + 1,
       }),
       prisma.departments.findMany({
-        where: { status: 'active' },
+        where: {
+          status: 'active',
+          ...(query.departmentQ
+            ? {
+                OR: [
+                  { name: { contains: query.departmentQ, mode: 'insensitive' } },
+                  { code: { contains: query.departmentQ, mode: 'insensitive' } },
+                ],
+              }
+            : {}),
+        },
         select: { department_id: true, code: true, name: true },
         orderBy: { name: 'asc' },
-        take: 200,
+        take: query.limit + 1,
       }),
     ]);
-    return { users, departments };
+    return {
+      users: users.slice(0, query.limit),
+      departments: departments.slice(0, query.limit),
+      hasMoreUsers: users.length > query.limit,
+      hasMoreDepartments: departments.length > query.limit,
+    };
   },
   async assignCourse(courseId: string, input: AssignCourseBody, context: RequestContext) {
     return prisma.$transaction(async (transaction) => {

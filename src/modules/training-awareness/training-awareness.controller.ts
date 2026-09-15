@@ -2,6 +2,7 @@ import type { RequestHandler } from 'express';
 import { AppError } from '../../common/errors/app-error.js';
 import { trainingAwarenessService } from './training-awareness.service.js';
 import {
+  assignmentOptionsQuerySchema,
   assignCourseBodySchema,
   assignCourseParamsSchema,
   createCourseBodySchema,
@@ -29,9 +30,13 @@ export const createCourse: RequestHandler = async (req, res) => {
 
 export const listAssignmentOptions: RequestHandler = async (req, res) => {
   if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
-  res
-    .status(200)
-    .json({ success: true, data: await trainingAwarenessService.listAssignmentOptions(req.auth) });
+  res.status(200).json({
+    success: true,
+    data: await trainingAwarenessService.listAssignmentOptions(
+      assignmentOptionsQuerySchema.parse(req.query),
+      req.auth,
+    ),
+  });
 };
 
 export const assignCourse: RequestHandler = async (req, res) => {
