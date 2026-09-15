@@ -15,6 +15,10 @@ import {
   querySyncJobsSchema,
   triggerSyncSchema,
   queryIntegrationLogsSchema,
+  createApiKeySchema,
+  updateApiKeySchema,
+  rotateApiKeySchema,
+  queryApiKeysSchema,
 } from './dto/index.js';
 
 export const integrationsRouter = Router();
@@ -32,6 +36,12 @@ const jobParamSchema = z.object({
   id: z.string().uuid('Invalid integration ID format'),
   jobId: z.string().uuid('Invalid job ID format'),
 });
+
+const keyParamSchema = z.object({
+  id: z.string().uuid('Invalid integration ID format'),
+  keyId: z.string().uuid('Invalid API key ID format'),
+});
+
 
 const testConnectionLimiter = rateLimit({
   windowMs: 60 * 1000,
@@ -183,3 +193,55 @@ integrationsRouter.get(
   validate({ params: idParamSchema, query: queryIntegrationLogsSchema }),
   asyncHandler((req, res) => controller.listIntegrationLogs(req, res)),
 );
+
+// -------------------------------------------------------------
+// Integration API Keys Routes
+// -------------------------------------------------------------
+integrationsRouter.post(
+  '/:id/api-keys',
+  authenticate,
+  authorize('integrations.update'),
+  validate({ params: idParamSchema, body: createApiKeySchema }),
+  asyncHandler((req, res) => controller.createApiKey(req, res)),
+);
+
+integrationsRouter.get(
+  '/:id/api-keys',
+  authenticate,
+  authorize('integrations.read'),
+  validate({ params: idParamSchema, query: queryApiKeysSchema }),
+  asyncHandler((req, res) => controller.listApiKeys(req, res)),
+);
+
+integrationsRouter.get(
+  '/:id/api-keys/:keyId',
+  authenticate,
+  authorize('integrations.read'),
+  validate({ params: keyParamSchema }),
+  asyncHandler((req, res) => controller.getApiKeyById(req, res)),
+);
+
+integrationsRouter.patch(
+  '/:id/api-keys/:keyId',
+  authenticate,
+  authorize('integrations.update'),
+  validate({ params: keyParamSchema, body: updateApiKeySchema }),
+  asyncHandler((req, res) => controller.updateApiKey(req, res)),
+);
+
+integrationsRouter.post(
+  '/:id/api-keys/:keyId/rotate',
+  authenticate,
+  authorize('integrations.update'),
+  validate({ params: keyParamSchema, body: rotateApiKeySchema }),
+  asyncHandler((req, res) => controller.rotateApiKey(req, res)),
+);
+
+integrationsRouter.post(
+  '/:id/api-keys/:keyId/revoke',
+  authenticate,
+  authorize('integrations.update'),
+  validate({ params: keyParamSchema }),
+  asyncHandler((req, res) => controller.revokeApiKey(req, res)),
+);
+

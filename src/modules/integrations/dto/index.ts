@@ -7,3 +7,7 @@ export * from './update-sync-schedule.dto.js';
 export * from './query-sync-jobs.dto.js';
 export * from './trigger-sync.dto.js';
 export * from './query-integration-logs.dto.js';
+export * from './create-api-key.dto.js';
+export * from './update-api-key.dto.js';
+export * from './rotate-api-key.dto.js';
+export * from './query-api-keys.dto.js';

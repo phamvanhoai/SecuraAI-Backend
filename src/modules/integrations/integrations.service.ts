@@ -1,16 +1,21 @@
+import { randomBytes } from 'node:crypto';
 import { AppError } from '../../common/errors/app-error.js';
 import { executeSafeHttpRequest, validateExternalUrl } from '../../common/utils/ssrf-validator.js';
 import { getNextCronRunDate } from '../../common/utils/cron.js';
-import { decryptSecret } from '../../common/utils/encryption.js';
+import { decryptSecret, encryptSecret } from '../../common/utils/encryption.js';
 import { integrationsRepository } from './integrations.repository.js';
 import {
   toIntegrationResponseDto,
   toSyncScheduleResponseDto,
   toSyncJobResponseDto,
   toIntegrationLogResponseDto,
+  toApiKeyResponseDto,
+  toApiKeyCreatedResponseDto,
   type IntegrationResponseDto,
   type SyncScheduleResponseDto,
   type SyncJobResponseDto,
+  type ApiKeyResponseDto,
+  type ApiKeyCreatedResponseDto,
 } from './integrations.mapper.js';
 import type {
   CreateIntegrationDto,
@@ -21,8 +26,20 @@ import type {
   UpdateSyncScheduleDto,
   QuerySyncJobsDto,
   QueryIntegrationLogsDto,
+  CreateApiKeyDto,
+  UpdateApiKeyDto,
+  RotateApiKeyDto,
+  QueryApiKeysDto,
 } from './dto/index.js';
 import type { Prisma } from '@prisma/client';
+
+function generateSecretFingerprint(secret: string): string {
+  if (secret.length <= 8) {
+    return `sec_...${secret.slice(-2)}`;
+  }
+  return `sec_...${secret.slice(-4)}`;
+}
+
 
 export type TestConnectionResult = {
   connected: boolean;
@@ -347,6 +364,195 @@ export const integrationsService = {
       level: 'info',
       message: `Sync schedule "${scheduleId}" deleted`,
     });
+  },
+
+  // -------------------------------------------------------------
+  // Integration API Keys Methods
+  // -------------------------------------------------------------
+  async createApiKey(
+    integrationId: string,
+    dto: CreateApiKeyDto,
+  ): Promise<ApiKeyCreatedResponseDto> {
+    const integration = await integrationsRepository.findById(integrationId);
+    if (!integration) {
+      throw new AppError(404, 'INTEGRATION_NOT_FOUND', `Integration with ID "${integrationId}" was not found`);
+    }
+
+    const plaintextSecret = dto.secret?.trim() || `sec_${randomBytes(24).toString('base64url')}`;
+    const secretEncrypted = encryptSecret(plaintextSecret);
+    const keyFingerprint = generateSecretFingerprint(plaintextSecret);
+    const expiresAt = dto.expiresAt ? new Date(dto.expiresAt) : null;
+    const isActive = dto.isActive !== undefined ? dto.isActive : true;
+
+    const created = await integrationsRepository.createApiKey({
+      integration_id: integrationId,
+      key_name: dto.keyName.trim(),
+      secret_encrypted: secretEncrypted,
+      key_fingerprint: keyFingerprint,
+      expires_at: expiresAt,
+      is_active: isActive,
+    });
+
+    await integrationsRepository.createLog({
+      integration_id: integrationId,
+      level: 'info',
+      message: 'API_KEY_CREATED',
+      details: { apiKeyId: created.integration_api_key_id, keyName: created.key_name },
+    });
+
+    return toApiKeyCreatedResponseDto(created, plaintextSecret);
+  },
+
+  async listApiKeys(
+    integrationId: string,
+    query?: QueryApiKeysDto,
+  ): Promise<ApiKeyResponseDto[]> {
+    const integration = await integrationsRepository.findById(integrationId);
+    if (!integration) {
+      throw new AppError(404, 'INTEGRATION_NOT_FOUND', `Integration with ID "${integrationId}" was not found`);
+    }
+
+    const keys = await integrationsRepository.findApiKeysByIntegrationId(integrationId, query);
+    return keys.map(toApiKeyResponseDto);
+  },
+
+  async getApiKeyById(
+    integrationId: string,
+    apiKeyId: string,
+  ): Promise<ApiKeyResponseDto> {
+    const integration = await integrationsRepository.findById(integrationId);
+    if (!integration) {
+      throw new AppError(404, 'INTEGRATION_NOT_FOUND', `Integration with ID "${integrationId}" was not found`);
+    }
+
+    const key = await integrationsRepository.findApiKeyById(integrationId, apiKeyId);
+    if (!key) {
+      throw new AppError(
+        404,
+        'API_KEY_NOT_FOUND',
+        `API key with ID "${apiKeyId}" was not found on integration "${integrationId}"`,
+      );
+    }
+
+    return toApiKeyResponseDto(key);
+  },
+
+  async updateApiKey(
+    integrationId: string,
+    apiKeyId: string,
+    dto: UpdateApiKeyDto,
+  ): Promise<ApiKeyResponseDto> {
+    const integration = await integrationsRepository.findById(integrationId);
+    if (!integration) {
+      throw new AppError(404, 'INTEGRATION_NOT_FOUND', `Integration with ID "${integrationId}" was not found`);
+    }
+
+    const existing = await integrationsRepository.findApiKeyById(integrationId, apiKeyId);
+    if (!existing) {
+      throw new AppError(
+        404,
+        'API_KEY_NOT_FOUND',
+        `API key with ID "${apiKeyId}" was not found on integration "${integrationId}"`,
+      );
+    }
+
+    const expiresAt = dto.expiresAt !== undefined ? (dto.expiresAt ? new Date(dto.expiresAt) : null) : undefined;
+    const isReactivating = dto.isActive === true && !existing.is_active;
+
+    const updated = await integrationsRepository.updateApiKey(integrationId, apiKeyId, {
+      ...(dto.keyName !== undefined && { key_name: dto.keyName.trim() }),
+      ...(expiresAt !== undefined && { expires_at: expiresAt }),
+      ...(dto.isActive !== undefined && { is_active: dto.isActive }),
+    });
+
+    const eventMessage = isReactivating ? 'API_KEY_REACTIVATED' : 'API_KEY_UPDATED';
+    await integrationsRepository.createLog({
+      integration_id: integrationId,
+      level: 'info',
+      message: eventMessage,
+      details: {
+        apiKeyId,
+        keyName: updated.key_name,
+        isActive: updated.is_active,
+      },
+    });
+
+    return toApiKeyResponseDto(updated);
+  },
+
+  async rotateApiKey(
+    integrationId: string,
+    apiKeyId: string,
+    dto: RotateApiKeyDto,
+  ): Promise<ApiKeyCreatedResponseDto> {
+    const integration = await integrationsRepository.findById(integrationId);
+    if (!integration) {
+      throw new AppError(404, 'INTEGRATION_NOT_FOUND', `Integration with ID "${integrationId}" was not found`);
+    }
+
+    const existing = await integrationsRepository.findApiKeyById(integrationId, apiKeyId);
+    if (!existing) {
+      throw new AppError(
+        404,
+        'API_KEY_NOT_FOUND',
+        `API key with ID "${apiKeyId}" was not found on integration "${integrationId}"`,
+      );
+    }
+
+    const newPlaintextSecret = dto.secret?.trim() || `sec_${randomBytes(24).toString('base64url')}`;
+    const newSecretEncrypted = encryptSecret(newPlaintextSecret);
+    const newKeyFingerprint = generateSecretFingerprint(newPlaintextSecret);
+
+    const updated = await integrationsRepository.updateApiKey(integrationId, apiKeyId, {
+      secret_encrypted: newSecretEncrypted,
+      key_fingerprint: newKeyFingerprint,
+    });
+
+    await integrationsRepository.createLog({
+      integration_id: integrationId,
+      level: 'info',
+      message: 'API_KEY_ROTATED',
+      details: {
+        apiKeyId,
+        keyName: updated.key_name,
+        keyFingerprint: newKeyFingerprint,
+      },
+    });
+
+    return toApiKeyCreatedResponseDto(updated, newPlaintextSecret);
+  },
+
+  async revokeApiKey(
+    integrationId: string,
+    apiKeyId: string,
+  ): Promise<ApiKeyResponseDto> {
+    const integration = await integrationsRepository.findById(integrationId);
+    if (!integration) {
+      throw new AppError(404, 'INTEGRATION_NOT_FOUND', `Integration with ID "${integrationId}" was not found`);
+    }
+
+    const existing = await integrationsRepository.findApiKeyById(integrationId, apiKeyId);
+    if (!existing) {
+      throw new AppError(
+        404,
+        'API_KEY_NOT_FOUND',
+        `API key with ID "${apiKeyId}" was not found on integration "${integrationId}"`,
+      );
+    }
+
+    const revoked = await integrationsRepository.revokeApiKey(integrationId, apiKeyId);
+
+    await integrationsRepository.createLog({
+      integration_id: integrationId,
+      level: 'warn',
+      message: 'API_KEY_REVOKED',
+      details: {
+        apiKeyId,
+        keyName: existing.key_name,
+      },
+    });
+
+    return toApiKeyResponseDto(revoked);
   },
 
   // -------------------------------------------------------------
