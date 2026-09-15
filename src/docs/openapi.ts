@@ -26,7 +26,9 @@ export const openApiSpec = swaggerJsdoc({
       securitySchemes: { bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' } },
       schemas: {
         CreateTrainingCourseRequest: {
-          type: 'object', additionalProperties: false, required: ['title', 'content'],
+          type: 'object',
+          additionalProperties: false,
+          required: ['title', 'content'],
           properties: {
             title: { type: 'string', minLength: 3, maxLength: 255 },
             description: { type: 'string', nullable: true, maxLength: 2000 },
@@ -34,14 +36,33 @@ export const openApiSpec = swaggerJsdoc({
           },
         },
         TrainingCourse: {
-          type: 'object', required: ['id', 'title', 'status', 'createdAt', 'updatedAt'],
+          type: 'object',
+          required: ['id', 'title', 'status', 'createdAt', 'updatedAt'],
           properties: {
-            id: { type: 'string', format: 'uuid' }, title: { type: 'string' },
-            description: { type: 'string', nullable: true }, content: { type: 'string' },
+            id: { type: 'string', format: 'uuid' },
+            title: { type: 'string' },
+            description: { type: 'string', nullable: true },
+            content: { type: 'string' },
             status: { type: 'string', enum: ['draft', 'published', 'archived'] },
             createdByUserId: { type: 'string', format: 'uuid', nullable: true },
             createdAt: { type: 'string', format: 'date-time' },
             updatedAt: { type: 'string', format: 'date-time' },
+          },
+        },
+        AssignTrainingCourseRequest: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['title', 'startDate', 'dueDate', 'userIds', 'departmentIds'],
+          properties: {
+            title: { type: 'string', minLength: 3, maxLength: 255 },
+            startDate: { type: 'string', format: 'date' },
+            dueDate: { type: 'string', format: 'date' },
+            userIds: { type: 'array', maxItems: 200, items: { type: 'string', format: 'uuid' } },
+            departmentIds: {
+              type: 'array',
+              maxItems: 200,
+              items: { type: 'string', format: 'uuid' },
+            },
           },
         },
         LoginRequest: {
@@ -322,7 +343,10 @@ export const openApiSpec = swaggerJsdoc({
             isActive: { type: 'boolean' },
             status: { type: 'string', enum: ['ACTIVE', 'INACTIVE', 'EXPIRED'] },
             createdAt: { type: 'string', format: 'date-time' },
-            secret: { type: 'string', description: 'Plaintext secret shown only once upon creation or rotation' },
+            secret: {
+              type: 'string',
+              description: 'Plaintext secret shown only once upon creation or rotation',
+            },
           },
         },
         Error: {
@@ -1078,11 +1102,17 @@ export const openApiSpec = swaggerJsdoc({
     paths: {
       '/training/courses': {
         get: {
-          tags: ['Training Awareness'], summary: 'List security awareness courses',
-          description: 'Requires training-courses.read.', security: [{ bearerAuth: [] }],
+          tags: ['Training Awareness'],
+          summary: 'List security awareness courses',
+          description: 'Requires training-courses.read.',
+          security: [{ bearerAuth: [] }],
           parameters: [
             { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
-            { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 } },
+            {
+              name: 'limit',
+              in: 'query',
+              schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
+            },
             { name: 'q', in: 'query', schema: { type: 'string', minLength: 1, maxLength: 100 } },
           ],
           responses: {
@@ -1093,15 +1123,68 @@ export const openApiSpec = swaggerJsdoc({
           },
         },
         post: {
-          tags: ['Training Awareness'], summary: 'Create security awareness course draft',
-          description: 'Requires training-courses.create. Creates draft and audit record atomically.',
+          tags: ['Training Awareness'],
+          summary: 'Create security awareness course draft',
+          description:
+            'Requires training-courses.create. Creates draft and audit record atomically.',
           security: [{ bearerAuth: [] }],
-          requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/CreateTrainingCourseRequest' } } } },
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/CreateTrainingCourseRequest' },
+              },
+            },
+          },
           responses: {
             '201': { description: 'Draft course created' },
             '401': { description: 'Authentication required' },
             '403': { description: 'training-courses.create permission required' },
             '422': { description: 'Invalid course data' },
+          },
+        },
+      },
+      '/training/assignment-options': {
+        get: {
+          tags: ['Training Awareness'],
+          summary: 'List course assignment targets',
+          description:
+            'Requires training-courses.assign. Returns bounded active user and department options.',
+          security: [{ bearerAuth: [] }],
+          responses: {
+            '200': { description: 'Active users and departments' },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'training-courses.assign permission required' },
+          },
+        },
+      },
+      '/training/courses/{courseId}/assignments': {
+        post: {
+          tags: ['Training Awareness'],
+          summary: 'Assign a training course',
+          description:
+            'Requires training-courses.assign. Creates a campaign, targets, deduplicated enrollments and audit record atomically.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'courseId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/AssignTrainingCourseRequest' },
+              },
+            },
+          },
+          responses: {
+            '201': { description: 'Course assignment campaign created' },
+            '404': { description: 'Course not found' },
+            '422': { description: 'Invalid dates or assignment targets' },
           },
         },
       },
@@ -3565,7 +3648,11 @@ export const openApiSpec = swaggerJsdoc({
           parameters: [
             { name: 'page', in: 'query', schema: { type: 'integer', default: 1 } },
             { name: 'limit', in: 'query', schema: { type: 'integer', default: 20 } },
-            { name: 'level', in: 'query', schema: { type: 'string', enum: ['info', 'warn', 'error'] } },
+            {
+              name: 'level',
+              in: 'query',
+              schema: { type: 'string', enum: ['info', 'warn', 'error'] },
+            },
             { name: 'integrationId', in: 'query', schema: { type: 'string', format: 'uuid' } },
             { name: 'syncJobId', in: 'query', schema: { type: 'string', format: 'uuid' } },
             { name: 'search', in: 'query', schema: { type: 'string' } },
@@ -3610,7 +3697,8 @@ export const openApiSpec = swaggerJsdoc({
         post: {
           tags: ['Integrations'],
           summary: 'Create and encrypt integration API key',
-          description: 'Requires integrations.update (Admin). Plaintext secret is returned only once in response.',
+          description:
+            'Requires integrations.update (Admin). Plaintext secret is returned only once in response.',
           security: [{ bearerAuth: [] }],
           parameters: [
             { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
@@ -3686,7 +3774,12 @@ export const openApiSpec = swaggerJsdoc({
           security: [{ bearerAuth: [] }],
           parameters: [
             { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
-            { name: 'keyId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+            {
+              name: 'keyId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
           ],
           responses: {
             '200': {
@@ -3711,11 +3804,17 @@ export const openApiSpec = swaggerJsdoc({
         patch: {
           tags: ['Integrations'],
           summary: 'Update API key metadata',
-          description: 'Requires integrations.update (Admin). Allows updating keyName, expiresAt, and isActive.',
+          description:
+            'Requires integrations.update (Admin). Allows updating keyName, expiresAt, and isActive.',
           security: [{ bearerAuth: [] }],
           parameters: [
             { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
-            { name: 'keyId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+            {
+              name: 'keyId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
           ],
           requestBody: {
             required: true,
@@ -3750,11 +3849,17 @@ export const openApiSpec = swaggerJsdoc({
         post: {
           tags: ['Integrations'],
           summary: 'Rotate API key secret',
-          description: 'Requires integrations.update (Admin). Re-encrypts secret and returns new secret once.',
+          description:
+            'Requires integrations.update (Admin). Re-encrypts secret and returns new secret once.',
           security: [{ bearerAuth: [] }],
           parameters: [
             { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
-            { name: 'keyId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+            {
+              name: 'keyId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
           ],
           requestBody: {
             required: false,
@@ -3789,11 +3894,17 @@ export const openApiSpec = swaggerJsdoc({
         post: {
           tags: ['Integrations'],
           summary: 'Revoke and deactivate API key',
-          description: 'Requires integrations.update (Admin). Sets isActive to false and writes audit log.',
+          description:
+            'Requires integrations.update (Admin). Sets isActive to false and writes audit log.',
           security: [{ bearerAuth: [] }],
           parameters: [
             { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
-            { name: 'keyId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+            {
+              name: 'keyId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
           ],
           responses: {
             '200': {
