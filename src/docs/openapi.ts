@@ -50,6 +50,22 @@ export const openApiSpec = swaggerJsdoc({
             updatedAt: { type: 'string', format: 'date-time' },
           },
         },
+        AssignTrainingCourseRequest: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['title', 'startDate', 'dueDate', 'userIds', 'departmentIds'],
+          properties: {
+            title: { type: 'string', minLength: 3, maxLength: 255 },
+            startDate: { type: 'string', format: 'date' },
+            dueDate: { type: 'string', format: 'date' },
+            userIds: { type: 'array', maxItems: 200, items: { type: 'string', format: 'uuid' } },
+            departmentIds: {
+              type: 'array',
+              maxItems: 200,
+              items: { type: 'string', format: 'uuid' },
+            },
+          },
+        },
         LoginRequest: {
           type: 'object',
           required: ['email', 'password'],
@@ -1126,6 +1142,59 @@ export const openApiSpec = swaggerJsdoc({
             '401': { description: 'Authentication required' },
             '403': { description: 'training-courses.create permission required' },
             '422': { description: 'Invalid course data' },
+          },
+        },
+      },
+      '/training/assignment-options': {
+        get: {
+          tags: ['Training Awareness'],
+          summary: 'List course assignment targets',
+          description:
+            'Requires training-courses.assign. Returns bounded active user and department options.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'userQ', in: 'query', schema: { type: 'string', maxLength: 100 } },
+            { name: 'departmentQ', in: 'query', schema: { type: 'string', maxLength: 100 } },
+            {
+              name: 'limit',
+              in: 'query',
+              schema: { type: 'integer', minimum: 1, maximum: 50, default: 20 },
+            },
+          ],
+          responses: {
+            '200': { description: 'Active users and departments' },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'training-courses.assign permission required' },
+          },
+        },
+      },
+      '/training/courses/{courseId}/assignments': {
+        post: {
+          tags: ['Training Awareness'],
+          summary: 'Assign a training course',
+          description:
+            'Requires training-courses.assign. Creates a campaign, targets, deduplicated enrollments and audit record atomically.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'courseId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/AssignTrainingCourseRequest' },
+              },
+            },
+          },
+          responses: {
+            '201': { description: 'Course assignment campaign created' },
+            '404': { description: 'Course not found' },
+            '422': { description: 'Invalid dates or assignment targets' },
           },
         },
       },
