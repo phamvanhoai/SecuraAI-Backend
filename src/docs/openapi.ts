@@ -1570,10 +1570,70 @@ CreateSyncScheduleRequest: {
           },
         },
       },
+      '/integrations/logs/stats': {
+        get: {
+          tags: ['Integrations'],
+          summary: 'Get aggregation statistics for integration errors and warnings (UC13.5)',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'integrationId', in: 'query', schema: { type: 'string', format: 'uuid' } },
+            { name: 'startDate', in: 'query', schema: { type: 'string', format: 'date-time' } },
+            { name: 'endDate', in: 'query', schema: { type: 'string', format: 'date-time' } },
+          ],
+          responses: {
+            '200': {
+              description: 'Aggregation statistics for integration errors',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      success: { type: 'boolean', example: true },
+                      data: {
+                        type: 'object',
+                        properties: {
+                          totalErrors: { type: 'integer', example: 12 },
+                          totalWarnings: { type: 'integer', example: 5 },
+                          failedJobsCount: { type: 'integer', example: 3 },
+                          affectedIntegrationsCount: { type: 'integer', example: 2 },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            '401': { description: 'Unauthorized' },
+            '403': { description: 'Forbidden' },
+          },
+        },
+      },
+      '/integrations/logs': {
+        get: {
+          tags: ['Integrations'],
+          summary: 'List data synchronization error logs and events across integrations (UC13.5)',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'page', in: 'query', schema: { type: 'integer', default: 1 } },
+            { name: 'limit', in: 'query', schema: { type: 'integer', default: 20 } },
+            { name: 'level', in: 'query', schema: { type: 'string', enum: ['info', 'warn', 'error'] } },
+            { name: 'integrationId', in: 'query', schema: { type: 'string', format: 'uuid' } },
+            { name: 'syncJobId', in: 'query', schema: { type: 'string', format: 'uuid' } },
+            { name: 'search', in: 'query', schema: { type: 'string' } },
+            { name: 'startDate', in: 'query', schema: { type: 'string', format: 'date-time' } },
+            { name: 'endDate', in: 'query', schema: { type: 'string', format: 'date-time' } },
+          ],
+          responses: {
+            '200': { description: 'List of integration logs and error events' },
+            '401': { description: 'Unauthorized' },
+            '403': { description: 'Forbidden' },
+          },
+        },
+      },
       '/integrations/{id}/logs': {
         get: {
           tags: ['Integrations'],
-          summary: 'List integration logs and error events',
+          summary: 'List integration logs and error events for a specific integration (UC13.5)',
           security: [{ bearerAuth: [] }],
           parameters: [
             { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
@@ -1581,6 +1641,9 @@ CreateSyncScheduleRequest: {
             { name: 'limit', in: 'query', schema: { type: 'integer', default: 20 } },
             { name: 'level', in: 'query', schema: { type: 'string', enum: ['info', 'warn', 'error'] } },
             { name: 'syncJobId', in: 'query', schema: { type: 'string', format: 'uuid' } },
+            { name: 'search', in: 'query', schema: { type: 'string' } },
+            { name: 'startDate', in: 'query', schema: { type: 'string', format: 'date-time' } },
+            { name: 'endDate', in: 'query', schema: { type: 'string', format: 'date-time' } },
           ],
           responses: {
             '200': { description: 'List of integration logs' },
