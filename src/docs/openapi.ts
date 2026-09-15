@@ -16,6 +16,7 @@ export const openApiSpec = swaggerJsdoc({
       { name: 'Users' },
       { name: 'Role Management' },
       { name: 'Assets' },
+      { name: 'Risk Assessments' },
       { name: 'Security Monitoring' },
       { name: 'AI Alerts' },
       { name: 'Policies' },
@@ -26,7 +27,9 @@ export const openApiSpec = swaggerJsdoc({
       securitySchemes: { bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' } },
       schemas: {
         CreateTrainingCourseRequest: {
-          type: 'object', additionalProperties: false, required: ['title', 'content'],
+          type: 'object',
+          additionalProperties: false,
+          required: ['title', 'content'],
           properties: {
             title: { type: 'string', minLength: 3, maxLength: 255 },
             description: { type: 'string', nullable: true, maxLength: 2000 },
@@ -34,14 +37,33 @@ export const openApiSpec = swaggerJsdoc({
           },
         },
         TrainingCourse: {
-          type: 'object', required: ['id', 'title', 'status', 'createdAt', 'updatedAt'],
+          type: 'object',
+          required: ['id', 'title', 'status', 'createdAt', 'updatedAt'],
           properties: {
-            id: { type: 'string', format: 'uuid' }, title: { type: 'string' },
-            description: { type: 'string', nullable: true }, content: { type: 'string' },
+            id: { type: 'string', format: 'uuid' },
+            title: { type: 'string' },
+            description: { type: 'string', nullable: true },
+            content: { type: 'string' },
             status: { type: 'string', enum: ['draft', 'published', 'archived'] },
             createdByUserId: { type: 'string', format: 'uuid', nullable: true },
             createdAt: { type: 'string', format: 'date-time' },
             updatedAt: { type: 'string', format: 'date-time' },
+          },
+        },
+        AssignTrainingCourseRequest: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['title', 'startDate', 'dueDate', 'userIds', 'departmentIds'],
+          properties: {
+            title: { type: 'string', minLength: 3, maxLength: 255 },
+            startDate: { type: 'string', format: 'date' },
+            dueDate: { type: 'string', format: 'date' },
+            userIds: { type: 'array', maxItems: 200, items: { type: 'string', format: 'uuid' } },
+            departmentIds: {
+              type: 'array',
+              maxItems: 200,
+              items: { type: 'string', format: 'uuid' },
+            },
           },
         },
         LoginRequest: {
@@ -322,7 +344,10 @@ export const openApiSpec = swaggerJsdoc({
             isActive: { type: 'boolean' },
             status: { type: 'string', enum: ['ACTIVE', 'INACTIVE', 'EXPIRED'] },
             createdAt: { type: 'string', format: 'date-time' },
-            secret: { type: 'string', description: 'Plaintext secret shown only once upon creation or rotation' },
+            secret: {
+              type: 'string',
+              description: 'Plaintext secret shown only once upon creation or rotation',
+            },
           },
         },
         Error: {
@@ -1076,13 +1101,120 @@ export const openApiSpec = swaggerJsdoc({
       },
     },
     paths: {
-      '/training/courses': {
+      '/training/assessments': {
         get: {
-          tags: ['Training Awareness'], summary: 'List security awareness courses',
-          description: 'Requires training-courses.read.', security: [{ bearerAuth: [] }],
+          tags: ['Training Awareness'],
+          summary: 'List post-training assessments assigned to the current employee',
+          description:
+            'Requires training-assessments.take. Results are scoped to authenticated-user enrollments and never expose correct options.',
+          security: [{ bearerAuth: [] }],
           parameters: [
             { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
-            { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 } },
+            {
+              name: 'limit',
+              in: 'query',
+              schema: { type: 'integer', minimum: 1, maximum: 50, default: 10 },
+            },
+          ],
+          responses: {
+            '200': { description: 'Paginated assigned assessment list' },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'training-assessments.take permission required' },
+          },
+        },
+      },
+      '/training/assessments/{enrollmentId}': {
+        get: {
+          tags: ['Training Awareness'],
+          summary: 'Get an assigned post-training assessment',
+          description:
+            'Requires training-assessments.take. Returns questions and choices only when the enrollment belongs to the current employee.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'enrollmentId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          responses: {
+            '200': { description: 'Assessment questions without answer keys' },
+            '403': { description: 'training-assessments.take permission required' },
+            '404': { description: 'Assigned assessment not found' },
+          },
+        },
+      },
+      '/training/assessments/{enrollmentId}/attempts': {
+        post: {
+          tags: ['Training Awareness'],
+          summary: 'Submit a post-training assessment attempt',
+          description:
+            'Requires training-assessments.take. Validates enrollment ownership and attempt limits, scores answers server-side, updates training progress and records an audit event atomically.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'enrollmentId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['answers'],
+                  additionalProperties: false,
+                  properties: {
+                    answers: {
+                      type: 'array',
+                      minItems: 1,
+                      maxItems: 200,
+                      items: {
+                        type: 'object',
+                        required: ['questionId', 'optionIds'],
+                        additionalProperties: false,
+                        properties: {
+                          questionId: { type: 'string', format: 'uuid' },
+                          optionIds: {
+                            type: 'array',
+                            minItems: 1,
+                            maxItems: 20,
+                            uniqueItems: true,
+                            items: { type: 'string', format: 'uuid' },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '201': { description: 'Assessment scored and attempt recorded' },
+            '404': { description: 'Assigned assessment not found' },
+            '409': { description: 'Maximum attempts reached' },
+            '422': { description: 'Answers are incomplete or invalid' },
+          },
+        },
+      },
+      '/training/courses': {
+        get: {
+          tags: ['Training Awareness'],
+          summary: 'List security awareness courses',
+          description: 'Requires training-courses.read.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
+            {
+              name: 'limit',
+              in: 'query',
+              schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
+            },
             { name: 'q', in: 'query', schema: { type: 'string', minLength: 1, maxLength: 100 } },
           ],
           responses: {
@@ -1093,15 +1225,77 @@ export const openApiSpec = swaggerJsdoc({
           },
         },
         post: {
-          tags: ['Training Awareness'], summary: 'Create security awareness course draft',
-          description: 'Requires training-courses.create. Creates draft and audit record atomically.',
+          tags: ['Training Awareness'],
+          summary: 'Create security awareness course draft',
+          description:
+            'Requires training-courses.create. Creates draft and audit record atomically.',
           security: [{ bearerAuth: [] }],
-          requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/CreateTrainingCourseRequest' } } } },
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/CreateTrainingCourseRequest' },
+              },
+            },
+          },
           responses: {
             '201': { description: 'Draft course created' },
             '401': { description: 'Authentication required' },
             '403': { description: 'training-courses.create permission required' },
             '422': { description: 'Invalid course data' },
+          },
+        },
+      },
+      '/training/assignment-options': {
+        get: {
+          tags: ['Training Awareness'],
+          summary: 'List course assignment targets',
+          description:
+            'Requires training-courses.assign. Returns bounded active user and department options.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'userQ', in: 'query', schema: { type: 'string', maxLength: 100 } },
+            { name: 'departmentQ', in: 'query', schema: { type: 'string', maxLength: 100 } },
+            {
+              name: 'limit',
+              in: 'query',
+              schema: { type: 'integer', minimum: 1, maximum: 50, default: 20 },
+            },
+          ],
+          responses: {
+            '200': { description: 'Active users and departments' },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'training-courses.assign permission required' },
+          },
+        },
+      },
+      '/training/courses/{courseId}/assignments': {
+        post: {
+          tags: ['Training Awareness'],
+          summary: 'Assign a training course',
+          description:
+            'Requires training-courses.assign. Creates a campaign, targets, deduplicated enrollments and audit record atomically.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'courseId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/AssignTrainingCourseRequest' },
+              },
+            },
+          },
+          responses: {
+            '201': { description: 'Course assignment campaign created' },
+            '404': { description: 'Course not found' },
+            '422': { description: 'Invalid dates or assignment targets' },
           },
         },
       },
@@ -1599,6 +1793,190 @@ export const openApiSpec = swaggerJsdoc({
             '409': { description: 'Email or employee code already exists' },
             '422': { description: 'Invalid role, department, or request body' },
             '503': { description: 'Email service is not configured or unavailable' },
+          },
+        },
+      },
+      '/risks': {
+        post: {
+          tags: ['Risk Assessments'],
+          summary: 'Create a risk assessment draft',
+          description:
+            'Requires risks.create. Exactly one asset or business process target is required. The backend assigns the assessor, generates the risk code, and calculates score and level.',
+          security: [{ bearerAuth: [] }],
+          responses: {
+            '201': { description: 'Risk assessment draft created' },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'The risks.create permission is required' },
+            '404': { description: 'Target or linked catalog item not found' },
+            '409': { description: 'Potential duplicate open risk' },
+            '422': { description: 'Invalid request or inactive target' },
+          },
+        },
+        get: {
+          tags: ['Risk Assessments'],
+          summary: 'List risk assessments',
+          description:
+            'Requires risks.read. Search, filtering, sorting and pagination are performed by the backend.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
+            {
+              name: 'limit',
+              in: 'query',
+              schema: { type: 'integer', minimum: 1, maximum: 100, default: 10 },
+            },
+            { name: 'q', in: 'query', schema: { type: 'string', maxLength: 100 } },
+            {
+              name: 'riskLevel',
+              in: 'query',
+              schema: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] },
+            },
+            {
+              name: 'status',
+              in: 'query',
+              schema: {
+                type: 'string',
+                enum: [
+                  'draft',
+                  'pending_approval',
+                  'approved',
+                  'in_treatment',
+                  'closed',
+                  'rejected',
+                  'cancelled',
+                ],
+              },
+            },
+            {
+              name: 'targetType',
+              in: 'query',
+              schema: { type: 'string', enum: ['asset', 'business_process'] },
+            },
+            { name: 'assessedFrom', in: 'query', schema: { type: 'string', format: 'date' } },
+            { name: 'assessedTo', in: 'query', schema: { type: 'string', format: 'date' } },
+            { name: 'hasTreatmentPlan', in: 'query', schema: { type: 'boolean' } },
+            {
+              name: 'sortBy',
+              in: 'query',
+              schema: {
+                type: 'string',
+                enum: ['riskCode', 'title', 'riskScore', 'riskLevel', 'assessedAt', 'updatedAt'],
+                default: 'updatedAt',
+              },
+            },
+            {
+              name: 'sortOrder',
+              in: 'query',
+              schema: { type: 'string', enum: ['asc', 'desc'], default: 'desc' },
+            },
+          ],
+          responses: {
+            '200': { description: 'Paginated risk assessment list' },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'The risks.read permission is required' },
+            '422': { description: 'Invalid query parameters' },
+          },
+        },
+      },
+      '/risks/create-options': {
+        get: {
+          tags: ['Risk Assessments'],
+          summary: 'List valid options for creating a risk assessment',
+          description:
+            'Requires risks.create. Returns bounded active targets and threat/vulnerability catalog entries.',
+          security: [{ bearerAuth: [] }],
+          responses: {
+            '200': { description: 'Risk creation options' },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'The risks.create permission is required' },
+          },
+        },
+      },
+      '/risks/{riskAssessmentId}': {
+        patch: {
+          tags: ['Risk Assessments'],
+          summary: 'Update a draft or rejected risk assessment',
+          description:
+            'Requires risks.update. Recalculates score and level, replaces linked threats and vulnerabilities transactionally, and uses expectedUpdatedAt for optimistic concurrency.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'riskAssessmentId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          responses: {
+            '200': { description: 'Updated risk assessment detail' },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'The risks.update permission is required' },
+            '404': { description: 'Risk assessment or target not found' },
+            '409': { description: 'Potential duplicate or concurrent modification' },
+            '422': { description: 'Invalid input, inactive target, or non-editable status' },
+          },
+        },
+        get: {
+          tags: ['Risk Assessments'],
+          summary: 'View risk assessment details',
+          description:
+            'Requires risks.read. Returns the assessment target, risk analysis, linked threats and vulnerabilities, treatment plans and the previous assessment.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'riskAssessmentId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          responses: {
+            '200': { description: 'Risk assessment details' },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'The risks.read permission is required' },
+            '404': { description: 'Risk assessment not found' },
+            '422': { description: 'Invalid risk assessment ID' },
+          },
+        },
+      },
+      '/risks/{riskAssessmentId}/cancel': {
+        post: {
+          tags: ['Risk Assessments'],
+          summary: 'Cancel a draft or rejected risk assessment',
+          description:
+            'Requires risks.cancel. Only the assessor or an administrator can cancel an assessment without a treatment plan. Uses expectedUpdatedAt for optimistic concurrency and preserves the assessment as an auditable record.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'riskAssessmentId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  additionalProperties: false,
+                  required: ['reason', 'expectedUpdatedAt'],
+                  properties: {
+                    reason: { type: 'string', minLength: 10, maxLength: 1000 },
+                    expectedUpdatedAt: { type: 'string', format: 'date-time' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '200': { description: 'Cancelled risk assessment detail' },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'Missing permission or actor is not the assessor/admin' },
+            '404': { description: 'Risk assessment not found' },
+            '409': { description: 'Treatment plan exists or assessment changed concurrently' },
+            '422': { description: 'Invalid input or assessment status is not cancellable' },
           },
         },
       },
@@ -3565,7 +3943,11 @@ export const openApiSpec = swaggerJsdoc({
           parameters: [
             { name: 'page', in: 'query', schema: { type: 'integer', default: 1 } },
             { name: 'limit', in: 'query', schema: { type: 'integer', default: 20 } },
-            { name: 'level', in: 'query', schema: { type: 'string', enum: ['info', 'warn', 'error'] } },
+            {
+              name: 'level',
+              in: 'query',
+              schema: { type: 'string', enum: ['info', 'warn', 'error'] },
+            },
             { name: 'integrationId', in: 'query', schema: { type: 'string', format: 'uuid' } },
             { name: 'syncJobId', in: 'query', schema: { type: 'string', format: 'uuid' } },
             { name: 'search', in: 'query', schema: { type: 'string' } },
@@ -3610,7 +3992,8 @@ export const openApiSpec = swaggerJsdoc({
         post: {
           tags: ['Integrations'],
           summary: 'Create and encrypt integration API key',
-          description: 'Requires integrations.update (Admin). Plaintext secret is returned only once in response.',
+          description:
+            'Requires integrations.update (Admin). Plaintext secret is returned only once in response.',
           security: [{ bearerAuth: [] }],
           parameters: [
             { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
@@ -3686,7 +4069,12 @@ export const openApiSpec = swaggerJsdoc({
           security: [{ bearerAuth: [] }],
           parameters: [
             { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
-            { name: 'keyId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+            {
+              name: 'keyId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
           ],
           responses: {
             '200': {
@@ -3711,11 +4099,17 @@ export const openApiSpec = swaggerJsdoc({
         patch: {
           tags: ['Integrations'],
           summary: 'Update API key metadata',
-          description: 'Requires integrations.update (Admin). Allows updating keyName, expiresAt, and isActive.',
+          description:
+            'Requires integrations.update (Admin). Allows updating keyName, expiresAt, and isActive.',
           security: [{ bearerAuth: [] }],
           parameters: [
             { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
-            { name: 'keyId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+            {
+              name: 'keyId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
           ],
           requestBody: {
             required: true,
@@ -3750,11 +4144,17 @@ export const openApiSpec = swaggerJsdoc({
         post: {
           tags: ['Integrations'],
           summary: 'Rotate API key secret',
-          description: 'Requires integrations.update (Admin). Re-encrypts secret and returns new secret once.',
+          description:
+            'Requires integrations.update (Admin). Re-encrypts secret and returns new secret once.',
           security: [{ bearerAuth: [] }],
           parameters: [
             { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
-            { name: 'keyId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+            {
+              name: 'keyId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
           ],
           requestBody: {
             required: false,
@@ -3789,11 +4189,17 @@ export const openApiSpec = swaggerJsdoc({
         post: {
           tags: ['Integrations'],
           summary: 'Revoke and deactivate API key',
-          description: 'Requires integrations.update (Admin). Sets isActive to false and writes audit log.',
+          description:
+            'Requires integrations.update (Admin). Sets isActive to false and writes audit log.',
           security: [{ bearerAuth: [] }],
           parameters: [
             { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
-            { name: 'keyId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+            {
+              name: 'keyId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
           ],
           responses: {
             '200': {
