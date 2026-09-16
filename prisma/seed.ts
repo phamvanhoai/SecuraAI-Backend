@@ -569,6 +569,7 @@ async function main(): Promise<void> {
         ['roles.delete', 'delete', 'Delete custom roles'],
         ['users.create', 'create', 'Initialize user accounts'],
         ['users.read', 'read', 'View user accounts'],
+        ['mfa-recovery.manage', 'manage-mfa-recovery', 'Review and decide MFA recovery requests'],
       ] as const
     ).map(([code, action, description]) =>
       prisma.permissions.upsert({

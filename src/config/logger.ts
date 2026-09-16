@@ -4,7 +4,16 @@ import { env } from './env.js';
 const options: pino.LoggerOptions = {
   level: env.LOG_LEVEL,
   redact: {
-    paths: ['req.headers.authorization', 'req.headers.cookie', 'password', 'refreshToken', '*.password'],
+    paths: [
+      'req.headers.authorization',
+      'req.headers.cookie',
+      'password',
+      'refreshToken',
+      'challengeToken',
+      '*.password',
+      '*.refreshToken',
+      '*.challengeToken',
+    ],
     censor: '[REDACTED]',
   },
 };
