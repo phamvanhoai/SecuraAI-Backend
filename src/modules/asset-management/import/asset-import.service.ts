@@ -113,7 +113,9 @@ export const assetImportService = {
           ...new Set(validRows.flatMap(({ data }) => data.ownerEmployeeCode ?? [])),
         ]),
       ]);
-      const existingCodes = new Set(existingAssets.map(({ asset_code }) => asset_code));
+      const existingAssetByCode = new Map(
+        existingAssets.map((asset) => [asset.asset_code, asset] as const),
+      );
       const departmentByCode = new Map(
         departments.map((department) => [department.code.toUpperCase(), department]),
       );
@@ -125,13 +127,17 @@ export const assetImportService = {
       let successRows = 0;
 
       for (const { rowNumber, data } of validRows) {
-        if (existingCodes.has(data.assetCode)) {
+        const existingAsset = existingAssetByCode.get(data.assetCode);
+        if (existingAsset) {
+          const isDeleted = existingAsset.deleted_at !== null;
           errors.push({
             row: rowNumber,
             assetCode: data.assetCode,
             field: 'assetCode',
-            code: 'ASSET_CODE_EXISTS',
-            message: 'Asset code already exists',
+            code: isDeleted ? 'ASSET_CODE_DELETED' : 'ASSET_CODE_EXISTS',
+            message: isDeleted
+              ? 'Asset code belongs to a deleted asset and cannot be reused.'
+              : 'Asset code already exists',
           });
           continue;
         }

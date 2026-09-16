@@ -10,6 +10,11 @@ import type {
   QuerySyncJobsDto,
   TriggerSyncDto,
   QueryIntegrationLogsDto,
+  CreateApiKeyDto,
+  UpdateApiKeyDto,
+  RotateApiKeyDto,
+  QueryApiKeysDto,
+  QueryIntegrationLogStatsDto,
 } from './dto/index.js';
 
 export async function createIntegration(req: Request, res: Response): Promise<void> {
@@ -113,3 +118,59 @@ export async function listIntegrationLogs(req: Request, res: Response): Promise<
   const result = await integrationsService.listIntegrationLogs(id as string, query);
   res.status(200).json({ success: true, data: result });
 }
+
+// -------------------------------------------------------------
+// Integration API Keys Controllers
+// -------------------------------------------------------------
+export async function createApiKey(req: Request, res: Response): Promise<void> {
+  const { id } = req.params;
+  const body = req.body as CreateApiKeyDto;
+  const result = await integrationsService.createApiKey(id as string, body);
+  res.status(201).json({ success: true, data: result });
+}
+
+export async function listApiKeys(req: Request, res: Response): Promise<void> {
+  const { id } = req.params;
+  const query = req.query as unknown as QueryApiKeysDto;
+  const result = await integrationsService.listApiKeys(id as string, query);
+  res.status(200).json({ success: true, data: result });
+}
+
+export async function getApiKeyById(req: Request, res: Response): Promise<void> {
+  const { id, keyId } = req.params;
+  const result = await integrationsService.getApiKeyById(id as string, keyId as string);
+  res.status(200).json({ success: true, data: result });
+}
+
+export async function updateApiKey(req: Request, res: Response): Promise<void> {
+  const { id, keyId } = req.params;
+  const body = req.body as UpdateApiKeyDto;
+  const result = await integrationsService.updateApiKey(id as string, keyId as string, body);
+  res.status(200).json({ success: true, data: result });
+}
+
+export async function rotateApiKey(req: Request, res: Response): Promise<void> {
+  const { id, keyId } = req.params;
+  const body = (req.body ?? {}) as RotateApiKeyDto;
+  const result = await integrationsService.rotateApiKey(id as string, keyId as string, body);
+  res.status(200).json({ success: true, data: result });
+}
+
+export async function revokeApiKey(req: Request, res: Response): Promise<void> {
+  const { id, keyId } = req.params;
+  const result = await integrationsService.revokeApiKey(id as string, keyId as string);
+  res.status(200).json({ success: true, data: result });
+}
+
+export async function listAllLogs(req: Request, res: Response): Promise<void> {
+  const query = req.query as unknown as QueryIntegrationLogsDto;
+  const result = await integrationsService.listAllIntegrationLogs(query);
+  res.status(200).json({ success: true, data: result });
+}
+
+export async function getLogStats(req: Request, res: Response): Promise<void> {
+  const query = req.query as unknown as QueryIntegrationLogStatsDto;
+  const result = await integrationsService.getIntegrationLogStats(query);
+  res.status(200).json({ success: true, data: result });
+}
+

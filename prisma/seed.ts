@@ -54,6 +54,42 @@ async function main(): Promise<void> {
       is_system: false,
     },
   });
+  for (const permissionData of [
+    {
+      code: 'training-courses.read',
+      module: 'training-awareness',
+      action: 'read-courses',
+      description: 'View security awareness courses',
+    },
+    {
+      code: 'training-courses.create',
+      module: 'training-awareness',
+      action: 'create-course',
+      description: 'Create security awareness course drafts',
+    },
+    {
+      code: 'training-courses.assign',
+      module: 'training-awareness',
+      action: 'assign-course',
+      description: 'Assign training courses to users and departments',
+    },
+  ]) {
+    const permission = await prisma.permissions.upsert({
+      where: { code: permissionData.code },
+      update: permissionData,
+      create: permissionData,
+    });
+    await prisma.role_permissions.upsert({
+      where: {
+        role_id_permission_id: {
+          role_id: securityOfficerRole.role_id,
+          permission_id: permission.permission_id,
+        },
+      },
+      update: {},
+      create: { role_id: securityOfficerRole.role_id, permission_id: permission.permission_id },
+    });
+  }
   const employeeRole = await prisma.roles.upsert({
     where: { code: 'EMPLOYEE' },
     update: {
@@ -66,6 +102,33 @@ async function main(): Promise<void> {
       name: 'Employee',
       description: 'Employee role defined by the approved project use cases',
       is_system: false,
+    },
+  });
+  const takeTrainingAssessmentPermission = await prisma.permissions.upsert({
+    where: { code: 'training-assessments.take' },
+    update: {
+      module: 'training-awareness',
+      action: 'take-assessment',
+      description: 'Take assigned post-training assessments',
+    },
+    create: {
+      code: 'training-assessments.take',
+      module: 'training-awareness',
+      action: 'take-assessment',
+      description: 'Take assigned post-training assessments',
+    },
+  });
+  await prisma.role_permissions.upsert({
+    where: {
+      role_id_permission_id: {
+        role_id: employeeRole.role_id,
+        permission_id: takeTrainingAssessmentPermission.permission_id,
+      },
+    },
+    update: {},
+    create: {
+      role_id: employeeRole.role_id,
+      permission_id: takeTrainingAssessmentPermission.permission_id,
     },
   });
   const executiveRole = await prisma.roles.upsert({
@@ -82,6 +145,35 @@ async function main(): Promise<void> {
       is_system: false,
     },
   });
+  const trainingCompletionReadPermission = await prisma.permissions.upsert({
+    where: { code: 'training-completion.read' },
+    update: {
+      module: 'training-awareness',
+      action: 'read-completion',
+      description: 'View training campaign and employee completion progress',
+    },
+    create: {
+      code: 'training-completion.read',
+      module: 'training-awareness',
+      action: 'read-completion',
+      description: 'View training campaign and employee completion progress',
+    },
+  });
+  for (const targetRole of [securityOfficerRole, executiveRole]) {
+    await prisma.role_permissions.upsert({
+      where: {
+        role_id_permission_id: {
+          role_id: targetRole.role_id,
+          permission_id: trainingCompletionReadPermission.permission_id,
+        },
+      },
+      update: {},
+      create: {
+        role_id: targetRole.role_id,
+        permission_id: trainingCompletionReadPermission.permission_id,
+      },
+    });
+  }
   const createPolicyPermission = await prisma.permissions.upsert({
     where: { code: 'policies.create' },
     update: {
@@ -201,6 +293,20 @@ async function main(): Promise<void> {
       });
     }
   }
+  const acknowledgePolicyPermission = await prisma.permissions.upsert({
+    where: { code: 'policies.acknowledge' },
+    update: {
+      module: 'policy-compliance',
+      action: 'acknowledge',
+      description: 'Confirm reading and understanding of applicable policies',
+    },
+    create: {
+      code: 'policies.acknowledge',
+      module: 'policy-compliance',
+      action: 'acknowledge',
+      description: 'Confirm reading and understanding of applicable policies',
+    },
+  });
   const assetReadPermission = await prisma.permissions.upsert({
     where: { code: 'assets.read' },
     update: {
@@ -213,6 +319,58 @@ async function main(): Promise<void> {
       module: 'asset-management',
       action: 'read',
       description: 'View the asset list',
+    },
+  });
+  const riskReadPermission = await prisma.permissions.upsert({
+    where: { code: 'risks.read' },
+    update: { module: 'risk-management', action: 'read', description: 'View risk assessments' },
+    create: {
+      code: 'risks.read',
+      module: 'risk-management',
+      action: 'read',
+      description: 'View risk assessments',
+    },
+  });
+  const riskCreatePermission = await prisma.permissions.upsert({
+    where: { code: 'risks.create' },
+    update: {
+      module: 'risk-management',
+      action: 'create',
+      description: 'Create risk assessment drafts',
+    },
+    create: {
+      code: 'risks.create',
+      module: 'risk-management',
+      action: 'create',
+      description: 'Create risk assessment drafts',
+    },
+  });
+  const riskUpdatePermission = await prisma.permissions.upsert({
+    where: { code: 'risks.update' },
+    update: {
+      module: 'risk-management',
+      action: 'update',
+      description: 'Update draft or rejected risk assessments',
+    },
+    create: {
+      code: 'risks.update',
+      module: 'risk-management',
+      action: 'update',
+      description: 'Update draft or rejected risk assessments',
+    },
+  });
+  const riskCancelPermission = await prisma.permissions.upsert({
+    where: { code: 'risks.cancel' },
+    update: {
+      module: 'risk-management',
+      action: 'cancel',
+      description: 'Cancel draft or rejected risk assessments',
+    },
+    create: {
+      code: 'risks.cancel',
+      module: 'risk-management',
+      action: 'cancel',
+      description: 'Cancel draft or rejected risk assessments',
     },
   });
   const assetCreatePermission = await prisma.permissions.upsert({
@@ -439,6 +597,20 @@ async function main(): Promise<void> {
       description: 'Confirm that an AI alert represents a real security incident',
     },
   });
+  const aiAlertThresholdManagePermission = await prisma.permissions.upsert({
+    where: { code: 'ai-alerts.thresholds.manage' },
+    update: {
+      module: 'ai-alerts',
+      action: 'manage-thresholds',
+      description: 'Set custom AI alert thresholds for assets',
+    },
+    create: {
+      code: 'ai-alerts.thresholds.manage',
+      module: 'ai-alerts',
+      action: 'manage-thresholds',
+      description: 'Set custom AI alert thresholds for assets',
+    },
+  });
   const falsePositivePermissionData = {
     code: 'ai-alerts.mark-false-positive',
     module: 'ai-alerts',
@@ -488,6 +660,7 @@ async function main(): Promise<void> {
         ['roles.delete', 'delete', 'Delete custom roles'],
         ['users.create', 'create', 'Initialize user accounts'],
         ['users.read', 'read', 'View user accounts'],
+        ['mfa-recovery.manage', 'manage-mfa-recovery', 'Review and decide MFA recovery requests'],
       ] as const
     ).map(([code, action, description]) =>
       prisma.permissions.upsert({
@@ -613,6 +786,19 @@ async function main(): Promise<void> {
       },
     }),
   ]);
+  await prisma.role_permissions.upsert({
+    where: {
+      role_id_permission_id: {
+        role_id: employeeRole.role_id,
+        permission_id: acknowledgePolicyPermission.permission_id,
+      },
+    },
+    update: {},
+    create: {
+      role_id: employeeRole.role_id,
+      permission_id: acknowledgePolicyPermission.permission_id,
+    },
+  });
   await prisma.$transaction([
     prisma.role_permissions.deleteMany({
       where: {
@@ -645,6 +831,62 @@ async function main(): Promise<void> {
     assetExportPermission,
     assetHistoryReadPermission,
   ];
+  await prisma.$transaction(
+    [role, securityOfficerRole, executiveRole].map((targetRole) =>
+      prisma.role_permissions.upsert({
+        where: {
+          role_id_permission_id: {
+            role_id: targetRole.role_id,
+            permission_id: riskReadPermission.permission_id,
+          },
+        },
+        update: {},
+        create: { role_id: targetRole.role_id, permission_id: riskReadPermission.permission_id },
+      }),
+    ),
+  );
+  await prisma.$transaction(
+    [role, securityOfficerRole].map((targetRole) =>
+      prisma.role_permissions.upsert({
+        where: {
+          role_id_permission_id: {
+            role_id: targetRole.role_id,
+            permission_id: riskCreatePermission.permission_id,
+          },
+        },
+        update: {},
+        create: { role_id: targetRole.role_id, permission_id: riskCreatePermission.permission_id },
+      }),
+    ),
+  );
+  await prisma.$transaction(
+    [role, securityOfficerRole].map((targetRole) =>
+      prisma.role_permissions.upsert({
+        where: {
+          role_id_permission_id: {
+            role_id: targetRole.role_id,
+            permission_id: riskCancelPermission.permission_id,
+          },
+        },
+        update: {},
+        create: { role_id: targetRole.role_id, permission_id: riskCancelPermission.permission_id },
+      }),
+    ),
+  );
+  await prisma.$transaction(
+    [role, securityOfficerRole].map((targetRole) =>
+      prisma.role_permissions.upsert({
+        where: {
+          role_id_permission_id: {
+            role_id: targetRole.role_id,
+            permission_id: riskUpdatePermission.permission_id,
+          },
+        },
+        update: {},
+        create: { role_id: targetRole.role_id, permission_id: riskUpdatePermission.permission_id },
+      }),
+    ),
+  );
   const assetRolePermissions = [
     { targetRole: securityOfficerRole, permissions: assetPermissions },
     { targetRole: employeeRole, permissions: [assetReadPermission] },
@@ -687,6 +929,7 @@ async function main(): Promise<void> {
     aiAlertReadPermission,
     aiAlertFeedbackPermission,
     aiAlertConfirmPermission,
+    aiAlertThresholdManagePermission,
     ...roleManagementPermissions,
   ]) {
     await prisma.role_permissions.upsert({
@@ -707,6 +950,7 @@ async function main(): Promise<void> {
     aiAlertReadPermission,
     aiAlertFeedbackPermission,
     aiAlertConfirmPermission,
+    aiAlertThresholdManagePermission,
   ]) {
     await prisma.role_permissions.upsert({
       where: {

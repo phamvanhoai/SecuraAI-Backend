@@ -23,6 +23,7 @@ const envSchema = z.object({
   SMTP_USER: z.string().trim().min(1).optional(),
   SMTP_PASS: z.string().min(1).optional(),
   PASSWORD_RESET_URL: z.string().url().default('http://localhost:5173/reset-password'),
+  ENCRYPTION_KEY: z.string().min(16).optional(),
 });
 
 const result = envSchema.safeParse(process.env);
