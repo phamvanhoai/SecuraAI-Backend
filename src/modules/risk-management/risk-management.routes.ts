@@ -9,6 +9,8 @@ import {
   listRiskAssessments,
   updateRiskAssessment,
   cancelRiskAssessment,
+  submitRiskTreatmentPlan,
+  approveRiskTreatmentPlan,
 } from './risk-management.controller.js';
 import { listRiskAssessmentsQuerySchema } from './dto/list-risk-assessments-query.dto.js';
 import { riskAssessmentParamsSchema } from './dto/risk-assessment-params.dto.js';
@@ -16,8 +18,32 @@ import { createRiskAssessmentBodySchema } from './dto/create-risk-assessment.dto
 import { updateRiskAssessmentBodySchema } from './dto/update-risk-assessment.dto.js';
 import { cancelRiskAssessmentBodySchema } from './dto/cancel-risk-assessment.dto.js';
 import { riskCreateOptionsQuerySchema } from './dto/risk-create-options-query.dto.js';
+import {
+  submitTreatmentPlanBodySchema,
+  treatmentPlanParamsSchema,
+} from './dto/submit-treatment-plan.dto.js';
+import {
+  approveTreatmentPlanBodySchema,
+  approveTreatmentPlanParamsSchema,
+} from './dto/approve-treatment-plan.dto.js';
 
 export const riskManagementRouter = Router();
+
+riskManagementRouter.post(
+  '/treatment-plans/:treatmentPlanId/approve',
+  authenticate,
+  authorize('risk-treatment-plans.approve'),
+  validate({ params: approveTreatmentPlanParamsSchema, body: approveTreatmentPlanBodySchema }),
+  asyncHandler(approveRiskTreatmentPlan),
+);
+
+riskManagementRouter.post(
+  '/treatment-plans/:treatmentPlanId/submit',
+  authenticate,
+  authorize('risk-treatment-plans.submit'),
+  validate({ params: treatmentPlanParamsSchema, body: submitTreatmentPlanBodySchema }),
+  asyncHandler(submitRiskTreatmentPlan),
+);
 
 riskManagementRouter.get(
   '/',

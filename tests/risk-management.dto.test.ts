@@ -4,6 +4,14 @@ import { riskAssessmentParamsSchema } from '../src/modules/risk-management/dto/r
 import { createRiskAssessmentBodySchema } from '../src/modules/risk-management/dto/create-risk-assessment.dto.js';
 import { updateRiskAssessmentBodySchema } from '../src/modules/risk-management/dto/update-risk-assessment.dto.js';
 import { cancelRiskAssessmentBodySchema } from '../src/modules/risk-management/dto/cancel-risk-assessment.dto.js';
+import {
+  submitTreatmentPlanBodySchema,
+  treatmentPlanParamsSchema,
+} from '../src/modules/risk-management/dto/submit-treatment-plan.dto.js';
+import {
+  approveTreatmentPlanBodySchema,
+  approveTreatmentPlanParamsSchema,
+} from '../src/modules/risk-management/dto/approve-treatment-plan.dto.js';
 
 describe('listRiskAssessmentsQuerySchema', () => {
   it('applies bounded pagination and stable sort defaults', () => {
@@ -149,6 +157,65 @@ describe('cancelRiskAssessmentBodySchema', () => {
         reason: 'The assessment is no longer required.',
         expectedUpdatedAt: '2026-09-15T10:00:00.000Z',
         status: 'cancelled',
+      }),
+    ).toThrow();
+  });
+});
+
+describe('submitTreatmentPlan schemas', () => {
+  it('accepts a plan id, concurrency timestamp, and normalized optional note', () => {
+    expect(
+      treatmentPlanParamsSchema.parse({
+        treatmentPlanId: '4e3bf41b-32fb-4461-9740-9c2e68a6ff84',
+      }),
+    ).toBeTruthy();
+    expect(
+      submitTreatmentPlanBodySchema.parse({
+        expectedUpdatedAt: '2026-09-16T10:00:00.000Z',
+        submissionNote: '  Ready\n for executive review. ',
+      }).submissionNote,
+    ).toBe('Ready for executive review.');
+  });
+
+  it('rejects unsafe ids, missing concurrency data, and server-owned fields', () => {
+    expect(() => treatmentPlanParamsSchema.parse({ treatmentPlanId: '../plan' })).toThrow();
+    expect(() => submitTreatmentPlanBodySchema.parse({})).toThrow();
+    expect(() =>
+      submitTreatmentPlanBodySchema.parse({
+        expectedUpdatedAt: '2026-09-16T10:00:00.000Z',
+        status: 'approved',
+      }),
+    ).toThrow();
+  });
+});
+
+describe('approveTreatmentPlan schemas', () => {
+  it('accepts a request id and optional review comment', () => {
+    expect(
+      approveTreatmentPlanParamsSchema.parse({
+        treatmentPlanId: '4e3bf41b-32fb-4461-9740-9c2e68a6ff84',
+      }),
+    ).toBeTruthy();
+    expect(
+      approveTreatmentPlanBodySchema.parse({
+        approvalRequestId: '11111111-1111-4111-8111-111111111111',
+        comment: '  Reviewed and approved.  ',
+      }).comment,
+    ).toBe('Reviewed and approved.');
+  });
+
+  it('rejects invalid ids, oversized comments, and server-owned fields', () => {
+    expect(() => approveTreatmentPlanBodySchema.parse({ approvalRequestId: 'invalid' })).toThrow();
+    expect(() =>
+      approveTreatmentPlanBodySchema.parse({
+        approvalRequestId: '11111111-1111-4111-8111-111111111111',
+        comment: 'x'.repeat(1001),
+      }),
+    ).toThrow();
+    expect(() =>
+      approveTreatmentPlanBodySchema.parse({
+        approvalRequestId: '11111111-1111-4111-8111-111111111111',
+        status: 'approved',
       }),
     ).toThrow();
   });
