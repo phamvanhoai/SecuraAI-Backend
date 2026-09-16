@@ -2368,6 +2368,124 @@ export const openApiSpec = swaggerJsdoc({
           },
         },
       },
+      '/compliance/policy-control-mappings': {
+        get: {
+          tags: ['Policies'],
+          summary: 'List published policy versions and standard control mappings',
+          description: 'Requires compliance.map-controls. Results are paginated.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
+            {
+              name: 'limit',
+              in: 'query',
+              schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
+            },
+            { name: 'q', in: 'query', schema: { type: 'string', maxLength: 100 } },
+          ],
+          responses: {
+            '200': { description: 'Published policy versions and mappings' },
+            '403': { description: 'The compliance.map-controls permission is required' },
+          },
+        },
+      },
+      '/compliance/frameworks': {
+        get: {
+          tags: ['Policies'],
+          summary: 'List compliance frameworks available for mapping',
+          security: [{ bearerAuth: [] }],
+          responses: {
+            '200': { description: 'Compliance frameworks and control counts' },
+            '403': { description: 'The compliance.map-controls permission is required' },
+          },
+        },
+      },
+      '/compliance/frameworks/{frameworkId}/controls': {
+        get: {
+          tags: ['Policies'],
+          summary: 'List controls in a compliance framework',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'frameworkId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+            { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
+            {
+              name: 'limit',
+              in: 'query',
+              schema: { type: 'integer', minimum: 1, maximum: 100, default: 50 },
+            },
+            { name: 'q', in: 'query', schema: { type: 'string', maxLength: 100 } },
+          ],
+          responses: {
+            '200': { description: 'Framework controls' },
+            '404': { description: 'Compliance framework not found' },
+          },
+        },
+      },
+      '/compliance/policies/{policyId}/versions/{versionId}/frameworks/{frameworkId}/control-mappings':
+        {
+          put: {
+            tags: ['Policies'],
+            summary: 'Replace a policy version mapping for one framework',
+            description:
+              'Requires compliance.map-controls. Mappings for other frameworks are preserved.',
+            security: [{ bearerAuth: [] }],
+            parameters: [
+              {
+                name: 'policyId',
+                in: 'path',
+                required: true,
+                schema: { type: 'string', format: 'uuid' },
+              },
+              {
+                name: 'versionId',
+                in: 'path',
+                required: true,
+                schema: { type: 'string', format: 'uuid' },
+              },
+              {
+                name: 'frameworkId',
+                in: 'path',
+                required: true,
+                schema: { type: 'string', format: 'uuid' },
+              },
+            ],
+            requestBody: {
+              required: true,
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    required: ['mappings'],
+                    properties: {
+                      mappings: {
+                        type: 'array',
+                        maxItems: 100,
+                        items: {
+                          type: 'object',
+                          required: ['controlId'],
+                          properties: {
+                            controlId: { type: 'string', format: 'uuid' },
+                            notes: { type: 'string', nullable: true, maxLength: 1000 },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+            responses: {
+              '200': { description: 'Framework mappings replaced' },
+              '404': { description: 'Published policy version not found' },
+              '422': { description: 'A selected control does not belong to the framework' },
+            },
+          },
+        },
       '/compliance/policies/department-assignments': {
         get: {
           tags: ['Policies'],

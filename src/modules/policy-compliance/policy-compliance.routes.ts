@@ -36,8 +36,10 @@ import {
   updatePolicyCreateVersionBodySchema,
   updatePolicyCreateVersionParamsSchema,
 } from './dto/update-policy-create-version.dto.js';
+import { policyControlMappingRouter } from './policy-control-mapping.routes.js';
 
 export const policyComplianceRouter = Router();
+policyComplianceRouter.use(policyControlMappingRouter);
 
 policyComplianceRouter.get(
   '/policies/department-assignments',
