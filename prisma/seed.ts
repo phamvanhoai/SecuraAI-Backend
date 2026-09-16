@@ -145,6 +145,35 @@ async function main(): Promise<void> {
       is_system: false,
     },
   });
+  const trainingCompletionReadPermission = await prisma.permissions.upsert({
+    where: { code: 'training-completion.read' },
+    update: {
+      module: 'training-awareness',
+      action: 'read-completion',
+      description: 'View training campaign and employee completion progress',
+    },
+    create: {
+      code: 'training-completion.read',
+      module: 'training-awareness',
+      action: 'read-completion',
+      description: 'View training campaign and employee completion progress',
+    },
+  });
+  for (const targetRole of [securityOfficerRole, executiveRole]) {
+    await prisma.role_permissions.upsert({
+      where: {
+        role_id_permission_id: {
+          role_id: targetRole.role_id,
+          permission_id: trainingCompletionReadPermission.permission_id,
+        },
+      },
+      update: {},
+      create: {
+        role_id: targetRole.role_id,
+        permission_id: trainingCompletionReadPermission.permission_id,
+      },
+    });
+  }
   const createPolicyPermission = await prisma.permissions.upsert({
     where: { code: 'policies.create' },
     update: {

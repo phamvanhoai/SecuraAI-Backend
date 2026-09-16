@@ -1101,6 +1101,67 @@ export const openApiSpec = swaggerJsdoc({
       },
     },
     paths: {
+      '/training/completion': {
+        get: {
+          tags: ['Training Awareness'],
+          summary: 'Track training campaign completion',
+          description:
+            'Requires training-completion.read. Returns paginated campaign-level completion metrics.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
+            {
+              name: 'limit',
+              in: 'query',
+              schema: { type: 'integer', minimum: 1, maximum: 50, default: 10 },
+            },
+            { name: 'q', in: 'query', schema: { type: 'string', maxLength: 100 } },
+          ],
+          responses: {
+            '200': { description: 'Paginated training completion summary' },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'training-completion.read permission required' },
+          },
+        },
+      },
+      '/training/completion/{campaignId}': {
+        get: {
+          tags: ['Training Awareness'],
+          summary: 'View employee completion for a training campaign',
+          description:
+            'Requires training-completion.read. Supports employee search and enrollment-status filtering.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'campaignId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+            { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
+            {
+              name: 'limit',
+              in: 'query',
+              schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
+            },
+            { name: 'q', in: 'query', schema: { type: 'string', maxLength: 100 } },
+            {
+              name: 'status',
+              in: 'query',
+              schema: {
+                type: 'string',
+                enum: ['all', 'assigned', 'in_progress', 'completed', 'overdue'],
+                default: 'all',
+              },
+            },
+          ],
+          responses: {
+            '200': { description: 'Paginated employee completion details' },
+            '403': { description: 'training-completion.read permission required' },
+            '404': { description: 'Training campaign not found' },
+          },
+        },
+      },
       '/training/assessments': {
         get: {
           tags: ['Training Awareness'],

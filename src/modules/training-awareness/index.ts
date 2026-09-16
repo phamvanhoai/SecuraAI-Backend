@@ -21,6 +21,7 @@ export const trainingAwarenessModule: ModuleManifest = {
     'Create and list security awareness course drafts',
     'Assign courses to users and departments',
     'Take and automatically score post-training assessments',
+    'Track campaign and employee training completion',
   ],
   router: trainingAwarenessRouter,
 };
