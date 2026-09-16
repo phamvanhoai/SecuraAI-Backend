@@ -271,7 +271,7 @@ describe('Integrations Service - Connection Monitoring', () => {
             success: true,
             errorCode: null,
           },
-          created_at: new Date('2026-09-15T12:00:00Z'),
+          created_at: new Date(Date.now() - 3600_000),
         },
       ];
 

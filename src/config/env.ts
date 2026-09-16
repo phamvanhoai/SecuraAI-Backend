@@ -24,6 +24,8 @@ const envSchema = z.object({
   SMTP_PASS: z.string().min(1).optional(),
   PASSWORD_RESET_URL: z.string().url().default('http://localhost:5173/reset-password'),
   ENCRYPTION_KEY: z.string().min(16).optional(),
+  ALLOW_PRIVATE_NETWORK_INTEGRATIONS: booleanString.default(false),
+  SSRF_ALLOWED_CIDRS: z.string().default(''),
 });
 
 const result = envSchema.safeParse(process.env);
@@ -32,7 +34,38 @@ if (!result.success) {
   process.exit(1);
 }
 
+// Validate SSRF_ALLOWED_CIDRS format and reject dangerous permanent deny ranges at startup
+const rawCidrs = result.data.SSRF_ALLOWED_CIDRS.split(',').map((c) => c.trim()).filter(Boolean);
+const PERMANENT_FORBIDDEN_PATTERNS = [
+  /^127\./,
+  /^169\.254\./,
+  /^0\.0\.0\.0/,
+  /^224\./,
+  /^240\./,
+  /^255\.255\.255\.255/,
+  /^::1$/,
+  /^::$/,
+  /^fe80:/i,
+  /^ff00:/i,
+];
+
+const CIDR_REGEX = /^(\d{1,3}\.){3}\d{1,3}(\/([0-9]|[1-2][0-9]|3[0-2]))?$/;
+const IPV6_CIDR_REGEX = /^[0-9a-fA-F:]+(\/([0-9]|[1-9][0-9]|1[0-1][0-9]|12[0-8]))?$/;
+
+for (const cidr of rawCidrs) {
+  if (!CIDR_REGEX.test(cidr) && !IPV6_CIDR_REGEX.test(cidr)) {
+    console.error(`Invalid SSRF_ALLOWED_CIDRS entry: "${cidr}". Expected valid IPv4/IPv6 CIDR or IP.`);
+    process.exit(1);
+  }
+  const ipPart = cidr.split('/')[0] ?? '';
+  if (PERMANENT_FORBIDDEN_PATTERNS.some((pattern) => pattern.test(ipPart))) {
+    console.error(`Startup error: SSRF_ALLOWED_CIDRS contains permanently forbidden range: "${cidr}".`);
+    process.exit(1);
+  }
+}
+
 export const env = {
   ...result.data,
   corsOrigins: result.data.CORS_ORIGINS.split(',').map((origin) => origin.trim()),
+  parsedAllowedCidrs: rawCidrs,
 };

@@ -60,6 +60,8 @@ export type SingleCheckProbeResult = {
   statusCode: number | null;
   latencyMs: number;
   message: string;
+  provider?: string | undefined;
+  details?: Record<string, unknown> | undefined;
 };
 
 export type BatchConnectionCheckResultDto = {

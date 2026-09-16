@@ -1,8 +1,10 @@
 import { randomBytes } from 'node:crypto';
+import type { Prisma } from '@prisma/client';
 import { AppError } from '../../common/errors/app-error.js';
 import { executeSafeHttpRequest, validateExternalUrl } from '../../common/utils/ssrf-validator.js';
 import { getNextCronRunDate } from '../../common/utils/cron.js';
 import { decryptSecret, encryptSecret } from '../../common/utils/encryption.js';
+import { resolveConnector } from './connectors/index.js';
 import { integrationsRepository } from './integrations.repository.js';
 import {
   toIntegrationResponseDto,
@@ -40,8 +42,6 @@ import type {
   FailingIntegrationDto,
 } from './dto/index.js';
 
-import type { Prisma } from '@prisma/client';
-
 function generateSecretFingerprint(secret: string): string {
   if (secret.length <= 8) {
     return `sec_...${secret.slice(-2)}`;
@@ -55,6 +55,8 @@ export type TestConnectionResult = {
   statusCode: number | null;
   latencyMs: number;
   message: string;
+  provider?: string | undefined;
+  details?: Record<string, unknown> | undefined;
 };
 
 export type TriggerSyncOptions = {
@@ -63,7 +65,7 @@ export type TriggerSyncOptions = {
 };
 
 async function probeSingleIntegration(
-  integration: { integration_id: string; name: string; base_url: string | null; status: string },
+  integration: { integration_id: string; name: string; base_url: string | null; configuration?: unknown; status: string },
   timeoutMs?: number,
 ): Promise<SingleCheckProbeResult> {
   const integrationId = integration.integration_id;
@@ -78,101 +80,87 @@ async function probeSingleIntegration(
     };
   }
 
-  const clampedTimeout = Math.min(Math.max(timeoutMs ?? 5000, 1000), 10000);
-  const startTime = Date.now();
+  const connector = resolveConnector({
+    integration_id: integration.integration_id,
+    name: integration.name,
+    integration_type: 'siem',
+    base_url: integration.base_url,
+    configuration: integration.configuration,
+    status: integration.status,
+  });
+  const result = await connector.testConnection(
+    {
+      integration_id: integration.integration_id,
+      name: integration.name,
+      integration_type: 'siem',
+      base_url: integration.base_url,
+      configuration: integration.configuration,
+      status: integration.status,
+    },
+    timeoutMs !== undefined ? { timeoutMs } : undefined,
+  );
 
-  try {
-    const res = await executeSafeHttpRequest({
-      url: integration.base_url,
-      method: 'GET',
-      timeoutMs: clampedTimeout,
-    });
-
-    if (res.ok) {
-      await integrationsRepository.update(integrationId, {
-        status: 'active',
-        last_connected_at: new Date(),
-      });
-
-      await integrationsRepository.createLog({
-        integration_id: integrationId,
-        level: 'info',
-        message: `Connection check succeeded with status ${res.statusCode} (${res.latencyMs}ms)`,
-        details: {
-          action: 'CONNECTION_CHECK',
-          latencyMs: res.latencyMs,
-          httpStatus: res.statusCode,
-          success: true,
-          errorCode: null,
-        },
-      });
-
-      return {
-        integrationId,
-        name: integration.name,
-        connected: true,
-        statusCode: res.statusCode,
-        latencyMs: res.latencyMs,
-        message: 'Connection established successfully',
-      };
-    }
-
+  if (result.connected) {
     await integrationsRepository.update(integrationId, {
-      status: 'error',
+      status: 'active',
+      last_connected_at: new Date(),
     });
 
     await integrationsRepository.createLog({
       integration_id: integrationId,
-      level: 'warn',
-      message: `Connection check returned HTTP ${res.statusCode} (${res.statusText || 'Non-success'})`,
+      level: 'info',
+      message: result.message,
       details: {
         action: 'CONNECTION_CHECK',
-        latencyMs: res.latencyMs,
-        httpStatus: res.statusCode,
-        success: false,
-        errorCode: `HTTP_${res.statusCode}`,
+        latencyMs: result.latencyMs,
+        httpStatus: result.statusCode ?? 200,
+        success: true,
+        provider: result.provider,
+        verifySslWarning: result.verifySslWarning ?? false,
+        ...(result.details ? { details: result.details as Prisma.InputJsonValue } : {}),
       },
     });
 
     return {
       integrationId,
       name: integration.name,
-      connected: false,
-      statusCode: res.statusCode,
-      latencyMs: res.latencyMs,
-      message: `External endpoint responded with HTTP status ${res.statusCode} (${res.statusText || 'Non-success'})`,
-    };
-  } catch (err: unknown) {
-    const latencyMs = Date.now() - startTime;
-    const errorMessage = err instanceof Error ? err.message : 'Unknown network or socket error';
-
-    await integrationsRepository.update(integrationId, {
-      status: 'error',
-    });
-
-    await integrationsRepository.createLog({
-      integration_id: integrationId,
-      level: 'error',
-      message: `Connection check failed: ${errorMessage}`,
-      details: {
-        action: 'CONNECTION_CHECK',
-        latencyMs,
-        httpStatus: null,
-        success: false,
-        errorCode: 'NETWORK_ERROR',
-        error: errorMessage,
-      },
-    });
-
-    return {
-      integrationId,
-      name: integration.name,
-      connected: false,
-      statusCode: null,
-      latencyMs,
-      message: `Connection check failed: ${errorMessage}`,
+      connected: true,
+      statusCode: result.statusCode ?? 200,
+      latencyMs: result.latencyMs,
+      message: result.message,
+      provider: result.provider,
+      details: result.details,
     };
   }
+
+  await integrationsRepository.update(integrationId, {
+    status: 'error',
+  });
+
+  await integrationsRepository.createLog({
+    integration_id: integrationId,
+    level: 'warn',
+    message: result.message,
+    details: {
+      action: 'CONNECTION_CHECK',
+      latencyMs: result.latencyMs,
+      httpStatus: result.statusCode ?? null,
+      success: false,
+      provider: result.provider,
+      verifySslWarning: result.verifySslWarning ?? false,
+      errorCode: result.statusCode ? `HTTP_${result.statusCode}` : 'CONNECTION_FAILED',
+    },
+  });
+
+  return {
+    integrationId,
+    name: integration.name,
+    connected: false,
+    statusCode: result.statusCode ?? null,
+    latencyMs: result.latencyMs,
+    message: result.message,
+    provider: result.provider,
+  };
 }
 
 export const integrationsService = {
@@ -891,6 +879,7 @@ export const integrationsService = {
         method: 'GET',
         headers,
         timeoutMs: 15000,
+        rejectUnauthorized: config['verifySsl'] !== false,
       });
 
       const durationMs = Date.now() - startTime;
