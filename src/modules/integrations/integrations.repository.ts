@@ -221,8 +221,8 @@ export const integrationsRepository = {
 
     return prisma.integrations.findMany({
       where,
-      skip: params.skip,
-      take: params.take,
+      skip: Math.max(0, Number(params.skip) || 0),
+      take: Math.max(1, Number(params.take) || 20),
       orderBy,
       select: integrationSelect,
     });
@@ -484,8 +484,8 @@ export const integrationsRepository = {
 
     return prisma.sync_jobs.findMany({
       where,
-      skip: params.skip,
-      take: params.take,
+      skip: Math.max(0, Number(params.skip) || 0),
+      take: Math.max(1, Number(params.take) || 20),
       orderBy,
       select: syncJobSelect,
     });
@@ -647,8 +647,8 @@ export const integrationsRepository = {
 
     return prisma.integration_logs.findMany({
       where,
-      skip: params.skip,
-      take: params.take,
+      skip: Math.max(0, Number(params.skip) || 0),
+      take: Math.max(1, Number(params.take) || 50),
       orderBy: { created_at: 'desc' },
       select: integrationLogSelect,
     });
@@ -663,4 +663,77 @@ export const integrationsRepository = {
 
     return prisma.integration_logs.count({ where });
   },
+
+  // -------------------------------------------------------------
+  // Connection Monitoring Repository Methods
+  // -------------------------------------------------------------
+  findConnectionMonitoringData(since: Date) {
+    return Promise.all([
+      prisma.integrations.findMany({
+        select: integrationSelect,
+        orderBy: { name: 'asc' },
+      }),
+      prisma.integration_logs.findMany({
+        where: {
+          created_at: { gte: since },
+        },
+        orderBy: { created_at: 'desc' },
+        select: {
+          integration_log_id: true,
+          integration_id: true,
+          level: true,
+          message: true,
+          details: true,
+          created_at: true,
+          integrations: {
+            select: {
+              name: true,
+            },
+          },
+        },
+      }),
+    ]);
+  },
+
+  findRecentConnectionLogs(integrationId?: string, limit = 20) {
+    const where: Prisma.integration_logsWhereInput = {};
+    if (integrationId) {
+      where.integration_id = integrationId;
+    }
+
+    return prisma.integration_logs.findMany({
+      where,
+      orderBy: { created_at: 'desc' },
+      take: limit,
+      select: {
+        integration_log_id: true,
+        integration_id: true,
+        level: true,
+        message: true,
+        details: true,
+        created_at: true,
+        integrations: {
+          select: {
+            name: true,
+          },
+        },
+      },
+    });
+  },
+
+  findConfiguredIntegrationsForProbe(integrationIds?: string[]) {
+    const where: Prisma.integrationsWhereInput = {
+      base_url: { not: null },
+    };
+    if (integrationIds && integrationIds.length > 0) {
+      where.integration_id = { in: integrationIds };
+    }
+
+    return prisma.integrations.findMany({
+      where,
+      select: integrationSelect,
+      orderBy: { name: 'asc' },
+    });
+  },
 };
+

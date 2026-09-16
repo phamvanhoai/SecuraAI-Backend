@@ -325,6 +325,161 @@ export const openApiSpec = swaggerJsdoc({
             secret: { type: 'string', description: 'Plaintext secret shown only once upon creation or rotation' },
           },
         },
+        ConnectionStatusSummaryResponse: {
+          type: 'object',
+          required: [
+            'totalIntegrations',
+            'activeCount',
+            'errorCount',
+            'inactiveCount',
+            'pendingCount',
+            'timeWindow',
+            'checks24h',
+            'successfulChecks24h',
+            'failedChecks24h',
+            'availability24h',
+            'averageLatency24h',
+            'failingIntegrations',
+            'recentLogs',
+          ],
+          properties: {
+            totalIntegrations: { type: 'integer' },
+            activeCount: { type: 'integer' },
+            errorCount: { type: 'integer' },
+            inactiveCount: { type: 'integer' },
+            pendingCount: { type: 'integer' },
+            timeWindow: { type: 'string', example: '24h' },
+            checks24h: { type: 'integer' },
+            successfulChecks24h: { type: 'integer' },
+            failedChecks24h: { type: 'integer' },
+            availability24h: { type: 'number', nullable: true, example: 98.5 },
+            averageLatency24h: { type: 'number', nullable: true, example: 120 },
+            failingIntegrations: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  id: { type: 'string', format: 'uuid' },
+                  name: { type: 'string' },
+                  integrationType: { type: 'string' },
+                  baseUrl: { type: 'string', nullable: true },
+                  status: { type: 'string' },
+                  lastConnectedAt: { type: 'string', format: 'date-time', nullable: true },
+                  lastErrorMessage: { type: 'string', nullable: true },
+                  lastCheckedAt: { type: 'string', format: 'date-time', nullable: true },
+                },
+              },
+            },
+            recentLogs: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  id: { type: 'string', format: 'uuid' },
+                  integrationId: { type: 'string', format: 'uuid' },
+                  integrationName: { type: 'string' },
+                  level: { type: 'string' },
+                  message: { type: 'string' },
+                  createdAt: { type: 'string', format: 'date-time' },
+                  latencyMs: { type: 'integer', nullable: true },
+                  httpStatus: { type: 'integer', nullable: true },
+                  success: { type: 'boolean', nullable: true },
+                  errorCode: { type: 'string', nullable: true },
+                },
+              },
+            },
+          },
+        },
+        BatchConnectionCheckRequest: {
+          type: 'object',
+          additionalProperties: false,
+          properties: {
+            integrationIds: {
+              type: 'array',
+              items: { type: 'string', format: 'uuid' },
+              description: 'Optional list of specific integration IDs to probe. If omitted, all configured active integrations are probed.',
+            },
+            timeoutMs: {
+              type: 'integer',
+              minimum: 1000,
+              maximum: 10000,
+              default: 5000,
+              description: 'Connection timeout in milliseconds (1000ms - 10000ms).',
+            },
+          },
+        },
+        BatchConnectionCheckResponse: {
+          type: 'object',
+          required: ['totalTested', 'successful', 'failed', 'results'],
+          properties: {
+            totalTested: { type: 'integer' },
+            successful: { type: 'integer' },
+            failed: { type: 'integer' },
+            results: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  integrationId: { type: 'string', format: 'uuid' },
+                  name: { type: 'string' },
+                  connected: { type: 'boolean' },
+                  statusCode: { type: 'integer', nullable: true },
+                  latencyMs: { type: 'integer' },
+                  message: { type: 'string' },
+                },
+              },
+            },
+          },
+        },
+        IntegrationConnectionStatusResponse: {
+          type: 'object',
+          required: [
+            'id',
+            'name',
+            'integrationType',
+            'status',
+            'lastConnectedAt',
+            'timeWindow',
+            'checks24h',
+            'successfulChecks24h',
+            'failedChecks24h',
+            'availability24h',
+            'averageLatency24h',
+            'recentLogs',
+          ],
+          properties: {
+            id: { type: 'string', format: 'uuid' },
+            name: { type: 'string' },
+            integrationType: { type: 'string' },
+            baseUrl: { type: 'string', nullable: true },
+            status: { type: 'string' },
+            lastConnectedAt: { type: 'string', format: 'date-time', nullable: true },
+            timeWindow: { type: 'string', example: '24h' },
+            checks24h: { type: 'integer' },
+            successfulChecks24h: { type: 'integer' },
+            failedChecks24h: { type: 'integer' },
+            availability24h: { type: 'number', nullable: true, example: 100.0 },
+            averageLatency24h: { type: 'number', nullable: true, example: 45 },
+            recentLogs: {
+              type: 'array',
+              items: {
+                type: 'object',
+                properties: {
+                  id: { type: 'string', format: 'uuid' },
+                  integrationId: { type: 'string', format: 'uuid' },
+                  level: { type: 'string' },
+                  message: { type: 'string' },
+                  createdAt: { type: 'string', format: 'date-time' },
+                  latencyMs: { type: 'integer', nullable: true },
+                  httpStatus: { type: 'integer', nullable: true },
+                  success: { type: 'boolean', nullable: true },
+                  errorCode: { type: 'string', nullable: true },
+                },
+              },
+            },
+          },
+        },
+
         Error: {
           type: 'object',
           properties: {
@@ -3239,10 +3394,116 @@ export const openApiSpec = swaggerJsdoc({
           },
         },
       },
+      '/integrations/monitoring/connection-status': {
+        get: {
+          tags: ['Integrations'],
+          summary: 'Get live connection monitoring summary for all integrations',
+          description: 'Requires integrations.read (Admin). Aggregates fleet availability, 24h availability rate, average latency, failing endpoints, and recent connection logs.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'timeWindow',
+              in: 'query',
+              required: false,
+              schema: { type: 'string', enum: ['24h', '7d'], default: '24h' },
+            },
+          ],
+          responses: {
+            '200': {
+              description: 'Connection monitoring summary',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      success: { type: 'boolean', example: true },
+                      data: { $ref: '#/components/schemas/ConnectionStatusSummaryResponse' },
+                    },
+                  },
+                },
+              },
+            },
+            '401': { description: 'Unauthorized' },
+            '403': { description: 'Forbidden' },
+          },
+        },
+      },
+      '/integrations/monitoring/check-all': {
+        post: {
+          tags: ['Integrations'],
+          summary: 'Trigger batch connection check across configured integrations',
+          description: 'Requires integrations.update (Admin). Runs throttled concurrent health checks across configured integrations.',
+          security: [{ bearerAuth: [] }],
+          requestBody: {
+            required: false,
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/BatchConnectionCheckRequest' },
+              },
+            },
+          },
+          responses: {
+            '200': {
+              description: 'Batch connection check results',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      success: { type: 'boolean', example: true },
+                      data: { $ref: '#/components/schemas/BatchConnectionCheckResponse' },
+                    },
+                  },
+                },
+              },
+            },
+            '401': { description: 'Unauthorized' },
+            '403': { description: 'Forbidden' },
+            '429': { description: 'Rate limit exceeded' },
+          },
+        },
+      },
+      '/integrations/{id}/connection-status': {
+        get: {
+          tags: ['Integrations'],
+          summary: 'Get detailed connection status and telemetry for an integration',
+          description: 'Requires integrations.read (Admin). Returns 24h availability rate, latency statistics, and recent probe logs.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+            {
+              name: 'timeWindow',
+              in: 'query',
+              required: false,
+              schema: { type: 'string', enum: ['24h', '7d'], default: '24h' },
+            },
+          ],
+          responses: {
+            '200': {
+              description: 'Detailed connection status',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      success: { type: 'boolean', example: true },
+                      data: { $ref: '#/components/schemas/IntegrationConnectionStatusResponse' },
+                    },
+                  },
+                },
+              },
+            },
+            '401': { description: 'Unauthorized' },
+            '403': { description: 'Forbidden' },
+            '404': { description: 'Integration not found' },
+          },
+        },
+      },
       '/integrations/{id}/test-connection': {
         post: {
           tags: ['Integrations'],
           summary: 'Test external connection to SIEM or Firewall',
+          description: 'Requires integrations.update (Admin). Probes external base URL and updates status/latency.',
           security: [{ bearerAuth: [] }],
           parameters: [
             { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
@@ -3258,11 +3519,14 @@ export const openApiSpec = swaggerJsdoc({
           responses: {
             '200': { description: 'Connection test outcome' },
             '400': { description: 'SSRF rejected or no base URL configured' },
+            '401': { description: 'Unauthorized' },
+            '403': { description: 'Forbidden' },
             '404': { description: 'Integration not found' },
             '429': { description: 'Rate limit exceeded' },
           },
         },
       },
+
       '/security-monitoring/log-sources/{logSourceId}/events': {
         post: {
           tags: ['Security Monitoring'],

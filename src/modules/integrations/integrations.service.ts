@@ -30,7 +30,16 @@ import type {
   UpdateApiKeyDto,
   RotateApiKeyDto,
   QueryApiKeysDto,
+  QueryConnectionMonitoringDto,
+  BatchConnectionCheckDto,
+  ConnectionStatusSummaryDto,
+  BatchConnectionCheckResultDto,
+  IntegrationConnectionStatusDto,
+  SingleCheckProbeResult,
+  ConnectionLogEntryDto,
+  FailingIntegrationDto,
 } from './dto/index.js';
+
 import type { Prisma } from '@prisma/client';
 
 function generateSecretFingerprint(secret: string): string {
@@ -53,6 +62,119 @@ export type TriggerSyncOptions = {
   isScheduledTrigger?: boolean | undefined;
 };
 
+async function probeSingleIntegration(
+  integration: { integration_id: string; name: string; base_url: string | null; status: string },
+  timeoutMs?: number,
+): Promise<SingleCheckProbeResult> {
+  const integrationId = integration.integration_id;
+  if (!integration.base_url) {
+    return {
+      integrationId,
+      name: integration.name,
+      connected: false,
+      statusCode: null,
+      latencyMs: 0,
+      message: 'No base URL configured for this integration',
+    };
+  }
+
+  const clampedTimeout = Math.min(Math.max(timeoutMs ?? 5000, 1000), 10000);
+  const startTime = Date.now();
+
+  try {
+    const res = await executeSafeHttpRequest({
+      url: integration.base_url,
+      method: 'GET',
+      timeoutMs: clampedTimeout,
+    });
+
+    if (res.ok) {
+      await integrationsRepository.update(integrationId, {
+        status: 'active',
+        last_connected_at: new Date(),
+      });
+
+      await integrationsRepository.createLog({
+        integration_id: integrationId,
+        level: 'info',
+        message: `Connection check succeeded with status ${res.statusCode} (${res.latencyMs}ms)`,
+        details: {
+          action: 'CONNECTION_CHECK',
+          latencyMs: res.latencyMs,
+          httpStatus: res.statusCode,
+          success: true,
+          errorCode: null,
+        },
+      });
+
+      return {
+        integrationId,
+        name: integration.name,
+        connected: true,
+        statusCode: res.statusCode,
+        latencyMs: res.latencyMs,
+        message: 'Connection established successfully',
+      };
+    }
+
+    await integrationsRepository.update(integrationId, {
+      status: 'error',
+    });
+
+    await integrationsRepository.createLog({
+      integration_id: integrationId,
+      level: 'warn',
+      message: `Connection check returned HTTP ${res.statusCode} (${res.statusText || 'Non-success'})`,
+      details: {
+        action: 'CONNECTION_CHECK',
+        latencyMs: res.latencyMs,
+        httpStatus: res.statusCode,
+        success: false,
+        errorCode: `HTTP_${res.statusCode}`,
+      },
+    });
+
+    return {
+      integrationId,
+      name: integration.name,
+      connected: false,
+      statusCode: res.statusCode,
+      latencyMs: res.latencyMs,
+      message: `External endpoint responded with HTTP status ${res.statusCode} (${res.statusText || 'Non-success'})`,
+    };
+  } catch (err: unknown) {
+    const latencyMs = Date.now() - startTime;
+    const errorMessage = err instanceof Error ? err.message : 'Unknown network or socket error';
+
+    await integrationsRepository.update(integrationId, {
+      status: 'error',
+    });
+
+    await integrationsRepository.createLog({
+      integration_id: integrationId,
+      level: 'error',
+      message: `Connection check failed: ${errorMessage}`,
+      details: {
+        action: 'CONNECTION_CHECK',
+        latencyMs,
+        httpStatus: null,
+        success: false,
+        errorCode: 'NETWORK_ERROR',
+        error: errorMessage,
+      },
+    });
+
+    return {
+      integrationId,
+      name: integration.name,
+      connected: false,
+      statusCode: null,
+      latencyMs,
+      message: `Connection check failed: ${errorMessage}`,
+    };
+  }
+}
+
 export const integrationsService = {
   // -------------------------------------------------------------
   // Integrations Core Methods
@@ -65,41 +187,40 @@ export const integrationsService = {
     const created = await integrationsRepository.create({
       name: dto.name,
       integration_type: dto.integrationType,
-      base_url: dto.baseUrl,
-      configuration: dto.configuration as Prisma.InputJsonValue | undefined,
-      created_by_user_id: userId,
-      status: 'inactive',
+      base_url: dto.baseUrl ?? null,
+      configuration: (dto.configuration ?? {}) as Prisma.InputJsonValue,
+      created_by_user_id: userId ?? null,
     });
 
     await integrationsRepository.createLog({
       integration_id: created.integration_id,
       level: 'info',
-      message: `Integration "${created.name}" created (${created.integration_type})`,
+      message: `Integration "${created.name}" created successfully`,
     });
 
     return toIntegrationResponseDto(created);
   },
 
   async listIntegrations(query: QueryIntegrationsDto) {
-    const page = Math.max(1, Number(query.page) || 1);
-    const limit = Math.min(100, Math.max(1, Number(query.limit) || 20));
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 20;
     const skip = (page - 1) * limit;
-
-    const filter = {
-      type: query.type,
-      status: query.status,
-      search: query.search,
-    };
 
     const [items, total] = await Promise.all([
       integrationsRepository.findMany({
         skip,
         take: limit,
-        ...filter,
+        search: query.search,
+        type: query.type,
+        status: query.status,
         sortBy: query.sortBy,
         sortOrder: query.sortOrder,
       }),
-      integrationsRepository.count(filter),
+      integrationsRepository.count({
+        search: query.search,
+        type: query.type,
+        status: query.status,
+      }),
     ]);
 
     return {
@@ -108,17 +229,17 @@ export const integrationsService = {
         page,
         limit,
         total,
-        totalPages: Math.ceil(total / limit),
+        totalPages: Math.ceil(total / limit) || 1,
       },
     };
   },
 
   async getIntegrationById(id: string): Promise<IntegrationResponseDto> {
-    const record = await integrationsRepository.findById(id);
-    if (!record) {
+    const integration = await integrationsRepository.findById(id);
+    if (!integration) {
       throw new AppError(404, 'INTEGRATION_NOT_FOUND', `Integration with ID "${id}" was not found`);
     }
-    return toIntegrationResponseDto(record);
+    return toIntegrationResponseDto(integration);
   },
 
   async updateIntegration(id: string, dto: UpdateIntegrationDto): Promise<IntegrationResponseDto> {
@@ -127,7 +248,7 @@ export const integrationsService = {
       throw new AppError(404, 'INTEGRATION_NOT_FOUND', `Integration with ID "${id}" was not found`);
     }
 
-    if (dto.baseUrl) {
+    if (dto.baseUrl !== undefined && dto.baseUrl !== null && dto.baseUrl !== existing.base_url) {
       await validateExternalUrl(dto.baseUrl);
     }
 
@@ -161,74 +282,224 @@ export const integrationsService = {
       );
     }
 
-    const startTime = Date.now();
-    try {
-      const res = await executeSafeHttpRequest({
-        url: integration.base_url,
-        method: 'GET',
-        timeoutMs: dto.timeoutMs,
-      });
+    const probeResult = await probeSingleIntegration(integration, dto.timeoutMs);
+    return {
+      connected: probeResult.connected,
+      statusCode: probeResult.statusCode,
+      latencyMs: probeResult.latencyMs,
+      message: probeResult.message,
+    };
+  },
 
-      if (res.ok) {
-        await integrationsRepository.update(id, {
-          status: 'active',
-          last_connected_at: new Date(),
-        });
+  // -------------------------------------------------------------
+  // Connection Monitoring Service Methods
+  // -------------------------------------------------------------
+  async checkAllConnections(dto: BatchConnectionCheckDto): Promise<BatchConnectionCheckResultDto> {
+    const timeoutMs = dto.timeoutMs ? Math.min(Math.max(dto.timeoutMs, 1000), 10000) : 5000;
+    const integrations = await integrationsRepository.findConfiguredIntegrationsForProbe(dto.integrationIds);
 
-        await integrationsRepository.createLog({
-          integration_id: id,
-          level: 'info',
-          message: `Connection test succeeded with status ${res.statusCode} (${res.latencyMs}ms)`,
-          details: { statusCode: res.statusCode, latencyMs: res.latencyMs },
-        });
-
-        return {
-          connected: true,
-          statusCode: res.statusCode,
-          latencyMs: res.latencyMs,
-          message: 'Connection established successfully',
-        };
-      }
-
-      await integrationsRepository.update(id, {
-        status: 'error',
-      });
-
-      await integrationsRepository.createLog({
-        integration_id: id,
-        level: 'warn',
-        message: `Connection test returned HTTP ${res.statusCode} (${res.statusText})`,
-        details: { statusCode: res.statusCode, latencyMs: res.latencyMs },
-      });
-
+    if (integrations.length === 0) {
       return {
-        connected: false,
-        statusCode: res.statusCode,
-        latencyMs: res.latencyMs,
-        message: `External endpoint responded with HTTP status ${res.statusCode} (${res.statusText || 'Non-success'})`,
-      };
-    } catch (err: unknown) {
-      const latencyMs = Date.now() - startTime;
-      const errorMessage = err instanceof Error ? err.message : 'Unknown network or socket error';
-
-      await integrationsRepository.update(id, {
-        status: 'error',
-      });
-
-      await integrationsRepository.createLog({
-        integration_id: id,
-        level: 'error',
-        message: `Connection test failed: ${errorMessage}`,
-        details: { error: errorMessage, latencyMs },
-      });
-
-      return {
-        connected: false,
-        statusCode: null,
-        latencyMs,
-        message: `Connection test failed: ${errorMessage}`,
+        totalTested: 0,
+        successful: 0,
+        failed: 0,
+        results: [],
       };
     }
+
+    // Limit concurrency to 3 simultaneous probes
+    const concurrency = 3;
+    const results: SingleCheckProbeResult[] = [];
+
+    for (let i = 0; i < integrations.length; i += concurrency) {
+      const chunk = integrations.slice(i, i + concurrency);
+      const chunkResults = await Promise.all(
+        chunk.map((item) => probeSingleIntegration(item, timeoutMs)),
+      );
+      results.push(...chunkResults);
+    }
+
+    const successful = results.filter((r) => r.connected).length;
+    const failed = results.filter((r) => !r.connected).length;
+
+    return {
+      totalTested: results.length,
+      successful,
+      failed,
+      results,
+    };
+  },
+
+  async getConnectionStatusSummary(
+    query: QueryConnectionMonitoringDto = { timeWindow: '24h' },
+  ): Promise<ConnectionStatusSummaryDto> {
+    const timeWindow = query.timeWindow ?? '24h';
+    const hours = timeWindow === '7d' ? 7 * 24 : 24;
+    const since = new Date(Date.now() - hours * 60 * 60 * 1000);
+
+    const [integrations, rawLogs] = await integrationsRepository.findConnectionMonitoringData(since);
+
+    const totalIntegrations = integrations.length;
+    const activeCount = integrations.filter((i) => i.status === 'active').length;
+    const errorCount = integrations.filter((i) => i.status === 'error').length;
+    const inactiveCount = integrations.filter((i) => i.status === 'inactive').length;
+    const pendingCount = integrations.filter((i) => i.status === 'pending').length;
+
+    // Filter connection check logs
+    const connectionLogs: ConnectionLogEntryDto[] = [];
+    for (const log of rawLogs) {
+      const details = log.details && typeof log.details === 'object' ? (log.details as Record<string, unknown>) : null;
+      const isConnectionCheck =
+        details?.action === 'CONNECTION_CHECK' ||
+        log.message.includes('Connection check') ||
+        log.message.includes('Connection test');
+
+      if (isConnectionCheck) {
+        const latencyMs = typeof details?.latencyMs === 'number' ? details.latencyMs : null;
+        const httpStatus =
+          typeof details?.httpStatus === 'number'
+            ? details.httpStatus
+            : typeof details?.statusCode === 'number'
+              ? details.statusCode
+              : null;
+        const success = typeof details?.success === 'boolean' ? details.success : log.level === 'info';
+        const errorCode = typeof details?.errorCode === 'string' ? details.errorCode : null;
+
+        connectionLogs.push({
+          id: log.integration_log_id,
+          integrationId: log.integration_id,
+          integrationName: (log as { integrations?: { name?: string } }).integrations?.name ?? undefined,
+          level: log.level,
+          message: log.message,
+          createdAt: log.created_at,
+          latencyMs,
+          httpStatus,
+          success,
+          errorCode,
+        });
+      }
+    }
+
+    const checks24h = connectionLogs.length;
+    const successfulChecks24h = connectionLogs.filter((l) => l.success === true).length;
+    const failedChecks24h = connectionLogs.filter((l) => l.success === false).length;
+    const availability24h = checks24h > 0 ? Number(((successfulChecks24h / checks24h) * 100).toFixed(1)) : null;
+
+    const latencies = connectionLogs
+      .filter((l) => l.success === true && typeof l.latencyMs === 'number')
+      .map((l) => l.latencyMs as number);
+    const averageLatency24h =
+      latencies.length > 0 ? Math.round(latencies.reduce((a, b) => a + b, 0) / latencies.length) : null;
+
+    // Failing integrations list
+    const failingIntegrations: FailingIntegrationDto[] = integrations
+      .filter((i) => i.status === 'error')
+      .map((i) => {
+        const latestLog = connectionLogs.find((l) => l.integrationId === i.integration_id);
+        return {
+          id: i.integration_id,
+          name: i.name,
+          integrationType: i.integration_type,
+          baseUrl: i.base_url,
+          status: i.status,
+          lastConnectedAt: i.last_connected_at,
+          lastErrorMessage: latestLog?.message ?? null,
+          lastCheckedAt: latestLog?.createdAt ?? null,
+        };
+      });
+
+    return {
+      totalIntegrations,
+      activeCount,
+      errorCount,
+      inactiveCount,
+      pendingCount,
+      timeWindow,
+      checks24h,
+      successfulChecks24h,
+      failedChecks24h,
+      availability24h,
+      averageLatency24h,
+      failingIntegrations,
+      recentLogs: connectionLogs.slice(0, 20),
+    };
+  },
+
+  async getIntegrationConnectionStatus(
+    id: string,
+    query: QueryConnectionMonitoringDto = { timeWindow: '24h' },
+  ): Promise<IntegrationConnectionStatusDto> {
+    const integration = await integrationsRepository.findById(id);
+    if (!integration) {
+      throw new AppError(404, 'INTEGRATION_NOT_FOUND', `Integration with ID "${id}" was not found`);
+    }
+
+    const timeWindow = query.timeWindow ?? '24h';
+    const hours = timeWindow === '7d' ? 7 * 24 : 24;
+    const since = new Date(Date.now() - hours * 60 * 60 * 1000);
+
+    const rawLogs = await integrationsRepository.findRecentConnectionLogs(id, 50);
+
+    const connectionLogs: ConnectionLogEntryDto[] = [];
+    for (const log of rawLogs) {
+      const details = log.details && typeof log.details === 'object' ? (log.details as Record<string, unknown>) : null;
+      const isConnectionCheck =
+        details?.action === 'CONNECTION_CHECK' ||
+        log.message.includes('Connection check') ||
+        log.message.includes('Connection test');
+
+      if (isConnectionCheck) {
+        const latencyMs = typeof details?.latencyMs === 'number' ? details.latencyMs : null;
+        const httpStatus =
+          typeof details?.httpStatus === 'number'
+            ? details.httpStatus
+            : typeof details?.statusCode === 'number'
+              ? details.statusCode
+              : null;
+        const success = typeof details?.success === 'boolean' ? details.success : log.level === 'info';
+        const errorCode = typeof details?.errorCode === 'string' ? details.errorCode : null;
+
+        connectionLogs.push({
+          id: log.integration_log_id,
+          integrationId: log.integration_id,
+          level: log.level,
+          message: log.message,
+          createdAt: log.created_at,
+          latencyMs,
+          httpStatus,
+          success,
+          errorCode,
+        });
+      }
+    }
+
+    const logsInWindow = connectionLogs.filter((l) => l.createdAt >= since);
+    const checks24h = logsInWindow.length;
+    const successfulChecks24h = logsInWindow.filter((l) => l.success === true).length;
+    const failedChecks24h = logsInWindow.filter((l) => l.success === false).length;
+    const availability24h = checks24h > 0 ? Number(((successfulChecks24h / checks24h) * 100).toFixed(1)) : null;
+
+    const latencies = logsInWindow
+      .filter((l) => l.success === true && typeof l.latencyMs === 'number')
+      .map((l) => l.latencyMs as number);
+    const averageLatency24h =
+      latencies.length > 0 ? Math.round(latencies.reduce((a, b) => a + b, 0) / latencies.length) : null;
+
+    return {
+      id: integration.integration_id,
+      name: integration.name,
+      integrationType: integration.integration_type,
+      baseUrl: integration.base_url,
+      status: integration.status,
+      lastConnectedAt: integration.last_connected_at,
+      timeWindow,
+      checks24h,
+      successfulChecks24h,
+      failedChecks24h,
+      availability24h,
+      averageLatency24h,
+      recentLogs: connectionLogs.slice(0, 20),
+    };
   },
 
   // -------------------------------------------------------------
