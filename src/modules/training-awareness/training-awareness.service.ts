@@ -47,6 +47,26 @@ const assessmentAvailability = (
 };
 
 export const trainingAwarenessService = {
+  async withdrawEnrollment(
+    enrollmentId: string,
+    reason: string,
+    actor: Actor,
+    context: RequestContext,
+  ) {
+    if (!actor.permissions.includes('training-courses.assign'))
+      throw new AppError(403, 'FORBIDDEN', 'Insufficient permissions');
+    const changed = await trainingAwarenessRepository.withdrawEnrollment(enrollmentId, reason, {
+      actorUserId: actor.userId,
+      ...context,
+    });
+    if (!changed)
+      throw new AppError(
+        409,
+        'ENROLLMENT_NOT_WITHDRAWABLE',
+        'Enrollment is completed, already withdrawn, or unavailable',
+      );
+    return { withdrawn: true };
+  },
   async listCompletionCampaigns(query: CompletionCampaignsQuery, actor: Actor) {
     if (!actor.permissions.includes('training-completion.read'))
       throw new AppError(403, 'FORBIDDEN', 'Insufficient permissions');
@@ -54,7 +74,9 @@ export const trainingAwarenessService = {
     return {
       items: result.campaigns.map((campaign) => {
         const groups = result.groups.filter(
-          (group) => group.training_campaign_id === campaign.training_campaign_id,
+          (group) =>
+            group.training_campaign_id === campaign.training_campaign_id &&
+            group.status !== 'withdrawn',
         );
         const assigned = groups.reduce((sum, group) => sum + group._count._all, 0);
         const completed = groups
@@ -124,7 +146,10 @@ export const trainingAwarenessService = {
           email: enrollment.users.email,
           employeeCode: enrollment.users.employee_code,
         },
-        status: isOverdue && enrollment.status !== 'completed' ? 'overdue' : enrollment.status,
+        status:
+          isOverdue && enrollment.status !== 'completed' && enrollment.status !== 'withdrawn'
+            ? 'overdue'
+            : enrollment.status,
         progressPercent: enrollment.progress_percent,
         startedAt: enrollment.started_at,
         completedAt: enrollment.completed_at,
@@ -337,6 +362,12 @@ export const trainingAwarenessService = {
         'INVALID_ASSIGNMENT_TARGETS',
         'One or more assignment targets are unavailable',
       );
+    if (result.kind === 'reason_required')
+      throw new AppError(
+        422,
+        'ASSIGNMENT_CHANGE_REASON_REQUIRED',
+        'Enter a reason for this change',
+      );
     return {
       id: result.campaign.training_campaign_id,
       title: result.campaign.title,
@@ -344,6 +375,27 @@ export const trainingAwarenessService = {
       dueDate: result.campaign.due_date,
       enrollmentCount: result.enrollmentCount,
       createdAt: result.campaign.created_at,
+      removedCount: result.removedCount,
+      retainedStartedCount: result.retainedStartedCount,
+      retainedCompletedCount: result.retainedCompletedCount,
+    };
+  },
+  async getLatestCourseAssignment(courseId: string, actor: Actor) {
+    if (!actor.permissions.includes('training-courses.assign'))
+      throw new AppError(403, 'FORBIDDEN', 'Insufficient permissions');
+    const campaign = await trainingAwarenessRepository.getLatestCourseAssignment(courseId);
+    if (!campaign) return null;
+    return {
+      id: campaign.training_campaign_id,
+      title: campaign.title,
+      startDate: campaign.start_date,
+      dueDate: campaign.due_date,
+      userIds: campaign.training_campaign_targets.flatMap((target) =>
+        target.user_id ? [target.user_id] : [],
+      ),
+      departmentIds: campaign.training_campaign_targets.flatMap((target) =>
+        target.department_id ? [target.department_id] : [],
+      ),
     };
   },
 };

@@ -11,6 +11,7 @@ import {
   listMyAssessments,
   submitMyAssessment,
   getCompletionCampaign,
+  getLatestCourseAssignment,
   listCompletionCampaigns,
 } from './training-awareness.controller.js';
 import {
@@ -32,6 +33,13 @@ import {
 } from './dto/completion.dto.js';
 
 export const trainingAwarenessRouter = Router();
+trainingAwarenessRouter.post(
+  '/enrollments/:enrollmentId/withdraw',
+  authenticate,
+  authorize('training-courses.assign'),
+  validate({ params: assessmentParamsSchema, body: withdrawEnrollmentBodySchema }),
+  asyncHandler(withdrawEnrollment),
+);
 
 trainingAwarenessRouter.get(
   '/completion',
@@ -69,6 +77,13 @@ trainingAwarenessRouter.post(
   validate({ params: assessmentParamsSchema, body: submitAssessmentBodySchema }),
   asyncHandler(submitMyAssessment),
 );
+trainingAwarenessRouter.get(
+  '/courses/:courseId/assignments',
+  authenticate,
+  authorize('training-courses.assign'),
+  validate({ params: assignCourseParamsSchema }),
+  asyncHandler(getLatestCourseAssignment),
+);
 
 trainingAwarenessRouter.get(
   '/courses',
@@ -98,3 +113,5 @@ trainingAwarenessRouter.post(
   validate({ params: assignCourseParamsSchema, body: assignCourseBodySchema }),
   asyncHandler(assignCourse),
 );
+import { withdrawEnrollment } from './training-awareness.controller.js';
+import { withdrawEnrollmentBodySchema } from './dto/course.dto.js';

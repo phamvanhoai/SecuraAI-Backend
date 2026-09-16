@@ -1,4 +1,7 @@
 import { z } from 'zod';
+export const withdrawEnrollmentBodySchema = z
+  .object({ reason: z.string().trim().min(3).max(500) })
+  .strict();
 
 export const createCourseBodySchema = z
   .object({
@@ -33,10 +36,11 @@ export const assignCourseBodySchema = z
     dueDate: dateSchema,
     userIds: z.array(z.string().uuid()).max(200).default([]),
     departmentIds: z.array(z.string().uuid()).max(200).default([]),
+    changeReason: z.string().trim().min(3).max(500).optional(),
   })
   .strict()
   .superRefine((value, context) => {
-    if (value.userIds.length === 0 && value.departmentIds.length === 0) {
+    if (value.userIds.length === 0 && value.departmentIds.length === 0 && !value.changeReason) {
       context.addIssue({
         code: 'custom',
         path: ['userIds'],
