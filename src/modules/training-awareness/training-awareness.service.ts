@@ -7,9 +7,16 @@ import type {
   ListCoursesQuery,
 } from './dto/course.dto.js';
 import type { ListMyAssessmentsQuery, SubmitAssessmentBody } from './dto/assessment.dto.js';
+import type { CompletionCampaignsQuery, CompletionEnrollmentsQuery } from './dto/completion.dto.js';
 
 type Actor = { userId: string; permissions: readonly string[] };
 type RequestContext = { ipAddress: string | null; userAgent: string | null };
+
+const isPastDueDate = (dueDate: Date, now = new Date()) => {
+  const dueBoundary = new Date(dueDate);
+  dueBoundary.setUTCDate(dueBoundary.getUTCDate() + 1);
+  return now >= dueBoundary;
+};
 
 const toCourseResponse = (course: CourseRecord) => ({
   id: course.training_course_id,
@@ -40,6 +47,97 @@ const assessmentAvailability = (
 };
 
 export const trainingAwarenessService = {
+  async listCompletionCampaigns(query: CompletionCampaignsQuery, actor: Actor) {
+    if (!actor.permissions.includes('training-completion.read'))
+      throw new AppError(403, 'FORBIDDEN', 'Insufficient permissions');
+    const result = await trainingAwarenessRepository.listCompletionCampaigns(query);
+    return {
+      items: result.campaigns.map((campaign) => {
+        const groups = result.groups.filter(
+          (group) => group.training_campaign_id === campaign.training_campaign_id,
+        );
+        const assigned = groups.reduce((sum, group) => sum + group._count._all, 0);
+        const completed = groups
+          .filter((group) => group.status === 'completed')
+          .reduce((sum, group) => sum + group._count._all, 0);
+        const inProgress = groups
+          .filter((group) => group.status === 'in_progress')
+          .reduce((sum, group) => sum + group._count._all, 0);
+        const averageProgress = assigned
+          ? Math.round(
+              groups.reduce(
+                (sum, group) => sum + Number(group._avg.progress_percent ?? 0) * group._count._all,
+                0,
+              ) / assigned,
+            )
+          : 0;
+        const now = new Date();
+        return {
+          id: campaign.training_campaign_id,
+          title: campaign.title,
+          courseTitle: campaign.training_courses.title,
+          startDate: campaign.start_date,
+          dueDate: campaign.due_date,
+          status:
+            now < campaign.start_date
+              ? ('upcoming' as const)
+              : isPastDueDate(campaign.due_date, now)
+                ? ('ended' as const)
+                : ('active' as const),
+          assigned,
+          completed,
+          inProgress,
+          notStarted: Math.max(0, assigned - completed - inProgress),
+          overdue: isPastDueDate(campaign.due_date, now) ? Math.max(0, assigned - completed) : 0,
+          completionRate: assigned ? Math.round((completed / assigned) * 100) : 0,
+          averageProgress,
+        };
+      }),
+      pagination: {
+        page: query.page,
+        limit: query.limit,
+        total: result.total,
+        totalPages: Math.ceil(result.total / query.limit),
+      },
+    };
+  },
+  async getCompletionCampaign(campaignId: string, query: CompletionEnrollmentsQuery, actor: Actor) {
+    if (!actor.permissions.includes('training-completion.read'))
+      throw new AppError(403, 'FORBIDDEN', 'Insufficient permissions');
+    const result = await trainingAwarenessRepository.getCompletionCampaign(campaignId, query);
+    if (!result)
+      throw new AppError(404, 'TRAINING_CAMPAIGN_NOT_FOUND', 'Training campaign not found');
+    const isOverdue = isPastDueDate(result.campaign.due_date);
+    return {
+      campaign: {
+        id: result.campaign.training_campaign_id,
+        title: result.campaign.title,
+        courseTitle: result.campaign.training_courses.title,
+        startDate: result.campaign.start_date,
+        dueDate: result.campaign.due_date,
+      },
+      items: result.items.map((enrollment) => ({
+        id: enrollment.training_enrollment_id,
+        user: {
+          id: enrollment.users.user_id,
+          name: enrollment.users.full_name,
+          email: enrollment.users.email,
+          employeeCode: enrollment.users.employee_code,
+        },
+        status: isOverdue && enrollment.status !== 'completed' ? 'overdue' : enrollment.status,
+        progressPercent: enrollment.progress_percent,
+        startedAt: enrollment.started_at,
+        completedAt: enrollment.completed_at,
+        lastAccessedAt: enrollment.last_accessed_at,
+      })),
+      pagination: {
+        page: query.page,
+        limit: query.limit,
+        total: result.total,
+        totalPages: Math.ceil(result.total / query.limit),
+      },
+    };
+  },
   async listMyAssessments(query: ListMyAssessmentsQuery, actor: Actor) {
     if (!actor.permissions.includes('training-assessments.take'))
       throw new AppError(403, 'FORBIDDEN', 'Insufficient permissions');

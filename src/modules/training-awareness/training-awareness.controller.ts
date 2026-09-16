@@ -13,6 +13,31 @@ import {
   listMyAssessmentsQuerySchema,
   submitAssessmentBodySchema,
 } from './dto/assessment.dto.js';
+import {
+  completionCampaignParamsSchema,
+  completionCampaignsQuerySchema,
+  completionEnrollmentsQuerySchema,
+} from './dto/completion.dto.js';
+
+export const listCompletionCampaigns: RequestHandler = async (req, res) => {
+  if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+  const data = await trainingAwarenessService.listCompletionCampaigns(
+    completionCampaignsQuerySchema.parse(req.query),
+    req.auth,
+  );
+  res.status(200).json({ success: true, data });
+};
+
+export const getCompletionCampaign: RequestHandler = async (req, res) => {
+  if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+  const { campaignId } = completionCampaignParamsSchema.parse(req.params);
+  const data = await trainingAwarenessService.getCompletionCampaign(
+    campaignId,
+    completionEnrollmentsQuerySchema.parse(req.query),
+    req.auth,
+  );
+  res.status(200).json({ success: true, data });
+};
 
 export const listMyAssessments: RequestHandler = async (req, res) => {
   if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');

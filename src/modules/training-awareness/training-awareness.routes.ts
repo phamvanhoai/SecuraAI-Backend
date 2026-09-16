@@ -10,6 +10,8 @@ import {
   getMyAssessment,
   listMyAssessments,
   submitMyAssessment,
+  getCompletionCampaign,
+  listCompletionCampaigns,
 } from './training-awareness.controller.js';
 import {
   assignmentOptionsQuerySchema,
@@ -23,8 +25,28 @@ import {
   listMyAssessmentsQuerySchema,
   submitAssessmentBodySchema,
 } from './dto/assessment.dto.js';
+import {
+  completionCampaignParamsSchema,
+  completionCampaignsQuerySchema,
+  completionEnrollmentsQuerySchema,
+} from './dto/completion.dto.js';
 
 export const trainingAwarenessRouter = Router();
+
+trainingAwarenessRouter.get(
+  '/completion',
+  authenticate,
+  authorize('training-completion.read'),
+  validate({ query: completionCampaignsQuerySchema }),
+  asyncHandler(listCompletionCampaigns),
+);
+trainingAwarenessRouter.get(
+  '/completion/:campaignId',
+  authenticate,
+  authorize('training-completion.read'),
+  validate({ params: completionCampaignParamsSchema, query: completionEnrollmentsQuerySchema }),
+  asyncHandler(getCompletionCampaign),
+);
 
 trainingAwarenessRouter.get(
   '/assessments',

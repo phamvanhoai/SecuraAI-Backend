@@ -7,6 +7,7 @@ import type {
   ListCoursesQuery,
 } from './dto/course.dto.js';
 import type { ListMyAssessmentsQuery, SubmitAssessmentBody } from './dto/assessment.dto.js';
+import type { CompletionCampaignsQuery, CompletionEnrollmentsQuery } from './dto/completion.dto.js';
 
 const courseSelect = {
   training_course_id: true,
@@ -23,6 +24,95 @@ export type CourseRecord = Prisma.training_coursesGetPayload<{ select: typeof co
 type RequestContext = { actorUserId: string; ipAddress: string | null; userAgent: string | null };
 
 export const trainingAwarenessRepository = {
+  async listCompletionCampaigns(query: CompletionCampaignsQuery) {
+    const where: Prisma.training_campaignsWhereInput = query.q
+      ? {
+          OR: [
+            { title: { contains: query.q, mode: 'insensitive' } },
+            { training_courses: { title: { contains: query.q, mode: 'insensitive' } } },
+          ],
+        }
+      : {};
+    const [total, campaigns] = await prisma.$transaction([
+      prisma.training_campaigns.count({ where }),
+      prisma.training_campaigns.findMany({
+        where,
+        select: {
+          training_campaign_id: true,
+          title: true,
+          start_date: true,
+          due_date: true,
+          created_at: true,
+          training_courses: { select: { title: true } },
+        },
+        orderBy: [{ due_date: 'desc' }, { training_campaign_id: 'desc' }],
+        skip: (query.page - 1) * query.limit,
+        take: query.limit,
+      }),
+    ]);
+    const ids = campaigns.map((campaign) => campaign.training_campaign_id);
+    const groups = ids.length
+      ? await prisma.training_enrollments.groupBy({
+          by: ['training_campaign_id', 'status'],
+          where: { training_campaign_id: { in: ids } },
+          _count: { _all: true },
+          _avg: { progress_percent: true },
+        })
+      : [];
+    return { campaigns, groups, total };
+  },
+  async getCompletionCampaign(campaignId: string, query: CompletionEnrollmentsQuery) {
+    const campaign = await prisma.training_campaigns.findUnique({
+      where: { training_campaign_id: campaignId },
+      select: {
+        training_campaign_id: true,
+        title: true,
+        start_date: true,
+        due_date: true,
+        training_courses: { select: { title: true } },
+      },
+    });
+    if (!campaign) return null;
+    const dueBoundary = new Date(campaign.due_date);
+    dueBoundary.setUTCDate(dueBoundary.getUTCDate() + 1);
+    const overdue = dueBoundary <= new Date() && query.status === 'overdue';
+    const where: Prisma.training_enrollmentsWhereInput = {
+      training_campaign_id: campaignId,
+      ...(query.status !== 'all' ? { status: overdue ? { not: 'completed' } : query.status } : {}),
+      ...(query.q
+        ? {
+            users: {
+              OR: [
+                { full_name: { contains: query.q, mode: 'insensitive' } },
+                { email: { contains: query.q, mode: 'insensitive' } },
+                { employee_code: { contains: query.q, mode: 'insensitive' } },
+              ],
+            },
+          }
+        : {}),
+    };
+    const [total, items] = await prisma.$transaction([
+      prisma.training_enrollments.count({ where }),
+      prisma.training_enrollments.findMany({
+        where,
+        select: {
+          training_enrollment_id: true,
+          status: true,
+          progress_percent: true,
+          started_at: true,
+          completed_at: true,
+          last_accessed_at: true,
+          users: {
+            select: { user_id: true, full_name: true, email: true, employee_code: true },
+          },
+        },
+        orderBy: [{ status: 'asc' }, { users: { full_name: 'asc' } }],
+        skip: (query.page - 1) * query.limit,
+        take: query.limit,
+      }),
+    ]);
+    return { campaign, items, total };
+  },
   async listMyAssessments(userId: string, query: ListMyAssessmentsQuery) {
     const where: Prisma.training_enrollmentsWhereInput = {
       user_id: userId,
