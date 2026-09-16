@@ -152,4 +152,19 @@ describe('cancelRiskAssessmentBodySchema', () => {
       }),
     ).toThrow();
   });
+
+  it('normalizes whitespace before enforcing the minimum reason length', () => {
+    expect(
+      cancelRiskAssessmentBodySchema.parse({
+        reason: '  Created\n   by mistake and no longer required.  ',
+        expectedUpdatedAt: '2026-09-15T10:00:00.000Z',
+      }).reason,
+    ).toBe('Created by mistake and no longer required.');
+    expect(() =>
+      cancelRiskAssessmentBodySchema.parse({
+        reason: 'a         b',
+        expectedUpdatedAt: '2026-09-15T10:00:00.000Z',
+      }),
+    ).toThrow();
+  });
 });

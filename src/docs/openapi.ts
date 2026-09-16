@@ -1883,12 +1883,31 @@ export const openApiSpec = swaggerJsdoc({
           tags: ['Risk Assessments'],
           summary: 'List valid options for creating a risk assessment',
           description:
-            'Requires risks.create. Returns bounded active targets and threat/vulnerability catalog entries.',
+            'Requires risks.create or risks.update. Returns one paginated option type at a time for active targets and threat/vulnerability catalog entries.',
           security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'type',
+              in: 'query',
+              required: true,
+              schema: {
+                type: 'string',
+                enum: ['assets', 'businessProcesses', 'threats', 'vulnerabilities'],
+              },
+            },
+            { name: 'q', in: 'query', schema: { type: 'string', maxLength: 100 } },
+            { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
+            {
+              name: 'limit',
+              in: 'query',
+              schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
+            },
+          ],
           responses: {
             '200': { description: 'Risk creation options' },
             '401': { description: 'Authentication required' },
-            '403': { description: 'The risks.create permission is required' },
+            '403': { description: 'The risks.create or risks.update permission is required' },
+            '422': { description: 'Invalid option type, search, or pagination parameters' },
           },
         },
       },
@@ -1897,7 +1916,7 @@ export const openApiSpec = swaggerJsdoc({
           tags: ['Risk Assessments'],
           summary: 'Update a draft or rejected risk assessment',
           description:
-            'Requires risks.update. Recalculates score and level, replaces linked threats and vulnerabilities transactionally, and uses expectedUpdatedAt for optimistic concurrency.',
+            'Requires risks.update. Only the assessor or an administrator may edit a draft or rejected assessment. Rejected assessments keep their original target. Assessments with a treatment plan or incident link cannot be edited. Recalculates score and level, replaces linked threats and vulnerabilities transactionally, and uses expectedUpdatedAt for optimistic concurrency.',
           security: [{ bearerAuth: [] }],
           parameters: [
             {
@@ -1912,7 +1931,10 @@ export const openApiSpec = swaggerJsdoc({
             '401': { description: 'Authentication required' },
             '403': { description: 'The risks.update permission is required' },
             '404': { description: 'Risk assessment or target not found' },
-            '409': { description: 'Potential duplicate or concurrent modification' },
+            '409': {
+              description:
+                'Potential duplicate, concurrent modification, treatment plan, or incident link',
+            },
             '422': { description: 'Invalid input, inactive target, or non-editable status' },
           },
         },
@@ -1944,7 +1966,7 @@ export const openApiSpec = swaggerJsdoc({
           tags: ['Risk Assessments'],
           summary: 'Cancel a draft or rejected risk assessment',
           description:
-            'Requires risks.cancel. Only the assessor or an administrator can cancel an assessment without a treatment plan. Uses expectedUpdatedAt for optimistic concurrency and preserves the assessment as an auditable record.',
+            'Requires risks.cancel. Only the assessor or an administrator can cancel a draft or rejected assessment. Assessments with a treatment plan, incident link, or later assessment cannot be cancelled. The actor is revalidated inside the transaction, expectedUpdatedAt protects against concurrent changes, and the cancellation remains auditable.',
           security: [{ bearerAuth: [] }],
           parameters: [
             {
@@ -1975,7 +1997,10 @@ export const openApiSpec = swaggerJsdoc({
             '401': { description: 'Authentication required' },
             '403': { description: 'Missing permission or actor is not the assessor/admin' },
             '404': { description: 'Risk assessment not found' },
-            '409': { description: 'Treatment plan exists or assessment changed concurrently' },
+            '409': {
+              description:
+                'Treatment plan, incident link, later assessment, or concurrent change prevents cancellation',
+            },
             '422': { description: 'Invalid input or assessment status is not cancellable' },
           },
         },
