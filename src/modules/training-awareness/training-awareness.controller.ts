@@ -108,3 +108,25 @@ export const assignCourse: RequestHandler = async (req, res) => {
   );
   res.status(201).json({ success: true, data });
 };
+
+export const getLatestCourseAssignment: RequestHandler = async (req, res) => {
+  if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+  const { courseId } = assignCourseParamsSchema.parse(req.params);
+  res.status(200).json({
+    success: true,
+    data: await trainingAwarenessService.getLatestCourseAssignment(courseId, req.auth),
+  });
+};
+import { withdrawEnrollmentBodySchema } from './dto/course.dto.js';
+export const withdrawEnrollment: RequestHandler = async (req, res) => {
+  if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+  const { enrollmentId } = assessmentParamsSchema.parse(req.params);
+  const { reason } = withdrawEnrollmentBodySchema.parse(req.body);
+  res.json({
+    success: true,
+    data: await trainingAwarenessService.withdrawEnrollment(enrollmentId, reason, req.auth, {
+      ipAddress: req.ip ?? null,
+      userAgent: req.get('user-agent')?.slice(0, 1000) ?? null,
+    }),
+  });
+};

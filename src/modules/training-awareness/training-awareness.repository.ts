@@ -24,6 +24,31 @@ export type CourseRecord = Prisma.training_coursesGetPayload<{ select: typeof co
 type RequestContext = { actorUserId: string; ipAddress: string | null; userAgent: string | null };
 
 export const trainingAwarenessRepository = {
+  withdrawEnrollment(enrollmentId: string, reason: string, context: RequestContext) {
+    return prisma.$transaction(async (tx) => {
+      const changed = await tx.training_enrollments.updateMany({
+        where: {
+          training_enrollment_id: enrollmentId,
+          status: { notIn: ['completed', 'withdrawn'] },
+        },
+        data: { status: 'withdrawn' },
+      });
+      if (!changed.count) return false;
+      await tx.audit_logs.create({
+        data: {
+          actor_user_id: context.actorUserId,
+          module: 'training-awareness',
+          action: 'training_assignment.withdrawn',
+          entity_type: 'training_enrollment',
+          entity_id: enrollmentId,
+          after_data: { status: 'withdrawn', reason },
+          ip_address: context.ipAddress,
+          user_agent: context.userAgent,
+        },
+      });
+      return true;
+    });
+  },
   async listCompletionCampaigns(query: CompletionCampaignsQuery) {
     const where: Prisma.training_campaignsWhereInput = query.q
       ? {
@@ -78,7 +103,9 @@ export const trainingAwarenessRepository = {
     const overdue = dueBoundary <= new Date() && query.status === 'overdue';
     const where: Prisma.training_enrollmentsWhereInput = {
       training_campaign_id: campaignId,
-      ...(query.status !== 'all' ? { status: overdue ? { not: 'completed' } : query.status } : {}),
+      ...(query.status !== 'all'
+        ? { status: overdue ? { notIn: ['completed', 'withdrawn'] } : query.status }
+        : {}),
       ...(query.q
         ? {
             users: {
@@ -116,6 +143,7 @@ export const trainingAwarenessRepository = {
   async listMyAssessments(userId: string, query: ListMyAssessmentsQuery) {
     const where: Prisma.training_enrollmentsWhereInput = {
       user_id: userId,
+      status: { not: 'withdrawn' },
       training_campaigns: { training_courses: { quizzes: { some: {} } } },
     };
     const [total, items] = await prisma.$transaction([
@@ -169,7 +197,11 @@ export const trainingAwarenessRepository = {
   },
   getMyAssessment(enrollmentId: string, userId: string) {
     return prisma.training_enrollments.findFirst({
-      where: { training_enrollment_id: enrollmentId, user_id: userId },
+      where: {
+        training_enrollment_id: enrollmentId,
+        user_id: userId,
+        status: { not: 'withdrawn' },
+      },
       select: {
         training_enrollment_id: true,
         training_campaigns: {
@@ -224,7 +256,11 @@ export const trainingAwarenessRepository = {
     return prisma.$transaction(
       async (transaction) => {
         const enrollment = await transaction.training_enrollments.findFirst({
-          where: { training_enrollment_id: enrollmentId, user_id: context.actorUserId },
+          where: {
+            training_enrollment_id: enrollmentId,
+            user_id: context.actorUserId,
+            status: { not: 'withdrawn' },
+          },
           select: {
             training_enrollment_id: true,
             started_at: true,
@@ -461,6 +497,21 @@ export const trainingAwarenessRepository = {
       hasMoreDepartments: departments.length > query.limit,
     };
   },
+  getLatestCourseAssignment(courseId: string) {
+    return prisma.training_campaigns.findFirst({
+      where: { training_course_id: courseId },
+      orderBy: [{ created_at: 'desc' }, { training_campaign_id: 'desc' }],
+      select: {
+        training_campaign_id: true,
+        title: true,
+        start_date: true,
+        due_date: true,
+        training_campaign_targets: {
+          select: { user_id: true, department_id: true },
+        },
+      },
+    });
+  },
   async assignCourse(courseId: string, input: AssignCourseBody, context: RequestContext) {
     return prisma.$transaction(async (transaction) => {
       const course = await transaction.training_courses.findUnique({
@@ -498,34 +549,122 @@ export const trainingAwarenessRepository = {
         return { kind: 'invalid_targets' as const };
       }
 
-      const campaign = await transaction.training_campaigns.create({
-        data: {
-          training_course_id: courseId,
-          title: input.title,
-          assigned_by_user_id: context.actorUserId,
-          start_date: new Date(`${input.startDate}T00:00:00.000Z`),
-          due_date: new Date(`${input.dueDate}T00:00:00.000Z`),
-          training_campaign_targets: {
-            create: [
-              ...uniqueUserIds.map((userId) => ({ user_id: userId })),
-              ...uniqueDepartmentIds.map((departmentId) => ({ department_id: departmentId })),
-            ],
-          },
-          training_enrollments: { create: resolvedUserIds.map((userId) => ({ user_id: userId })) },
-        },
-        select: {
-          training_campaign_id: true,
-          title: true,
-          start_date: true,
-          due_date: true,
-          created_at: true,
-        },
+      const existingCampaign = await transaction.training_campaigns.findFirst({
+        where: { training_course_id: courseId },
+        orderBy: [{ created_at: 'desc' }, { training_campaign_id: 'desc' }],
+        select: { training_campaign_id: true },
       });
+      if (existingCampaign && !input.changeReason) return { kind: 'reason_required' as const };
+      if (!existingCampaign && !uniqueUserIds.length && !uniqueDepartmentIds.length)
+        return { kind: 'invalid_targets' as const };
+      if (existingCampaign) {
+        await transaction.training_campaign_targets.deleteMany({
+          where: { training_campaign_id: existingCampaign.training_campaign_id },
+        });
+      }
+      const campaignData = {
+        title: input.title,
+        assigned_by_user_id: context.actorUserId,
+        start_date: new Date(`${input.startDate}T00:00:00.000Z`),
+        due_date: new Date(`${input.dueDate}T00:00:00.000Z`),
+        training_campaign_targets: {
+          create: [
+            ...uniqueUserIds.map((userId) => ({ user_id: userId })),
+            ...uniqueDepartmentIds.map((departmentId) => ({ department_id: departmentId })),
+          ],
+        },
+      } satisfies Prisma.training_campaignsUncheckedUpdateInput;
+      const campaign = existingCampaign
+        ? await transaction.training_campaigns.update({
+            where: { training_campaign_id: existingCampaign.training_campaign_id },
+            data: campaignData,
+            select: {
+              training_campaign_id: true,
+              title: true,
+              start_date: true,
+              due_date: true,
+              created_at: true,
+            },
+          })
+        : await transaction.training_campaigns.create({
+            data: { training_course_id: courseId, ...campaignData },
+            select: {
+              training_campaign_id: true,
+              title: true,
+              start_date: true,
+              due_date: true,
+              created_at: true,
+            },
+          });
+      let removedCount = 0;
+      let retainedStartedCount = 0;
+      let retainedCompletedCount = 0;
+      if (existingCampaign) {
+        const unselectedEnrollments = await transaction.training_enrollments.findMany({
+          where: {
+            training_campaign_id: campaign.training_campaign_id,
+            user_id: { notIn: resolvedUserIds },
+          },
+          select: {
+            training_enrollment_id: true,
+            status: true,
+            progress_percent: true,
+            started_at: true,
+            completed_at: true,
+            last_accessed_at: true,
+            training_certificates: { select: { training_certificate_id: true } },
+          },
+        });
+        const removableIds = unselectedEnrollments
+          .filter(
+            (item) =>
+              item.status === 'assigned' &&
+              item.progress_percent === 0 &&
+              !item.started_at &&
+              !item.completed_at &&
+              !item.last_accessed_at &&
+              !item.training_certificates,
+          )
+          .map((item) => item.training_enrollment_id);
+        const withdrawableIds = unselectedEnrollments
+          .filter(
+            (item) =>
+              item.status !== 'completed' &&
+              item.status !== 'withdrawn' &&
+              !removableIds.includes(item.training_enrollment_id),
+          )
+          .map((item) => item.training_enrollment_id);
+        removedCount = (
+          await transaction.training_enrollments.deleteMany({
+            where: { training_enrollment_id: { in: removableIds } },
+          })
+        ).count;
+        retainedStartedCount = withdrawableIds.length;
+        retainedCompletedCount = unselectedEnrollments.filter(
+          (item) => item.status === 'completed',
+        ).length;
+      }
+      await Promise.all(
+        resolvedUserIds.map((userId) =>
+          transaction.training_enrollments.upsert({
+            where: {
+              training_campaign_id_user_id: {
+                training_campaign_id: campaign.training_campaign_id,
+                user_id: userId,
+              },
+            },
+            update: {},
+            create: { training_campaign_id: campaign.training_campaign_id, user_id: userId },
+          }),
+        ),
+      );
       await transaction.audit_logs.create({
         data: {
           actor_user_id: context.actorUserId,
           module: 'training-awareness',
-          action: 'training_course.assigned',
+          action: existingCampaign
+            ? 'training_course.assignment_updated'
+            : 'training_course.assigned',
           entity_type: 'training_campaign',
           entity_id: campaign.training_campaign_id,
           after_data: {
@@ -533,12 +672,23 @@ export const trainingAwarenessRepository = {
             userIds: uniqueUserIds,
             departmentIds: uniqueDepartmentIds,
             enrollmentCount: resolvedUserIds.length,
+            removedCount,
+            retainedStartedCount,
+            retainedCompletedCount,
+            changeReason: input.changeReason ?? null,
           },
           ip_address: context.ipAddress,
           user_agent: context.userAgent,
         },
       });
-      return { kind: 'assigned' as const, campaign, enrollmentCount: resolvedUserIds.length };
+      return {
+        kind: 'assigned' as const,
+        campaign,
+        enrollmentCount: resolvedUserIds.length,
+        removedCount,
+        retainedStartedCount,
+        retainedCompletedCount,
+      };
     });
   },
 };

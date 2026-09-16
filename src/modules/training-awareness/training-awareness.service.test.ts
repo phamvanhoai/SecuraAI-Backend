@@ -5,6 +5,7 @@ const repositoryMocks = vi.hoisted(() => ({
   listMyAssessments: vi.fn(),
   getMyAssessment: vi.fn(),
   submitAssessment: vi.fn(),
+  withdrawEnrollment: vi.fn(),
 }));
 
 vi.mock('./training-awareness.repository.js', () => ({
@@ -13,6 +14,47 @@ vi.mock('./training-awareness.repository.js', () => ({
 
 describe('trainingAwarenessService assessments', () => {
   beforeEach(() => vi.clearAllMocks());
+
+  it('requires assignment permission before withdrawing', async () => {
+    await expect(
+      trainingAwarenessService.withdrawEnrollment(
+        'id',
+        'Requested by manager',
+        { userId: 'user-1', permissions: [] },
+        { ipAddress: null, userAgent: null },
+      ),
+    ).rejects.toMatchObject({ statusCode: 403 });
+    expect(repositoryMocks.withdrawEnrollment).not.toHaveBeenCalled();
+  });
+
+  it('does not withdraw completed or already withdrawn enrollments', async () => {
+    repositoryMocks.withdrawEnrollment.mockResolvedValue(false);
+    await expect(
+      trainingAwarenessService.withdrawEnrollment(
+        'id',
+        'Requested by manager',
+        { userId: 'user-1', permissions: ['training-courses.assign'] },
+        { ipAddress: null, userAgent: null },
+      ),
+    ).rejects.toMatchObject({ statusCode: 409 });
+  });
+
+  it('passes withdrawal reason and actor to the repository', async () => {
+    repositoryMocks.withdrawEnrollment.mockResolvedValue(true);
+    await expect(
+      trainingAwarenessService.withdrawEnrollment(
+        'id',
+        'Requested by manager',
+        { userId: 'user-1', permissions: ['training-courses.assign'] },
+        { ipAddress: null, userAgent: null },
+      ),
+    ).resolves.toEqual({ withdrawn: true });
+    expect(repositoryMocks.withdrawEnrollment).toHaveBeenCalledWith('id', 'Requested by manager', {
+      actorUserId: 'user-1',
+      ipAddress: null,
+      userAgent: null,
+    });
+  });
 
   it('rejects users without the assessment permission', async () => {
     await expect(

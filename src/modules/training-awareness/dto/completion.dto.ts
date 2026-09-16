@@ -14,7 +14,9 @@ export const completionEnrollmentsQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(20),
   q: z.string().trim().max(100).default(''),
-  status: z.enum(['all', 'assigned', 'in_progress', 'completed', 'overdue']).default('all'),
+  status: z
+    .enum(['all', 'assigned', 'in_progress', 'completed', 'overdue', 'withdrawn'])
+    .default('all'),
 });
 
 export type CompletionCampaignsQuery = z.infer<typeof completionCampaignsQuerySchema>;

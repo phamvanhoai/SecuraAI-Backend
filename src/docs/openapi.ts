@@ -55,6 +55,12 @@ export const openApiSpec = swaggerJsdoc({
           additionalProperties: false,
           required: ['title', 'startDate', 'dueDate', 'userIds', 'departmentIds'],
           properties: {
+            changeReason: {
+              type: 'string',
+              minLength: 3,
+              maxLength: 500,
+              description: 'Required when updating an existing campaign.',
+            },
             title: { type: 'string', minLength: 3, maxLength: 255 },
             startDate: { type: 'string', format: 'date' },
             dueDate: { type: 'string', format: 'date' },
@@ -1142,6 +1148,42 @@ export const openApiSpec = swaggerJsdoc({
       },
     },
     paths: {
+      '/training/enrollments/{enrollmentId}/withdraw': {
+        post: {
+          tags: ['Training Awareness'],
+          summary: 'Withdraw an individual training assignment',
+          description:
+            'Requires training-courses.assign. Preserves history and quiz results, blocks further assessment access, and audits the reason and actor. Completed and withdrawn enrollments cannot be withdrawn.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'enrollmentId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  additionalProperties: false,
+                  required: ['reason'],
+                  properties: { reason: { type: 'string', minLength: 3, maxLength: 500 } },
+                },
+              },
+            },
+          },
+          responses: {
+            '200': { description: 'Assignment withdrawn' },
+            '403': { description: 'Insufficient permissions' },
+            '409': { description: 'Enrollment completed, withdrawn, or unavailable' },
+            '422': { description: 'Invalid reason or identifier' },
+          },
+        },
+      },
       '/training/completion': {
         get: {
           tags: ['Training Awareness'],
@@ -1191,7 +1233,7 @@ export const openApiSpec = swaggerJsdoc({
               in: 'query',
               schema: {
                 type: 'string',
-                enum: ['all', 'assigned', 'in_progress', 'completed', 'overdue'],
+                enum: ['all', 'assigned', 'in_progress', 'completed', 'overdue', 'withdrawn'],
                 default: 'all',
               },
             },
@@ -1372,11 +1414,30 @@ export const openApiSpec = swaggerJsdoc({
         },
       },
       '/training/courses/{courseId}/assignments': {
+        get: {
+          tags: ['Training Awareness'],
+          summary: 'Get the current course assignment',
+          description:
+            'Requires training-courses.assign. Returns the latest campaign dates and selected user and department targets, or null when the course has not been assigned.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'courseId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          responses: {
+            '200': { description: 'Current assignment or null' },
+            '403': { description: 'training-courses.assign permission required' },
+          },
+        },
         post: {
           tags: ['Training Awareness'],
           summary: 'Assign a training course',
           description:
-            'Requires training-courses.assign. Creates a campaign, targets, deduplicated enrollments and audit record atomically.',
+            'Requires training-courses.assign. Creates the first campaign or updates the latest campaign, replaces its selected targets, preserves existing progress, adds missing enrollments and records an audit event atomically.',
           security: [{ bearerAuth: [] }],
           parameters: [
             {
@@ -1395,7 +1456,7 @@ export const openApiSpec = swaggerJsdoc({
             },
           },
           responses: {
-            '201': { description: 'Course assignment campaign created' },
+            '201': { description: 'Course assignment campaign created or updated' },
             '404': { description: 'Course not found' },
             '422': { description: 'Invalid dates or assignment targets' },
           },
@@ -1727,7 +1788,8 @@ export const openApiSpec = swaggerJsdoc({
           },
           responses: {
             '200': {
-              description: 'Authenticator URI, manual key, one-time QR code, and safety warning returned',
+              description:
+                'Authenticator URI, manual key, one-time QR code, and safety warning returned',
             },
             '400': { description: 'Current password is incorrect' },
             '401': { description: 'Unauthorized' },
@@ -1818,7 +1880,9 @@ export const openApiSpec = swaggerJsdoc({
           requestBody: {
             required: true,
             content: {
-              'application/json': { schema: { $ref: '#/components/schemas/CreateMfaRecoveryRequest' } },
+              'application/json': {
+                schema: { $ref: '#/components/schemas/CreateMfaRecoveryRequest' },
+              },
             },
           },
           responses: {
@@ -1837,11 +1901,21 @@ export const openApiSpec = swaggerJsdoc({
           security: [{ bearerAuth: [] }],
           parameters: [
             { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
-            { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 } },
-            { name: 'status', in: 'query', schema: { type: 'string', enum: ['pending', 'approved', 'rejected'] } },
+            {
+              name: 'limit',
+              in: 'query',
+              schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
+            },
+            {
+              name: 'status',
+              in: 'query',
+              schema: { type: 'string', enum: ['pending', 'approved', 'rejected'] },
+            },
           ],
           responses: {
-            '200': { description: 'Paginated recovery requests with user and latest decision details' },
+            '200': {
+              description: 'Paginated recovery requests with user and latest decision details',
+            },
             '401': { description: 'Unauthorized' },
             '403': { description: 'Missing mfa-recovery.manage permission' },
           },
@@ -1852,10 +1926,26 @@ export const openApiSpec = swaggerJsdoc({
           tags: ['MFA Recovery Administration'],
           summary: 'Approve an MFA recovery request',
           security: [{ bearerAuth: [] }],
-          parameters: [{ name: 'requestId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
-          requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/DecideMfaRecoveryRequest' } } } },
+          parameters: [
+            {
+              name: 'requestId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/DecideMfaRecoveryRequest' },
+              },
+            },
+          },
           responses: {
-            '200': { description: 'MFA cleared, sessions revoked, action audited, and user notified' },
+            '200': {
+              description: 'MFA cleared, sessions revoked, action audited, and user notified',
+            },
             '401': { description: 'Unauthorized' },
             '403': { description: 'Missing mfa-recovery.manage permission' },
             '404': { description: 'Request not found' },
@@ -1869,8 +1959,22 @@ export const openApiSpec = swaggerJsdoc({
           tags: ['MFA Recovery Administration'],
           summary: 'Reject an MFA recovery request',
           security: [{ bearerAuth: [] }],
-          parameters: [{ name: 'requestId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
-          requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/DecideMfaRecoveryRequest' } } } },
+          parameters: [
+            {
+              name: 'requestId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/DecideMfaRecoveryRequest' },
+              },
+            },
+          },
           responses: {
             '200': { description: 'Request rejected, action audited, and user notified' },
             '401': { description: 'Unauthorized' },
