@@ -520,6 +520,20 @@ async function main(): Promise<void> {
       description: 'Confirm that an AI alert represents a real security incident',
     },
   });
+  const aiAlertThresholdManagePermission = await prisma.permissions.upsert({
+    where: { code: 'ai-alerts.thresholds.manage' },
+    update: {
+      module: 'ai-alerts',
+      action: 'manage-thresholds',
+      description: 'Set custom AI alert thresholds for assets',
+    },
+    create: {
+      code: 'ai-alerts.thresholds.manage',
+      module: 'ai-alerts',
+      action: 'manage-thresholds',
+      description: 'Set custom AI alert thresholds for assets',
+    },
+  });
   const falsePositivePermissionData = {
     code: 'ai-alerts.mark-false-positive',
     module: 'ai-alerts',
@@ -825,6 +839,7 @@ async function main(): Promise<void> {
     aiAlertReadPermission,
     aiAlertFeedbackPermission,
     aiAlertConfirmPermission,
+    aiAlertThresholdManagePermission,
     ...roleManagementPermissions,
   ]) {
     await prisma.role_permissions.upsert({
@@ -845,6 +860,7 @@ async function main(): Promise<void> {
     aiAlertReadPermission,
     aiAlertFeedbackPermission,
     aiAlertConfirmPermission,
+    aiAlertThresholdManagePermission,
   ]) {
     await prisma.role_permissions.upsert({
       where: {

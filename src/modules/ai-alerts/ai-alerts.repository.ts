@@ -11,6 +11,10 @@ import type {
 } from './dto/alert-feedback.dto.js';
 import type { ConfirmAlertBody } from './dto/confirm-alert.dto.js';
 import type { FalsePositiveBody } from './dto/false-positive.dto.js';
+import type {
+  ListAlertThresholdsQuery,
+  SetAlertThresholdBody,
+} from './dto/alert-threshold.dto.js';
 
 export const alertSelect = {
   ai_alert_id: true,
@@ -54,6 +58,21 @@ type RequestContext = {
   ipAddress: string | null;
   userAgent: string | null;
 };
+
+const alertThresholdSelect = {
+  asset_alert_threshold_id: true,
+  asset_id: true,
+  threshold: true,
+  risk_level_min: true,
+  enabled: true,
+  updated_by_user_id: true,
+  updated_at: true,
+  assets: { select: { asset_code: true, name: true, status: true, deleted_at: true } },
+} satisfies Prisma.asset_alert_thresholdsSelect;
+
+export type AlertThresholdRecord = Prisma.asset_alert_thresholdsGetPayload<{
+  select: typeof alertThresholdSelect;
+}>;
 
 export type DetectionEvent = {
   id: string;
@@ -193,6 +212,95 @@ const toParametersJson = (input: CreateModelConfigurationBody): Prisma.InputJson
 });
 
 export const aiAlertsRepository = {
+  async listAlertThresholds(
+    query: ListAlertThresholdsQuery,
+  ): Promise<{ items: AlertThresholdRecord[]; total: number }> {
+    const where: Prisma.asset_alert_thresholdsWhereInput = {
+      assets: {
+        deleted_at: null,
+        ...(query.q
+          ? {
+              OR: [
+                { name: { contains: query.q, mode: 'insensitive' } },
+                { asset_code: { contains: query.q, mode: 'insensitive' } },
+              ],
+            }
+          : {}),
+      },
+    };
+    const [total, items] = await prisma.$transaction([
+      prisma.asset_alert_thresholds.count({ where }),
+      prisma.asset_alert_thresholds.findMany({
+        where,
+        select: alertThresholdSelect,
+        orderBy: [{ assets: { asset_code: 'asc' } }, { asset_alert_threshold_id: 'asc' }],
+        skip: (query.page - 1) * query.limit,
+        take: query.limit,
+      }),
+    ]);
+    return { items, total };
+  },
+
+  async setAlertThreshold(
+    assetId: string,
+    input: SetAlertThresholdBody,
+    context: RequestContext,
+  ): Promise<AlertThresholdRecord | null> {
+    return prisma.$transaction(async (transaction) => {
+      const asset = await transaction.assets.findFirst({
+        where: { asset_id: assetId, deleted_at: null },
+        select: { asset_id: true },
+      });
+      if (!asset) return null;
+      const existing = await transaction.asset_alert_thresholds.findUnique({
+        where: { asset_id: assetId },
+        select: alertThresholdSelect,
+      });
+      const threshold = await transaction.asset_alert_thresholds.upsert({
+        where: { asset_id: assetId },
+        create: {
+          asset_id: assetId,
+          threshold: input.threshold,
+          risk_level_min: input.riskLevelMin,
+          enabled: input.enabled,
+          updated_by_user_id: context.actorUserId,
+        },
+        update: {
+          threshold: input.threshold,
+          risk_level_min: input.riskLevelMin,
+          enabled: input.enabled,
+          updated_by_user_id: context.actorUserId,
+          updated_at: new Date(),
+        },
+        select: alertThresholdSelect,
+      });
+      await transaction.audit_logs.create({
+        data: {
+          actor_user_id: context.actorUserId,
+          module: 'ai-alerts',
+          action: existing ? 'alert_threshold.updated' : 'alert_threshold.created',
+          entity_type: 'asset_alert_threshold',
+          entity_id: threshold.asset_alert_threshold_id,
+          ...(existing
+            ? { before_data: {
+                threshold: existing.threshold.toString(),
+                riskLevelMin: existing.risk_level_min,
+                enabled: existing.enabled,
+              } }
+            : {}),
+          after_data: {
+            assetId,
+            threshold: threshold.threshold.toString(),
+            riskLevelMin: threshold.risk_level_min,
+            enabled: threshold.enabled,
+          },
+          ip_address: context.ipAddress,
+          user_agent: context.userAgent,
+        },
+      });
+      return threshold;
+    });
+  },
   async findLatestExplanation(alertId: string): Promise<{
     exists: boolean;
     explanation: ExplanationRecord | null;

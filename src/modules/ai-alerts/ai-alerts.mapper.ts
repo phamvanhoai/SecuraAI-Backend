@@ -1,10 +1,21 @@
 import type { ModelConfigurationRecord } from './ai-alerts.repository.js';
 import type {
+  AlertThresholdRecord,
   AlertConfirmationRecord,
   AlertRecord,
   ExplanationRecord,
   FeedbackRecord,
 } from './ai-alerts.repository.js';
+
+export const toAlertThresholdResponse = (item: AlertThresholdRecord) => ({
+  id: item.asset_alert_threshold_id,
+  asset: { id: item.asset_id, assetCode: item.assets.asset_code, name: item.assets.name },
+  threshold: item.threshold.toNumber(),
+  riskLevelMin: item.risk_level_min,
+  enabled: item.enabled,
+  updatedByUserId: item.updated_by_user_id,
+  updatedAt: item.updated_at,
+});
 
 export const toAlertExplanationResponse = (explanation: ExplanationRecord) => ({
   id: explanation.ai_alert_explanation_id,

@@ -912,6 +912,45 @@ export const openApiSpec = swaggerJsdoc({
             enabled: { type: 'boolean', default: true },
           },
         },
+        AlertThreshold: {
+          type: 'object',
+          required: ['id', 'asset', 'threshold', 'riskLevelMin', 'enabled', 'updatedAt'],
+          properties: {
+            id: { type: 'string', format: 'uuid' },
+            asset: {
+              type: 'object',
+              required: ['id', 'assetCode', 'name'],
+              properties: {
+                id: { type: 'string', format: 'uuid' },
+                assetCode: { type: 'string' },
+                name: { type: 'string' },
+              },
+            },
+            threshold: { type: 'number', minimum: 0.01, maximum: 1 },
+            riskLevelMin: {
+              type: 'string',
+              nullable: true,
+              enum: ['low', 'medium', 'high', 'critical'],
+            },
+            enabled: { type: 'boolean' },
+            updatedByUserId: { type: 'string', format: 'uuid', nullable: true },
+            updatedAt: { type: 'string', format: 'date-time' },
+          },
+        },
+        SetAlertThresholdRequest: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['threshold'],
+          properties: {
+            threshold: { type: 'number', minimum: 0.01, maximum: 1 },
+            riskLevelMin: {
+              type: 'string',
+              nullable: true,
+              enum: ['low', 'medium', 'high', 'critical'],
+            },
+            enabled: { type: 'boolean', default: true },
+          },
+        },
         CreateModelConfigurationRequest: {
           type: 'object',
           additionalProperties: false,
@@ -3442,6 +3481,45 @@ export const openApiSpec = swaggerJsdoc({
             '401': { description: 'Authentication required' },
             '403': { description: 'The log-sources.manage permission is required' },
             '404': { description: 'Related asset or integration was not found' },
+            '422': { description: 'Invalid request body' },
+          },
+        },
+      },
+      '/ai-alerts/thresholds': {
+        get: {
+          tags: ['AI Alerts'],
+          summary: 'List custom alert thresholds',
+          description: 'Returns paginated per-asset thresholds. Requires ai-alerts.thresholds.manage.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
+            { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 } },
+            { name: 'q', in: 'query', schema: { type: 'string', minLength: 1, maxLength: 100 } },
+          ],
+          responses: {
+            '200': { description: 'Paginated alert threshold list' },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'The ai-alerts.thresholds.manage permission is required' },
+            '422': { description: 'Invalid query parameters' },
+          },
+        },
+      },
+      '/ai-alerts/thresholds/{assetId}': {
+        put: {
+          tags: ['AI Alerts'],
+          summary: 'Set a custom alert threshold for an asset',
+          description: 'Creates or replaces the single threshold assigned to an asset and records an audit event. Requires ai-alerts.thresholds.manage.',
+          security: [{ bearerAuth: [] }],
+          parameters: [{ name: 'assetId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+          requestBody: {
+            required: true,
+            content: { 'application/json': { schema: { $ref: '#/components/schemas/SetAlertThresholdRequest' } } },
+          },
+          responses: {
+            '200': { description: 'Alert threshold saved' },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'The ai-alerts.thresholds.manage permission is required' },
+            '404': { description: 'Asset not found' },
             '422': { description: 'Invalid request body' },
           },
         },
