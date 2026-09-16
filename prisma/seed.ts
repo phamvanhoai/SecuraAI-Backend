@@ -230,6 +230,16 @@ async function main(): Promise<void> {
       description: 'Confirm reading and understanding of applicable policies',
     },
   });
+  const assessControlsPermission = await prisma.permissions.upsert({
+    where: { code: 'compliance.assess-controls' },
+    update: { module: 'policy-compliance', action: 'assess-controls', description: 'Assess the compliance level of individual security controls' },
+    create: { code: 'compliance.assess-controls', module: 'policy-compliance', action: 'assess-controls', description: 'Assess the compliance level of individual security controls' },
+  });
+  await prisma.role_permissions.upsert({
+    where: { role_id_permission_id: { role_id: securityOfficerRole.role_id, permission_id: assessControlsPermission.permission_id } },
+    update: {},
+    create: { role_id: securityOfficerRole.role_id, permission_id: assessControlsPermission.permission_id },
+  });
   const assetReadPermission = await prisma.permissions.upsert({
     where: { code: 'assets.read' },
     update: {

@@ -3837,6 +3837,36 @@ export const openApiSpec = swaggerJsdoc({
           },
         },
       },
+      '/compliance/control-assessments': {
+        get: {
+          tags: ['Policies'],
+          summary: 'List framework controls and their latest compliance assessment',
+          description: 'Requires compliance.assess-controls.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
+            { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 } },
+            { name: 'q', in: 'query', schema: { type: 'string', maxLength: 100 } },
+            { name: 'frameworkId', in: 'query', schema: { type: 'string', format: 'uuid' } },
+            { name: 'status', in: 'query', schema: { type: 'string', enum: ['compliant', 'partially_compliant', 'non_compliant', 'not_assessed'] } },
+            { name: 'reviewState', in: 'query', schema: { type: 'string', enum: ['overdue', 'due_soon', 'scheduled', 'unscheduled'] } },
+          ],
+          responses: { '200': { description: 'Paginated controls and framework filter options' }, '401': { description: 'Authentication required' }, '403': { description: 'The compliance.assess-controls permission is required' } },
+        },
+      },
+      '/compliance/controls/{controlId}/assessments': {
+        get: {
+          tags: ['Policies'], summary: 'Get the 20 most recent assessments for a control', security: [{ bearerAuth: [] }],
+          parameters: [{ name: 'controlId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+          responses: { '200': { description: 'Assessment history' }, '404': { description: 'Control not found' } },
+        },
+        post: {
+          tags: ['Policies'], summary: 'Record a control compliance assessment', description: 'Creates an immutable history entry and audit log. Requires compliance.assess-controls.', security: [{ bearerAuth: [] }],
+          parameters: [{ name: 'controlId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+          requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', additionalProperties: false, required: ['complianceStatus'], properties: { complianceStatus: { type: 'string', enum: ['compliant', 'partially_compliant', 'non_compliant', 'not_assessed'] }, score: { type: 'number', minimum: 0, maximum: 100, nullable: true }, notes: { type: 'string', maxLength: 5000, nullable: true }, nextReviewAt: { type: 'string', format: 'date-time', nullable: true } } } } } },
+          responses: { '201': { description: 'Assessment recorded' }, '403': { description: 'The compliance.assess-controls permission is required' }, '404': { description: 'Control not found' }, '422': { description: 'Invalid assessment or review date' } },
+        },
+      },
       '/security-monitoring/log-sources/{logSourceId}': {
         patch: {
           tags: ['Security Monitoring'],
