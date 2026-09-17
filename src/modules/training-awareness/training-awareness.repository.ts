@@ -437,8 +437,34 @@ export const trainingAwarenessRepository = {
           title: input.title,
           description: input.description ?? null,
           content: input.content,
-          status: 'draft',
+          status: input.status,
           created_by_user_id: context.actorUserId,
+          ...(input.assessment
+            ? {
+                quizzes: {
+                  create: {
+                    title: input.assessment.title,
+                    passing_score: input.assessment.passingScore,
+                    max_attempts: input.assessment.maxAttempts,
+                    quiz_questions: {
+                      create: input.assessment.questions.map((question, questionIndex) => ({
+                        question_text: question.text,
+                        question_type: 'multiple_choice',
+                        score: 1,
+                        display_order: questionIndex + 1,
+                        quiz_options: {
+                          create: question.options.map((option, optionIndex) => ({
+                            option_text: option.text,
+                            is_correct: option.isCorrect,
+                            display_order: optionIndex + 1,
+                          })),
+                        },
+                      })),
+                    },
+                  },
+                },
+              }
+            : {}),
         },
         select: courseSelect,
       });
@@ -449,7 +475,12 @@ export const trainingAwarenessRepository = {
           action: 'training_course.created',
           entity_type: 'training_course',
           entity_id: course.training_course_id,
-          after_data: { title: course.title, status: course.status },
+          after_data: {
+            title: course.title,
+            status: course.status,
+            assessmentCreated: Boolean(input.assessment),
+            questionCount: input.assessment?.questions.length ?? 0,
+          },
           ip_address: context.ipAddress,
           user_agent: context.userAgent,
         },

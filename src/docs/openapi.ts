@@ -48,6 +48,49 @@ export const openApiSpec = swaggerJsdoc({
             title: { type: 'string', minLength: 3, maxLength: 255 },
             description: { type: 'string', nullable: true, maxLength: 2000 },
             content: { type: 'string', minLength: 10, maxLength: 50000 },
+            status: {
+              type: 'string',
+              enum: ['draft', 'published'],
+              default: 'draft',
+              description: 'Published courses require an assessment.',
+            },
+            assessment: {
+              type: 'object',
+              description:
+                'Optional post-training multiple-choice assessment created atomically with the course.',
+              required: ['title', 'passingScore', 'maxAttempts', 'questions'],
+              properties: {
+                title: { type: 'string', minLength: 3, maxLength: 255 },
+                passingScore: { type: 'number', minimum: 0, maximum: 100 },
+                maxAttempts: { type: 'integer', minimum: 1, maximum: 10 },
+                questions: {
+                  type: 'array',
+                  minItems: 1,
+                  maxItems: 50,
+                  items: {
+                    type: 'object',
+                    required: ['text', 'options'],
+                    properties: {
+                      text: { type: 'string', minLength: 3, maxLength: 2000 },
+                      options: {
+                        type: 'array',
+                        minItems: 2,
+                        maxItems: 6,
+                        description: 'Exactly one option must have isCorrect=true.',
+                        items: {
+                          type: 'object',
+                          required: ['text', 'isCorrect'],
+                          properties: {
+                            text: { type: 'string', minLength: 1, maxLength: 1000 },
+                            isCorrect: { type: 'boolean' },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
           },
         },
         TrainingCourse: {

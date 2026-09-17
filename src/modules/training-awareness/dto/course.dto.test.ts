@@ -1,5 +1,52 @@
 import { describe, expect, it } from 'vitest';
-import { assignmentOptionsQuerySchema, assignCourseBodySchema } from './course.dto.js';
+import {
+  assignmentOptionsQuerySchema,
+  assignCourseBodySchema,
+  createCourseBodySchema,
+} from './course.dto.js';
+
+describe('createCourseBodySchema', () => {
+  const course = {
+    title: 'Phishing awareness',
+    description: null,
+    content: 'Learn how to identify suspicious messages.',
+    assessment: {
+      title: 'Phishing assessment',
+      passingScore: 80,
+      maxAttempts: 3,
+      questions: [
+        {
+          text: 'Which message is suspicious?',
+          options: [
+            { text: 'Unexpected password reset link', isCorrect: true },
+            { text: 'Expected internal notice', isCorrect: false },
+          ],
+        },
+      ],
+    },
+  };
+
+  it('accepts a course with a valid post-training assessment', () => {
+    expect(createCourseBodySchema.safeParse(course).success).toBe(true);
+  });
+
+  it('requires exactly one correct answer per question', () => {
+    const invalid = structuredClone(course);
+    invalid.assessment.questions[0]!.options[1]!.isCorrect = true;
+    expect(createCourseBodySchema.safeParse(invalid).success).toBe(false);
+  });
+
+  it('does not publish a course without an assessment', () => {
+    expect(
+      createCourseBodySchema.safeParse({
+        title: 'Incomplete course',
+        description: null,
+        content: 'Content without a completion assessment.',
+        status: 'published',
+      }).success,
+    ).toBe(false);
+  });
+});
 
 describe('assignmentOptionsQuerySchema', () => {
   it('bounds and trims target searches', () => {
