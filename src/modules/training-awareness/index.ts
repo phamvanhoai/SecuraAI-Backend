@@ -18,6 +18,7 @@ export const trainingAwarenessModule: ModuleManifest = {
     'training_certificates',
   ],
   capabilities: [
+    'Issue and view training completion certificates for completed, passed enrollments',
     'Create and list security awareness course drafts',
     'Assign courses to users and departments',
     'Take and automatically score post-training assessments',

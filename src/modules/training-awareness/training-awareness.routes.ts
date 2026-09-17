@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { getCertificate, issueCertificate } from './certificate.controller.js';
 import { authenticate, authorize } from '../../common/middleware/authenticate.js';
 import { validate } from '../../common/middleware/validate.js';
 import { asyncHandler } from '../../common/utils/async-handler.js';
@@ -33,6 +34,20 @@ import {
 } from './dto/completion.dto.js';
 
 export const trainingAwarenessRouter = Router();
+trainingAwarenessRouter.get(
+  '/enrollments/:enrollmentId/certificate',
+  authenticate,
+  authorize('training-completion.read'),
+  validate({ params: assessmentParamsSchema }),
+  asyncHandler(getCertificate),
+);
+trainingAwarenessRouter.post(
+  '/enrollments/:enrollmentId/certificate',
+  authenticate,
+  authorize('training-certificates.issue'),
+  validate({ params: assessmentParamsSchema }),
+  asyncHandler(issueCertificate),
+);
 trainingAwarenessRouter.get(
   '/deadline-reminders',
   authenticate,

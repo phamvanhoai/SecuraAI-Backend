@@ -1,5 +1,12 @@
 # SecuraAI Backend
 
+## UC80 — Issue training completion certificate
+
+- `GET /api/v1/training/enrollments/:enrollmentId/certificate`: requires `training-completion.read`; returns certificate metadata and eligibility.
+- `POST` on the same URL: requires `training-certificates.issue`; requires completed enrollment, 100% progress, completion timestamp and a submitted passing attempt for the latest course quiz.
+- Issuance locks the enrollment and saves certificate plus audit atomically. Repeated requests return the existing certificate. No new table/column and no generated PDF.
+- The UC80 migration adds permission data for Admin and Security Officer only; the main seed also supplies the permission. Sign in again after granting it.
+
 Production-oriented REST API skeleton for the SecuraAI GRC platform, built with Express 5, TypeScript, PostgreSQL, Prisma and OpenAPI/Swagger.
 
 ## Included

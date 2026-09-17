@@ -1,6 +1,7 @@
 import { z } from 'zod';
 
 export const completionCampaignsQuerySchema = z.object({
+  courseId: z.string().uuid().optional(),
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(50).default(10),
   q: z.string().trim().max(100).default(''),

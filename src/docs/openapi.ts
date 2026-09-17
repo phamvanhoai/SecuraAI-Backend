@@ -39,6 +39,12 @@ export const openApiSpec = swaggerJsdoc({
           additionalProperties: false,
           required: ['title', 'content'],
           properties: {
+            createNewCampaign: {
+              type: 'boolean',
+              default: false,
+              description:
+                'When true, creates a separate assignment campaign instead of updating the latest campaign.',
+            },
             title: { type: 'string', minLength: 3, maxLength: 255 },
             description: { type: 'string', nullable: true, maxLength: 2000 },
             content: { type: 'string', minLength: 10, maxLength: 50000 },
@@ -475,7 +481,8 @@ export const openApiSpec = swaggerJsdoc({
             integrationIds: {
               type: 'array',
               items: { type: 'string', format: 'uuid' },
-              description: 'Optional list of specific integration IDs to probe. If omitted, all configured active integrations are probed.',
+              description:
+                'Optional list of specific integration IDs to probe. If omitted, all configured active integrations are probed.',
             },
             timeoutMs: {
               type: 'integer',
@@ -1387,14 +1394,62 @@ export const openApiSpec = swaggerJsdoc({
           },
         },
       },
+      '/training/enrollments/{enrollmentId}/certificate': {
+        get: {
+          tags: ['Training Awareness'],
+          summary: 'View training completion certificate and eligibility',
+          description:
+            'Requires training-completion.read. Returns enrollmentId, learnerName, courseTitle, campaignTitle, completedAt, eligible and nullable certificate { id, number, issuedAt, issuedBy }. Existing certificates remain viewable even if the course assessment changes.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'enrollmentId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          responses: {
+            '200': { description: 'success/data envelope containing certificate metadata or null' },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'Completion read permission required' },
+            '404': { description: 'Enrollment not found' },
+            '422': { description: 'Invalid enrollment UUID' },
+          },
+        },
+        post: {
+          tags: ['Training Awareness'],
+          summary: 'Issue training completion certificate (UC80)',
+          description:
+            'Requires training-certificates.issue. No request body. Requires completed enrollment, 100% progress, completedAt and a submitted passing attempt for the latest course quiz. Creates one certificate per enrollment and its audit record atomically. Repeated requests return the existing certificate. Returns the same metadata as GET; no PDF file is generated.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'enrollmentId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          responses: {
+            '200': { description: 'success/data envelope containing the persisted certificate' },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'Certificate issue permission required' },
+            '404': { description: 'Enrollment not found' },
+            '409': { description: 'Course not completed or assessment not passed' },
+            '422': { description: 'Invalid enrollment UUID' },
+          },
+        },
+      },
       '/training/completion': {
         get: {
           tags: ['Training Awareness'],
           summary: 'Track training campaign completion',
           description:
-            'Requires training-completion.read. Returns paginated campaign-level completion metrics.',
+            'Requires training-completion.read. Returns paginated campaign-level completion metrics. Optional courseId (UUID) limits results to that exact course.',
           security: [{ bearerAuth: [] }],
           parameters: [
+            { name: 'courseId', in: 'query', schema: { type: 'string', format: 'uuid' } },
             { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
             {
               name: 'limit',
@@ -1415,7 +1470,7 @@ export const openApiSpec = swaggerJsdoc({
           tags: ['Training Awareness'],
           summary: 'View employee completion for a training campaign',
           description:
-            'Requires training-completion.read. Supports employee search and enrollment-status filtering.',
+            'Requires training-completion.read. Supports employee search and enrollment-status filtering. Each employee includes nullable certificateNumber to distinguish issued certificates from eligibility for issuance.',
           security: [{ bearerAuth: [] }],
           parameters: [
             {
@@ -1640,7 +1695,7 @@ export const openApiSpec = swaggerJsdoc({
           tags: ['Training Awareness'],
           summary: 'Assign a training course',
           description:
-            'Requires training-courses.assign. Creates the first campaign or updates the latest campaign, replaces its selected targets, preserves existing progress, adds missing enrollments and records an audit event atomically.',
+            'Requires training-courses.assign. Set createNewCampaign=true for a separate training cycle with fresh enrollments. Otherwise the latest campaign is updated; existing progress and completed results are preserved. The operation records an audit event atomically.',
           security: [{ bearerAuth: [] }],
           parameters: [
             {
@@ -2598,13 +2653,22 @@ export const openApiSpec = swaggerJsdoc({
           description:
             'Requires risk-treatment-plans.approve. The caller must be an active direct or delegated approver for the current workflow step and cannot approve their own submission. The submitted snapshot is checked before recording one approval per actor and step. Completing the final step approves the treatment plan atomically.',
           security: [{ bearerAuth: [] }],
-          parameters: [{ name: 'treatmentPlanId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+          parameters: [
+            {
+              name: 'treatmentPlanId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
           requestBody: {
             required: true,
             content: {
               'application/json': {
                 schema: {
-                  type: 'object', additionalProperties: false, required: ['approvalRequestId'],
+                  type: 'object',
+                  additionalProperties: false,
+                  required: ['approvalRequestId'],
                   properties: {
                     approvalRequestId: { type: 'string', format: 'uuid' },
                     comment: { type: 'string', maxLength: 1000 },
@@ -2618,7 +2682,9 @@ export const openApiSpec = swaggerJsdoc({
             '401': { description: 'Authentication required' },
             '403': { description: 'Missing permission, self-approval, or ineligible approver' },
             '404': { description: 'Treatment plan or approval request not found' },
-            '409': { description: 'Request completed, duplicate decision, or submitted data changed' },
+            '409': {
+              description: 'Request completed, duplicate decision, or submitted data changed',
+            },
             '422': { description: 'Plan or workflow is no longer valid' },
             '503': { description: 'Approval temporarily unavailable' },
           },
@@ -3873,11 +3939,16 @@ export const openApiSpec = swaggerJsdoc({
         get: {
           tags: ['AI Alerts'],
           summary: 'List custom alert thresholds',
-          description: 'Returns paginated per-asset thresholds. Requires ai-alerts.thresholds.manage.',
+          description:
+            'Returns paginated per-asset thresholds. Requires ai-alerts.thresholds.manage.',
           security: [{ bearerAuth: [] }],
           parameters: [
             { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
-            { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 } },
+            {
+              name: 'limit',
+              in: 'query',
+              schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
+            },
             { name: 'q', in: 'query', schema: { type: 'string', minLength: 1, maxLength: 100 } },
           ],
           responses: {
@@ -3892,12 +3963,24 @@ export const openApiSpec = swaggerJsdoc({
         put: {
           tags: ['AI Alerts'],
           summary: 'Set a custom alert threshold for an asset',
-          description: 'Creates or replaces the single threshold assigned to an asset and records an audit event. Requires ai-alerts.thresholds.manage.',
+          description:
+            'Creates or replaces the single threshold assigned to an asset and records an audit event. Requires ai-alerts.thresholds.manage.',
           security: [{ bearerAuth: [] }],
-          parameters: [{ name: 'assetId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+          parameters: [
+            {
+              name: 'assetId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
           requestBody: {
             required: true,
-            content: { 'application/json': { schema: { $ref: '#/components/schemas/SetAlertThresholdRequest' } } },
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/SetAlertThresholdRequest' },
+              },
+            },
           },
           responses: {
             '200': { description: 'Alert threshold saved' },
@@ -4307,26 +4390,93 @@ export const openApiSpec = swaggerJsdoc({
           security: [{ bearerAuth: [] }],
           parameters: [
             { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
-            { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 } },
+            {
+              name: 'limit',
+              in: 'query',
+              schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
+            },
             { name: 'q', in: 'query', schema: { type: 'string', maxLength: 100 } },
             { name: 'frameworkId', in: 'query', schema: { type: 'string', format: 'uuid' } },
-            { name: 'status', in: 'query', schema: { type: 'string', enum: ['compliant', 'partially_compliant', 'non_compliant', 'not_assessed'] } },
-            { name: 'reviewState', in: 'query', schema: { type: 'string', enum: ['overdue', 'due_soon', 'scheduled', 'unscheduled'] } },
+            {
+              name: 'status',
+              in: 'query',
+              schema: {
+                type: 'string',
+                enum: ['compliant', 'partially_compliant', 'non_compliant', 'not_assessed'],
+              },
+            },
+            {
+              name: 'reviewState',
+              in: 'query',
+              schema: { type: 'string', enum: ['overdue', 'due_soon', 'scheduled', 'unscheduled'] },
+            },
           ],
-          responses: { '200': { description: 'Paginated controls and framework filter options' }, '401': { description: 'Authentication required' }, '403': { description: 'The compliance.assess-controls permission is required' } },
+          responses: {
+            '200': { description: 'Paginated controls and framework filter options' },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'The compliance.assess-controls permission is required' },
+          },
         },
       },
       '/compliance/controls/{controlId}/assessments': {
         get: {
-          tags: ['Policies'], summary: 'Get the 20 most recent assessments for a control', security: [{ bearerAuth: [] }],
-          parameters: [{ name: 'controlId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
-          responses: { '200': { description: 'Assessment history' }, '404': { description: 'Control not found' } },
+          tags: ['Policies'],
+          summary: 'Get the 20 most recent assessments for a control',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'controlId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          responses: {
+            '200': { description: 'Assessment history' },
+            '404': { description: 'Control not found' },
+          },
         },
         post: {
-          tags: ['Policies'], summary: 'Record a control compliance assessment', description: 'Creates an immutable history entry and audit log. Requires compliance.assess-controls.', security: [{ bearerAuth: [] }],
-          parameters: [{ name: 'controlId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
-          requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', additionalProperties: false, required: ['complianceStatus'], properties: { complianceStatus: { type: 'string', enum: ['compliant', 'partially_compliant', 'non_compliant', 'not_assessed'] }, score: { type: 'number', minimum: 0, maximum: 100, nullable: true }, notes: { type: 'string', maxLength: 5000, nullable: true }, nextReviewAt: { type: 'string', format: 'date-time', nullable: true } } } } } },
-          responses: { '201': { description: 'Assessment recorded' }, '403': { description: 'The compliance.assess-controls permission is required' }, '404': { description: 'Control not found' }, '422': { description: 'Invalid assessment or review date' } },
+          tags: ['Policies'],
+          summary: 'Record a control compliance assessment',
+          description:
+            'Creates an immutable history entry and audit log. Requires compliance.assess-controls.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'controlId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  additionalProperties: false,
+                  required: ['complianceStatus'],
+                  properties: {
+                    complianceStatus: {
+                      type: 'string',
+                      enum: ['compliant', 'partially_compliant', 'non_compliant', 'not_assessed'],
+                    },
+                    score: { type: 'number', minimum: 0, maximum: 100, nullable: true },
+                    notes: { type: 'string', maxLength: 5000, nullable: true },
+                    nextReviewAt: { type: 'string', format: 'date-time', nullable: true },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '201': { description: 'Assessment recorded' },
+            '403': { description: 'The compliance.assess-controls permission is required' },
+            '404': { description: 'Control not found' },
+            '422': { description: 'Invalid assessment or review date' },
+          },
         },
       },
       '/security-monitoring/log-sources/{logSourceId}': {
@@ -4452,7 +4602,8 @@ export const openApiSpec = swaggerJsdoc({
         get: {
           tags: ['Integrations'],
           summary: 'Get live connection monitoring summary for all integrations',
-          description: 'Requires integrations.read (Admin). Aggregates fleet availability, 24h availability rate, average latency, failing endpoints, and recent connection logs.',
+          description:
+            'Requires integrations.read (Admin). Aggregates fleet availability, 24h availability rate, average latency, failing endpoints, and recent connection logs.',
           security: [{ bearerAuth: [] }],
           parameters: [
             {
@@ -4486,7 +4637,8 @@ export const openApiSpec = swaggerJsdoc({
         post: {
           tags: ['Integrations'],
           summary: 'Trigger batch connection check across configured integrations',
-          description: 'Requires integrations.update (Admin). Runs throttled concurrent health checks across configured integrations.',
+          description:
+            'Requires integrations.update (Admin). Runs throttled concurrent health checks across configured integrations.',
           security: [{ bearerAuth: [] }],
           requestBody: {
             required: false,
@@ -4521,7 +4673,8 @@ export const openApiSpec = swaggerJsdoc({
         get: {
           tags: ['Integrations'],
           summary: 'Get detailed connection status and telemetry for an integration',
-          description: 'Requires integrations.read (Admin). Returns 24h availability rate, latency statistics, and recent probe logs.',
+          description:
+            'Requires integrations.read (Admin). Returns 24h availability rate, latency statistics, and recent probe logs.',
           security: [{ bearerAuth: [] }],
           parameters: [
             { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
@@ -4557,7 +4710,8 @@ export const openApiSpec = swaggerJsdoc({
         post: {
           tags: ['Integrations'],
           summary: 'Test external connection to SIEM or Firewall',
-          description: 'Requires integrations.update (Admin). Probes external base URL and updates status/latency.',
+          description:
+            'Requires integrations.update (Admin). Probes external base URL and updates status/latency.',
           security: [{ bearerAuth: [] }],
           parameters: [
             { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },

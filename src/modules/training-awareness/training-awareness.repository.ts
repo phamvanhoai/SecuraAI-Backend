@@ -50,14 +50,17 @@ export const trainingAwarenessRepository = {
     });
   },
   async listCompletionCampaigns(query: CompletionCampaignsQuery) {
-    const where: Prisma.training_campaignsWhereInput = query.q
-      ? {
-          OR: [
-            { title: { contains: query.q, mode: 'insensitive' } },
-            { training_courses: { title: { contains: query.q, mode: 'insensitive' } } },
-          ],
-        }
-      : {};
+    const where: Prisma.training_campaignsWhereInput = {
+      ...(query.courseId ? { training_course_id: query.courseId } : {}),
+      ...(query.q
+        ? {
+            OR: [
+              { title: { contains: query.q, mode: 'insensitive' } },
+              { training_courses: { title: { contains: query.q, mode: 'insensitive' } } },
+            ],
+          }
+        : {}),
+    };
     const [total, campaigns] = await prisma.$transaction([
       prisma.training_campaigns.count({ where }),
       prisma.training_campaigns.findMany({
@@ -129,6 +132,7 @@ export const trainingAwarenessRepository = {
           started_at: true,
           completed_at: true,
           last_accessed_at: true,
+          training_certificates: { select: { certificate_number: true } },
           users: {
             select: { user_id: true, full_name: true, email: true, employee_code: true },
           },
@@ -549,11 +553,13 @@ export const trainingAwarenessRepository = {
         return { kind: 'invalid_targets' as const };
       }
 
-      const existingCampaign = await transaction.training_campaigns.findFirst({
-        where: { training_course_id: courseId },
-        orderBy: [{ created_at: 'desc' }, { training_campaign_id: 'desc' }],
-        select: { training_campaign_id: true },
-      });
+      const existingCampaign = input.createNewCampaign
+        ? null
+        : await transaction.training_campaigns.findFirst({
+            where: { training_course_id: courseId },
+            orderBy: [{ created_at: 'desc' }, { training_campaign_id: 'desc' }],
+            select: { training_campaign_id: true },
+          });
       if (existingCampaign && !input.changeReason) return { kind: 'reason_required' as const };
       if (!existingCampaign && !uniqueUserIds.length && !uniqueDepartmentIds.length)
         return { kind: 'invalid_targets' as const };
