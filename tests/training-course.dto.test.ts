@@ -32,4 +32,29 @@ describe('training course DTOs', () => {
     expect(listCoursesQuerySchema.parse({ status: 'published' }).status).toBe('published');
     expect(listCoursesQuerySchema.safeParse({ status: 'inactive' }).success).toBe(false);
   });
+  it('accepts a multiple-answer assessment question', () => {
+    expect(
+      createCourseBodySchema.safeParse({
+        title: 'Password security',
+        content: 'Learn how to protect corporate accounts.',
+        status: 'published',
+        assessment: {
+          title: 'Password security assessment',
+          passingScore: 80,
+          maxAttempts: 3,
+          questions: [
+            {
+              type: 'multiple_choice',
+              text: 'Which practices protect an account?',
+              options: [
+                { text: 'Use MFA', isCorrect: true },
+                { text: 'Use a password manager', isCorrect: true },
+                { text: 'Reuse passwords', isCorrect: false },
+              ],
+            },
+          ],
+        },
+      }).success,
+    ).toBe(true);
+  });
 });

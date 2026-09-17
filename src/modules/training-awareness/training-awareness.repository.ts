@@ -450,7 +450,7 @@ export const trainingAwarenessRepository = {
                     quiz_questions: {
                       create: input.assessment.questions.map((question, questionIndex) => ({
                         question_text: question.text,
-                        question_type: 'multiple_choice',
+                        question_type: question.type,
                         score: 1,
                         display_order: questionIndex + 1,
                         quiz_options: {

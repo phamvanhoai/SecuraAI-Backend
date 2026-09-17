@@ -16,6 +16,7 @@ describe('createCourseBodySchema', () => {
       maxAttempts: 3,
       questions: [
         {
+          type: 'single_choice',
           text: 'Which message is suspicious?',
           options: [
             { text: 'Unexpected password reset link', isCorrect: true },
@@ -34,6 +35,13 @@ describe('createCourseBodySchema', () => {
     const invalid = structuredClone(course);
     invalid.assessment.questions[0]!.options[1]!.isCorrect = true;
     expect(createCourseBodySchema.safeParse(invalid).success).toBe(false);
+  });
+
+  it('accepts multiple-answer questions with at least two correct answers', () => {
+    const multiple = structuredClone(course);
+    multiple.assessment.questions[0]!.type = 'multiple_choice';
+    multiple.assessment.questions[0]!.options[1]!.isCorrect = true;
+    expect(createCourseBodySchema.safeParse(multiple).success).toBe(true);
   });
 
   it('does not publish a course without an assessment', () => {
