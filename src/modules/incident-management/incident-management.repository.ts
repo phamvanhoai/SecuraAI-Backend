@@ -1,12 +1,24 @@
 import type { Prisma } from '@prisma/client';
 import { prisma } from '../../database/prisma.js';
-import type { MyIncidentsQuery, ReportIncidentInput } from './dto/report-incident.dto.js';
+import type {
+  ClassificationQueueQuery,
+  ClassifyIncidentInput,
+  MyIncidentsQuery,
+  ReportIncidentInput,
+} from './dto/report-incident.dto.js';
+type RequestContext = { ipAddress: string | null; userAgent: string | null };
+const auditRequestContext = (
+  context: RequestContext,
+): Pick<Prisma.audit_logsUncheckedCreateInput, 'ip_address' | 'user_agent'> => ({
+  ip_address: context.ipAddress,
+  user_agent: context.userAgent,
+});
 export const incidentManagementRepository = {
   createReport(
     input: ReportIncidentInput,
     actorUserId: string,
     incidentCode: string,
-    context: { ipAddress: string | null; userAgent: string | null },
+    context: RequestContext,
   ) {
     return prisma.$transaction(async (tx) => {
       const incident = await tx.incidents.create({
@@ -49,7 +61,7 @@ export const incidentManagementRepository = {
             occurredAt: incident.occurred_at?.toISOString() ?? null,
             detectedAt: incident.detected_at.toISOString(),
           },
-          ...context,
+          ...auditRequestContext(context),
         },
       });
       return incident;
@@ -94,6 +106,125 @@ export const incidentManagementRepository = {
         detected_at: true,
         created_at: true,
       },
+    });
+  },
+  async listClassificationQueue(query: ClassificationQueueQuery) {
+    const classifiedIncidentRows = query.classification
+      ? await prisma.audit_logs.findMany({
+          where: { entity_type: 'incident', action: 'incident.severity_classified' },
+          select: { entity_id: true },
+          distinct: ['entity_id'],
+        })
+      : [];
+    const classifiedIncidentIds = classifiedIncidentRows.flatMap((row) =>
+      row.entity_id ? [row.entity_id] : [],
+    );
+    const where: Prisma.incidentsWhereInput = {
+      ...(query.search
+        ? {
+            OR: [
+              { incident_code: { contains: query.search, mode: 'insensitive' } },
+              { title: { contains: query.search, mode: 'insensitive' } },
+            ],
+          }
+        : {}),
+      ...(query.severity ? { severity: query.severity } : {}),
+      ...(query.status ? { status: query.status } : {}),
+      ...(query.classification === 'classified'
+        ? { incident_id: { in: classifiedIncidentIds } }
+        : query.classification === 'unclassified'
+          ? { incident_id: { notIn: classifiedIncidentIds } }
+          : {}),
+    };
+    const [items, total] = await prisma.$transaction([
+      prisma.incidents.findMany({
+        where,
+        select: {
+          incident_id: true,
+          incident_code: true,
+          title: true,
+          description: true,
+          category: true,
+          severity: true,
+          status: true,
+          occurred_at: true,
+          detected_at: true,
+          created_at: true,
+        },
+        orderBy: [{ detected_at: 'desc' }, { incident_id: 'desc' }],
+        skip: (query.page - 1) * query.limit,
+        take: query.limit,
+      }),
+      prisma.incidents.count({ where }),
+    ]);
+    const incidentIds = items.map((item) => item.incident_id);
+    const classificationAudits = incidentIds.length
+      ? await prisma.audit_logs.findMany({
+          where: {
+            entity_type: 'incident',
+            entity_id: { in: incidentIds },
+            action: 'incident.severity_classified',
+          },
+          select: {
+            entity_id: true,
+            after_data: true,
+            created_at: true,
+            users: { select: { user_id: true, full_name: true } },
+          },
+          orderBy: [{ created_at: 'desc' }, { audit_log_id: 'desc' }],
+        })
+      : [];
+    return { items, total, classificationAudits };
+  },
+  classifySeverity(
+    incidentId: string,
+    input: ClassifyIncidentInput,
+    actorUserId: string,
+    context: RequestContext,
+  ) {
+    return prisma.$transaction(async (tx) => {
+      const current = await tx.incidents.findUnique({
+        where: { incident_id: incidentId },
+        select: { incident_id: true, severity: true, status: true },
+      });
+      if (!current) return { outcome: 'not_found' as const };
+      if (current.status === 'closed') return { outcome: 'closed' as const };
+      const incident = await tx.incidents.update({
+        where: { incident_id: incidentId },
+        data: { severity: input.severity, updated_at: new Date() },
+        select: {
+          incident_id: true,
+          incident_code: true,
+          title: true,
+          description: true,
+          category: true,
+          severity: true,
+          status: true,
+          occurred_at: true,
+          detected_at: true,
+          created_at: true,
+        },
+      });
+      await tx.incident_updates.create({
+        data: {
+          incident_id: incidentId,
+          user_id: actorUserId,
+          note: `Severity classified from ${current.severity} to ${input.severity}. ${input.rationale}`,
+        },
+      });
+      await tx.audit_logs.create({
+        data: {
+          actor_user_id: actorUserId,
+          module: 'incident-management',
+          action: 'incident.severity_classified',
+          entity_type: 'incident',
+          entity_id: incidentId,
+          before_data: { severity: current.severity },
+          after_data: { severity: input.severity, rationale: input.rationale },
+          ...auditRequestContext(context),
+        },
+      });
+      return { outcome: 'updated' as const, incident };
     });
   },
 } as const;

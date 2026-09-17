@@ -361,6 +361,33 @@ async function main(): Promise<void> {
       },
     });
   }
+  const classifyIncidentPermission = await prisma.permissions.upsert({
+    where: { code: 'incidents.classify' },
+    update: {
+      module: 'incident-management',
+      action: 'classify',
+      description: 'Classify the severity of reported information security incidents',
+    },
+    create: {
+      code: 'incidents.classify',
+      module: 'incident-management',
+      action: 'classify',
+      description: 'Classify the severity of reported information security incidents',
+    },
+  });
+  await prisma.role_permissions.upsert({
+    where: {
+      role_id_permission_id: {
+        role_id: securityOfficerRole.role_id,
+        permission_id: classifyIncidentPermission.permission_id,
+      },
+    },
+    update: {},
+    create: {
+      role_id: securityOfficerRole.role_id,
+      permission_id: classifyIncidentPermission.permission_id,
+    },
+  });
   const assessControlsPermission = await prisma.permissions.upsert({
     where: { code: 'compliance.assess-controls' },
     update: {

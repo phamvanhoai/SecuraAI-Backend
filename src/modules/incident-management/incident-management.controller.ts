@@ -1,6 +1,8 @@
 import type { RequestHandler } from 'express';
 import { AppError } from '../../common/errors/app-error.js';
 import {
+  classificationQueueQuerySchema,
+  classifyIncidentBodySchema,
   incidentParamsSchema,
   myIncidentsQuerySchema,
   reportIncidentBodySchema,
@@ -27,5 +29,24 @@ export const getMyIncident: RequestHandler = async (req, res) => {
   if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
   const { incidentId } = incidentParamsSchema.parse(req.params);
   const data = await incidentManagementService.getMine(incidentId, req.auth);
+  res.json({ success: true, data });
+};
+export const listIncidentsForClassification: RequestHandler = async (req, res) => {
+  if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+  const data = await incidentManagementService.listForClassification(
+    classificationQueueQuerySchema.parse(req.query),
+    req.auth,
+  );
+  res.json({ success: true, data });
+};
+export const classifyIncidentSeverity: RequestHandler = async (req, res) => {
+  if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+  const { incidentId } = incidentParamsSchema.parse(req.params);
+  const data = await incidentManagementService.classify(
+    incidentId,
+    classifyIncidentBodySchema.parse(req.body),
+    req.auth,
+    { ipAddress: req.ip ?? null, userAgent: req.get('user-agent')?.slice(0, 1000) ?? null },
+  );
   res.json({ success: true, data });
 };
