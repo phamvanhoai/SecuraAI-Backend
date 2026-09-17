@@ -145,6 +145,31 @@ async function main(): Promise<void> {
       is_system: false,
     },
   });
+  const issueTrainingCertificatePermission = await prisma.permissions.upsert({
+    where: { code: 'training-certificates.issue' },
+    update: {},
+    create: {
+      code: 'training-certificates.issue',
+      module: 'training-awareness',
+      action: 'issue-certificate',
+      description: 'Issue certificates for completed training with a passed assessment',
+    },
+  });
+  for (const targetRole of [role, securityOfficerRole]) {
+    await prisma.role_permissions.upsert({
+      where: {
+        role_id_permission_id: {
+          role_id: targetRole.role_id,
+          permission_id: issueTrainingCertificatePermission.permission_id,
+        },
+      },
+      update: {},
+      create: {
+        role_id: targetRole.role_id,
+        permission_id: issueTrainingCertificatePermission.permission_id,
+      },
+    });
+  }
   const trainingCompletionReadPermission = await prisma.permissions.upsert({
     where: { code: 'training-completion.read' },
     update: {
@@ -159,7 +184,7 @@ async function main(): Promise<void> {
       description: 'View training campaign and employee completion progress',
     },
   });
-  for (const targetRole of [securityOfficerRole, executiveRole]) {
+  for (const targetRole of [role, securityOfficerRole, executiveRole]) {
     await prisma.role_permissions.upsert({
       where: {
         role_id_permission_id: {
@@ -317,6 +342,17 @@ async function main(): Promise<void> {
     update: {},
     create: { role_id: securityOfficerRole.role_id, permission_id: assessControlsPermission.permission_id },
   });
+  const uploadComplianceEvidencePermission = await prisma.permissions.upsert({
+    where: { code: 'compliance.evidence.upload' },
+    update: { module: 'policy-compliance', action: 'upload-evidence', description: 'Upload compliance evidence for accessible control assessments' },
+    create: { code: 'compliance.evidence.upload', module: 'policy-compliance', action: 'upload-evidence', description: 'Upload compliance evidence for accessible control assessments' },
+  });
+  for (const targetRole of [securityOfficerRole, employeeRole]) {
+    await prisma.role_permissions.upsert({
+      where: { role_id_permission_id: { role_id: targetRole.role_id, permission_id: uploadComplianceEvidencePermission.permission_id } },
+      update: {}, create: { role_id: targetRole.role_id, permission_id: uploadComplianceEvidencePermission.permission_id },
+    });
+  }
   const assetReadPermission = await prisma.permissions.upsert({
     where: { code: 'assets.read' },
     update: {
@@ -670,13 +706,15 @@ async function main(): Promise<void> {
         ['roles.delete', 'delete', 'Delete custom roles'],
         ['users.create', 'create', 'Initialize user accounts'],
         ['users.read', 'read', 'View user accounts'],
+        ['users.lock', 'lock', 'Lock active user accounts'],
+        ['users.unlock', 'unlock', 'Unlock locked user accounts'],
         ['mfa-recovery.manage', 'manage-mfa-recovery', 'Review and decide MFA recovery requests'],
       ] as const
     ).map(([code, action, description]) =>
       prisma.permissions.upsert({
         where: { code },
-        update: { module: 'access-control', action, description },
-        create: { code, module: 'access-control', action, description },
+        update: { module: code === 'users.lock' || code === 'users.unlock' ? 'users' : 'access-control', action, description },
+        create: { code, module: code === 'users.lock' || code === 'users.unlock' ? 'users' : 'access-control', action, description },
       }),
     ),
   );

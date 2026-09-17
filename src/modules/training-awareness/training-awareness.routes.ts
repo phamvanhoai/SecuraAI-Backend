@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { getCertificate, issueCertificate } from './certificate.controller.js';
 import { authenticate, authorize } from '../../common/middleware/authenticate.js';
 import { validate } from '../../common/middleware/validate.js';
 import { asyncHandler } from '../../common/utils/async-handler.js';
@@ -13,6 +14,7 @@ import {
   getCompletionCampaign,
   getLatestCourseAssignment,
   listCompletionCampaigns,
+  withdrawEnrollment,
 } from './training-awareness.controller.js';
 import {
   assignmentOptionsQuerySchema,
@@ -20,6 +22,7 @@ import {
   assignCourseParamsSchema,
   createCourseBodySchema,
   listCoursesQuerySchema,
+  withdrawEnrollmentBodySchema,
 } from './dto/course.dto.js';
 import {
   assessmentParamsSchema,
@@ -32,7 +35,29 @@ import {
   completionEnrollmentsQuerySchema,
 } from './dto/completion.dto.js';
 
+import { reminderParamsSchema, reminderQuerySchema } from './dto/reminder.dto.js';
+import {
+  authenticateReminderCron,
+  dispatchTrainingReminders,
+  listTrainingReminders,
+  markTrainingReminderRead,
+} from './training-reminders.controller.js';
+
 export const trainingAwarenessRouter = Router();
+trainingAwarenessRouter.get(
+  '/enrollments/:enrollmentId/certificate',
+  authenticate,
+  authorize('training-completion.read'),
+  validate({ params: assessmentParamsSchema }),
+  asyncHandler(getCertificate),
+);
+trainingAwarenessRouter.post(
+  '/enrollments/:enrollmentId/certificate',
+  authenticate,
+  authorize('training-certificates.issue'),
+  validate({ params: assessmentParamsSchema }),
+  asyncHandler(issueCertificate),
+);
 trainingAwarenessRouter.get(
   '/deadline-reminders',
   authenticate,
@@ -132,12 +157,3 @@ trainingAwarenessRouter.post(
   validate({ params: assignCourseParamsSchema, body: assignCourseBodySchema }),
   asyncHandler(assignCourse),
 );
-import { withdrawEnrollment } from './training-awareness.controller.js';
-import { withdrawEnrollmentBodySchema } from './dto/course.dto.js';
-import { reminderParamsSchema, reminderQuerySchema } from './dto/reminder.dto.js';
-import {
-  authenticateReminderCron,
-  dispatchTrainingReminders,
-  listTrainingReminders,
-  markTrainingReminderRead,
-} from './training-reminders.controller.js';

@@ -216,7 +216,7 @@ export function toIntegrationLogResponseDto(record: RawIntegrationLogRecord): In
   };
 }
 
-export type ApiKeyStatus = 'ACTIVE' | 'INACTIVE' | 'EXPIRED';
+export type ApiKeyStatus = 'ACTIVE' | 'INACTIVE' | 'EXPIRED' | 'REVOKED';
 
 export type ApiKeyResponseDto = {
   id: string;
@@ -244,22 +244,17 @@ export type RawApiKeyRecord = {
 };
 
 export function deriveApiKeyStatus(isActive: boolean, expiresAt: Date | null): ApiKeyStatus {
-  if (!isActive) {
-    return 'INACTIVE';
-  }
   if (expiresAt !== null && expiresAt.getTime() <= Date.now()) {
     return 'EXPIRED';
+  }
+  if (!isActive) {
+    return 'INACTIVE';
   }
   return 'ACTIVE';
 }
 
 export function toApiKeyResponseDto(record: RawApiKeyRecord): ApiKeyResponseDto {
-  let status: ApiKeyStatus = 'ACTIVE';
-  if (!record.is_active) {
-    status = 'INACTIVE';
-  } else if (record.expires_at && record.expires_at.getTime() < Date.now()) {
-    status = 'EXPIRED';
-  }
+  const status: ApiKeyStatus = deriveApiKeyStatus(record.is_active, record.expires_at);
 
   return {
     id: record.integration_api_key_id,
