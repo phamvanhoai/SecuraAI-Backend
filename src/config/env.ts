@@ -28,6 +28,7 @@ const envSchema = z.object({
   SSRF_ALLOWED_CIDRS: z.string().default(''),
   CRON_SECRET: z.string().min(32).optional(),
   TRAINING_REMINDERS_ENABLED: booleanString.default(true),
+  COMPLIANCE_REMINDERS_ENABLED: booleanString.default(true),
 });
 
 const result = envSchema.safeParse(process.env);
@@ -37,7 +38,9 @@ if (!result.success) {
 }
 
 // Validate SSRF_ALLOWED_CIDRS format and reject dangerous permanent deny ranges at startup
-const rawCidrs = result.data.SSRF_ALLOWED_CIDRS.split(',').map((c) => c.trim()).filter(Boolean);
+const rawCidrs = result.data.SSRF_ALLOWED_CIDRS.split(',')
+  .map((c) => c.trim())
+  .filter(Boolean);
 const PERMANENT_FORBIDDEN_PATTERNS = [
   /^127\./,
   /^169\.254\./,
@@ -56,12 +59,16 @@ const IPV6_CIDR_REGEX = /^[0-9a-fA-F:]+(\/([0-9]|[1-9][0-9]|1[0-1][0-9]|12[0-8])
 
 for (const cidr of rawCidrs) {
   if (!CIDR_REGEX.test(cidr) && !IPV6_CIDR_REGEX.test(cidr)) {
-    console.error(`Invalid SSRF_ALLOWED_CIDRS entry: "${cidr}". Expected valid IPv4/IPv6 CIDR or IP.`);
+    console.error(
+      `Invalid SSRF_ALLOWED_CIDRS entry: "${cidr}". Expected valid IPv4/IPv6 CIDR or IP.`,
+    );
     process.exit(1);
   }
   const ipPart = cidr.split('/')[0] ?? '';
   if (PERMANENT_FORBIDDEN_PATTERNS.some((pattern) => pattern.test(ipPart))) {
-    console.error(`Startup error: SSRF_ALLOWED_CIDRS contains permanently forbidden range: "${cidr}".`);
+    console.error(
+      `Startup error: SSRF_ALLOWED_CIDRS contains permanently forbidden range: "${cidr}".`,
+    );
     process.exit(1);
   }
 }
