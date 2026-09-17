@@ -6,6 +6,7 @@ import {
   toAlertConfirmationResponse,
   toAlertResponse,
   toAlertExplanationResponse,
+  toAlertThresholdResponse,
   toModelConfigurationResponse,
 } from './ai-alerts.mapper.js';
 import { aiAlertsRepository } from './ai-alerts.repository.js';
@@ -22,6 +23,10 @@ import type {
 } from './dto/alert-feedback.dto.js';
 import type { ConfirmAlertBody } from './dto/confirm-alert.dto.js';
 import type { FalsePositiveBody } from './dto/false-positive.dto.js';
+import type {
+  ListAlertThresholdsQuery,
+  SetAlertThresholdBody,
+} from './dto/alert-threshold.dto.js';
 
 type Actor = { userId: string; permissions: readonly string[] };
 type RequestContext = { ipAddress: string | null; userAgent: string | null };
@@ -40,6 +45,34 @@ const alertCodeFor = (eventId: string, modelVersionId: string, ruleId: string): 
     .slice(0, 40)}`;
 
 export const aiAlertsService = {
+  async listAlertThresholds(query: ListAlertThresholdsQuery, actor: Actor) {
+    requirePermission(actor, 'ai-alerts.thresholds.manage');
+    const result = await aiAlertsRepository.listAlertThresholds(query);
+    return {
+      items: result.items.map(toAlertThresholdResponse),
+      pagination: {
+        page: query.page,
+        limit: query.limit,
+        total: result.total,
+        totalPages: Math.ceil(result.total / query.limit),
+      },
+    };
+  },
+
+  async setAlertThreshold(
+    assetId: string,
+    input: SetAlertThresholdBody,
+    actor: Actor,
+    context: RequestContext,
+  ) {
+    requirePermission(actor, 'ai-alerts.thresholds.manage');
+    const result = await aiAlertsRepository.setAlertThreshold(assetId, input, {
+      actorUserId: actor.userId,
+      ...context,
+    });
+    if (!result) throw new AppError(404, 'ASSET_NOT_FOUND', 'Asset was not found');
+    return toAlertThresholdResponse(result);
+  },
   async getAlertExplanation(alertId: string, actor: Actor) {
     requirePermission(actor, 'ai-alerts.read');
     const result = await aiAlertsRepository.findLatestExplanation(alertId);

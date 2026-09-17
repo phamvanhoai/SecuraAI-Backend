@@ -10,7 +10,12 @@ import {
 import { changePasswordBodySchema } from './dto/change-password.dto.js';
 import * as controller from './auth.controller.js';
 import { authenticate } from '../../common/middleware/authenticate.js';
-import { setupMfaBodySchema, verifyMfaBodySchema } from './dto/mfa.dto.js';
+import {
+  setupMfaBodySchema,
+  disableMfaBodySchema,
+  verifyMfaBodySchema,
+  verifyMfaChallengeBodySchema,
+} from './dto/mfa.dto.js';
 
 export const authRouter = Router();
 const authLimiter = rateLimit({
@@ -19,6 +24,13 @@ const authLimiter = rateLimit({
   standardHeaders: 'draft-8',
   legacyHeaders: false,
   message: { success: false, error: { code: 'RATE_LIMITED', message: 'Too many attempts' } },
+});
+const mfaChallengeLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000,
+  limit: 10,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  message: { success: false, error: { code: 'RATE_LIMITED', message: 'Too many MFA attempts' } },
 });
 
 authRouter.post(
@@ -52,6 +64,19 @@ authRouter.post(
   authLimiter,
   validate({ body: verifyMfaBodySchema }),
   asyncHandler(controller.verifyMfa),
+);
+authRouter.post(
+  '/mfa/disable',
+  authenticate,
+  mfaChallengeLimiter,
+  validate({ body: disableMfaBodySchema }),
+  asyncHandler(controller.disableMfa),
+);
+authRouter.post(
+  '/mfa/challenge/verify',
+  mfaChallengeLimiter,
+  validate({ body: verifyMfaChallengeBodySchema }),
+  asyncHandler(controller.verifyMfaChallenge),
 );
 authRouter.post('/refresh', authLimiter, validate({ body: refreshSchema }), asyncHandler(controller.refresh));
 authRouter.post('/logout', validate({ body: refreshSchema }), asyncHandler(controller.logout));

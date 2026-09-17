@@ -149,6 +149,19 @@ export type IntegrationLogResponseDto = {
   message: string;
   details: unknown;
   createdAt: string;
+  integration?: {
+    id: string;
+    name: string;
+    type: string;
+    status: string;
+  };
+  syncJob?: {
+    id: string;
+    status: string;
+    recordsProcessed: number;
+    recordsFailed: number;
+    errorMessage: string | null;
+  };
 };
 
 export type RawIntegrationLogRecord = {
@@ -159,6 +172,19 @@ export type RawIntegrationLogRecord = {
   message: string;
   details: unknown;
   created_at: Date;
+  integrations?: {
+    integration_id: string;
+    name: string;
+    integration_type: string;
+    status: string;
+  } | null;
+  sync_jobs?: {
+    sync_job_id: string;
+    status: string;
+    records_processed: number;
+    records_failed: number;
+    error_message: string | null;
+  } | null;
 };
 
 export function toIntegrationLogResponseDto(record: RawIntegrationLogRecord): IntegrationLogResponseDto {
@@ -170,6 +196,23 @@ export function toIntegrationLogResponseDto(record: RawIntegrationLogRecord): In
     message: record.message,
     details: record.details,
     createdAt: toIsoDateRequired(record.created_at),
+    ...(record.integrations && {
+      integration: {
+        id: record.integrations.integration_id,
+        name: record.integrations.name,
+        type: record.integrations.integration_type,
+        status: record.integrations.status,
+      },
+    }),
+    ...(record.sync_jobs && {
+      syncJob: {
+        id: record.sync_jobs.sync_job_id,
+        status: record.sync_jobs.status,
+        recordsProcessed: record.sync_jobs.records_processed,
+        recordsFailed: record.sync_jobs.records_failed,
+        errorMessage: record.sync_jobs.error_message,
+      },
+    }),
   };
 }
 
@@ -239,3 +282,10 @@ export function toApiKeyCreatedResponseDto(
     secret,
   };
 }
+
+export type IntegrationLogStatsResponseDto = {
+  totalErrors: number;
+  totalWarnings: number;
+  failedJobsCount: number;
+  affectedIntegrationsCount: number;
+};

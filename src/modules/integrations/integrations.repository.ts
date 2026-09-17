@@ -47,6 +47,23 @@ const integrationLogSelect = {
   message: true,
   details: true,
   created_at: true,
+  integrations: {
+    select: {
+      integration_id: true,
+      name: true,
+      integration_type: true,
+      status: true,
+    },
+  },
+  sync_jobs: {
+    select: {
+      sync_job_id: true,
+      status: true,
+      records_processed: true,
+      records_failed: true,
+      error_message: true,
+    },
+  },
 } as const;
 
 const activeApiKeySelect = {
@@ -152,11 +169,14 @@ export type FindSyncJobsRepoInput = {
 };
 
 export type FindIntegrationLogsRepoInput = {
-  integrationId: string;
+  integrationId?: string | undefined;
   skip: number;
   take: number;
   level?: string | undefined;
   syncJobId?: string | undefined;
+  search?: string | undefined;
+  startDate?: Date | undefined;
+  endDate?: Date | undefined;
 };
 
 export function buildWhereClause(params: {
@@ -639,11 +659,25 @@ export const integrationsRepository = {
   },
 
   findIntegrationLogs(params: FindIntegrationLogsRepoInput) {
-    const where: Prisma.integration_logsWhereInput = {
-      integration_id: params.integrationId,
-    };
+    const where: Prisma.integration_logsWhereInput = {};
+    if (params.integrationId) where.integration_id = params.integrationId;
     if (params.level) where.level = params.level;
     if (params.syncJobId) where.sync_job_id = params.syncJobId;
+
+    if (params.startDate || params.endDate) {
+      where.created_at = {
+        ...(params.startDate && { gte: params.startDate }),
+        ...(params.endDate && { lte: params.endDate }),
+      };
+    }
+
+    if (params.search) {
+      where.OR = [
+        { message: { contains: params.search, mode: 'insensitive' } },
+        { sync_jobs: { error_message: { contains: params.search, mode: 'insensitive' } } },
+        { integrations: { name: { contains: params.search, mode: 'insensitive' } } },
+      ];
+    }
 
     return prisma.integration_logs.findMany({
       where,
@@ -655,11 +689,25 @@ export const integrationsRepository = {
   },
 
   countIntegrationLogs(params: Omit<FindIntegrationLogsRepoInput, 'skip' | 'take'>) {
-    const where: Prisma.integration_logsWhereInput = {
-      integration_id: params.integrationId,
-    };
+    const where: Prisma.integration_logsWhereInput = {};
+    if (params.integrationId) where.integration_id = params.integrationId;
     if (params.level) where.level = params.level;
     if (params.syncJobId) where.sync_job_id = params.syncJobId;
+
+    if (params.startDate || params.endDate) {
+      where.created_at = {
+        ...(params.startDate && { gte: params.startDate }),
+        ...(params.endDate && { lte: params.endDate }),
+      };
+    }
+
+    if (params.search) {
+      where.OR = [
+        { message: { contains: params.search, mode: 'insensitive' } },
+        { sync_jobs: { error_message: { contains: params.search, mode: 'insensitive' } } },
+        { integrations: { name: { contains: params.search, mode: 'insensitive' } } },
+      ];
+    }
 
     return prisma.integration_logs.count({ where });
   },
@@ -734,6 +782,53 @@ export const integrationsRepository = {
       select: integrationSelect,
       orderBy: { name: 'asc' },
     });
+  },
+  async getIntegrationLogStats(params: {
+    integrationId?: string | undefined;
+    startDate?: Date | undefined;
+    endDate?: Date | undefined;
+  }) {
+    const baseWhere: Prisma.integration_logsWhereInput = {};
+    if (params.integrationId) baseWhere.integration_id = params.integrationId;
+    if (params.startDate || params.endDate) {
+      baseWhere.created_at = {
+        ...(params.startDate && { gte: params.startDate }),
+        ...(params.endDate && { lte: params.endDate }),
+      };
+    }
+
+    const jobWhere: Prisma.sync_jobsWhereInput = { status: 'failed' };
+    if (params.integrationId) jobWhere.integration_id = params.integrationId;
+    if (params.startDate || params.endDate) {
+      jobWhere.created_at = {
+        ...(params.startDate && { gte: params.startDate }),
+        ...(params.endDate && { lte: params.endDate }),
+      };
+    }
+
+    const [totalErrors, totalWarnings, failedJobsCount, affectedIntegrationsGroups] =
+      await Promise.all([
+        prisma.integration_logs.count({
+          where: { ...baseWhere, level: 'error' },
+        }),
+        prisma.integration_logs.count({
+          where: { ...baseWhere, level: 'warn' },
+        }),
+        prisma.sync_jobs.count({
+          where: jobWhere,
+        }),
+        prisma.integration_logs.groupBy({
+          by: ['integration_id'],
+          where: { ...baseWhere, level: 'error' },
+        }),
+      ]);
+
+    return {
+      totalErrors,
+      totalWarnings,
+      failedJobsCount,
+      affectedIntegrationsCount: affectedIntegrationsGroups.length,
+    };
   },
 };
 
