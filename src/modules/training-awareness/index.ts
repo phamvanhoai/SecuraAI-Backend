@@ -22,6 +22,7 @@ export const trainingAwarenessModule: ModuleManifest = {
     'Assign courses to users and departments',
     'Take and automatically score post-training assessments',
     'Track campaign and employee training completion',
+    'Automatically send in-app training deadline reminders',
   ],
   router: trainingAwarenessRouter,
 };
