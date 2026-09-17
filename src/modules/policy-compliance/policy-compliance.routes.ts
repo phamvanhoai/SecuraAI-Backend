@@ -37,9 +37,24 @@ import {
   updatePolicyCreateVersionBodySchema,
   updatePolicyCreateVersionParamsSchema,
 } from './dto/update-policy-create-version.dto.js';
+import { controlAssessmentParamsSchema, createControlAssessmentBodySchema, listControlAssessmentsQuerySchema } from './dto/control-assessment.dto.js';
+import { createControlAssessment, getControlAssessmentHistory, listControlAssessments } from './control-assessment.controller.js';
+import { downloadComplianceEvidence, listEvidenceAssessments, uploadComplianceEvidence } from './compliance-evidence.controller.js';
+import { uploadComplianceEvidenceFile } from './compliance-evidence.upload.js';
+import { listEvidenceAssessmentsQuerySchema } from './dto/compliance-evidence.dto.js';
+import { policyControlMappingRouter } from './policy-control-mapping.routes.js';
 
 export const policyComplianceRouter = Router();
+policyComplianceRouter.use(policyControlMappingRouter);
 policyComplianceRouter.use(policyAcknowledgementRouter);
+
+policyComplianceRouter.get('/evidence/assessments', authenticate, authorize('compliance.evidence.upload'), validate({ query: listEvidenceAssessmentsQuerySchema }), asyncHandler(listEvidenceAssessments));
+policyComplianceRouter.post('/control-assessments/:assessmentId/evidence', authenticate, authorize('compliance.evidence.upload'), uploadComplianceEvidenceFile, asyncHandler(uploadComplianceEvidence));
+policyComplianceRouter.get('/evidence/:evidenceId/download', authenticate, authorize('compliance.evidence.upload'), asyncHandler(downloadComplianceEvidence));
+
+policyComplianceRouter.get('/control-assessments', authenticate, authorize('compliance.assess-controls'), validate({ query: listControlAssessmentsQuerySchema }), asyncHandler(listControlAssessments));
+policyComplianceRouter.get('/controls/:controlId/assessments', authenticate, authorize('compliance.assess-controls'), validate({ params: controlAssessmentParamsSchema }), asyncHandler(getControlAssessmentHistory));
+policyComplianceRouter.post('/controls/:controlId/assessments', authenticate, authorize('compliance.assess-controls'), validate({ params: controlAssessmentParamsSchema, body: createControlAssessmentBodySchema }), asyncHandler(createControlAssessment));
 
 policyComplianceRouter.get(
   '/policies/department-assignments',

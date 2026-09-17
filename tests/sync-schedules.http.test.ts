@@ -309,6 +309,19 @@ describe('Sync Schedules & Execution HTTP API (UC 13.2)', () => {
           message: 'SYNC_COMPLETED',
           details: { durationMs: 120 },
           created_at: new Date(),
+          integrations: {
+            integration_id: mockIntegrationId,
+            name: 'Test Integration',
+            integration_type: 'siem',
+            status: 'active',
+          },
+          sync_jobs: {
+            sync_job_id: mockJobId,
+            status: 'completed',
+            records_processed: 100,
+            records_failed: 0,
+            error_message: null,
+          },
         },
       ]);
       vi.spyOn(integrationsRepository, 'countIntegrationLogs').mockResolvedValue(1);

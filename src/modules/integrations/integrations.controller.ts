@@ -16,6 +16,7 @@ import type {
   QueryApiKeysDto,
   QueryConnectionMonitoringDto,
   BatchConnectionCheckDto,
+  QueryIntegrationLogStatsDto,
 } from './dto/index.js';
 
 
@@ -181,6 +182,18 @@ export async function rotateApiKey(req: Request, res: Response): Promise<void> {
 export async function revokeApiKey(req: Request, res: Response): Promise<void> {
   const { id, keyId } = req.params;
   const result = await integrationsService.revokeApiKey(id as string, keyId as string);
+  res.status(200).json({ success: true, data: result });
+}
+
+export async function listAllLogs(req: Request, res: Response): Promise<void> {
+  const query = req.query as unknown as QueryIntegrationLogsDto;
+  const result = await integrationsService.listAllIntegrationLogs(query);
+  res.status(200).json({ success: true, data: result });
+}
+
+export async function getLogStats(req: Request, res: Response): Promise<void> {
+  const query = req.query as unknown as QueryIntegrationLogStatsDto;
+  const result = await integrationsService.getIntegrationLogStats(query);
   res.status(200).json({ success: true, data: result });
 }
 

@@ -1,4 +1,5 @@
 import { randomBytes } from 'node:crypto';
+import type { Prisma } from '@prisma/client';
 import { AppError } from '../../common/errors/app-error.js';
 import { executeSafeHttpRequest, validateExternalUrl } from '../../common/utils/ssrf-validator.js';
 import { getNextCronRunDate } from '../../common/utils/cron.js';
@@ -17,6 +18,7 @@ import {
   type SyncJobResponseDto,
   type ApiKeyResponseDto,
   type ApiKeyCreatedResponseDto,
+  type IntegrationLogStatsResponseDto,
 } from './integrations.mapper.js';
 import type {
   CreateIntegrationDto,
@@ -39,9 +41,8 @@ import type {
   SingleCheckProbeResult,
   ConnectionLogEntryDto,
   FailingIntegrationDto,
+  QueryIntegrationLogStatsDto,
 } from './dto/index.js';
-
-import type { Prisma } from '@prisma/client';
 
 function generateSecretFingerprint(secret: string): string {
   if (secret.length <= 8) {
@@ -66,14 +67,7 @@ export type TriggerSyncOptions = {
 };
 
 async function probeSingleIntegration(
-  integration: {
-    integration_id: string;
-    name: string;
-    integration_type?: string | undefined;
-    base_url: string | null;
-    configuration?: unknown;
-    status: string;
-  },
+  integration: { integration_id: string; name: string; base_url: string | null; configuration?: unknown; status: string },
   timeoutMs?: number,
 ): Promise<SingleCheckProbeResult> {
   const integrationId = integration.integration_id;
@@ -91,23 +85,21 @@ async function probeSingleIntegration(
   const connector = resolveConnector({
     integration_id: integration.integration_id,
     name: integration.name,
-    integration_type: integration.integration_type ?? 'siem',
+    integration_type: 'siem',
     base_url: integration.base_url,
     configuration: integration.configuration,
     status: integration.status,
   });
-
-  const clampedTimeout = Math.min(Math.max(timeoutMs ?? 5000, 1000), 15000);
   const result = await connector.testConnection(
     {
       integration_id: integration.integration_id,
       name: integration.name,
-      integration_type: integration.integration_type ?? 'siem',
+      integration_type: 'siem',
       base_url: integration.base_url,
       configuration: integration.configuration,
       status: integration.status,
     },
-    { timeoutMs: clampedTimeout },
+    timeoutMs !== undefined ? { timeoutMs } : undefined,
   );
 
   if (result.connected) {
@@ -170,7 +162,6 @@ async function probeSingleIntegration(
     latencyMs: result.latencyMs,
     message: result.message,
     provider: result.provider,
-    details: result.details,
   };
 }
 
@@ -201,8 +192,8 @@ export const integrationsService = {
   },
 
   async listIntegrations(query: QueryIntegrationsDto) {
-    const page = Math.max(1, Number(query.page) || 1);
-    const limit = Math.min(100, Math.max(1, Number(query.limit) || 20));
+    const page = query.page ?? 1;
+    const limit = query.limit ?? 20;
     const skip = (page - 1) * limit;
 
     const [items, total] = await Promise.all([
@@ -227,8 +218,8 @@ export const integrationsService = {
       pagination: {
         page,
         limit,
-        total: Number(total),
-        totalPages: Math.ceil(Number(total) / limit) || 1,
+        total,
+        totalPages: Math.ceil(total / limit) || 1,
       },
     };
   },
@@ -287,8 +278,6 @@ export const integrationsService = {
       statusCode: probeResult.statusCode,
       latencyMs: probeResult.latencyMs,
       message: probeResult.message,
-      provider: probeResult.provider,
-      details: probeResult.details,
     };
   },
 
@@ -892,6 +881,7 @@ export const integrationsService = {
         method: 'GET',
         headers,
         timeoutMs: 15000,
+        rejectUnauthorized: config['verifySsl'] !== false,
       });
 
       const durationMs = Date.now() - startTime;
@@ -1121,10 +1111,16 @@ export const integrationsService = {
     const limit = Math.min(100, Math.max(1, Number(query.limit) || 20));
     const skip = (page - 1) * limit;
 
+    const startDate = query.startDate ? new Date(query.startDate) : undefined;
+    const endDate = query.endDate ? new Date(query.endDate) : undefined;
+
     const filter = {
       integrationId,
       level: query.level,
       syncJobId: query.syncJobId,
+      search: query.search,
+      startDate,
+      endDate,
     };
 
     const [items, total] = await Promise.all([
@@ -1145,6 +1141,68 @@ export const integrationsService = {
         totalPages: Math.ceil(total / limit),
       },
     };
+  },
+
+  async listAllIntegrationLogs(query: QueryIntegrationLogsDto) {
+    if (query.integrationId) {
+      const integration = await integrationsRepository.findById(query.integrationId);
+      if (!integration) {
+        throw new AppError(404, 'INTEGRATION_NOT_FOUND', `Integration with ID "${query.integrationId}" was not found`);
+      }
+    }
+
+    const page = Math.max(1, Number(query.page) || 1);
+    const limit = Math.min(100, Math.max(1, Number(query.limit) || 20));
+    const skip = (page - 1) * limit;
+
+    const startDate = query.startDate ? new Date(query.startDate) : undefined;
+    const endDate = query.endDate ? new Date(query.endDate) : undefined;
+
+    const filter = {
+      integrationId: query.integrationId,
+      level: query.level,
+      syncJobId: query.syncJobId,
+      search: query.search,
+      startDate,
+      endDate,
+    };
+
+    const [items, total] = await Promise.all([
+      integrationsRepository.findIntegrationLogs({
+        ...filter,
+        skip,
+        take: limit,
+      }),
+      integrationsRepository.countIntegrationLogs(filter),
+    ]);
+
+    return {
+      items: items.map(toIntegrationLogResponseDto),
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages: Math.ceil(total / limit),
+      },
+    };
+  },
+
+  async getIntegrationLogStats(query: QueryIntegrationLogStatsDto): Promise<IntegrationLogStatsResponseDto> {
+    if (query.integrationId) {
+      const integration = await integrationsRepository.findById(query.integrationId);
+      if (!integration) {
+        throw new AppError(404, 'INTEGRATION_NOT_FOUND', `Integration with ID "${query.integrationId}" was not found`);
+      }
+    }
+
+    const startDate = query.startDate ? new Date(query.startDate) : undefined;
+    const endDate = query.endDate ? new Date(query.endDate) : undefined;
+
+    return integrationsRepository.getIntegrationLogStats({
+      integrationId: query.integrationId,
+      startDate,
+      endDate,
+    });
   },
 
   // -------------------------------------------------------------

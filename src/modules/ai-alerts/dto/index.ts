@@ -21,3 +21,13 @@ export {
 export type { EvaluateAlertReliabilityBody, ListAlertFeedbackQuery } from './alert-feedback.dto.js';
 export { confirmAlertBodySchema } from './confirm-alert.dto.js';
 export type { ConfirmAlertBody } from './confirm-alert.dto.js';
+export {
+  alertThresholdAssetParamsSchema,
+  alertThresholdRiskLevels,
+  listAlertThresholdsQuerySchema,
+  setAlertThresholdBodySchema,
+} from './alert-threshold.dto.js';
+export type {
+  ListAlertThresholdsQuery,
+  SetAlertThresholdBody,
+} from './alert-threshold.dto.js';

@@ -60,18 +60,23 @@ export function isIpInCidr(ip: string, cidr: string): boolean {
   const normalizedIp = normalizeIp(ip);
   const trimmedCidr = cidr.trim();
 
-  // IPv4 in IPv4 CIDR
   if (net.isIP(normalizedIp) === 4) {
     return isIpInIpv4Cidr(normalizedIp, trimmedCidr);
   }
 
-  // Exact match for IPv6
-  return normalizedIp === normalizeIp(trimmedCidr);
+  // IPv6 exact or prefix match
+  const [rangeIp, prefixStr] = trimmedCidr.split('/');
+  if (!rangeIp) return false;
+  if (prefixStr === undefined) {
+    return normalizedIp === rangeIp.toLowerCase();
+  }
+  return normalizedIp.startsWith(rangeIp.toLowerCase());
 }
 
 /**
- * Permanent deny list that CANNOT be overridden by allowPrivate or allowedCidrs.
- * Includes loopback, AWS/cloud link-local metadata (169.254.169.254), multicast, broadcast, and unspecified.
+ * Checks if an IP is in the PERMANENT FORBIDDEN category.
+ * This category CANNOT be overridden by any allowlist or private network flag.
+ * Includes: Loopback, Cloud Metadata (169.254.169.254), 0.0.0.0/8, Broadcast, Multicast.
  */
 export function isPermanentDeny(ipAddress: string): boolean {
   const ip = normalizeIp(ipAddress);
@@ -86,7 +91,7 @@ export function isPermanentDeny(ipAddress: string): boolean {
     if (p0 === 0) return true;
     // 127.0.0.0/8 (Loopback)
     if (p0 === 127) return true;
-    // 169.254.0.0/16 (Link-Local / Cloud Instance Metadata)
+    // 169.254.0.0/16 (Link-local / Cloud Metadata 169.254.169.254)
     if (p0 === 169 && p1 === 254) return true;
     // 224.0.0.0/4 (Multicast)
     if (p0 >= 224 && p0 <= 239) return true;
@@ -153,41 +158,36 @@ export function isPrivateRfc1918(ipAddress: string): boolean {
 }
 
 /**
- * Determines whether an IP is forbidden under the active security policy:
- * Rule hierarchy:
- * 1. DENY_ALWAYS (Loopback, Metadata, Multicast, Broadcast) -> Always blocked.
- * 2. ALLOWED_CIDRS -> Allowed if matched against explicit CIDR whitelist.
- * 3. ALLOW_PRIVATE -> Allowed if global private flag is enabled.
- * 4. Default: All RFC1918/ULA private ranges blocked; public routable IPs allowed.
+ * Evaluates whether an IP address is forbidden according to the strict priority policy:
+ * Priority Order:
+ * 1. DENY_ALWAYS (Loopback, Metadata, Multicast, 0.0.0.0/8, Broadcast) -> BLOCK (Always true)
+ * 2. Matches explicit allowed CIDR (SSRF_ALLOWED_CIDRS) -> ALLOW (false)
+ * 3. RFC1918 / Private -> ALLOW if allowPrivate=true, else BLOCK (true)
+ * 4. Public IP -> ALLOW (false)
  */
 export function isForbiddenIp(ipAddress: string, options?: SsrOptions): boolean {
-  const normalized = normalizeIp(ipAddress);
-  if (!net.isIP(normalized)) return true;
+  const ip = normalizeIp(ipAddress);
 
-  // 1. Permanent Deny
-  if (isPermanentDeny(normalized)) {
+  // 1. Permanent Deny wins over everything
+  if (isPermanentDeny(ip)) {
     return true;
   }
 
-  const allowedCidrs = options?.allowedCidrs ?? env.SSRF_ALLOWED_CIDRS;
-  const allowPrivate = options?.allowPrivate ?? env.ALLOW_PRIVATE_NETWORK_INTEGRATIONS;
+  const allowedCidrs = options?.allowedCidrs ?? env.parsedAllowedCidrs ?? [];
+  const allowPrivate = options?.allowPrivate ?? env.ALLOW_PRIVATE_NETWORK_INTEGRATIONS ?? false;
 
-  // 2. Specific CIDR Allowlist
-  if (allowedCidrs && allowedCidrs.length > 0) {
-    for (const cidr of allowedCidrs) {
-      if (isIpInCidr(normalized, cidr)) {
-        return false;
-      }
-    }
-  }
-
-  // 3. Global Private Network Flag
-  if (allowPrivate) {
+  // 2. Explicit CIDR Allowlist
+  if (allowedCidrs.some((cidr) => isIpInCidr(ip, cidr))) {
     return false;
   }
 
-  // 4. Default RFC 1918 Private Block
-  return isPrivateRfc1918(normalized);
+  // 3. RFC 1918 / Private network check
+  if (isPrivateRfc1918(ip)) {
+    return !allowPrivate;
+  }
+
+  // 4. Public IP
+  return false;
 }
 
 export type ValidatedUrlResult = {
@@ -198,51 +198,36 @@ export type ValidatedUrlResult = {
 };
 
 /**
- * Validates a user-supplied URL against SSRF and DNS rebinding risks.
- * Resolves DNS ONCE, validates all returned A/AAAA addresses, and returns the pinned IP.
+ * Validates a target URL string before connecting.
+ * Checks protocol, parses hostname, resolves DNS once and verifies ALL resolved IPs.
+ * Returns the parsed URL along with the pinned validated IP address.
  */
-export async function validateExternalUrl(
-  rawUrl: string,
-  options?: SsrOptions,
-): Promise<ValidatedUrlResult> {
+export async function validateExternalUrl(urlString: string, options?: SsrOptions): Promise<ValidatedUrlResult> {
   let parsed: URL;
   try {
-    parsed = new URL(rawUrl);
+    parsed = new URL(urlString);
   } catch {
-    throw new AppError(422, 'INVALID_URL', 'The provided URL is not a valid standard URL');
+    throw new AppError(400, 'INVALID_URL', 'The provided URL format is invalid');
   }
 
   if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-    throw new AppError(
-      422,
-      'INVALID_PROTOCOL',
-      `URL protocol "${parsed.protocol}" is not supported. Only http: and https: are allowed`,
-    );
+    throw new AppError(400, 'INVALID_PROTOCOL', 'Only http and https protocols are supported');
   }
 
-  const hostname = parsed.hostname.toLowerCase();
+  const hostname = parsed.hostname;
   if (!hostname) {
-    throw new AppError(422, 'INVALID_URL', 'URL must include a valid hostname');
+    throw new AppError(400, 'INVALID_HOSTNAME', 'URL hostname cannot be empty');
   }
 
-  const port = parsed.port
-    ? Number.parseInt(parsed.port, 10)
-    : parsed.protocol === 'https:'
-      ? 443
-      : 80;
-
-  if (isNaN(port) || port <= 0 || port > 65535) {
-    throw new AppError(422, 'INVALID_PORT', 'URL port must be a valid number between 1 and 65535');
+  const port = parsed.port ? Number.parseInt(parsed.port, 10) : parsed.protocol === 'https:' ? 443 : 80;
+  if (isNaN(port) || port < 1 || port > 65535) {
+    throw new AppError(400, 'INVALID_PORT', 'URL port must be a valid number between 1 and 65535');
   }
 
-  // If hostname is already an IP address literal
+  // If hostname is directly an IP literal
   if (net.isIP(hostname)) {
     if (isForbiddenIp(hostname, options)) {
-      throw new AppError(
-        422,
-        'FORBIDDEN_IP_ADDRESS',
-        `Connecting to restricted or private network address "${hostname}" is prohibited`,
-      );
+      throw new AppError(400, 'SSRF_REJECTED', 'Connecting to private or restricted network addresses is prohibited');
     }
     return {
       parsedUrl: parsed,
@@ -252,35 +237,44 @@ export async function validateExternalUrl(
     };
   }
 
-  // Resolve DNS A and AAAA records ONCE and inspect every answer
-  let addresses: LookupAddress[];
+  // Check localhost variations
+  if (hostname.toLowerCase() === 'localhost' || hostname.toLowerCase().endsWith('.localhost')) {
+    throw new AppError(400, 'SSRF_REJECTED', 'Connecting to localhost destinations is prohibited');
+  }
+
+  // Resolve DNS ONCE for both IPv4 and IPv6
+  let resolvedIps: LookupAddress[] = [];
   try {
-    addresses = await dnsPromises.lookup(hostname, { all: true });
+    resolvedIps = await dnsPromises.lookup(hostname, { all: true });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Unknown DNS resolution error';
-    throw new AppError(422, 'DNS_RESOLUTION_FAILED', `DNS resolution failed for host "${hostname}": ${message}`);
+    const message = err instanceof Error ? err.message : 'Unknown DNS error';
+    throw new AppError(400, 'DNS_RESOLUTION_FAILED', `DNS resolution failed for host "${hostname}": ${message}`);
   }
 
-  if (!addresses || addresses.length === 0) {
-    throw new AppError(422, 'DNS_RESOLUTION_FAILED', `No DNS records found for host "${hostname}"`);
+  if (resolvedIps.length === 0) {
+    throw new AppError(400, 'DNS_RESOLUTION_FAILED', `No IP address found for host "${hostname}"`);
   }
 
-  // Validate ALL resolved addresses against SSRF policy
-  for (const record of addresses) {
-    if (isForbiddenIp(record.address, options)) {
+  // Anti-Rebinding & Mixed IP Defense: ALL returned addresses must be permitted.
+  // If ANY address is prohibited, reject the entire hostname.
+  for (const { address } of resolvedIps) {
+    if (isForbiddenIp(address, options)) {
       throw new AppError(
-        422,
-        'FORBIDDEN_IP_ADDRESS',
-        `Connecting to "${hostname}" is prohibited because it resolved to prohibited address ${record.address}`,
+        400,
+        'SSRF_REJECTED',
+        `Host "${hostname}" resolved to prohibited address ${address}`,
       );
     }
   }
 
-  const pinnedIp = normalizeIp(addresses[0]!.address);
+  const firstValidIp = resolvedIps[0]?.address;
+  if (!firstValidIp) {
+    throw new AppError(400, 'DNS_RESOLUTION_FAILED', `Could not resolve valid IP for host "${hostname}"`);
+  }
 
   return {
     parsedUrl: parsed,
-    pinnedIp,
+    pinnedIp: normalizeIp(firstValidIp),
     port,
     protocol: parsed.protocol,
   };
@@ -325,25 +319,22 @@ export async function executeSafeHttpRequest(options: SafeHttpRequestOptions): P
   // Custom lookup that resolves directly to the pre-validated PINNED IP
   const pinnedLookup = (
     _host: string,
-    lookupOpts: LookupOptions | ((err: NodeJS.ErrnoException | null, address: string | LookupAddress[] | string, family?: number) => void),
-    maybeCallback?: (err: NodeJS.ErrnoException | null, address: string | LookupAddress[] | string, family?: number) => void,
+    lookupOpts: LookupOptions,
+    callback: (err: NodeJS.ErrnoException | null, address: string | LookupAddress[], family?: number) => void,
   ) => {
-    const cb = typeof lookupOpts === 'function' ? lookupOpts : maybeCallback;
-    if (typeof cb !== 'function') return;
-
     // Check if the pinned IP is still safe before socket establishment
     if (isForbiddenIp(pinnedIp, { allowPrivate: options.allowPrivate, allowedCidrs: options.allowedCidrs })) {
       const err = new Error(`Socket connection rejected to forbidden IP: ${pinnedIp}`) as NodeJS.ErrnoException;
       err.code = 'ERR_SSRF_FORBIDDEN_IP';
-      cb(err, '');
+      callback(err, '');
       return;
     }
 
     const family = net.isIP(pinnedIp);
-    if (typeof lookupOpts === 'object' && lookupOpts !== null && lookupOpts.all) {
-      cb(null, [{ address: pinnedIp, family }]);
+    if (lookupOpts && lookupOpts.all) {
+      callback(null, [{ address: pinnedIp, family }]);
     } else {
-      cb(null, pinnedIp, family);
+      callback(null, pinnedIp, family);
     }
   };
 
@@ -356,7 +347,6 @@ export async function executeSafeHttpRequest(options: SafeHttpRequestOptions): P
         lookup: pinnedLookup,
         keepAlive: false,
         rejectUnauthorized,
-        checkServerIdentity: rejectUnauthorized ? undefined : () => undefined,
       })
     : new http.Agent({
         lookup: pinnedLookup,
@@ -364,23 +354,6 @@ export async function executeSafeHttpRequest(options: SafeHttpRequestOptions): P
       });
 
   return new Promise<SafeHttpResponse>((resolve, reject) => {
-    let timer: NodeJS.Timeout | null = null;
-    let settled = false;
-
-    const safeResolve = (val: SafeHttpResponse) => {
-      if (settled) return;
-      settled = true;
-      if (timer) clearTimeout(timer);
-      resolve(val);
-    };
-
-    const safeReject = (err: unknown) => {
-      if (settled) return;
-      settled = true;
-      if (timer) clearTimeout(timer);
-      reject(err);
-    };
-
     const req = transport.request(
       parsedUrl,
       {
@@ -391,11 +364,29 @@ export async function executeSafeHttpRequest(options: SafeHttpRequestOptions): P
           ...options.headers,
         },
         agent,
+        timeout: timeoutMs,
       },
       (res) => {
         const latencyMs = Date.now() - startTime;
         const statusCode = res.statusCode ?? 500;
         const contentType = res.headers['content-type'] ?? '';
+
+        // Zero Redirects Enforcement: Do NOT follow HTTP redirects (301, 302, 303, 307, 308)
+        if (statusCode >= 300 && statusCode < 400) {
+          res.resume(); // consume stream
+          resolve({
+            statusCode,
+            statusText: res.statusMessage ?? 'Redirect Blocked',
+            latencyMs,
+            ok: false,
+            body: {
+              redirectBlocked: true,
+              location: res.headers.location ?? null,
+              message: 'HTTP redirects are strictly prohibited for integration endpoints',
+            },
+          });
+          return;
+        }
 
         const chunks: Buffer[] = [];
         let bytesRead = 0;
@@ -425,7 +416,7 @@ export async function executeSafeHttpRequest(options: SafeHttpRequestOptions): P
               body = raw;
             }
           }
-          safeResolve({
+          resolve({
             statusCode,
             statusText: res.statusMessage ?? '',
             latencyMs,
@@ -435,17 +426,17 @@ export async function executeSafeHttpRequest(options: SafeHttpRequestOptions): P
         });
 
         res.on('error', (err) => {
-          if (!limitExceeded) safeReject(err);
+          if (!limitExceeded) reject(err);
         });
       },
     );
 
-    timer = setTimeout(() => {
+    req.on('timeout', () => {
       req.destroy(new Error(`Connection timed out after ${timeoutMs}ms`));
-    }, timeoutMs);
+    });
 
     req.on('error', (err) => {
-      safeReject(err);
+      reject(err);
     });
 
     if (options.body) {
