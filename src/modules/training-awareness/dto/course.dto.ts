@@ -36,6 +36,7 @@ export const assignCourseBodySchema = z
     dueDate: dateSchema,
     userIds: z.array(z.string().uuid()).max(200).default([]),
     departmentIds: z.array(z.string().uuid()).max(200).default([]),
+    createNewCampaign: z.boolean().default(false),
     changeReason: z.string().trim().min(3).max(500).optional(),
   })
   .strict()

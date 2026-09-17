@@ -145,6 +145,31 @@ async function main(): Promise<void> {
       is_system: false,
     },
   });
+  const issueTrainingCertificatePermission = await prisma.permissions.upsert({
+    where: { code: 'training-certificates.issue' },
+    update: {},
+    create: {
+      code: 'training-certificates.issue',
+      module: 'training-awareness',
+      action: 'issue-certificate',
+      description: 'Issue certificates for completed training with a passed assessment',
+    },
+  });
+  for (const targetRole of [role, securityOfficerRole]) {
+    await prisma.role_permissions.upsert({
+      where: {
+        role_id_permission_id: {
+          role_id: targetRole.role_id,
+          permission_id: issueTrainingCertificatePermission.permission_id,
+        },
+      },
+      update: {},
+      create: {
+        role_id: targetRole.role_id,
+        permission_id: issueTrainingCertificatePermission.permission_id,
+      },
+    });
+  }
   const trainingCompletionReadPermission = await prisma.permissions.upsert({
     where: { code: 'training-completion.read' },
     update: {
@@ -159,7 +184,7 @@ async function main(): Promise<void> {
       description: 'View training campaign and employee completion progress',
     },
   });
-  for (const targetRole of [securityOfficerRole, executiveRole]) {
+  for (const targetRole of [role, securityOfficerRole, executiveRole]) {
     await prisma.role_permissions.upsert({
       where: {
         role_id_permission_id: {

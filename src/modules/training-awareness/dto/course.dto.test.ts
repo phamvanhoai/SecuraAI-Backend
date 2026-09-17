@@ -22,6 +22,19 @@ describe('assignCourseBodySchema', () => {
       departmentIds: [],
     });
     expect(result.success).toBe(true);
+    if (result.success) expect(result.data.createNewCampaign).toBe(false);
+  });
+
+  it('accepts an explicit request to create a separate campaign', () => {
+    const result = assignCourseBodySchema.parse({
+      title: 'Annual refresher',
+      startDate: '2027-09-15',
+      dueDate: '2027-09-30',
+      userIds: ['e2ef8324-9ac0-4e7f-b16d-50050274a72e'],
+      departmentIds: [],
+      createNewCampaign: true,
+    });
+    expect(result.createNewCampaign).toBe(true);
   });
 
   it('rejects assignments without targets', () => {
