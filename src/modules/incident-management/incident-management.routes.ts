@@ -6,6 +6,7 @@ import {
   classifyIncidentSeverity,
   assignIncidentHandler,
   listIncidentAssignmentOptions,
+  updateIncidentHandlingProgress,
   getMyIncident,
   listIncidentsForClassification,
   listMyIncidents,
@@ -15,6 +16,7 @@ import {
   classificationQueueQuerySchema,
   classifyIncidentBodySchema,
   assignIncidentBodySchema,
+  updateIncidentProgressBodySchema,
   incidentParamsSchema,
   myIncidentsQuerySchema,
   reportIncidentBodySchema,
@@ -27,6 +29,13 @@ incidentManagementRouter.get(
   authenticate,
   authorize('incidents.assign'),
   asyncHandler(listIncidentAssignmentOptions),
+);
+incidentManagementRouter.patch(
+  '/:incidentId/progress',
+  authenticate,
+  authorize('incidents.update-progress'),
+  validate({ params: incidentParamsSchema, body: updateIncidentProgressBodySchema }),
+  asyncHandler(updateIncidentHandlingProgress),
 );
 incidentManagementRouter.patch(
   '/:incidentId/assignee',

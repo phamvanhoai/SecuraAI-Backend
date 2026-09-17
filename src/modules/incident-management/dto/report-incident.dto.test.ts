@@ -3,6 +3,7 @@ import {
   classificationQueueQuerySchema,
   classifyIncidentBodySchema,
   assignIncidentBodySchema,
+  updateIncidentProgressBodySchema,
   reportIncidentBodySchema,
 } from './report-incident.dto.js';
 describe('reportIncidentBodySchema', () => {
@@ -61,6 +62,19 @@ describe('assignIncidentBodySchema', () => {
     ).toBe(true);
     expect(
       assignIncidentBodySchema.safeParse({ assigneeUserId: 'invalid', note: 'short' }).success,
+    ).toBe(false);
+  });
+});
+describe('updateIncidentProgressBodySchema', () => {
+  it('accepts documented workflow progress and rejects unsupported status', () => {
+    expect(
+      updateIncidentProgressBodySchema.safeParse({
+        status: 'in_progress',
+        note: 'Investigation has started with endpoint log collection.',
+      }).success,
+    ).toBe(true);
+    expect(
+      updateIncidentProgressBodySchema.safeParse({ status: 'assigned', note: 'Too short' }).success,
     ).toBe(false);
   });
 });

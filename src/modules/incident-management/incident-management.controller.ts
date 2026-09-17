@@ -4,6 +4,7 @@ import {
   classificationQueueQuerySchema,
   classifyIncidentBodySchema,
   assignIncidentBodySchema,
+  updateIncidentProgressBodySchema,
   incidentParamsSchema,
   myIncidentsQuerySchema,
   reportIncidentBodySchema,
@@ -61,6 +62,17 @@ export const assignIncidentHandler: RequestHandler = async (req, res) => {
   const data = await incidentManagementService.assign(
     incidentId,
     assignIncidentBodySchema.parse(req.body),
+    req.auth,
+    { ipAddress: req.ip ?? null, userAgent: req.get('user-agent')?.slice(0, 1000) ?? null },
+  );
+  res.json({ success: true, data });
+};
+export const updateIncidentHandlingProgress: RequestHandler = async (req, res) => {
+  if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+  const { incidentId } = incidentParamsSchema.parse(req.params);
+  const data = await incidentManagementService.updateProgress(
+    incidentId,
+    updateIncidentProgressBodySchema.parse(req.body),
     req.auth,
     { ipAddress: req.ip ?? null, userAgent: req.get('user-agent')?.slice(0, 1000) ?? null },
   );

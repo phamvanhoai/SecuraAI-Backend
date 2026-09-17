@@ -3,6 +3,7 @@ import { AppError } from '../../common/errors/app-error.js';
 import type {
   ClassificationQueueQuery,
   AssignIncidentInput,
+  UpdateIncidentProgressInput,
   ClassifyIncidentInput,
   MyIncidentsQuery,
   ReportIncidentInput,
@@ -20,6 +21,10 @@ const requireClassifyPermission = (actor: Actor) => {
 const requireAssignPermission = (actor: Actor) => {
   if (!actor.permissions.includes('incidents.assign'))
     throw new AppError(403, 'FORBIDDEN', 'Incident assignment permission required');
+};
+const requireProgressPermission = (actor: Actor) => {
+  if (!actor.permissions.includes('incidents.update-progress'))
+    throw new AppError(403, 'FORBIDDEN', 'Incident progress permission required');
 };
 type ClassificationSummary = {
   count: number;
@@ -187,6 +192,40 @@ export const incidentManagementService = {
       assigned_at: result.assignedAt,
       user: result.assignee,
     });
+  },
+  async updateProgress(
+    incidentId: string,
+    input: UpdateIncidentProgressInput,
+    actor: Actor,
+    context: { ipAddress: string | null; userAgent: string | null },
+  ) {
+    requireProgressPermission(actor);
+    const result = await incidentManagementRepository.updateProgress(
+      incidentId,
+      input,
+      actor.userId,
+      actor.permissions.includes('incidents.assign'),
+      context,
+    );
+    if (result.outcome === 'not_found')
+      throw new AppError(404, 'INCIDENT_NOT_FOUND', 'Incident not found');
+    if (result.outcome === 'unchanged')
+      throw new AppError(409, 'STATUS_UNCHANGED', 'Select a different progress status');
+    if (result.outcome === 'unassigned')
+      throw new AppError(409, 'INCIDENT_UNASSIGNED', 'Assign a handler before updating progress');
+    if (result.outcome === 'not_handler')
+      throw new AppError(
+        403,
+        'NOT_INCIDENT_HANDLER',
+        'Only the active handler or an incident coordinator can update progress',
+      );
+    if (result.outcome === 'invalid_transition')
+      throw new AppError(
+        409,
+        'INVALID_STATUS_TRANSITION',
+        'This incident status transition is not allowed',
+      );
+    return mapIncident(result.incident);
   },
   async classify(
     incidentId: string,
