@@ -4,6 +4,8 @@ import type {
   ClassificationQueueQuery,
   AssignIncidentInput,
   UpdateIncidentProgressInput,
+  UploadIncidentEvidenceInput,
+  IncidentEvidenceQuery,
   ClassifyIncidentInput,
   MyIncidentsQuery,
   ReportIncidentInput,
@@ -15,7 +17,139 @@ const auditRequestContext = (
   ip_address: context.ipAddress,
   user_agent: context.userAgent,
 });
+const incidentEvidenceSelect = {
+  incident_evidence_id: true,
+  description: true,
+  created_at: true,
+  users: { select: { user_id: true, full_name: true } },
+  files: {
+    select: {
+      file_id: true,
+      original_name: true,
+      storage_key: true,
+      mime_type: true,
+      size_bytes: true,
+      checksum: true,
+    },
+  },
+} satisfies Prisma.incident_evidenceSelect;
 export const incidentManagementRepository = {
+  findIncident(incidentId: string) {
+    return prisma.incidents.findUnique({
+      where: { incident_id: incidentId },
+      select: {
+        incident_id: true,
+        status: true,
+        incident_assignments: {
+          where: { completed_at: null },
+          select: { assignee_user_id: true },
+          orderBy: [{ assigned_at: 'desc' }, { incident_assignment_id: 'desc' }],
+          take: 1,
+        },
+      },
+    });
+  },
+  async listEvidence(incidentId: string, query: IncidentEvidenceQuery) {
+    const where = { incident_id: incidentId } satisfies Prisma.incident_evidenceWhereInput;
+    const [items, total] = await prisma.$transaction([
+      prisma.incident_evidence.findMany({
+        where,
+        select: incidentEvidenceSelect,
+        orderBy: [{ created_at: 'desc' }, { incident_evidence_id: 'desc' }],
+        skip: (query.page - 1) * query.limit,
+        take: query.limit,
+      }),
+      prisma.incident_evidence.count({ where }),
+    ]);
+    return { items, total };
+  },
+  findEvidence(evidenceId: string) {
+    return prisma.incident_evidence.findUnique({
+      where: { incident_evidence_id: evidenceId },
+      select: {
+        incident_evidence_id: true,
+        incident_id: true,
+        files: {
+          select: { file_id: true, storage_key: true, original_name: true, mime_type: true },
+        },
+      },
+    });
+  },
+  recordEvidenceDownload(
+    evidenceId: string,
+    actorUserId: string,
+    fileId: string,
+    context: RequestContext,
+  ) {
+    return prisma.audit_logs.create({
+      data: {
+        actor_user_id: actorUserId,
+        module: 'incident-management',
+        action: 'incident.evidence_downloaded',
+        entity_type: 'incident_evidence',
+        entity_id: evidenceId,
+        after_data: { fileId },
+        ...auditRequestContext(context),
+      },
+      select: { audit_log_id: true },
+    });
+  },
+  createEvidence(
+    input: UploadIncidentEvidenceInput & {
+      incidentId: string;
+      actorUserId: string;
+      originalName: string;
+      storageKey: string;
+      mimeType: string;
+      sizeBytes: number;
+      checksum: string;
+      ipAddress: string | null;
+      userAgent: string | null;
+    },
+  ) {
+    return prisma.$transaction(async (tx) => {
+      const file = await tx.files.create({
+        data: {
+          original_name: input.originalName,
+          storage_key: input.storageKey,
+          mime_type: input.mimeType,
+          size_bytes: BigInt(input.sizeBytes),
+          checksum: input.checksum,
+          uploaded_by_user_id: input.actorUserId,
+        },
+        select: { file_id: true },
+      });
+      const evidence = await tx.incident_evidence.create({
+        data: {
+          incident_id: input.incidentId,
+          file_id: file.file_id,
+          description: input.description,
+          uploaded_by_user_id: input.actorUserId,
+        },
+        select: incidentEvidenceSelect,
+      });
+      await tx.audit_logs.create({
+        data: {
+          actor_user_id: input.actorUserId,
+          module: 'incident-management',
+          action: 'incident.evidence_attached',
+          entity_type: 'incident_evidence',
+          entity_id: evidence.incident_evidence_id,
+          after_data: {
+            incidentId: input.incidentId,
+            fileId: file.file_id,
+            originalName: input.originalName,
+            mimeType: input.mimeType,
+            sizeBytes: input.sizeBytes,
+            checksum: input.checksum,
+          },
+          ip_address: input.ipAddress,
+          user_agent: input.userAgent,
+        },
+      });
+      return evidence;
+    });
+  },
   listAssignmentOptions() {
     return prisma.users.findMany({
       where: {

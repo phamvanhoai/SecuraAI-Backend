@@ -8,6 +8,11 @@ const mocks = vi.hoisted(() => ({
   options: vi.fn(),
   assign: vi.fn(),
   progress: vi.fn(),
+  findIncident: vi.fn(),
+  listEvidence: vi.fn(),
+  findEvidence: vi.fn(),
+  createEvidence: vi.fn(),
+  recordEvidenceDownload: vi.fn(),
 }));
 vi.mock('./incident-management.repository.js', () => ({
   incidentManagementRepository: {
@@ -19,6 +24,11 @@ vi.mock('./incident-management.repository.js', () => ({
     listAssignmentOptions: mocks.options,
     assignHandler: mocks.assign,
     updateProgress: mocks.progress,
+    findIncident: mocks.findIncident,
+    listEvidence: mocks.listEvidence,
+    findEvidence: mocks.findEvidence,
+    createEvidence: mocks.createEvidence,
+    recordEvidenceDownload: mocks.recordEvidenceDownload,
   },
 }));
 import { incidentManagementService } from './incident-management.service.js';
@@ -256,5 +266,49 @@ describe('incident reporting service', () => {
       true,
       expect.any(Object),
     );
+  });
+  it('requires incidents.evidence.manage to view incident evidence', async () => {
+    await expect(
+      incidentManagementService.listEvidence(
+        '11111111-1111-4111-8111-111111111111',
+        { page: 1, limit: 10 },
+        { userId: 'officer-1', permissions: ['incidents.update-progress'] },
+      ),
+    ).rejects.toMatchObject({ statusCode: 403 });
+  });
+  it('returns a bounded evidence list for an existing incident', async () => {
+    mocks.findIncident.mockResolvedValue({
+      incident_id: 'incident-1',
+      status: 'in_progress',
+      incident_assignments: [],
+    });
+    mocks.listEvidence.mockResolvedValue({ items: [], total: 0 });
+    await expect(
+      incidentManagementService.listEvidence(
+        '11111111-1111-4111-8111-111111111111',
+        { page: 1, limit: 10 },
+        { userId: 'officer-1', permissions: ['incidents.evidence.manage'] },
+      ),
+    ).resolves.toEqual({
+      items: [],
+      pagination: { page: 1, limit: 10, total: 0, totalPages: 1 },
+    });
+  });
+  it('only allows the active handler or a coordinator to attach evidence', async () => {
+    mocks.findIncident.mockResolvedValue({
+      incident_id: 'incident-1',
+      status: 'in_progress',
+      incident_assignments: [{ assignee_user_id: 'handler-1' }],
+    });
+    await expect(
+      incidentManagementService.uploadEvidence(
+        '11111111-1111-4111-8111-111111111111',
+        { description: null },
+        { originalName: 'access.log', mimeType: 'text/plain', buffer: Buffer.from('entry') },
+        { userId: 'officer-2', permissions: ['incidents.evidence.manage'] },
+        { ipAddress: null, userAgent: null },
+      ),
+    ).rejects.toMatchObject({ statusCode: 403, code: 'NOT_INCIDENT_HANDLER' });
+    expect(mocks.createEvidence).not.toHaveBeenCalled();
   });
 });
