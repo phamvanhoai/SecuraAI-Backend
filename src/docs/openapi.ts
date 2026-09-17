@@ -2,6 +2,7 @@ import swaggerJsdoc from 'swagger-jsdoc';
 import { env } from '../config/env.js';
 import { trainingReminderPaths } from './training-reminders.openapi.js';
 import { complianceReminderPaths } from './compliance-reminders.openapi.js';
+import { incidentPaths } from './incidents.openapi.js';
 import { accountLockPaths } from './account-lock.openapi.js';
 
 export const openApiSpec = swaggerJsdoc({
@@ -23,6 +24,7 @@ export const openApiSpec = swaggerJsdoc({
       { name: 'Security Monitoring' },
       { name: 'AI Alerts' },
       { name: 'Policies' },
+      { name: 'Incidents' },
       { name: 'Integrations' },
       { name: 'Training Awareness' },
     ],
@@ -430,7 +432,12 @@ export const openApiSpec = swaggerJsdoc({
             integrationId: { type: 'string', format: 'uuid' },
             keyName: { type: 'string' },
             keyFingerprint: { type: 'string', nullable: true },
-            expiresAt: { type: 'string', format: 'date-time', nullable: true, description: 'Must be in the future (expiresAt > currentTime)' },
+            expiresAt: {
+              type: 'string',
+              format: 'date-time',
+              nullable: true,
+              description: 'Must be in the future (expiresAt > currentTime)',
+            },
             isActive: { type: 'boolean' },
             status: { type: 'string', enum: ['ACTIVE', 'INACTIVE', 'EXPIRED', 'REVOKED'] },
             createdAt: { type: 'string', format: 'date-time' },
@@ -1404,6 +1411,7 @@ export const openApiSpec = swaggerJsdoc({
     paths: {
       ...trainingReminderPaths,
       ...complianceReminderPaths,
+      ...incidentPaths,
       ...accountLockPaths,
       '/training/enrollments/{enrollmentId}/withdraw': {
         post: {
@@ -4584,13 +4592,72 @@ export const openApiSpec = swaggerJsdoc({
         },
       },
       '/compliance/evidence/assessments': {
-        get: { tags: ['Policies'], summary: 'List control assessments accessible for compliance evidence', description: 'Requires compliance.evidence.upload. Employee results are limited to controls covered by policies assigned to their department.', security: [{ bearerAuth: [] }], responses: { '200': { description: 'Paginated assessments and evidence' }, '403': { description: 'Permission required' } } },
+        get: {
+          tags: ['Policies'],
+          summary: 'List control assessments accessible for compliance evidence',
+          description:
+            'Requires compliance.evidence.upload. Employee results are limited to controls covered by policies assigned to their department.',
+          security: [{ bearerAuth: [] }],
+          responses: {
+            '200': { description: 'Paginated assessments and evidence' },
+            '403': { description: 'Permission required' },
+          },
+        },
       },
       '/compliance/control-assessments/{assessmentId}/evidence': {
-        post: { tags: ['Policies'], summary: 'Upload compliance evidence', security: [{ bearerAuth: [] }], parameters: [{ name: 'assessmentId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }], requestBody: { required: true, content: { 'multipart/form-data': { schema: { type: 'object', required: ['file'], properties: { file: { type: 'string', format: 'binary' }, description: { type: 'string', maxLength: 2000 }, validUntil: { type: 'string', format: 'date' } } } } } }, responses: { '201': { description: 'Evidence uploaded and audited' }, '413': { description: 'File exceeds 10 MB' }, '422': { description: 'Invalid file or metadata' } } },
+        post: {
+          tags: ['Policies'],
+          summary: 'Upload compliance evidence',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'assessmentId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'multipart/form-data': {
+                schema: {
+                  type: 'object',
+                  required: ['file'],
+                  properties: {
+                    file: { type: 'string', format: 'binary' },
+                    description: { type: 'string', maxLength: 2000 },
+                    validUntil: { type: 'string', format: 'date' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '201': { description: 'Evidence uploaded and audited' },
+            '413': { description: 'File exceeds 10 MB' },
+            '422': { description: 'Invalid file or metadata' },
+          },
+        },
       },
       '/compliance/evidence/{evidenceId}/download': {
-        get: { tags: ['Policies'], summary: 'Download accessible compliance evidence', security: [{ bearerAuth: [] }], parameters: [{ name: 'evidenceId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }], responses: { '200': { description: 'Evidence file' }, '404': { description: 'Evidence is missing or inaccessible' } } },
+        get: {
+          tags: ['Policies'],
+          summary: 'Download accessible compliance evidence',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'evidenceId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          responses: {
+            '200': { description: 'Evidence file' },
+            '404': { description: 'Evidence is missing or inaccessible' },
+          },
+        },
       },
       '/security-monitoring/log-sources/{logSourceId}': {
         patch: {
