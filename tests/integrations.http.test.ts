@@ -62,7 +62,12 @@ describe('Integrations HTTP API (UC 13.1 - Connect SIEM/Firewall)', () => {
     });
 
     it('returns 201 when authorized with valid payload', async () => {
-      vi.spyOn(ssrfValidator, 'validateExternalUrl').mockResolvedValue(new URL('https://siem.test.com'));
+      vi.spyOn(ssrfValidator, 'validateExternalUrl').mockResolvedValue({
+        parsedUrl: new URL('https://siem.test.com'),
+        pinnedIp: '93.184.216.34',
+        port: 443,
+        protocol: 'https:',
+      });
       vi.spyOn(integrationsRepository, 'create').mockResolvedValue(mockIntegration);
       vi.spyOn(integrationsRepository, 'createLog').mockResolvedValue({
         integration_log_id: 'log-1',

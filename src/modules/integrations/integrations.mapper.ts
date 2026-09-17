@@ -38,13 +38,25 @@ function toIsoDateRequired(value: Date | string | null | undefined): string {
   return formatted ?? new Date().toISOString();
 }
 
+function sanitizeConfiguration(config: unknown): unknown {
+  if (!config || typeof config !== 'object') return config;
+  const clone = { ...(config as Record<string, unknown>) };
+  const sensitiveKeys = ['password', 'secret', 'apiKey', 'token', 'jwtToken', 'clientSecret'];
+  for (const key of Object.keys(clone)) {
+    if (sensitiveKeys.some((s) => s.toLowerCase() === key.toLowerCase())) {
+      clone[key] = '********';
+    }
+  }
+  return clone;
+}
+
 export function toIntegrationResponseDto(record: RawIntegrationRecord): IntegrationResponseDto {
   return {
     id: record.integration_id,
     name: record.name,
     integrationType: record.integration_type,
     baseUrl: record.base_url,
-    configuration: record.configuration,
+    configuration: sanitizeConfiguration(record.configuration),
     status: record.status,
     lastConnectedAt: toIsoDate(record.last_connected_at),
     createdByUserId: record.created_by_user_id,

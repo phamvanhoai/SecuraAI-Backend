@@ -10,7 +10,12 @@ describe('Integrations Service (UC 13.1 - Connect SIEM/Firewall)', () => {
 
   describe('createIntegration', () => {
     it('creates an integration successfully and logs audit event', async () => {
-      vi.spyOn(ssrfValidator, 'validateExternalUrl').mockResolvedValue(new URL('https://siem.test.com'));
+      vi.spyOn(ssrfValidator, 'validateExternalUrl').mockResolvedValue({
+        parsedUrl: new URL('https://siem.test.com'),
+        pinnedIp: '93.184.216.34',
+        port: 443,
+        protocol: 'https:',
+      });
       const mockRecord = {
         integration_id: 'c1234567-1111-2222-3333-444455556666',
         name: 'Splunk SIEM',

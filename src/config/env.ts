@@ -24,12 +24,32 @@ const envSchema = z.object({
   SMTP_PASS: z.string().min(1).optional(),
   PASSWORD_RESET_URL: z.string().url().default('http://localhost:5173/reset-password'),
   ENCRYPTION_KEY: z.string().min(16).optional(),
+  ALLOW_PRIVATE_NETWORK_INTEGRATIONS: booleanString.default(false),
+  SSRF_ALLOWED_CIDRS: z
+    .string()
+    .optional()
+    .transform((val) => {
+      if (!val) return [];
+      return val
+        .split(',')
+        .map((c) => c.trim())
+        .filter(Boolean);
+    }),
 });
 
 const result = envSchema.safeParse(process.env);
 if (!result.success) {
   console.error('Invalid environment configuration', z.treeifyError(result.error));
   process.exit(1);
+}
+
+// Startup check: permanent deny CIDRs
+const forbiddenPrefixes = ['127.', '169.254.', '0.0.0.0', '224.', '240.', '255.255.255.255', '::1'];
+for (const cidr of result.data.SSRF_ALLOWED_CIDRS) {
+  if (forbiddenPrefixes.some((f) => cidr.startsWith(f))) {
+    console.error(`Startup error: SSRF_ALLOWED_CIDRS contains permanently forbidden range: ${cidr}`);
+    process.exit(1);
+  }
 }
 
 export const env = {

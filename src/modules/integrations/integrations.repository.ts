@@ -165,12 +165,16 @@ export function buildWhereClause(params: {
   search?: string | undefined;
 }): Prisma.integrationsWhereInput {
   const where: Prisma.integrationsWhereInput = {};
-  if (params.type) where.integration_type = params.type;
-  if (params.status) where.status = params.status;
-  if (params.search) {
+  if (params.type && params.type !== 'all' && params.type.trim() !== '') {
+    where.integration_type = params.type.trim();
+  }
+  if (params.status && params.status !== 'all' && params.status.trim() !== '') {
+    where.status = params.status.trim();
+  }
+  if (params.search && params.search.trim() !== '') {
     where.OR = [
-      { name: { contains: params.search, mode: 'insensitive' } },
-      { base_url: { contains: params.search, mode: 'insensitive' } },
+      { name: { contains: params.search.trim(), mode: 'insensitive' } },
+      { base_url: { contains: params.search.trim(), mode: 'insensitive' } },
     ];
   }
   return where;
