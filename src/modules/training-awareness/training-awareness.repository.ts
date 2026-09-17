@@ -415,9 +415,10 @@ export const trainingAwarenessRepository = {
     );
   },
   async listCourses(query: ListCoursesQuery): Promise<{ items: CourseRecord[]; total: number }> {
-    const where: Prisma.training_coursesWhereInput = query.q
-      ? { title: { contains: query.q, mode: 'insensitive' } }
-      : {};
+    const where: Prisma.training_coursesWhereInput = {
+      ...(query.q ? { title: { contains: query.q, mode: 'insensitive' as const } } : {}),
+      ...(query.status ? { status: query.status } : {}),
+    };
     const [total, items] = await prisma.$transaction([
       prisma.training_courses.count({ where }),
       prisma.training_courses.findMany({

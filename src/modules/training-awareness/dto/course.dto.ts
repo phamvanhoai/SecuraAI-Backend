@@ -53,6 +53,7 @@ export const listCoursesQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(20),
   q: z.string().trim().min(1).max(100).optional(),
+  status: z.enum(['draft', 'published', 'archived']).optional(),
 });
 
 const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD format');

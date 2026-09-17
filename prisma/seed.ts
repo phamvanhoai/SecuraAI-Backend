@@ -199,6 +199,31 @@ async function main(): Promise<void> {
       },
     });
   }
+  const departmentReportPermission = await prisma.permissions.upsert({
+    where: { code: 'training-department-reports.read' },
+    update: {},
+    create: {
+      code: 'training-department-reports.read',
+      module: 'training-awareness',
+      action: 'read-department-report',
+      description: 'View department training completion reports (UC81)',
+    },
+  });
+  for (const targetRole of [role, executiveRole]) {
+    await prisma.role_permissions.upsert({
+      where: {
+        role_id_permission_id: {
+          role_id: targetRole.role_id,
+          permission_id: departmentReportPermission.permission_id,
+        },
+      },
+      update: {},
+      create: {
+        role_id: targetRole.role_id,
+        permission_id: departmentReportPermission.permission_id,
+      },
+    });
+  }
   const createPolicyPermission = await prisma.permissions.upsert({
     where: { code: 'policies.create' },
     update: {
@@ -1145,6 +1170,17 @@ async function main(): Promise<void> {
       create: { role_id: role.role_id, permission_id: policyPublishPermission.permission_id },
     }),
   ]);
+
+  const allPermissionIds = await prisma.permissions.findMany({
+    select: { permission_id: true },
+  });
+  await prisma.role_permissions.createMany({
+    data: allPermissionIds.map(({ permission_id }) => ({
+      role_id: role.role_id,
+      permission_id,
+    })),
+    skipDuplicates: true,
+  });
 }
 
 main()
