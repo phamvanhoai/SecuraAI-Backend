@@ -24,18 +24,44 @@ export type RawIntegrationRecord = {
   updated_at: Date;
 };
 
+function toIsoDate(value: Date | string | null | undefined): string | null {
+  if (!value) return null;
+  if (value instanceof Date) {
+    return isNaN(value.getTime()) ? null : value.toISOString();
+  }
+  const d = new Date(value);
+  return isNaN(d.getTime()) ? null : d.toISOString();
+}
+
+function toIsoDateRequired(value: Date | string | null | undefined): string {
+  const formatted = toIsoDate(value);
+  return formatted ?? new Date().toISOString();
+}
+
+export function sanitizeConfiguration(config: unknown): unknown {
+  if (!config || typeof config !== 'object') return config;
+  const copy = { ...(config as Record<string, unknown>) };
+  const sensitiveKeys = ['password', 'secret', 'apiKey', 'token', 'jwtToken', 'clientSecret'];
+  for (const key of Object.keys(copy)) {
+    if (sensitiveKeys.some((s) => s.toLowerCase() === key.toLowerCase())) {
+      copy[key] = '********';
+    }
+  }
+  return copy;
+}
+
 export function toIntegrationResponseDto(record: RawIntegrationRecord): IntegrationResponseDto {
   return {
     id: record.integration_id,
     name: record.name,
     integrationType: record.integration_type,
     baseUrl: record.base_url,
-    configuration: record.configuration,
+    configuration: sanitizeConfiguration(record.configuration),
     status: record.status,
-    lastConnectedAt: record.last_connected_at ? record.last_connected_at.toISOString() : null,
+    lastConnectedAt: toIsoDate(record.last_connected_at),
     createdByUserId: record.created_by_user_id,
-    createdAt: record.created_at.toISOString(),
-    updatedAt: record.updated_at.toISOString(),
+    createdAt: toIsoDateRequired(record.created_at),
+    updatedAt: toIsoDateRequired(record.updated_at),
   };
 }
 
@@ -67,10 +93,10 @@ export function toSyncScheduleResponseDto(record: RawSyncScheduleRecord): SyncSc
     integrationId: record.integration_id,
     scheduleExpression: record.schedule_expression,
     isActive: record.is_active,
-    lastRunAt: record.last_run_at ? record.last_run_at.toISOString() : null,
-    nextRunAt: record.next_run_at ? record.next_run_at.toISOString() : null,
-    createdAt: record.created_at.toISOString(),
-    updatedAt: record.updated_at.toISOString(),
+    lastRunAt: toIsoDate(record.last_run_at),
+    nextRunAt: toIsoDate(record.next_run_at),
+    createdAt: toIsoDateRequired(record.created_at),
+    updatedAt: toIsoDateRequired(record.updated_at),
   };
 }
 
@@ -108,10 +134,10 @@ export function toSyncJobResponseDto(record: RawSyncJobRecord): SyncJobResponseD
     status: record.status,
     recordsProcessed: record.records_processed,
     recordsFailed: record.records_failed,
-    startedAt: record.started_at ? record.started_at.toISOString() : null,
-    completedAt: record.completed_at ? record.completed_at.toISOString() : null,
+    startedAt: toIsoDate(record.started_at),
+    completedAt: toIsoDate(record.completed_at),
     errorMessage: record.error_message,
-    createdAt: record.created_at.toISOString(),
+    createdAt: toIsoDateRequired(record.created_at),
   };
 }
 
@@ -169,7 +195,7 @@ export function toIntegrationLogResponseDto(record: RawIntegrationLogRecord): In
     level: record.level,
     message: record.message,
     details: record.details,
-    createdAt: record.created_at.toISOString(),
+    createdAt: toIsoDateRequired(record.created_at),
     ...(record.integrations && {
       integration: {
         id: record.integrations.integration_id,
@@ -228,25 +254,32 @@ export function deriveApiKeyStatus(isActive: boolean, expiresAt: Date | null): A
 }
 
 export function toApiKeyResponseDto(record: RawApiKeyRecord): ApiKeyResponseDto {
+  let status: ApiKeyStatus = 'ACTIVE';
+  if (!record.is_active) {
+    status = 'INACTIVE';
+  } else if (record.expires_at && record.expires_at.getTime() < Date.now()) {
+    status = 'EXPIRED';
+  }
+
   return {
     id: record.integration_api_key_id,
     integrationId: record.integration_id,
     keyName: record.key_name,
     keyFingerprint: record.key_fingerprint,
-    expiresAt: record.expires_at ? record.expires_at.toISOString() : null,
+    expiresAt: toIsoDate(record.expires_at),
     isActive: record.is_active,
-    status: deriveApiKeyStatus(record.is_active, record.expires_at),
-    createdAt: record.created_at.toISOString(),
+    status,
+    createdAt: toIsoDateRequired(record.created_at),
   };
 }
 
 export function toApiKeyCreatedResponseDto(
   record: RawApiKeyRecord,
-  plaintextSecret: string,
+  secret: string,
 ): ApiKeyCreatedResponseDto {
   return {
     ...toApiKeyResponseDto(record),
-    secret: plaintextSecret,
+    secret,
   };
 }
 

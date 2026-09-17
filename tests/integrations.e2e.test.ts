@@ -390,9 +390,12 @@ describe('UC 13.1 – System Test: Connect Third-Party SIEM and Firewall API (E2
       // since the e2e test environment cannot actually reach external endpoints.
       // The full SSRF logic is tested separately in service unit tests.
       const ssrfModule = await import('../src/common/utils/ssrf-validator.js');
-      vi.spyOn(ssrfModule, 'validateExternalUrl').mockResolvedValue(
-        new URL('https://wazuh.example.com:55000'),
-      );
+      vi.spyOn(ssrfModule, 'validateExternalUrl').mockResolvedValue({
+        parsedUrl: new URL('https://wazuh.example.com:55000'),
+        pinnedIp: '93.184.216.34',
+        port: 55000,
+        protocol: 'https:',
+      });
       vi.spyOn(ssrfModule, 'executeSafeHttpRequest').mockResolvedValue({
         statusCode: 200,
         statusText: 'OK',
@@ -434,9 +437,12 @@ describe('UC 13.1 – System Test: Connect Third-Party SIEM and Firewall API (E2
       const id = createdIntegrationIds[0]!;
 
       const ssrfModule = await import('../src/common/utils/ssrf-validator.js');
-      vi.spyOn(ssrfModule, 'validateExternalUrl').mockResolvedValue(
-        new URL('https://wazuh.example.com:55000'),
-      );
+      vi.spyOn(ssrfModule, 'validateExternalUrl').mockResolvedValue({
+        parsedUrl: new URL('https://wazuh.example.com:55000'),
+        pinnedIp: '93.184.216.34',
+        port: 55000,
+        protocol: 'https:',
+      });
       vi.spyOn(ssrfModule, 'executeSafeHttpRequest').mockResolvedValue({
         statusCode: 503,
         statusText: 'Service Unavailable',

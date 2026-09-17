@@ -19,6 +19,8 @@ import {
   updateApiKeySchema,
   rotateApiKeySchema,
   queryApiKeysSchema,
+  queryConnectionMonitoringSchema,
+  batchConnectionCheckSchema,
   queryIntegrationLogStatsSchema,
 } from './dto/index.js';
 
@@ -43,6 +45,19 @@ const keyParamSchema = z.object({
   keyId: z.string().uuid('Invalid API key ID format'),
 });
 
+const batchCheckLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 10,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  message: {
+    success: false,
+    error: {
+      code: 'RATE_LIMITED',
+      message: 'Too many batch connection checks requested. Please wait before retrying.',
+    },
+  },
+});
 
 const testConnectionLimiter = rateLimit({
   windowMs: 60 * 1000,
@@ -71,6 +86,26 @@ const manualSyncLimiter = rateLimit({
     },
   },
 });
+
+// -------------------------------------------------------------
+// Connection Monitoring Fleet Routes (Must be mounted before /:id)
+// -------------------------------------------------------------
+integrationsRouter.get(
+  '/monitoring/connection-status',
+  authenticate,
+  authorize('integrations.read'),
+  validate({ query: queryConnectionMonitoringSchema }),
+  asyncHandler((req, res) => controller.getConnectionStatusSummary(req, res)),
+);
+
+integrationsRouter.post(
+  '/monitoring/check-all',
+  authenticate,
+  authorize('integrations.update'),
+  batchCheckLimiter,
+  validate({ body: batchConnectionCheckSchema }),
+  asyncHandler((req, res) => controller.checkAllConnections(req, res)),
+);
 
 // -------------------------------------------------------------
 // Integration Core Routes
@@ -119,6 +154,14 @@ integrationsRouter.get(
   asyncHandler((req, res) => controller.getIntegrationById(req, res)),
 );
 
+integrationsRouter.get(
+  '/:id/connection-status',
+  authenticate,
+  authorize('integrations.read'),
+  validate({ params: idParamSchema, query: queryConnectionMonitoringSchema }),
+  asyncHandler((req, res) => controller.getIntegrationConnectionStatus(req, res)),
+);
+
 integrationsRouter.patch(
   '/:id',
   authenticate,
@@ -130,11 +173,12 @@ integrationsRouter.patch(
 integrationsRouter.post(
   '/:id/test-connection',
   authenticate,
-  authorize('integrations.connect'),
+  authorize('integrations.update'),
   testConnectionLimiter,
   validate({ params: idParamSchema, body: testConnectionSchema }),
   asyncHandler((req, res) => controller.testConnection(req, res)),
 );
+
 
 // -------------------------------------------------------------
 // Sync Schedules Routes
