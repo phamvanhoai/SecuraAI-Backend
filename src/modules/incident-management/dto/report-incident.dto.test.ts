@@ -4,6 +4,8 @@ import {
   classifyIncidentBodySchema,
   assignIncidentBodySchema,
   updateIncidentProgressBodySchema,
+  uploadIncidentEvidenceBodySchema,
+  incidentEvidenceQuerySchema,
   reportIncidentBodySchema,
 } from './report-incident.dto.js';
 describe('reportIncidentBodySchema', () => {
@@ -76,5 +78,21 @@ describe('updateIncidentProgressBodySchema', () => {
     expect(
       updateIncidentProgressBodySchema.safeParse({ status: 'assigned', note: 'Too short' }).success,
     ).toBe(false);
+  });
+});
+describe('uploadIncidentEvidenceBodySchema', () => {
+  it('normalizes optional descriptions and enforces the length boundary', () => {
+    expect(uploadIncidentEvidenceBodySchema.parse({ description: '  ' })).toEqual({
+      description: null,
+    });
+    expect(
+      uploadIncidentEvidenceBodySchema.safeParse({ description: 'x'.repeat(2001) }).success,
+    ).toBe(false);
+  });
+});
+describe('incidentEvidenceQuerySchema', () => {
+  it('applies defaults and bounds evidence pagination', () => {
+    expect(incidentEvidenceQuerySchema.parse({})).toEqual({ page: 1, limit: 10 });
+    expect(incidentEvidenceQuerySchema.safeParse({ page: 0, limit: 51 }).success).toBe(false);
   });
 });

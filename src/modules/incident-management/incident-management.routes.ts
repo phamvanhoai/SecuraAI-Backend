@@ -7,6 +7,9 @@ import {
   assignIncidentHandler,
   listIncidentAssignmentOptions,
   updateIncidentHandlingProgress,
+  listIncidentEvidence,
+  uploadIncidentEvidence,
+  downloadIncidentEvidence,
   getMyIncident,
   listIncidentsForClassification,
   listMyIncidents,
@@ -18,12 +21,34 @@ import {
   assignIncidentBodySchema,
   updateIncidentProgressBodySchema,
   incidentParamsSchema,
+  incidentEvidenceQuerySchema,
   myIncidentsQuerySchema,
   reportIncidentBodySchema,
 } from './dto/report-incident.dto.js';
+import { uploadIncidentEvidenceFile } from './incident-evidence.upload.js';
 
 export const incidentManagementRouter = Router();
 
+incidentManagementRouter.get(
+  '/evidence/:evidenceId/download',
+  authenticate,
+  authorize('incidents.evidence.manage'),
+  asyncHandler(downloadIncidentEvidence),
+);
+incidentManagementRouter.get(
+  '/:incidentId/evidence',
+  authenticate,
+  authorize('incidents.evidence.manage'),
+  validate({ params: incidentParamsSchema, query: incidentEvidenceQuerySchema }),
+  asyncHandler(listIncidentEvidence),
+);
+incidentManagementRouter.post(
+  '/:incidentId/evidence',
+  authenticate,
+  authorize('incidents.evidence.manage'),
+  uploadIncidentEvidenceFile,
+  asyncHandler(uploadIncidentEvidence),
+);
 incidentManagementRouter.get(
   '/assignment-options',
   authenticate,

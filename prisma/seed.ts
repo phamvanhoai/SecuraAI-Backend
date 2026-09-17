@@ -185,6 +185,33 @@ async function main(): Promise<void> {
       permission_id: updateIncidentProgressPermission.permission_id,
     },
   });
+  const incidentEvidencePermission = await prisma.permissions.upsert({
+    where: { code: 'incidents.evidence.manage' },
+    update: {
+      module: 'incident-management',
+      action: 'manage-evidence',
+      description: 'Attach, list and download incident evidence and logs',
+    },
+    create: {
+      code: 'incidents.evidence.manage',
+      module: 'incident-management',
+      action: 'manage-evidence',
+      description: 'Attach, list and download incident evidence and logs',
+    },
+  });
+  await prisma.role_permissions.upsert({
+    where: {
+      role_id_permission_id: {
+        role_id: securityOfficerRole.role_id,
+        permission_id: incidentEvidencePermission.permission_id,
+      },
+    },
+    update: {},
+    create: {
+      role_id: securityOfficerRole.role_id,
+      permission_id: incidentEvidencePermission.permission_id,
+    },
+  });
   const executiveRole = await prisma.roles.upsert({
     where: { code: 'EXECUTIVE' },
     update: {

@@ -1,9 +1,14 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
+import { mkdir, rm, writeFile } from 'node:fs/promises';
+import path from 'node:path';
 import { AppError } from '../../common/errors/app-error.js';
+import { env } from '../../config/env.js';
 import type {
   ClassificationQueueQuery,
   AssignIncidentInput,
   UpdateIncidentProgressInput,
+  UploadIncidentEvidenceInput,
+  IncidentEvidenceQuery,
   ClassifyIncidentInput,
   MyIncidentsQuery,
   ReportIncidentInput,
@@ -26,6 +31,32 @@ const requireProgressPermission = (actor: Actor) => {
   if (!actor.permissions.includes('incidents.update-progress'))
     throw new AppError(403, 'FORBIDDEN', 'Incident progress permission required');
 };
+const requireEvidencePermission = (actor: Actor) => {
+  if (!actor.permissions.includes('incidents.evidence.manage'))
+    throw new AppError(403, 'FORBIDDEN', 'Incident evidence permission required');
+};
+const evidencePath = (storageKey: string) => {
+  const root = path.resolve(env.FILE_STORAGE_DIR);
+  const absolute = path.resolve(root, ...storageKey.split('/'));
+  if (!absolute.startsWith(`${root}${path.sep}`))
+    throw new AppError(500, 'FILE_STORAGE_ERROR', 'Could not resolve incident evidence');
+  return absolute;
+};
+const mapEvidence = (
+  item: Awaited<ReturnType<typeof incidentManagementRepository.listEvidence>>['items'][number],
+) => ({
+  id: item.incident_evidence_id,
+  description: item.description,
+  createdAt: item.created_at.toISOString(),
+  uploadedBy: item.users ? { id: item.users.user_id, name: item.users.full_name } : null,
+  file: {
+    id: item.files.file_id,
+    name: item.files.original_name,
+    mimeType: item.files.mime_type,
+    sizeBytes: item.files.size_bytes === null ? null : Number(item.files.size_bytes),
+    checksum: item.files.checksum,
+  },
+});
 type ClassificationSummary = {
   count: number;
   classifiedAt: string;
@@ -84,6 +115,96 @@ const mapIncident = (
     : null,
 });
 export const incidentManagementService = {
+  async listEvidence(incidentId: string, query: IncidentEvidenceQuery, actor: Actor) {
+    requireEvidencePermission(actor);
+    if (!(await incidentManagementRepository.findIncident(incidentId)))
+      throw new AppError(404, 'INCIDENT_NOT_FOUND', 'Incident not found');
+    const result = await incidentManagementRepository.listEvidence(incidentId, query);
+    return {
+      items: result.items.map(mapEvidence),
+      pagination: {
+        page: query.page,
+        limit: query.limit,
+        total: result.total,
+        totalPages: Math.max(1, Math.ceil(result.total / query.limit)),
+      },
+    };
+  },
+  async uploadEvidence(
+    incidentId: string,
+    input: UploadIncidentEvidenceInput,
+    file: { originalName: string; mimeType: string; buffer: Buffer },
+    actor: Actor,
+    context: { ipAddress: string | null; userAgent: string | null },
+  ) {
+    requireEvidencePermission(actor);
+    if (!file.buffer.byteLength)
+      throw new AppError(422, 'EMPTY_EVIDENCE_FILE', 'Evidence files cannot be empty');
+    if (file.originalName.length > 255)
+      throw new AppError(
+        422,
+        'EVIDENCE_NAME_TOO_LONG',
+        'Evidence file names may not exceed 255 characters',
+      );
+    const incident = await incidentManagementRepository.findIncident(incidentId);
+    if (!incident) throw new AppError(404, 'INCIDENT_NOT_FOUND', 'Incident not found');
+    if (incident.status === 'closed')
+      throw new AppError(
+        409,
+        'INCIDENT_CLOSED',
+        'Evidence cannot be attached to a closed incident',
+      );
+    const activeHandlerId = incident.incident_assignments[0]?.assignee_user_id;
+    const isCoordinator = actor.permissions.includes('incidents.assign');
+    if (!isCoordinator && activeHandlerId !== actor.userId)
+      throw new AppError(
+        403,
+        'NOT_INCIDENT_HANDLER',
+        'Only the active handler or an incident coordinator can attach evidence',
+      );
+    const storageKey = path.posix.join('incident-evidence', randomUUID());
+    const absolute = evidencePath(storageKey);
+    await mkdir(path.dirname(absolute), { recursive: true });
+    await writeFile(absolute, file.buffer, { flag: 'wx' });
+    try {
+      return mapEvidence(
+        await incidentManagementRepository.createEvidence({
+          ...input,
+          incidentId,
+          actorUserId: actor.userId,
+          originalName: file.originalName,
+          storageKey,
+          mimeType: file.mimeType,
+          sizeBytes: file.buffer.byteLength,
+          checksum: createHash('sha256').update(file.buffer).digest('hex'),
+          ...context,
+        }),
+      );
+    } catch (error: unknown) {
+      await rm(absolute, { force: true });
+      throw error;
+    }
+  },
+  async downloadEvidence(
+    evidenceId: string,
+    actor: Actor,
+    context: { ipAddress: string | null; userAgent: string | null },
+  ) {
+    requireEvidencePermission(actor);
+    const evidence = await incidentManagementRepository.findEvidence(evidenceId);
+    if (!evidence) throw new AppError(404, 'EVIDENCE_NOT_FOUND', 'Incident evidence was not found');
+    await incidentManagementRepository.recordEvidenceDownload(
+      evidenceId,
+      actor.userId,
+      evidence.files.file_id,
+      context,
+    );
+    return {
+      absolutePath: evidencePath(evidence.files.storage_key),
+      name: evidence.files.original_name,
+      mimeType: evidence.files.mime_type ?? 'application/octet-stream',
+    };
+  },
   async report(
     input: ReportIncidentInput,
     actor: Actor,

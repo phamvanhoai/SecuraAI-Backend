@@ -247,4 +247,86 @@ export const incidentPaths = {
       },
     },
   },
+  '/incidents/{incidentId}/evidence': {
+    get: {
+      tags: ['Incidents'],
+      summary: 'List incident evidence and logs (UC59)',
+      description: 'Returns a paginated evidence list. Requires incidents.evidence.manage.',
+      security: [{ bearerAuth: [] }],
+      parameters: [
+        {
+          name: 'incidentId',
+          in: 'path',
+          required: true,
+          schema: { type: 'string', format: 'uuid' },
+        },
+        { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
+        {
+          name: 'limit',
+          in: 'query',
+          schema: { type: 'integer', minimum: 1, maximum: 50, default: 10 },
+        },
+      ],
+      responses: {
+        '200': { description: 'Incident evidence list' },
+        '404': { description: 'Incident not found' },
+      },
+    },
+    post: {
+      tags: ['Incidents'],
+      summary: 'Attach incident evidence or logs (UC59)',
+      description:
+        'Stores the file with a SHA-256 checksum and writes metadata and audit data atomically. Only the active handler or an incident coordinator may attach files. Closed incidents are read-only. Requires incidents.evidence.manage.',
+      security: [{ bearerAuth: [] }],
+      parameters: [
+        {
+          name: 'incidentId',
+          in: 'path',
+          required: true,
+          schema: { type: 'string', format: 'uuid' },
+        },
+      ],
+      requestBody: {
+        required: true,
+        content: {
+          'multipart/form-data': {
+            schema: {
+              type: 'object',
+              required: ['file'],
+              properties: {
+                file: { type: 'string', format: 'binary' },
+                description: { type: 'string', maxLength: 2000 },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        '201': { description: 'Evidence attached' },
+        '409': { description: 'Incident is closed' },
+        '413': { description: 'File exceeds 20 MB' },
+        '422': { description: 'Missing, empty or unsupported file' },
+      },
+    },
+  },
+  '/incidents/evidence/{evidenceId}/download': {
+    get: {
+      tags: ['Incidents'],
+      summary: 'Download incident evidence (UC59)',
+      description: 'Downloads are recorded in the audit log. Requires incidents.evidence.manage.',
+      security: [{ bearerAuth: [] }],
+      parameters: [
+        {
+          name: 'evidenceId',
+          in: 'path',
+          required: true,
+          schema: { type: 'string', format: 'uuid' },
+        },
+      ],
+      responses: {
+        '200': { description: 'Evidence file' },
+        '404': { description: 'Evidence not found' },
+      },
+    },
+  },
 } as const;

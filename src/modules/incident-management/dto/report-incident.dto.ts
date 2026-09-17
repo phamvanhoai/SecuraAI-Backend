@@ -43,6 +43,17 @@ export const updateIncidentProgressBodySchema = z
     note: z.string().trim().min(10).max(5000),
   })
   .strict();
+export const uploadIncidentEvidenceBodySchema = z.object({
+  description: z.preprocess(
+    (value) => (typeof value === 'string' && value.trim() ? value.trim() : null),
+    z.string().max(2000).nullable(),
+  ),
+});
+export const incidentEvidenceParamsSchema = z.object({ evidenceId: z.uuid() });
+export const incidentEvidenceQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(50).default(10),
+});
 export const classificationQueueQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(50).default(10),
@@ -58,4 +69,6 @@ export type MyIncidentsQuery = z.infer<typeof myIncidentsQuerySchema>;
 export type ClassifyIncidentInput = z.infer<typeof classifyIncidentBodySchema>;
 export type AssignIncidentInput = z.infer<typeof assignIncidentBodySchema>;
 export type UpdateIncidentProgressInput = z.infer<typeof updateIncidentProgressBodySchema>;
+export type UploadIncidentEvidenceInput = z.infer<typeof uploadIncidentEvidenceBodySchema>;
+export type IncidentEvidenceQuery = z.infer<typeof incidentEvidenceQuerySchema>;
 export type ClassificationQueueQuery = z.infer<typeof classificationQueueQuerySchema>;
