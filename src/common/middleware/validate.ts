@@ -9,7 +9,7 @@ export const validate = (schemas: RequestSchemas): RequestHandler => (req, _res,
     if (schema) {
       const parsed = schema.parse(req[key]);
       try {
-        (req as Record<string, unknown>)[key] = parsed;
+        (req as unknown as Record<string, unknown>)[key] = parsed;
       } catch {
         Object.assign(req[key], parsed as object);
       }
