@@ -13,7 +13,15 @@ const mocks = vi.hoisted(() => ({
   findEvidence: vi.fn(),
   createEvidence: vi.fn(),
   recordEvidenceDownload: vi.fn(),
+  removeEvidence: vi.fn(),
 }));
+const fsMocks = vi.hoisted(() => ({
+  mkdir: vi.fn(),
+  rename: vi.fn(),
+  rm: vi.fn(),
+  writeFile: vi.fn(),
+}));
+vi.mock('node:fs/promises', () => fsMocks);
 vi.mock('./incident-management.repository.js', () => ({
   incidentManagementRepository: {
     createReport: mocks.create,
@@ -29,6 +37,7 @@ vi.mock('./incident-management.repository.js', () => ({
     findEvidence: mocks.findEvidence,
     createEvidence: mocks.createEvidence,
     recordEvidenceDownload: mocks.recordEvidenceDownload,
+    removeEvidence: mocks.removeEvidence,
   },
 }));
 import { incidentManagementService } from './incident-management.service.js';
@@ -310,5 +319,87 @@ describe('incident reporting service', () => {
       ),
     ).rejects.toMatchObject({ statusCode: 403, code: 'NOT_INCIDENT_HANDLER' });
     expect(mocks.createEvidence).not.toHaveBeenCalled();
+  });
+  it('rejects evidence removal by an unrelated officer before touching storage', async () => {
+    mocks.findEvidence.mockResolvedValue({
+      incident_evidence_id: '11111111-1111-4111-8111-111111111111',
+      incident_id: '22222222-2222-4222-8222-222222222222',
+      incidents: {
+        status: 'in_progress',
+        incident_assignments: [{ assignee_user_id: 'handler-1' }],
+      },
+      files: { storage_key: 'incident-evidence/file', file_id: 'file-1' },
+    });
+    await expect(
+      incidentManagementService.removeEvidence(
+        '11111111-1111-4111-8111-111111111111',
+        { reason: 'This file was attached to the wrong incident.' },
+        { userId: 'officer-2', permissions: ['incidents.evidence.manage'] },
+        { ipAddress: null, userAgent: null },
+      ),
+    ).rejects.toMatchObject({ statusCode: 403, code: 'NOT_INCIDENT_HANDLER' });
+    expect(mocks.removeEvidence).not.toHaveBeenCalled();
+  });
+  it('prevents removing evidence from a closed incident', async () => {
+    mocks.findEvidence.mockResolvedValue({
+      incident_evidence_id: '11111111-1111-4111-8111-111111111111',
+      incident_id: '22222222-2222-4222-8222-222222222222',
+      incidents: { status: 'closed', incident_assignments: [] },
+      files: { storage_key: 'incident-evidence/file', file_id: 'file-1' },
+    });
+    await expect(
+      incidentManagementService.removeEvidence(
+        '11111111-1111-4111-8111-111111111111',
+        { reason: 'This file was attached to the wrong incident.' },
+        {
+          userId: 'coordinator-1',
+          permissions: ['incidents.evidence.manage', 'incidents.assign'],
+        },
+        { ipAddress: null, userAgent: null },
+      ),
+    ).rejects.toMatchObject({ statusCode: 409, code: 'INCIDENT_CLOSED' });
+  });
+  it('stages and removes evidence for the active handler', async () => {
+    mocks.findEvidence.mockResolvedValue({
+      incident_evidence_id: '11111111-1111-4111-8111-111111111111',
+      incident_id: '22222222-2222-4222-8222-222222222222',
+      description: 'Web server access log',
+      created_at: new Date('2026-09-17T00:00:00Z'),
+      uploaded_by_user_id: 'handler-1',
+      incidents: {
+        status: 'in_progress',
+        incident_assignments: [{ assignee_user_id: 'handler-1' }],
+      },
+      files: {
+        storage_key: 'incident-evidence/file',
+        file_id: '33333333-3333-4333-8333-333333333333',
+        original_name: 'access.log',
+        mime_type: 'text/plain',
+        size_bytes: BigInt(42),
+        checksum: 'checksum',
+      },
+    });
+    fsMocks.rename.mockResolvedValue(undefined);
+    fsMocks.rm.mockResolvedValue(undefined);
+    mocks.removeEvidence.mockResolvedValue({ outcome: 'removed' });
+    await expect(
+      incidentManagementService.removeEvidence(
+        '11111111-1111-4111-8111-111111111111',
+        { reason: 'This file was attached to the wrong incident.' },
+        { userId: 'handler-1', permissions: ['incidents.evidence.manage'] },
+        { ipAddress: null, userAgent: null },
+      ),
+    ).resolves.toEqual({ id: '11111111-1111-4111-8111-111111111111', removed: true });
+    expect(fsMocks.rename).toHaveBeenCalledTimes(1);
+    expect(mocks.removeEvidence).toHaveBeenCalledWith(
+      expect.objectContaining({ incident_evidence_id: '11111111-1111-4111-8111-111111111111' }),
+      { reason: 'This file was attached to the wrong incident.' },
+      'handler-1',
+      false,
+      { ipAddress: null, userAgent: null },
+    );
+    expect(fsMocks.rm).toHaveBeenCalledWith(expect.stringContaining('.deleting-'), {
+      force: true,
+    });
   });
 });
