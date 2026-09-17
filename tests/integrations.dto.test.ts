@@ -4,6 +4,8 @@ import {
   queryIntegrationsSchema,
   testConnectionSchema,
   updateIntegrationSchema,
+  createApiKeySchema,
+  updateApiKeySchema,
 } from '../src/modules/integrations/dto/index.js';
 
 describe('Integrations DTO Validation', () => {
@@ -110,6 +112,64 @@ describe('Integrations DTO Validation', () => {
     it('rejects timeoutMs less than 1000 or greater than 10000', () => {
       expect(testConnectionSchema.safeParse({ timeoutMs: 500 }).success).toBe(false);
       expect(testConnectionSchema.safeParse({ timeoutMs: 20000 }).success).toBe(false);
+    });
+  });
+
+  describe('createApiKeySchema', () => {
+    it('accepts valid API key input with future expiration and default isActive true', () => {
+      const futureDate = new Date(Date.now() + 86400000).toISOString();
+      const parsed = createIntegrationSchema ? createApiKeySchema.parse({
+        keyName: 'Production Ingest Key',
+        expiresAt: futureDate,
+      }) : null;
+
+      expect(parsed?.keyName).toBe('Production Ingest Key');
+      expect(parsed?.isActive).toBe(true);
+      expect(parsed?.expiresAt).toBe(futureDate);
+    });
+
+    it('rejects past expiration date (expiresAt <= currentTime)', () => {
+      const pastDate = new Date(Date.now() - 3600000).toISOString();
+      const result = createApiKeySchema.safeParse({
+        keyName: 'Expired Key',
+        expiresAt: pastDate,
+      });
+
+      expect(result.success).toBe(false);
+      if (!result.success) {
+        expect(result.error.issues[0]?.message).toContain('future');
+      }
+    });
+
+    it('accepts key with isActive: false (Inactive state)', () => {
+      const parsed = createApiKeySchema.parse({
+        keyName: 'Inactive Test Key',
+        isActive: false,
+      });
+
+      expect(parsed.isActive).toBe(false);
+    });
+  });
+
+  describe('updateApiKeySchema', () => {
+    it('accepts valid future expiration on update', () => {
+      const futureDate = new Date(Date.now() + 172800000).toISOString();
+      const parsed = updateApiKeySchema.parse({
+        expiresAt: futureDate,
+        isActive: true,
+      });
+
+      expect(parsed.expiresAt).toBe(futureDate);
+      expect(parsed.isActive).toBe(true);
+    });
+
+    it('rejects past expiration on update', () => {
+      const pastDate = new Date(Date.now() - 60000).toISOString();
+      const result = updateApiKeySchema.safeParse({
+        expiresAt: pastDate,
+      });
+
+      expect(result.success).toBe(false);
     });
   });
 });

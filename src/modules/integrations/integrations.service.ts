@@ -650,10 +650,14 @@ export const integrationsService = {
       throw new AppError(404, 'INTEGRATION_NOT_FOUND', `Integration with ID "${integrationId}" was not found`);
     }
 
+    const expiresAt = dto.expiresAt ? new Date(dto.expiresAt) : null;
+    if (expiresAt !== null && expiresAt.getTime() <= Date.now()) {
+      throw new AppError(422, 'INVALID_EXPIRATION', 'Expiration date must be in the future (expiresAt > currentTime)');
+    }
+
     const plaintextSecret = dto.secret?.trim() || `sec_${randomBytes(24).toString('base64url')}`;
     const secretEncrypted = encryptSecret(plaintextSecret);
     const keyFingerprint = generateSecretFingerprint(plaintextSecret);
-    const expiresAt = dto.expiresAt ? new Date(dto.expiresAt) : null;
     const isActive = dto.isActive !== undefined ? dto.isActive : true;
 
     const created = await integrationsRepository.createApiKey({
@@ -669,7 +673,7 @@ export const integrationsService = {
       integration_id: integrationId,
       level: 'info',
       message: 'API_KEY_CREATED',
-      details: { apiKeyId: created.integration_api_key_id, keyName: created.key_name },
+      details: { apiKeyId: created.integration_api_key_id, keyName: created.key_name, isActive },
     });
 
     return toApiKeyCreatedResponseDto(created, plaintextSecret);
@@ -684,7 +688,17 @@ export const integrationsService = {
       throw new AppError(404, 'INTEGRATION_NOT_FOUND', `Integration with ID "${integrationId}" was not found`);
     }
 
-    const keys = await integrationsRepository.findApiKeysByIntegrationId(integrationId, query);
+    const isActive =
+      query?.isActive === undefined
+        ? undefined
+        : typeof query.isActive === 'boolean'
+          ? query.isActive
+          : (query.isActive as unknown) === 'true';
+
+    const keys = await integrationsRepository.findApiKeysByIntegrationId(integrationId, {
+      ...(query?.search ? { search: query.search } : {}),
+      ...(isActive !== undefined ? { isActive } : {}),
+    });
     return keys.map(toApiKeyResponseDto);
   },
 
@@ -729,6 +743,10 @@ export const integrationsService = {
     }
 
     const expiresAt = dto.expiresAt !== undefined ? (dto.expiresAt ? new Date(dto.expiresAt) : null) : undefined;
+    if (expiresAt !== undefined && expiresAt !== null && expiresAt.getTime() <= Date.now()) {
+      throw new AppError(422, 'INVALID_EXPIRATION', 'Expiration date must be in the future (expiresAt > currentTime)');
+    }
+
     const isReactivating = dto.isActive === true && !existing.is_active;
 
     const updated = await integrationsRepository.updateApiKey(integrationId, apiKeyId, {
@@ -825,6 +843,29 @@ export const integrationsService = {
     });
 
     return toApiKeyResponseDto(revoked);
+  },
+
+  async validateApiKeySecret(
+    integrationId: string,
+    providedSecret: string,
+  ): Promise<ApiKeyResponseDto> {
+    const keys = await integrationsRepository.findApiKeysByIntegrationId(integrationId);
+    const fingerprint = generateSecretFingerprint(providedSecret);
+    const matchedKey = keys.find((k) => k.key_fingerprint === fingerprint);
+
+    if (!matchedKey) {
+      throw new AppError(401, 'API_KEY_INVALID', 'Invalid API key credentials');
+    }
+
+    if (matchedKey.expires_at && matchedKey.expires_at.getTime() <= Date.now()) {
+      throw new AppError(401, 'API_KEY_EXPIRED', 'API key has expired');
+    }
+
+    if (!matchedKey.is_active) {
+      throw new AppError(401, 'API_KEY_INACTIVE', 'API key is inactive or has been revoked');
+    }
+
+    return toApiKeyResponseDto(matchedKey);
   },
 
   // -------------------------------------------------------------
