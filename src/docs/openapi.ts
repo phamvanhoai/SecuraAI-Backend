@@ -1,4 +1,5 @@
 import swaggerJsdoc from 'swagger-jsdoc';
+import { departmentTrainingReportPaths } from './department-training-report.openapi.js';
 import { env } from '../config/env.js';
 import { trainingReminderPaths } from './training-reminders.openapi.js';
 import { complianceReminderPaths } from './compliance-reminders.openapi.js';
@@ -73,14 +74,21 @@ export const openApiSpec = swaggerJsdoc({
                   maxItems: 50,
                   items: {
                     type: 'object',
-                    required: ['text', 'options'],
+                    required: ['type', 'text', 'options'],
                     properties: {
+                      type: {
+                        type: 'string',
+                        enum: ['single_choice', 'multiple_choice'],
+                        description:
+                          'Single choice requires exactly one correct option; multiple choice requires at least two.',
+                      },
                       text: { type: 'string', minLength: 3, maxLength: 2000 },
                       options: {
                         type: 'array',
                         minItems: 2,
                         maxItems: 6,
-                        description: 'Exactly one option must have isCorrect=true.',
+                        description:
+                          'Correct-option count is validated according to the question type.',
                         items: {
                           type: 'object',
                           required: ['text', 'isCorrect'],
@@ -1410,6 +1418,7 @@ export const openApiSpec = swaggerJsdoc({
     },
     paths: {
       ...trainingReminderPaths,
+      ...departmentTrainingReportPaths,
       ...complianceReminderPaths,
       ...incidentPaths,
       ...accountLockPaths,

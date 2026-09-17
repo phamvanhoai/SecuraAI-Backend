@@ -1,4 +1,6 @@
 import { Router } from 'express';
+import { getDepartmentReport } from './department-report.controller.js';
+import { departmentReportQuerySchema } from './dto/department-report.dto.js';
 import { getCertificate, issueCertificate } from './certificate.controller.js';
 import { authenticate, authorize } from '../../common/middleware/authenticate.js';
 import { validate } from '../../common/middleware/validate.js';
@@ -44,6 +46,13 @@ import {
 } from './training-reminders.controller.js';
 
 export const trainingAwarenessRouter = Router();
+trainingAwarenessRouter.get(
+  '/department-report',
+  authenticate,
+  authorize('training-department-reports.read'),
+  validate({ query: departmentReportQuerySchema }),
+  asyncHandler(getDepartmentReport),
+);
 trainingAwarenessRouter.get(
   '/enrollments/:enrollmentId/certificate',
   authenticate,

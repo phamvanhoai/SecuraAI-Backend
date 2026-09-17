@@ -10,15 +10,21 @@ const assessmentOptionSchema = z.object({
 
 const assessmentQuestionSchema = z
   .object({
+    type: z.enum(['single_choice', 'multiple_choice']),
     text: z.string().trim().min(3).max(2000),
     options: z.array(assessmentOptionSchema).min(2).max(6),
   })
   .superRefine((value, context) => {
-    if (value.options.filter((option) => option.isCorrect).length !== 1) {
+    const correctAnswers = value.options.filter((option) => option.isCorrect).length;
+    const valid = value.type === 'single_choice' ? correctAnswers === 1 : correctAnswers >= 2;
+    if (!valid) {
       context.addIssue({
         code: 'custom',
         path: ['options'],
-        message: 'Select exactly one correct answer',
+        message:
+          value.type === 'single_choice'
+            ? 'Select exactly one correct answer'
+            : 'Select at least two correct answers',
       });
     }
   });
@@ -53,6 +59,7 @@ export const listCoursesQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(20),
   q: z.string().trim().min(1).max(100).optional(),
+  status: z.enum(['draft', 'published', 'archived']).optional(),
 });
 
 const dateSchema = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Use YYYY-MM-DD format');
