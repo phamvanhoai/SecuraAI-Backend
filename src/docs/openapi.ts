@@ -2547,6 +2547,83 @@ export const openApiSpec = swaggerJsdoc({
           },
         },
       },
+      '/risks/treatment-plans/{treatmentPlanId}/submit': {
+        post: {
+          tags: ['Risk Assessments'],
+          summary: 'Submit a risk treatment plan for approval',
+          description:
+            'Requires risk-treatment-plans.submit. The plan must be a complete draft or rejected plan owned or created by the caller (unless administrator), its risk must be approved, and exactly one active approval workflow with enough direct or delegated independent approvers must exist. Submission stores an immutable review snapshot and note; the approval request, notifications, and audit data are created atomically.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'treatmentPlanId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  additionalProperties: false,
+                  required: ['expectedUpdatedAt'],
+                  properties: {
+                    expectedUpdatedAt: { type: 'string', format: 'date-time' },
+                    submissionNote: { type: 'string', maxLength: 1000 },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '200': { description: 'Treatment plan submitted and approval request created' },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'Missing permission or caller does not own the plan' },
+            '404': { description: 'Treatment plan not found' },
+            '409': { description: 'Plan already submitted, started, or changed concurrently' },
+            '422': {
+              description:
+                'Plan is incomplete, risk is not approved, or approval workflow is unavailable',
+            },
+          },
+        },
+      },
+      '/risks/treatment-plans/{treatmentPlanId}/approve': {
+        post: {
+          tags: ['Risk Assessments'],
+          summary: 'Approve the current step of a risk treatment plan',
+          description:
+            'Requires risk-treatment-plans.approve. The caller must be an active direct or delegated approver for the current workflow step and cannot approve their own submission. The submitted snapshot is checked before recording one approval per actor and step. Completing the final step approves the treatment plan atomically.',
+          security: [{ bearerAuth: [] }],
+          parameters: [{ name: 'treatmentPlanId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object', additionalProperties: false, required: ['approvalRequestId'],
+                  properties: {
+                    approvalRequestId: { type: 'string', format: 'uuid' },
+                    comment: { type: 'string', maxLength: 1000 },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '200': { description: 'Approval recorded and workflow advanced when applicable' },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'Missing permission, self-approval, or ineligible approver' },
+            '404': { description: 'Treatment plan or approval request not found' },
+            '409': { description: 'Request completed, duplicate decision, or submitted data changed' },
+            '422': { description: 'Plan or workflow is no longer valid' },
+            '503': { description: 'Approval temporarily unavailable' },
+          },
+        },
+      },
       '/assets': {
         post: {
           tags: ['Assets'],

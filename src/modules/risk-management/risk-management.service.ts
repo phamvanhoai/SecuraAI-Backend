@@ -4,11 +4,16 @@ import { toRiskAssessmentListItem } from './risk-management.mapper.js';
 import { toRiskAssessmentDetail } from './risk-management.mapper.js';
 import type { CreateRiskAssessmentBody } from './dto/create-risk-assessment.dto.js';
 import { randomUUID } from 'node:crypto';
-import { riskManagementRepository } from './risk-management.repository.js';
+import {
+  RiskApprovalTransactionError,
+  riskManagementRepository,
+} from './risk-management.repository.js';
 import type { UpdateRiskAssessmentBody } from './dto/update-risk-assessment.dto.js';
 import type { CancelRiskAssessmentBody } from './dto/cancel-risk-assessment.dto.js';
 import { Prisma } from '@prisma/client';
 import type { RiskCreateOptionsQuery } from './dto/risk-create-options-query.dto.js';
+import type { SubmitTreatmentPlanBody } from './dto/submit-treatment-plan.dto.js';
+import type { ApproveTreatmentPlanBody } from './dto/approve-treatment-plan.dto.js';
 
 const isRiskCodeConflict = (error: unknown): boolean => {
   if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2002')
@@ -19,6 +24,220 @@ const isRiskCodeConflict = (error: unknown): boolean => {
 };
 
 export const riskManagementService = {
+  async approveTreatmentPlan(
+    treatmentPlanId: string,
+    input: ApproveTreatmentPlanBody,
+    actor: { userId: string; permissions: readonly string[] },
+    context: { ipAddress: string | null; userAgent: string | null },
+  ) {
+    if (!actor.permissions.includes('risk-treatment-plans.approve'))
+      throw new AppError(403, 'FORBIDDEN', 'Insufficient permissions');
+    let approval: Awaited<ReturnType<typeof riskManagementRepository.approveTreatmentPlan>>;
+    try {
+      approval = await riskManagementRepository.approveTreatmentPlan(treatmentPlanId, input, {
+        actorUserId: actor.userId,
+        ...context,
+      });
+    } catch (error: unknown) {
+      if (error instanceof RiskApprovalTransactionError)
+        throw new AppError(
+          422,
+          'NO_ELIGIBLE_APPROVER',
+          'The next workflow step does not have enough active approvers',
+        );
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002')
+        throw new AppError(409, 'APPROVAL_ALREADY_RECORDED', 'You already approved this workflow step');
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034')
+        throw new AppError(409, 'APPROVAL_STATE_CHANGED', 'The approval changed. Reload and try again');
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2028')
+        throw new AppError(503, 'APPROVAL_TEMPORARILY_UNAVAILABLE', 'Approval timed out. Please try again');
+      throw error;
+    }
+    const failures = {
+      REQUEST_NOT_FOUND: [404, 'APPROVAL_REQUEST_NOT_FOUND', 'Approval request was not found'],
+      REQUEST_NOT_PENDING: [409, 'APPROVAL_REQUEST_NOT_PENDING', 'This approval request is no longer pending'],
+      SELF_APPROVAL: [403, 'SELF_APPROVAL_NOT_ALLOWED', 'You cannot approve a plan that you submitted'],
+      ACTOR_INACTIVE: [403, 'APPROVER_INACTIVE', 'The current user cannot approve treatment plans'],
+      WORKFLOW_INVALID: [422, 'APPROVAL_WORKFLOW_INVALID', 'The approval workflow is invalid'],
+      NOT_CURRENT_APPROVER: [403, 'NOT_CURRENT_APPROVER', 'You are not an eligible approver for the current step'],
+      ALREADY_DECIDED: [409, 'APPROVAL_ALREADY_RECORDED', 'You already approved this workflow step'],
+      PLAN_NOT_FOUND: [404, 'TREATMENT_PLAN_NOT_FOUND', 'Risk treatment plan was not found'],
+      PLAN_NOT_PENDING: [409, 'TREATMENT_PLAN_NOT_PENDING_APPROVAL', 'This treatment plan is not awaiting approval'],
+      SNAPSHOT_MISSING: [409, 'APPROVAL_SNAPSHOT_MISSING', 'This legacy request must be resubmitted before approval'],
+      PLAN_CHANGED: [409, 'TREATMENT_PLAN_CHANGED_AFTER_SUBMISSION', 'The treatment plan changed after submission and cannot be approved'],
+      PLAN_INVALID: [422, 'TREATMENT_PLAN_NO_LONGER_VALID', 'The treatment plan no longer satisfies approval requirements'],
+      NO_ELIGIBLE_APPROVER: [422, 'NO_ELIGIBLE_APPROVER', 'The next workflow step does not have enough active approvers'],
+    } as const;
+    if (approval.failure) {
+      const [status, code, message] = failures[approval.failure];
+      throw new AppError(status, code, message);
+    }
+    if (!approval.result)
+      throw new AppError(500, 'TREATMENT_PLAN_APPROVAL_FAILED', 'Unable to approve treatment plan');
+    return approval.result;
+  },
+  async submitTreatmentPlan(
+    treatmentPlanId: string,
+    input: SubmitTreatmentPlanBody,
+    actor: { userId: string; permissions: readonly string[]; roles: readonly string[] },
+    context: { ipAddress: string | null; userAgent: string | null },
+  ) {
+    if (!actor.permissions.includes('risk-treatment-plans.submit'))
+      throw new AppError(403, 'FORBIDDEN', 'Insufficient permissions');
+    const current = await riskManagementRepository.findTreatmentPlanForSubmission(treatmentPlanId);
+    if (!current)
+      throw new AppError(404, 'TREATMENT_PLAN_NOT_FOUND', 'Risk treatment plan was not found');
+    const isAdmin = actor.roles.includes('ADMIN');
+    if (
+      !isAdmin &&
+      current.created_by_user_id !== actor.userId &&
+      current.owner_user_id !== actor.userId
+    )
+      throw new AppError(
+        403,
+        'FORBIDDEN',
+        'Only the plan creator, plan owner, or an administrator can submit this plan',
+      );
+    let submission: Awaited<ReturnType<typeof riskManagementRepository.submitTreatmentPlan>>;
+    try {
+      submission = await riskManagementRepository.submitTreatmentPlan(treatmentPlanId, input, {
+        actorUserId: actor.userId,
+        actorIsAdmin: isAdmin,
+        ...context,
+      });
+    } catch (error: unknown) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002')
+        throw new AppError(
+          409,
+          'TREATMENT_PLAN_ALREADY_SUBMITTED',
+          'This treatment plan already has a pending approval request',
+        );
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034')
+        throw new AppError(
+          409,
+          'TREATMENT_PLAN_CHANGED',
+          'This treatment plan changed while it was being submitted. Reload and try again',
+        );
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2028')
+        throw new AppError(
+          503,
+          'TREATMENT_PLAN_SUBMISSION_TEMPORARILY_UNAVAILABLE',
+          'Treatment plan submission timed out. Please try again',
+        );
+      throw error;
+    }
+    const failures = {
+      ACTOR_INACTIVE: [403, 'ACTOR_INACTIVE', 'The current user cannot submit treatment plans'],
+      PLAN_NOT_FOUND: [404, 'TREATMENT_PLAN_NOT_FOUND', 'Risk treatment plan was not found'],
+      NOT_PLAN_OWNER: [
+        403,
+        'FORBIDDEN',
+        'Only the plan creator, plan owner, or an administrator can submit this plan',
+      ],
+      PLAN_NOT_SUBMITTABLE: [
+        409,
+        'TREATMENT_PLAN_NOT_SUBMITTABLE',
+        'Only draft or rejected treatment plans can be submitted',
+      ],
+      RISK_NOT_APPROVED: [
+        422,
+        'RISK_NOT_APPROVED',
+        'The risk assessment must be approved before its treatment plan can be submitted',
+      ],
+      DESCRIPTION_REQUIRED: [
+        422,
+        'TREATMENT_DESCRIPTION_REQUIRED',
+        'Provide a meaningful treatment plan description',
+      ],
+      OWNER_INACTIVE: [
+        422,
+        'TREATMENT_OWNER_INVALID',
+        'Assign an active owner before submitting the plan',
+      ],
+      TARGET_DATE_REQUIRED: [
+        422,
+        'TREATMENT_TARGET_DATE_REQUIRED',
+        'Set a target date before submitting the plan',
+      ],
+      TARGET_DATE_IN_PAST: [
+        422,
+        'TREATMENT_TARGET_DATE_IN_PAST',
+        'The treatment plan target date cannot be in the past',
+      ],
+      ACTIONS_REQUIRED: [
+        422,
+        'TREATMENT_ACTIONS_REQUIRED',
+        'This treatment strategy requires at least one active action',
+      ],
+      TOO_MANY_ACTIONS: [
+        422,
+        'TOO_MANY_TREATMENT_ACTIONS',
+        'A treatment plan cannot be submitted with more than 100 actions',
+      ],
+      ACTION_ASSIGNEE_INVALID: [
+        422,
+        'TREATMENT_ACTION_ASSIGNEE_INVALID',
+        'Every active treatment action must have an active assignee',
+      ],
+      ACTION_DUE_DATE_REQUIRED: [
+        422,
+        'TREATMENT_ACTION_DUE_DATE_REQUIRED',
+        'Every active treatment action must have a due date',
+      ],
+      ACTION_DUE_DATE_INVALID: [
+        422,
+        'TREATMENT_ACTION_DUE_DATE_INVALID',
+        'Action due dates must be current and no later than the plan target date',
+      ],
+      ACTION_ALREADY_STARTED: [
+        409,
+        'TREATMENT_ACTION_ALREADY_STARTED',
+        'Actions must be pending with zero progress when the plan is submitted',
+      ],
+      ALREADY_SUBMITTED: [
+        409,
+        'TREATMENT_PLAN_ALREADY_SUBMITTED',
+        'This treatment plan already has a pending approval request',
+      ],
+      OTHER_ACTIVE_PLAN: [
+        409,
+        'RISK_HAS_ACTIVE_TREATMENT_PLAN',
+        'This risk assessment already has another active treatment plan',
+      ],
+      WORKFLOW_NOT_CONFIGURED: [
+        422,
+        'APPROVAL_WORKFLOW_NOT_CONFIGURED',
+        'No active approval workflow is configured for risk treatment plans',
+      ],
+      WORKFLOW_INVALID: [
+        422,
+        'APPROVAL_WORKFLOW_INVALID',
+        'The risk treatment approval workflow is invalid',
+      ],
+      MULTIPLE_ACTIVE_WORKFLOWS: [
+        422,
+        'MULTIPLE_ACTIVE_APPROVAL_WORKFLOWS',
+        'More than one active approval workflow is configured for risk treatment plans',
+      ],
+      NO_ELIGIBLE_APPROVER: [
+        422,
+        'NO_ELIGIBLE_APPROVER',
+        'One or more workflow steps do not have enough active independent approvers',
+      ],
+      PLAN_CHANGED: [
+        409,
+        'TREATMENT_PLAN_CHANGED',
+        'This treatment plan changed after it was loaded. Reload it before submitting',
+      ],
+    } as const;
+    if (submission.failure) {
+      const [status, code, message] = failures[submission.failure];
+      throw new AppError(status, code, message);
+    }
+    if (!submission.result)
+      throw new AppError(500, 'TREATMENT_PLAN_SUBMISSION_FAILED', 'Unable to submit treatment plan');
+    return submission.result;
+  },
   async cancel(
     riskAssessmentId: string,
     input: CancelRiskAssessmentBody,
