@@ -22,6 +22,7 @@ export const policyComplianceModule: ModuleManifest = {
     'Publish official policy versions',
     'Update policies and create new versions',
     'Assign published policies to departments',
+    'Assess individual security control compliance',
     'Map published policy versions to standard framework controls',
   ],
   router: policyComplianceRouter,
