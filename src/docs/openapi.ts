@@ -4375,6 +4375,63 @@ export const openApiSpec = swaggerJsdoc({
           },
         },
       },
+      '/compliance/policies/version-history': {
+        get: {
+          tags: ['Policies'],
+          summary: 'List policy version history',
+          description: 'Available to every authenticated role.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
+            {
+              name: 'limit',
+              in: 'query',
+              schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
+            },
+            { name: 'q', in: 'query', schema: { type: 'string', maxLength: 255 } },
+            {
+              name: 'status',
+              in: 'query',
+              schema: {
+                type: 'string',
+                enum: ['all', 'draft', 'published', 'archived'],
+                default: 'all',
+              },
+            },
+          ],
+          responses: {
+            '200': { description: 'Paginated policy version history' },
+            '401': { description: 'Authentication required' },
+          },
+        },
+      },
+      '/compliance/policies/{policyId}/versions/{versionId}/history': {
+        get: {
+          tags: ['Policies'],
+          summary: 'Get policy version history detail',
+          description: 'Available to every authenticated role.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'policyId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+            {
+              name: 'versionId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          responses: {
+            '200': { description: 'Policy version metadata and content' },
+            '401': { description: 'Authentication required' },
+            '404': { description: 'Policy version not found' },
+          },
+        },
+      },
       '/compliance/policies/{policyId}/versions': {
         post: {
           tags: ['Policies'],
