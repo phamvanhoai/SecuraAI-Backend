@@ -20,6 +20,92 @@ const passwordChangeUserSelect = {
 } as const;
 
 export const authRepository = {
+  async createLoginSession(input: {
+    userId: string;
+    passwordHash: string;
+    expectedLockVersion: string | null;
+    refreshTokenHash: string;
+    expiresAt: Date;
+    ipAddress: string | null;
+    userAgent: string | null;
+  }) {
+    return prisma.$transaction(async (database) => {
+      await database.$queryRaw`SELECT user_id FROM users WHERE user_id = ${input.userId}::uuid FOR UPDATE`;
+      const user = await database.users.findUnique({
+        where: { user_id: input.userId },
+        include: authUserInclude,
+      });
+      if (
+        !user ||
+        user.status !== 'active' ||
+        user.deleted_at ||
+        user.password_hash !== input.passwordHash ||
+        (user.locked_at?.toISOString() ?? null) !== input.expectedLockVersion
+      )
+        return null;
+      await database.auth_sessions.create({
+        data: {
+          user_id: user.user_id,
+          refresh_token_hash: input.refreshTokenHash,
+          expires_at: input.expiresAt,
+          ip_address: input.ipAddress,
+          user_agent: input.userAgent,
+        },
+        select: { auth_session_id: true },
+      });
+      await database.users.update({
+        where: { user_id: user.user_id },
+        data: { last_login_at: new Date() },
+        select: { user_id: true },
+      });
+      return user;
+    });
+  },
+  async rotateRefreshSession(input: {
+    tokenHash: string;
+    nextTokenHash: string;
+    expiresAt: Date;
+    ipAddress: string | null;
+    userAgent: string | null;
+  }) {
+    const session = await prisma.auth_sessions.findFirst({
+      where: { refresh_token_hash: input.tokenHash },
+      select: { user_id: true },
+    });
+    if (!session) return null;
+    return prisma.$transaction(async (database) => {
+      await database.$queryRaw`SELECT user_id FROM users WHERE user_id = ${session.user_id}::uuid FOR UPDATE`;
+      const current = await database.auth_sessions.findFirst({
+        where: {
+          refresh_token_hash: input.tokenHash,
+          revoked_at: null,
+          expires_at: { gt: new Date() },
+        },
+        select: { auth_session_id: true },
+      });
+      const user = await database.users.findUnique({
+        where: { user_id: session.user_id },
+        include: authUserInclude,
+      });
+      if (!current || !user || user.status !== 'active' || user.deleted_at) return null;
+      await database.auth_sessions.update({
+        where: { auth_session_id: current.auth_session_id },
+        data: { revoked_at: new Date() },
+        select: { auth_session_id: true },
+      });
+      await database.auth_sessions.create({
+        data: {
+          user_id: user.user_id,
+          refresh_token_hash: input.nextTokenHash,
+          expires_at: input.expiresAt,
+          ip_address: input.ipAddress,
+          user_agent: input.userAgent,
+        },
+        select: { auth_session_id: true },
+      });
+      return user;
+    });
+  },
   findAuthUser(email: string) {
     return prisma.users.findUnique({ where: { email }, include: authUserInclude });
   },
@@ -158,16 +244,39 @@ export const authRepository = {
     tokenHash: string;
     expiresAt: Date;
     ipAddress: string | null;
-  }): Promise<void> {
-    await prisma.mfa_methods.update({
-      where: { mfa_method_id: input.mfaMethodId },
-      data: {
-        login_challenge_token_hash: input.tokenHash,
-        login_challenge_expires_at: input.expiresAt,
-        login_challenge_attempts: 0,
-        login_challenge_ip: input.ipAddress,
-        updated_at: new Date(),
-      },
+    expectedLockVersion: string | null;
+    passwordHash: string;
+  }): Promise<boolean> {
+    return prisma.$transaction(async (database) => {
+      const method = await database.mfa_methods.findUnique({
+        where: { mfa_method_id: input.mfaMethodId },
+        select: { user_id: true },
+      });
+      if (!method) return false;
+      await database.$queryRaw`SELECT user_id FROM users WHERE user_id = ${method.user_id}::uuid FOR UPDATE`;
+      const user = await database.users.findUnique({
+        where: { user_id: method.user_id },
+        select: { status: true, deleted_at: true, locked_at: true, password_hash: true },
+      });
+      if (
+        !user ||
+        user.status !== 'active' ||
+        user.deleted_at ||
+        user.password_hash !== input.passwordHash ||
+        (user.locked_at?.toISOString() ?? null) !== input.expectedLockVersion
+      )
+        return false;
+      await database.mfa_methods.update({
+        where: { mfa_method_id: input.mfaMethodId },
+        data: {
+          login_challenge_token_hash: input.tokenHash,
+          login_challenge_expires_at: input.expiresAt,
+          login_challenge_attempts: 0,
+          login_challenge_ip: input.ipAddress,
+          updated_at: new Date(),
+        },
+      });
+      return true;
     });
   },
 
@@ -228,6 +337,12 @@ export const authRepository = {
     userAgent: string | null;
   }) {
     return prisma.$transaction(async (database) => {
+      const challengedMethod = await database.mfa_methods.findUnique({
+        where: { mfa_method_id: input.mfaMethodId },
+        select: { user_id: true },
+      });
+      if (!challengedMethod) return null;
+      await database.$queryRaw`SELECT user_id FROM users WHERE user_id = ${challengedMethod.user_id}::uuid FOR UPDATE`;
       const consumed = await database.mfa_methods.updateMany({
         where: {
           mfa_method_id: input.mfaMethodId,
