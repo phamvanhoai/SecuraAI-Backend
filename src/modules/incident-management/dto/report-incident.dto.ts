@@ -24,5 +24,24 @@ export const myIncidentsQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(50).default(10),
 });
 export const incidentParamsSchema = z.object({ incidentId: z.uuid() });
+export const incidentSeveritySchema = z.enum(['low', 'medium', 'high', 'critical']);
+export const classifyIncidentBodySchema = z
+  .object({
+    severity: incidentSeveritySchema,
+    rationale: z.string().trim().min(10).max(2000),
+  })
+  .strict();
+export const classificationQueueQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(50).default(10),
+  search: z.string().trim().max(100).optional(),
+  severity: incidentSeveritySchema.optional(),
+  status: z
+    .enum(['reported', 'assigned', 'in_progress', 'escalated', 'resolved', 'closed'])
+    .optional(),
+  classification: z.enum(['unclassified', 'classified']).optional(),
+});
 export type ReportIncidentInput = z.infer<typeof reportIncidentBodySchema>;
 export type MyIncidentsQuery = z.infer<typeof myIncidentsQuerySchema>;
+export type ClassifyIncidentInput = z.infer<typeof classifyIncidentBodySchema>;
+export type ClassificationQueueQuery = z.infer<typeof classificationQueueQuerySchema>;
