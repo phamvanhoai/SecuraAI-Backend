@@ -22,6 +22,7 @@ import type {
   UpdatePolicyDraftInput,
 } from './dto/manage-policy-draft.dto.js';
 import { policyComplianceRepository } from './policy-compliance.repository.js';
+import type { ListPolicyVersionHistoryQuery } from './dto/policy-version-history.dto.js';
 
 type Actor = { userId: string; permissions: readonly string[] };
 type RequestContext = { ipAddress: string | null; userAgent: string | null };
@@ -50,6 +51,11 @@ const requireAssignDepartmentsPermission = (actor: Actor): void => {
   }
 };
 
+const canViewDraftPolicyVersions = (actor: Actor): boolean =>
+  ['policies.create', 'policies.update', 'policies.publish'].some((permission) =>
+    actor.permissions.includes(permission),
+  );
+
 const publicationConflict = (): AppError =>
   new AppError(
     409,
@@ -58,6 +64,87 @@ const publicationConflict = (): AppError =>
   );
 
 export const policyComplianceService = {
+  async listPolicyVersionHistory(query: ListPolicyVersionHistoryQuery, actor: Actor) {
+    const mayViewDrafts = canViewDraftPolicyVersions(actor);
+    const result = await policyComplianceRepository.listPolicyVersionHistory(
+      query,
+      mayViewDrafts ? undefined : ['published', 'archived'],
+    );
+    return {
+      canViewDrafts: mayViewDrafts,
+      items: result.items.map((version) => ({
+        policyId: version.policy_id,
+        policyCode: version.policies.policy_code,
+        title: version.policies.title,
+        description: version.policies.description,
+        versionId: version.policy_version_id,
+        versionNumber: version.version_number,
+        changeSummary: version.change_summary,
+        status: version.status,
+        effectiveDate: version.effective_date?.toISOString() ?? null,
+        createdAt: version.created_at.toISOString(),
+        publishedAt: version.published_at?.toISOString() ?? null,
+        createdBy: version.users_policy_versions_created_by_user_idTousers
+          ? {
+              id: version.users_policy_versions_created_by_user_idTousers.user_id,
+              name: version.users_policy_versions_created_by_user_idTousers.full_name,
+            }
+          : null,
+        publishedBy: version.users_policy_versions_published_by_user_idTousers
+          ? {
+              id: version.users_policy_versions_published_by_user_idTousers.user_id,
+              name: version.users_policy_versions_published_by_user_idTousers.full_name,
+            }
+          : null,
+      })),
+      pagination: {
+        page: query.page,
+        limit: query.limit,
+        total: result.total,
+        totalPages: Math.ceil(result.total / query.limit),
+      },
+    };
+  },
+
+  async getPolicyVersionHistoryDetail(policyId: string, versionId: string, actor: Actor) {
+    const version = await policyComplianceRepository.findPolicyVersionHistoryDetail(
+      policyId,
+      versionId,
+    );
+    if (!version)
+      throw new AppError(404, 'POLICY_VERSION_NOT_FOUND', 'Policy version was not found');
+    if (version.status === 'draft' && !canViewDraftPolicyVersions(actor)) {
+      throw new AppError(404, 'POLICY_VERSION_NOT_FOUND', 'Policy version was not found');
+    }
+    return {
+      policyId: version.policy_id,
+      policyCode: version.policies.policy_code,
+      title: version.policies.title,
+      description: version.policies.description,
+      version: {
+        id: version.policy_version_id,
+        versionNumber: version.version_number,
+        content: version.content,
+        changeSummary: version.change_summary,
+        status: version.status,
+        effectiveDate: version.effective_date?.toISOString() ?? null,
+        createdAt: version.created_at.toISOString(),
+        publishedAt: version.published_at?.toISOString() ?? null,
+        createdBy: version.users_policy_versions_created_by_user_idTousers
+          ? {
+              id: version.users_policy_versions_created_by_user_idTousers.user_id,
+              name: version.users_policy_versions_created_by_user_idTousers.full_name,
+            }
+          : null,
+        publishedBy: version.users_policy_versions_published_by_user_idTousers
+          ? {
+              id: version.users_policy_versions_published_by_user_idTousers.user_id,
+              name: version.users_policy_versions_published_by_user_idTousers.full_name,
+            }
+          : null,
+      },
+    };
+  },
   async listPolicyDepartmentAssignments(query: ListPolicyDepartmentAssignmentsQuery, actor: Actor) {
     requireAssignDepartmentsPermission(actor);
     const result = await policyComplianceRepository.listPolicyDepartmentAssignments(query);

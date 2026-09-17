@@ -16,7 +16,13 @@ import {
   publishPolicyVersion,
   updateOwnPolicyDraft,
   updatePolicyAndCreateVersion,
+  listPolicyVersionHistory,
+  getPolicyVersionHistoryDetail,
 } from './policy-compliance.controller.js';
+import {
+  listPolicyVersionHistoryQuerySchema,
+  policyVersionHistoryParamsSchema,
+} from './dto/policy-version-history.dto.js';
 import {
   assignPolicyDepartmentsBodySchema,
   assignPolicyDepartmentsParamsSchema,
@@ -37,17 +43,56 @@ import {
   updatePolicyCreateVersionBodySchema,
   updatePolicyCreateVersionParamsSchema,
 } from './dto/update-policy-create-version.dto.js';
-import { controlAssessmentParamsSchema, createControlAssessmentBodySchema, listControlAssessmentsQuerySchema } from './dto/control-assessment.dto.js';
-import { createControlAssessment, getControlAssessmentHistory, listControlAssessments } from './control-assessment.controller.js';
+import {
+  controlAssessmentParamsSchema,
+  createControlAssessmentBodySchema,
+  listControlAssessmentsQuerySchema,
+} from './dto/control-assessment.dto.js';
+import {
+  createControlAssessment,
+  getControlAssessmentHistory,
+  listControlAssessments,
+} from './control-assessment.controller.js';
 import { policyControlMappingRouter } from './policy-control-mapping.routes.js';
 
 export const policyComplianceRouter = Router();
 policyComplianceRouter.use(policyControlMappingRouter);
 policyComplianceRouter.use(policyAcknowledgementRouter);
 
-policyComplianceRouter.get('/control-assessments', authenticate, authorize('compliance.assess-controls'), validate({ query: listControlAssessmentsQuerySchema }), asyncHandler(listControlAssessments));
-policyComplianceRouter.get('/controls/:controlId/assessments', authenticate, authorize('compliance.assess-controls'), validate({ params: controlAssessmentParamsSchema }), asyncHandler(getControlAssessmentHistory));
-policyComplianceRouter.post('/controls/:controlId/assessments', authenticate, authorize('compliance.assess-controls'), validate({ params: controlAssessmentParamsSchema, body: createControlAssessmentBodySchema }), asyncHandler(createControlAssessment));
+policyComplianceRouter.get(
+  '/policies/version-history',
+  authenticate,
+  validate({ query: listPolicyVersionHistoryQuerySchema }),
+  asyncHandler(listPolicyVersionHistory),
+);
+policyComplianceRouter.get(
+  '/policies/:policyId/versions/:versionId/history',
+  authenticate,
+  validate({ params: policyVersionHistoryParamsSchema }),
+  asyncHandler(getPolicyVersionHistoryDetail),
+);
+
+policyComplianceRouter.get(
+  '/control-assessments',
+  authenticate,
+  authorize('compliance.assess-controls'),
+  validate({ query: listControlAssessmentsQuerySchema }),
+  asyncHandler(listControlAssessments),
+);
+policyComplianceRouter.get(
+  '/controls/:controlId/assessments',
+  authenticate,
+  authorize('compliance.assess-controls'),
+  validate({ params: controlAssessmentParamsSchema }),
+  asyncHandler(getControlAssessmentHistory),
+);
+policyComplianceRouter.post(
+  '/controls/:controlId/assessments',
+  authenticate,
+  authorize('compliance.assess-controls'),
+  validate({ params: controlAssessmentParamsSchema, body: createControlAssessmentBodySchema }),
+  asyncHandler(createControlAssessment),
+);
 
 policyComplianceRouter.get(
   '/policies/department-assignments',
