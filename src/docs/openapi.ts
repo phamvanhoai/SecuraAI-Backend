@@ -1,5 +1,6 @@
 import swaggerJsdoc from 'swagger-jsdoc';
 import { env } from '../config/env.js';
+import { trainingReminderPaths } from './training-reminders.openapi.js';
 
 export const openApiSpec = swaggerJsdoc({
   definition: {
@@ -24,7 +25,14 @@ export const openApiSpec = swaggerJsdoc({
       { name: 'Training Awareness' },
     ],
     components: {
-      securitySchemes: { bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' } },
+      securitySchemes: {
+        bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' },
+        reminderCronAuth: {
+          type: 'http',
+          scheme: 'bearer',
+          description: 'Server-only CRON_SECRET; not a user JWT',
+        },
+      },
       schemas: {
         CreateTrainingCourseRequest: {
           type: 'object',
@@ -1187,6 +1195,7 @@ export const openApiSpec = swaggerJsdoc({
       },
     },
     paths: {
+      ...trainingReminderPaths,
       '/training/enrollments/{enrollmentId}/withdraw': {
         post: {
           tags: ['Training Awareness'],

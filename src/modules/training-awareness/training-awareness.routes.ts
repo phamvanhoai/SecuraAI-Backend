@@ -33,6 +33,25 @@ import {
 } from './dto/completion.dto.js';
 
 export const trainingAwarenessRouter = Router();
+trainingAwarenessRouter.get(
+  '/deadline-reminders',
+  authenticate,
+  authorize('training-assessments.take'),
+  validate({ query: reminderQuerySchema }),
+  asyncHandler(listTrainingReminders),
+);
+trainingAwarenessRouter.patch(
+  '/deadline-reminders/:notificationId/read',
+  authenticate,
+  authorize('training-assessments.take'),
+  validate({ params: reminderParamsSchema }),
+  asyncHandler(markTrainingReminderRead),
+);
+trainingAwarenessRouter.get(
+  '/deadline-reminders/dispatch',
+  authenticateReminderCron,
+  asyncHandler(dispatchTrainingReminders),
+);
 trainingAwarenessRouter.post(
   '/enrollments/:enrollmentId/withdraw',
   authenticate,
@@ -115,3 +134,10 @@ trainingAwarenessRouter.post(
 );
 import { withdrawEnrollment } from './training-awareness.controller.js';
 import { withdrawEnrollmentBodySchema } from './dto/course.dto.js';
+import { reminderParamsSchema, reminderQuerySchema } from './dto/reminder.dto.js';
+import {
+  authenticateReminderCron,
+  dispatchTrainingReminders,
+  listTrainingReminders,
+  markTrainingReminderRead,
+} from './training-reminders.controller.js';
