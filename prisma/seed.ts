@@ -317,6 +317,17 @@ async function main(): Promise<void> {
     update: {},
     create: { role_id: securityOfficerRole.role_id, permission_id: assessControlsPermission.permission_id },
   });
+  const uploadComplianceEvidencePermission = await prisma.permissions.upsert({
+    where: { code: 'compliance.evidence.upload' },
+    update: { module: 'policy-compliance', action: 'upload-evidence', description: 'Upload compliance evidence for accessible control assessments' },
+    create: { code: 'compliance.evidence.upload', module: 'policy-compliance', action: 'upload-evidence', description: 'Upload compliance evidence for accessible control assessments' },
+  });
+  for (const targetRole of [securityOfficerRole, employeeRole]) {
+    await prisma.role_permissions.upsert({
+      where: { role_id_permission_id: { role_id: targetRole.role_id, permission_id: uploadComplianceEvidencePermission.permission_id } },
+      update: {}, create: { role_id: targetRole.role_id, permission_id: uploadComplianceEvidencePermission.permission_id },
+    });
+  }
   const assetReadPermission = await prisma.permissions.upsert({
     where: { code: 'assets.read' },
     update: {

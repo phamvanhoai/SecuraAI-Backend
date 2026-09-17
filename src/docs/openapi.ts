@@ -4329,6 +4329,15 @@ export const openApiSpec = swaggerJsdoc({
           responses: { '201': { description: 'Assessment recorded' }, '403': { description: 'The compliance.assess-controls permission is required' }, '404': { description: 'Control not found' }, '422': { description: 'Invalid assessment or review date' } },
         },
       },
+      '/compliance/evidence/assessments': {
+        get: { tags: ['Policies'], summary: 'List control assessments accessible for compliance evidence', description: 'Requires compliance.evidence.upload. Employee results are limited to controls covered by policies assigned to their department.', security: [{ bearerAuth: [] }], responses: { '200': { description: 'Paginated assessments and evidence' }, '403': { description: 'Permission required' } } },
+      },
+      '/compliance/control-assessments/{assessmentId}/evidence': {
+        post: { tags: ['Policies'], summary: 'Upload compliance evidence', security: [{ bearerAuth: [] }], parameters: [{ name: 'assessmentId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }], requestBody: { required: true, content: { 'multipart/form-data': { schema: { type: 'object', required: ['file'], properties: { file: { type: 'string', format: 'binary' }, description: { type: 'string', maxLength: 2000 }, validUntil: { type: 'string', format: 'date' } } } } } }, responses: { '201': { description: 'Evidence uploaded and audited' }, '413': { description: 'File exceeds 10 MB' }, '422': { description: 'Invalid file or metadata' } } },
+      },
+      '/compliance/evidence/{evidenceId}/download': {
+        get: { tags: ['Policies'], summary: 'Download accessible compliance evidence', security: [{ bearerAuth: [] }], parameters: [{ name: 'evidenceId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }], responses: { '200': { description: 'Evidence file' }, '404': { description: 'Evidence is missing or inaccessible' } } },
+      },
       '/security-monitoring/log-sources/{logSourceId}': {
         patch: {
           tags: ['Security Monitoring'],
