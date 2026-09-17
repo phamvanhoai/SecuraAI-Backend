@@ -145,6 +145,35 @@ async function main(): Promise<void> {
       is_system: false,
     },
   });
+  const trainingCompletionReadPermission = await prisma.permissions.upsert({
+    where: { code: 'training-completion.read' },
+    update: {
+      module: 'training-awareness',
+      action: 'read-completion',
+      description: 'View training campaign and employee completion progress',
+    },
+    create: {
+      code: 'training-completion.read',
+      module: 'training-awareness',
+      action: 'read-completion',
+      description: 'View training campaign and employee completion progress',
+    },
+  });
+  for (const targetRole of [securityOfficerRole, executiveRole]) {
+    await prisma.role_permissions.upsert({
+      where: {
+        role_id_permission_id: {
+          role_id: targetRole.role_id,
+          permission_id: trainingCompletionReadPermission.permission_id,
+        },
+      },
+      update: {},
+      create: {
+        role_id: targetRole.role_id,
+        permission_id: trainingCompletionReadPermission.permission_id,
+      },
+    });
+  }
   const createPolicyPermission = await prisma.permissions.upsert({
     where: { code: 'policies.create' },
     update: {
@@ -187,6 +216,83 @@ async function main(): Promise<void> {
       description: 'Assign published policies to departments or units',
     },
   });
+  const mapControlsPermission = await prisma.permissions.upsert({
+    where: { code: 'compliance.map-controls' },
+    update: {
+      module: 'policy-compliance',
+      action: 'map-controls',
+      description: 'Map published policy versions to standard framework controls',
+    },
+    create: {
+      code: 'compliance.map-controls',
+      module: 'policy-compliance',
+      action: 'map-controls',
+      description: 'Map published policy versions to standard framework controls',
+    },
+  });
+  const frameworkSeeds = [
+    {
+      code: 'ISO27001',
+      name: 'ISO/IEC 27001',
+      version: '2022',
+      description: 'Information security management systems requirements',
+      controls: [
+        ['A.5.1', 'Policies for information security'],
+        ['A.5.15', 'Access control'],
+        ['A.5.24', 'Information security incident management planning and preparation'],
+        ['A.6.3', 'Information security awareness, education and training'],
+        ['A.8.8', 'Management of technical vulnerabilities'],
+        ['A.8.15', 'Logging'],
+      ],
+    },
+    {
+      code: 'NIST-CSF',
+      name: 'NIST Cybersecurity Framework',
+      version: '2.0',
+      description: 'Cybersecurity risk management framework',
+      controls: [
+        ['GV.PO-01', 'Policy for managing cybersecurity risks'],
+        ['ID.AM-01', 'Inventories of hardware managed by the organization'],
+        ['PR.AA-01', 'Identities and credentials for authorized users and services'],
+        ['PR.AT-01', 'Personnel cybersecurity awareness and training'],
+        ['DE.CM-01', 'Networks and network services are monitored'],
+        ['RS.MA-01', 'The incident response plan is executed'],
+      ],
+    },
+  ] as const;
+  for (const frameworkSeed of frameworkSeeds) {
+    const framework = await prisma.compliance_frameworks.upsert({
+      where: {
+        code_version: { code: frameworkSeed.code, version: frameworkSeed.version },
+      },
+      update: {
+        name: frameworkSeed.name,
+        description: frameworkSeed.description,
+      },
+      create: {
+        code: frameworkSeed.code,
+        name: frameworkSeed.name,
+        version: frameworkSeed.version,
+        description: frameworkSeed.description,
+      },
+    });
+    for (const [controlCode, title] of frameworkSeed.controls) {
+      await prisma.compliance_controls.upsert({
+        where: {
+          compliance_framework_id_control_code: {
+            compliance_framework_id: framework.compliance_framework_id,
+            control_code: controlCode,
+          },
+        },
+        update: { title },
+        create: {
+          compliance_framework_id: framework.compliance_framework_id,
+          control_code: controlCode,
+          title,
+        },
+      });
+    }
+  }
   const acknowledgePolicyPermission = await prisma.permissions.upsert({
     where: { code: 'policies.acknowledge' },
     update: {
@@ -200,6 +306,16 @@ async function main(): Promise<void> {
       action: 'acknowledge',
       description: 'Confirm reading and understanding of applicable policies',
     },
+  });
+  const assessControlsPermission = await prisma.permissions.upsert({
+    where: { code: 'compliance.assess-controls' },
+    update: { module: 'policy-compliance', action: 'assess-controls', description: 'Assess the compliance level of individual security controls' },
+    create: { code: 'compliance.assess-controls', module: 'policy-compliance', action: 'assess-controls', description: 'Assess the compliance level of individual security controls' },
+  });
+  await prisma.role_permissions.upsert({
+    where: { role_id_permission_id: { role_id: securityOfficerRole.role_id, permission_id: assessControlsPermission.permission_id } },
+    update: {},
+    create: { role_id: securityOfficerRole.role_id, permission_id: assessControlsPermission.permission_id },
   });
   const assetReadPermission = await prisma.permissions.upsert({
     where: { code: 'assets.read' },
@@ -491,6 +607,20 @@ async function main(): Promise<void> {
       description: 'Confirm that an AI alert represents a real security incident',
     },
   });
+  const aiAlertThresholdManagePermission = await prisma.permissions.upsert({
+    where: { code: 'ai-alerts.thresholds.manage' },
+    update: {
+      module: 'ai-alerts',
+      action: 'manage-thresholds',
+      description: 'Set custom AI alert thresholds for assets',
+    },
+    create: {
+      code: 'ai-alerts.thresholds.manage',
+      module: 'ai-alerts',
+      action: 'manage-thresholds',
+      description: 'Set custom AI alert thresholds for assets',
+    },
+  });
   const falsePositivePermissionData = {
     code: 'ai-alerts.mark-false-positive',
     module: 'ai-alerts',
@@ -540,6 +670,7 @@ async function main(): Promise<void> {
         ['roles.delete', 'delete', 'Delete custom roles'],
         ['users.create', 'create', 'Initialize user accounts'],
         ['users.read', 'read', 'View user accounts'],
+        ['mfa-recovery.manage', 'manage-mfa-recovery', 'Review and decide MFA recovery requests'],
       ] as const
     ).map(([code, action, description]) =>
       prisma.permissions.upsert({
@@ -631,6 +762,19 @@ async function main(): Promise<void> {
       },
     }),
   ]);
+  await prisma.role_permissions.upsert({
+    where: {
+      role_id_permission_id: {
+        role_id: securityOfficerRole.role_id,
+        permission_id: mapControlsPermission.permission_id,
+      },
+    },
+    update: {},
+    create: {
+      role_id: securityOfficerRole.role_id,
+      permission_id: mapControlsPermission.permission_id,
+    },
+  });
   await prisma.$transaction([
     prisma.role_permissions.deleteMany({
       where: {
@@ -795,6 +939,7 @@ async function main(): Promise<void> {
     aiAlertReadPermission,
     aiAlertFeedbackPermission,
     aiAlertConfirmPermission,
+    aiAlertThresholdManagePermission,
     ...roleManagementPermissions,
   ]) {
     await prisma.role_permissions.upsert({
@@ -815,6 +960,7 @@ async function main(): Promise<void> {
     aiAlertReadPermission,
     aiAlertFeedbackPermission,
     aiAlertConfirmPermission,
+    aiAlertThresholdManagePermission,
   ]) {
     await prisma.role_permissions.upsert({
       where: {

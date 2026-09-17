@@ -11,3 +11,4 @@ export * from './create-api-key.dto.js';
 export * from './update-api-key.dto.js';
 export * from './rotate-api-key.dto.js';
 export * from './query-api-keys.dto.js';
+export * from './connection-monitoring.dto.js';

@@ -1,5 +1,6 @@
 import type {
   RiskAssessmentDetailRecord,
+  RiskAssessmentDetailWithApprovals,
   RiskAssessmentListRecord,
 } from './risk-management.repository.js';
 
@@ -56,7 +57,9 @@ const residualLevel = (score: number): 'low' | 'medium' | 'high' | 'critical' =>
   return 'critical';
 };
 
-export const toRiskAssessmentDetail = (risk: RiskAssessmentDetailRecord) => ({
+export const toRiskAssessmentDetail = (
+  risk: RiskAssessmentDetailRecord | RiskAssessmentDetailWithApprovals,
+) => ({
   assessment: {
     id: risk.risk_assessment_id,
     riskCode: risk.risk_code,
@@ -132,17 +135,43 @@ export const toRiskAssessmentDetail = (risk: RiskAssessmentDetailRecord) => ({
     severity: vulnerabilities.severity,
     notes,
   })),
-  treatmentPlans: risk.risk_treatment_plans.map((plan) => ({
+  treatmentPlans: risk.risk_treatment_plans.map((plan) => {
+    const approval =
+      'treatmentPlanApprovals' in risk
+        ? risk.treatmentPlanApprovals.find(
+            ({ entity_id }) => entity_id === plan.risk_treatment_plan_id,
+          )
+        : undefined;
+    const currentStep = approval?.workflow_definitions.workflow_steps.find(
+      ({ step_order }) => step_order === approval.current_step,
+    );
+    return {
     id: plan.risk_treatment_plan_id,
     strategy: plan.strategy,
     description: plan.description,
     owner: person(plan.users_risk_treatment_plans_owner_user_idTousers),
+    createdBy: person(plan.users_risk_treatment_plans_created_by_user_idTousers),
     targetDate: plan.target_date,
     status: plan.status,
     submittedAt: plan.submitted_at,
     completedAt: plan.completed_at,
     createdAt: plan.created_at,
     updatedAt: plan.updated_at,
+    approval: approval
+      ? {
+          id: approval.approval_request_id,
+          status: approval.status,
+          currentStep: approval.current_step,
+          currentStepName: currentStep?.name ?? null,
+          approverRole: currentStep?.roles
+            ? { code: currentStep.roles.code, name: currentStep.roles.name }
+            : null,
+          submissionNote: approval.submission_note,
+          submittedAt: approval.submitted_at,
+          completedAt: approval.completed_at,
+          submittedBy: person(approval.users),
+        }
+      : null,
     actions: plan.risk_treatment_actions.map((action) => ({
       id: action.risk_treatment_action_id,
       title: action.title,
@@ -153,7 +182,8 @@ export const toRiskAssessmentDetail = (risk: RiskAssessmentDetailRecord) => ({
       status: action.status,
       completedAt: action.completed_at,
     })),
-  })),
+    };
+  }),
   previousAssessment: risk.risk_assessments
     ? {
         id: risk.risk_assessments.risk_assessment_id,

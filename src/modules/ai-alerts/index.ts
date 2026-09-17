@@ -21,6 +21,7 @@ export const aiAlertsModule: ModuleManifest = {
     'Analyst feedback',
     'Mark false-positive alerts with audited review feedback',
     'Asset thresholds',
+    'Custom per-asset alert thresholds',
   ],
   router: aiAlertsRouter,
 };

@@ -1,4 +1,15 @@
+import { Prisma } from '@prisma/client';
 import { prisma } from '../../database/prisma.js';
+
+const authUserInclude = {
+  user_roles_user_roles_user_idTousers: {
+    include: {
+      roles: {
+        include: { role_permissions: { include: { permissions: true } } },
+      },
+    },
+  },
+} as const;
 
 const resetUserSelect = { user_id: true } as const;
 const passwordChangeUserSelect = {
@@ -9,6 +20,10 @@ const passwordChangeUserSelect = {
 } as const;
 
 export const authRepository = {
+  findAuthUser(email: string) {
+    return prisma.users.findUnique({ where: { email }, include: authUserInclude });
+  },
+
   findTotpMethod(userId: string) {
     return prisma.mfa_methods.findFirst({
       where: { user_id: userId, method_type: 'totp' },
@@ -16,6 +31,8 @@ export const authRepository = {
         mfa_method_id: true,
         secret_encrypted: true,
         is_enabled: true,
+        last_used_totp_step: true,
+        recovery_code_hashes: true,
       },
     });
   },
@@ -32,6 +49,8 @@ export const authRepository = {
           secret_encrypted: secretEncrypted,
           is_enabled: false,
           verified_at: null,
+          last_used_totp_step: null,
+          recovery_code_hashes: Prisma.DbNull,
           updated_at: new Date(),
         },
       });
@@ -46,10 +65,213 @@ export const authRepository = {
     });
   },
 
-  async enableTotpMethod(userId: string): Promise<void> {
+  async enableTotpMethod(
+    userId: string,
+    timeStep: bigint,
+    recoveryCodeHashes: string[],
+  ): Promise<boolean> {
+    const enabled = await prisma.mfa_methods.updateMany({
+      where: {
+        user_id: userId,
+        method_type: 'totp',
+        is_enabled: false,
+        last_used_totp_step: null,
+      },
+      data: {
+        is_enabled: true,
+        verified_at: new Date(),
+        last_used_totp_step: timeStep,
+        recovery_code_hashes: recoveryCodeHashes,
+        updated_at: new Date(),
+      },
+    });
+    return enabled.count === 1;
+  },
+
+  findTotpMethodById(mfaMethodId: string) {
+    return prisma.mfa_methods.findUnique({
+      where: { mfa_method_id: mfaMethodId },
+      select: {
+        secret_encrypted: true,
+        last_used_totp_step: true,
+      },
+    });
+  },
+
+  async claimTotpTimeStep(mfaMethodId: string, timeStep: bigint): Promise<boolean> {
+    const claimed = await prisma.mfa_methods.updateMany({
+      where: {
+        mfa_method_id: mfaMethodId,
+        OR: [{ last_used_totp_step: null }, { last_used_totp_step: { lt: timeStep } }],
+      },
+      data: { last_used_totp_step: timeStep, updated_at: new Date() },
+    });
+    return claimed.count === 1;
+  },
+
+  async consumeRecoveryCode(mfaMethodId: string, codeHash: string): Promise<boolean> {
+    return prisma.$transaction(async (database) => {
+      const method = await database.mfa_methods.findUnique({
+        where: { mfa_method_id: mfaMethodId },
+        select: { recovery_code_hashes: true },
+      });
+      if (!Array.isArray(method?.recovery_code_hashes)) return false;
+      const hashes = method.recovery_code_hashes.filter(
+        (value): value is string => typeof value === 'string',
+      );
+      if (!hashes.includes(codeHash)) return false;
+      const remaining = hashes.filter((hash) => hash !== codeHash);
+      const updated = await database.mfa_methods.updateMany({
+        where: { mfa_method_id: mfaMethodId, recovery_code_hashes: { equals: hashes } },
+        data: { recovery_code_hashes: remaining, updated_at: new Date() },
+      });
+      return updated.count === 1;
+    });
+  },
+
+  async disableTotpMethod(userId: string): Promise<void> {
+    await prisma.$transaction([
+      prisma.mfa_methods.updateMany({
+        where: { user_id: userId, method_type: 'totp', is_enabled: true },
+        data: {
+          secret_encrypted: null,
+          is_enabled: false,
+          verified_at: null,
+          last_used_totp_step: null,
+          recovery_code_hashes: Prisma.DbNull,
+          login_challenge_token_hash: null,
+          login_challenge_expires_at: null,
+          login_challenge_attempts: 0,
+          login_challenge_ip: null,
+          updated_at: new Date(),
+        },
+      }),
+      prisma.auth_sessions.updateMany({
+        where: { user_id: userId, revoked_at: null },
+        data: { revoked_at: new Date() },
+      }),
+    ]);
+  },
+
+  async createMfaLoginChallenge(input: {
+    mfaMethodId: string;
+    tokenHash: string;
+    expiresAt: Date;
+    ipAddress: string | null;
+  }): Promise<void> {
+    await prisma.mfa_methods.update({
+      where: { mfa_method_id: input.mfaMethodId },
+      data: {
+        login_challenge_token_hash: input.tokenHash,
+        login_challenge_expires_at: input.expiresAt,
+        login_challenge_attempts: 0,
+        login_challenge_ip: input.ipAddress,
+        updated_at: new Date(),
+      },
+    });
+  },
+
+  async registerMfaChallengeAttempt(tokenHash: string) {
+    return prisma.$transaction(async (database) => {
+      const challenge = await database.mfa_methods.findFirst({
+        where: {
+          login_challenge_token_hash: tokenHash,
+          login_challenge_expires_at: { gt: new Date() },
+          login_challenge_attempts: { lt: 5 },
+          is_enabled: true,
+          method_type: 'totp',
+        },
+        select: {
+          mfa_method_id: true,
+          secret_encrypted: true,
+          login_challenge_attempts: true,
+        },
+      });
+      if (!challenge) return null;
+
+      const claimed = await database.mfa_methods.updateMany({
+        where: {
+          mfa_method_id: challenge.mfa_method_id,
+          login_challenge_token_hash: tokenHash,
+          login_challenge_expires_at: { gt: new Date() },
+          login_challenge_attempts: challenge.login_challenge_attempts,
+        },
+        data: { login_challenge_attempts: { increment: 1 }, updated_at: new Date() },
+      });
+      if (claimed.count !== 1) return null;
+      return {
+        mfaMethodId: challenge.mfa_method_id,
+        secretEncrypted: challenge.secret_encrypted,
+        attempts: challenge.login_challenge_attempts + 1,
+      };
+    });
+  },
+
+  async invalidateMfaLoginChallenge(mfaMethodId: string, tokenHash: string): Promise<void> {
     await prisma.mfa_methods.updateMany({
-      where: { user_id: userId, method_type: 'totp' },
-      data: { is_enabled: true, verified_at: new Date(), updated_at: new Date() },
+      where: { mfa_method_id: mfaMethodId, login_challenge_token_hash: tokenHash },
+      data: {
+        login_challenge_token_hash: null,
+        login_challenge_expires_at: null,
+        login_challenge_ip: null,
+        updated_at: new Date(),
+      },
+    });
+  },
+
+  async consumeMfaLoginChallenge(input: {
+    mfaMethodId: string;
+    tokenHash: string;
+    refreshTokenHash: string;
+    sessionExpiresAt: Date;
+    ipAddress: string | null;
+    userAgent: string | null;
+  }) {
+    return prisma.$transaction(async (database) => {
+      const consumed = await database.mfa_methods.updateMany({
+        where: {
+          mfa_method_id: input.mfaMethodId,
+          login_challenge_token_hash: input.tokenHash,
+          login_challenge_expires_at: { gt: new Date() },
+          login_challenge_attempts: { lte: 5 },
+        },
+        data: {
+          login_challenge_token_hash: null,
+          login_challenge_expires_at: null,
+          login_challenge_ip: null,
+          updated_at: new Date(),
+        },
+      });
+      if (consumed.count !== 1) return null;
+
+      const method = await database.mfa_methods.findUnique({
+        where: { mfa_method_id: input.mfaMethodId },
+        select: { user_id: true },
+      });
+      if (!method) return null;
+
+      const user = await database.users.findUnique({
+        where: { user_id: method.user_id },
+        include: authUserInclude,
+      });
+      if (!user) return null;
+      if (user.status !== 'active' || user.deleted_at) return { kind: 'inactive' as const };
+
+      await database.auth_sessions.create({
+        data: {
+          user_id: method.user_id,
+          refresh_token_hash: input.refreshTokenHash,
+          expires_at: input.sessionExpiresAt,
+          ip_address: input.ipAddress,
+          user_agent: input.userAgent,
+        },
+      });
+      const authenticatedUser = await database.users.update({
+        where: { user_id: method.user_id },
+        data: { last_login_at: new Date() },
+        include: authUserInclude,
+      });
+      return { kind: 'authenticated' as const, user: authenticatedUser };
     });
   },
 

@@ -23,6 +23,7 @@ describe('usersService.findMe', () => {
       last_login_at: null,
       created_at: new Date('2026-09-10T00:00:00.000Z'),
       departments: null,
+      mfa_methods: [{ mfa_method_id: 'mfa-1' }],
       user_roles_user_roles_user_idTousers: [
         {
           roles: {
@@ -51,6 +52,7 @@ describe('usersService.findMe', () => {
       { code: 'CUSTOM_REVIEWER', name: 'Custom Reviewer' },
     ]);
     expect(result.permissions).toEqual(['assets.read', 'assets.update']);
+    expect(result.mfaEnabled).toBe(true);
   });
 
   it('returns 404 for a deleted or missing user', async () => {

@@ -13,6 +13,31 @@ import {
   listMyAssessmentsQuerySchema,
   submitAssessmentBodySchema,
 } from './dto/assessment.dto.js';
+import {
+  completionCampaignParamsSchema,
+  completionCampaignsQuerySchema,
+  completionEnrollmentsQuerySchema,
+} from './dto/completion.dto.js';
+
+export const listCompletionCampaigns: RequestHandler = async (req, res) => {
+  if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+  const data = await trainingAwarenessService.listCompletionCampaigns(
+    completionCampaignsQuerySchema.parse(req.query),
+    req.auth,
+  );
+  res.status(200).json({ success: true, data });
+};
+
+export const getCompletionCampaign: RequestHandler = async (req, res) => {
+  if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+  const { campaignId } = completionCampaignParamsSchema.parse(req.params);
+  const data = await trainingAwarenessService.getCompletionCampaign(
+    campaignId,
+    completionEnrollmentsQuerySchema.parse(req.query),
+    req.auth,
+  );
+  res.status(200).json({ success: true, data });
+};
 
 export const listMyAssessments: RequestHandler = async (req, res) => {
   if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
@@ -82,4 +107,26 @@ export const assignCourse: RequestHandler = async (req, res) => {
     { ipAddress: req.ip ?? null, userAgent: req.get('user-agent')?.slice(0, 1000) ?? null },
   );
   res.status(201).json({ success: true, data });
+};
+
+export const getLatestCourseAssignment: RequestHandler = async (req, res) => {
+  if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+  const { courseId } = assignCourseParamsSchema.parse(req.params);
+  res.status(200).json({
+    success: true,
+    data: await trainingAwarenessService.getLatestCourseAssignment(courseId, req.auth),
+  });
+};
+import { withdrawEnrollmentBodySchema } from './dto/course.dto.js';
+export const withdrawEnrollment: RequestHandler = async (req, res) => {
+  if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+  const { enrollmentId } = assessmentParamsSchema.parse(req.params);
+  const { reason } = withdrawEnrollmentBodySchema.parse(req.body);
+  res.json({
+    success: true,
+    data: await trainingAwarenessService.withdrawEnrollment(enrollmentId, reason, req.auth, {
+      ipAddress: req.ip ?? null,
+      userAgent: req.get('user-agent')?.slice(0, 1000) ?? null,
+    }),
+  });
 };

@@ -14,8 +14,11 @@ import type {
   UpdateApiKeyDto,
   RotateApiKeyDto,
   QueryApiKeysDto,
+  QueryConnectionMonitoringDto,
+  BatchConnectionCheckDto,
   QueryIntegrationLogStatsDto,
 } from './dto/index.js';
+
 
 export async function createIntegration(req: Request, res: Response): Promise<void> {
   const body = req.body as CreateIntegrationDto;
@@ -49,6 +52,26 @@ export async function testConnection(req: Request, res: Response): Promise<void>
   const result = await integrationsService.testConnection(id as string, body);
   res.status(200).json({ success: true, data: result });
 }
+
+export async function checkAllConnections(req: Request, res: Response): Promise<void> {
+  const body = req.body as BatchConnectionCheckDto;
+  const result = await integrationsService.checkAllConnections(body);
+  res.status(200).json({ success: true, data: result });
+}
+
+export async function getConnectionStatusSummary(req: Request, res: Response): Promise<void> {
+  const query = req.query as unknown as QueryConnectionMonitoringDto;
+  const result = await integrationsService.getConnectionStatusSummary(query);
+  res.status(200).json({ success: true, data: result });
+}
+
+export async function getIntegrationConnectionStatus(req: Request, res: Response): Promise<void> {
+  const { id } = req.params;
+  const query = req.query as unknown as QueryConnectionMonitoringDto;
+  const result = await integrationsService.getIntegrationConnectionStatus(id as string, query);
+  res.status(200).json({ success: true, data: result });
+}
+
 
 // -------------------------------------------------------------
 // Sync Schedules Controllers
