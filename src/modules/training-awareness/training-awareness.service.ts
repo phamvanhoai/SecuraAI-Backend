@@ -154,6 +154,7 @@ export const trainingAwarenessService = {
         startedAt: enrollment.started_at,
         completedAt: enrollment.completed_at,
         lastAccessedAt: enrollment.last_accessed_at,
+        certificateNumber: enrollment.training_certificates?.certificate_number ?? null,
       })),
       pagination: {
         page: query.page,

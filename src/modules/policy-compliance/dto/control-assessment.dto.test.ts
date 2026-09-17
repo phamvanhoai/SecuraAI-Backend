@@ -9,9 +9,9 @@ describe('control assessment DTOs', () => {
   it('accepts a valid assessment', () => {
     expect(createControlAssessmentBodySchema.parse({ complianceStatus: 'partially_compliant', score: 72.5 }).score).toBe(72.5);
   });
-  it('enforces status and score consistency', () => {
-    expect(() => createControlAssessmentBodySchema.parse({ complianceStatus: 'compliant', score: 79 })).toThrow();
-    expect(() => createControlAssessmentBodySchema.parse({ complianceStatus: 'not_assessed', score: 0 })).toThrow();
-    expect(createControlAssessmentBodySchema.parse({ complianceStatus: 'non_compliant', score: 39.99 }).score).toBe(39.99);
+  it('allows an optional independent score from 0 through 100', () => {
+    expect(createControlAssessmentBodySchema.parse({ complianceStatus: 'compliant', score: 60 }).score).toBe(60);
+    expect(createControlAssessmentBodySchema.parse({ complianceStatus: 'not_assessed' }).score).toBeUndefined();
+    expect(() => createControlAssessmentBodySchema.parse({ complianceStatus: 'non_compliant', score: 101 })).toThrow();
   });
 });

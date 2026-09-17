@@ -50,14 +50,17 @@ export const trainingAwarenessRepository = {
     });
   },
   async listCompletionCampaigns(query: CompletionCampaignsQuery) {
-    const where: Prisma.training_campaignsWhereInput = query.q
-      ? {
-          OR: [
-            { title: { contains: query.q, mode: 'insensitive' } },
-            { training_courses: { title: { contains: query.q, mode: 'insensitive' } } },
-          ],
-        }
-      : {};
+    const where: Prisma.training_campaignsWhereInput = {
+      ...(query.courseId ? { training_course_id: query.courseId } : {}),
+      ...(query.q
+        ? {
+            OR: [
+              { title: { contains: query.q, mode: 'insensitive' } },
+              { training_courses: { title: { contains: query.q, mode: 'insensitive' } } },
+            ],
+          }
+        : {}),
+    };
     const [total, campaigns] = await prisma.$transaction([
       prisma.training_campaigns.count({ where }),
       prisma.training_campaigns.findMany({
@@ -129,6 +132,7 @@ export const trainingAwarenessRepository = {
           started_at: true,
           completed_at: true,
           last_accessed_at: true,
+          training_certificates: { select: { certificate_number: true } },
           users: {
             select: { user_id: true, full_name: true, email: true, employee_code: true },
           },
@@ -433,8 +437,34 @@ export const trainingAwarenessRepository = {
           title: input.title,
           description: input.description ?? null,
           content: input.content,
-          status: 'draft',
+          status: input.status,
           created_by_user_id: context.actorUserId,
+          ...(input.assessment
+            ? {
+                quizzes: {
+                  create: {
+                    title: input.assessment.title,
+                    passing_score: input.assessment.passingScore,
+                    max_attempts: input.assessment.maxAttempts,
+                    quiz_questions: {
+                      create: input.assessment.questions.map((question, questionIndex) => ({
+                        question_text: question.text,
+                        question_type: 'multiple_choice',
+                        score: 1,
+                        display_order: questionIndex + 1,
+                        quiz_options: {
+                          create: question.options.map((option, optionIndex) => ({
+                            option_text: option.text,
+                            is_correct: option.isCorrect,
+                            display_order: optionIndex + 1,
+                          })),
+                        },
+                      })),
+                    },
+                  },
+                },
+              }
+            : {}),
         },
         select: courseSelect,
       });
@@ -445,7 +475,12 @@ export const trainingAwarenessRepository = {
           action: 'training_course.created',
           entity_type: 'training_course',
           entity_id: course.training_course_id,
-          after_data: { title: course.title, status: course.status },
+          after_data: {
+            title: course.title,
+            status: course.status,
+            assessmentCreated: Boolean(input.assessment),
+            questionCount: input.assessment?.questions.length ?? 0,
+          },
           ip_address: context.ipAddress,
           user_agent: context.userAgent,
         },
@@ -549,11 +584,13 @@ export const trainingAwarenessRepository = {
         return { kind: 'invalid_targets' as const };
       }
 
-      const existingCampaign = await transaction.training_campaigns.findFirst({
-        where: { training_course_id: courseId },
-        orderBy: [{ created_at: 'desc' }, { training_campaign_id: 'desc' }],
-        select: { training_campaign_id: true },
-      });
+      const existingCampaign = input.createNewCampaign
+        ? null
+        : await transaction.training_campaigns.findFirst({
+            where: { training_course_id: courseId },
+            orderBy: [{ created_at: 'desc' }, { training_campaign_id: 'desc' }],
+            select: { training_campaign_id: true },
+          });
       if (existingCampaign && !input.changeReason) return { kind: 'reason_required' as const };
       if (!existingCampaign && !uniqueUserIds.length && !uniqueDepartmentIds.length)
         return { kind: 'invalid_targets' as const };

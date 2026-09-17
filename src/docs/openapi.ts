@@ -39,9 +39,58 @@ export const openApiSpec = swaggerJsdoc({
           additionalProperties: false,
           required: ['title', 'content'],
           properties: {
+            createNewCampaign: {
+              type: 'boolean',
+              default: false,
+              description:
+                'When true, creates a separate assignment campaign instead of updating the latest campaign.',
+            },
             title: { type: 'string', minLength: 3, maxLength: 255 },
             description: { type: 'string', nullable: true, maxLength: 2000 },
             content: { type: 'string', minLength: 10, maxLength: 50000 },
+            status: {
+              type: 'string',
+              enum: ['draft', 'published'],
+              default: 'draft',
+              description: 'Published courses require an assessment.',
+            },
+            assessment: {
+              type: 'object',
+              description:
+                'Optional post-training multiple-choice assessment created atomically with the course.',
+              required: ['title', 'passingScore', 'maxAttempts', 'questions'],
+              properties: {
+                title: { type: 'string', minLength: 3, maxLength: 255 },
+                passingScore: { type: 'number', minimum: 0, maximum: 100 },
+                maxAttempts: { type: 'integer', minimum: 1, maximum: 10 },
+                questions: {
+                  type: 'array',
+                  minItems: 1,
+                  maxItems: 50,
+                  items: {
+                    type: 'object',
+                    required: ['text', 'options'],
+                    properties: {
+                      text: { type: 'string', minLength: 3, maxLength: 2000 },
+                      options: {
+                        type: 'array',
+                        minItems: 2,
+                        maxItems: 6,
+                        description: 'Exactly one option must have isCorrect=true.',
+                        items: {
+                          type: 'object',
+                          required: ['text', 'isCorrect'],
+                          properties: {
+                            text: { type: 'string', minLength: 1, maxLength: 1000 },
+                            isCorrect: { type: 'boolean' },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
           },
         },
         TrainingCourse: {
@@ -1388,14 +1437,62 @@ export const openApiSpec = swaggerJsdoc({
           },
         },
       },
+      '/training/enrollments/{enrollmentId}/certificate': {
+        get: {
+          tags: ['Training Awareness'],
+          summary: 'View training completion certificate and eligibility',
+          description:
+            'Requires training-completion.read. Returns enrollmentId, learnerName, courseTitle, campaignTitle, completedAt, eligible and nullable certificate { id, number, issuedAt, issuedBy }. Existing certificates remain viewable even if the course assessment changes.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'enrollmentId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          responses: {
+            '200': { description: 'success/data envelope containing certificate metadata or null' },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'Completion read permission required' },
+            '404': { description: 'Enrollment not found' },
+            '422': { description: 'Invalid enrollment UUID' },
+          },
+        },
+        post: {
+          tags: ['Training Awareness'],
+          summary: 'Issue training completion certificate (UC80)',
+          description:
+            'Requires training-certificates.issue. No request body. Requires completed enrollment, 100% progress, completedAt and a submitted passing attempt for the latest course quiz. Creates one certificate per enrollment and its audit record atomically. Repeated requests return the existing certificate. Returns the same metadata as GET; no PDF file is generated.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'enrollmentId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          responses: {
+            '200': { description: 'success/data envelope containing the persisted certificate' },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'Certificate issue permission required' },
+            '404': { description: 'Enrollment not found' },
+            '409': { description: 'Course not completed or assessment not passed' },
+            '422': { description: 'Invalid enrollment UUID' },
+          },
+        },
+      },
       '/training/completion': {
         get: {
           tags: ['Training Awareness'],
           summary: 'Track training campaign completion',
           description:
-            'Requires training-completion.read. Returns paginated campaign-level completion metrics.',
+            'Requires training-completion.read. Returns paginated campaign-level completion metrics. Optional courseId (UUID) limits results to that exact course.',
           security: [{ bearerAuth: [] }],
           parameters: [
+            { name: 'courseId', in: 'query', schema: { type: 'string', format: 'uuid' } },
             { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
             {
               name: 'limit',
@@ -1416,7 +1513,7 @@ export const openApiSpec = swaggerJsdoc({
           tags: ['Training Awareness'],
           summary: 'View employee completion for a training campaign',
           description:
-            'Requires training-completion.read. Supports employee search and enrollment-status filtering.',
+            'Requires training-completion.read. Supports employee search and enrollment-status filtering. Each employee includes nullable certificateNumber to distinguish issued certificates from eligibility for issuance.',
           security: [{ bearerAuth: [] }],
           parameters: [
             {
@@ -1641,7 +1738,7 @@ export const openApiSpec = swaggerJsdoc({
           tags: ['Training Awareness'],
           summary: 'Assign a training course',
           description:
-            'Requires training-courses.assign. Creates the first campaign or updates the latest campaign, replaces its selected targets, preserves existing progress, adds missing enrollments and records an audit event atomically.',
+            'Requires training-courses.assign. Set createNewCampaign=true for a separate training cycle with fresh enrollments. Otherwise the latest campaign is updated; existing progress and completed results are preserved. The operation records an audit event atomically.',
           security: [{ bearerAuth: [] }],
           parameters: [
             {
@@ -4481,6 +4578,15 @@ export const openApiSpec = swaggerJsdoc({
             '422': { description: 'Invalid assessment or review date' },
           },
         },
+      },
+      '/compliance/evidence/assessments': {
+        get: { tags: ['Policies'], summary: 'List control assessments accessible for compliance evidence', description: 'Requires compliance.evidence.upload. Employee results are limited to controls covered by policies assigned to their department.', security: [{ bearerAuth: [] }], responses: { '200': { description: 'Paginated assessments and evidence' }, '403': { description: 'Permission required' } } },
+      },
+      '/compliance/control-assessments/{assessmentId}/evidence': {
+        post: { tags: ['Policies'], summary: 'Upload compliance evidence', security: [{ bearerAuth: [] }], parameters: [{ name: 'assessmentId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }], requestBody: { required: true, content: { 'multipart/form-data': { schema: { type: 'object', required: ['file'], properties: { file: { type: 'string', format: 'binary' }, description: { type: 'string', maxLength: 2000 }, validUntil: { type: 'string', format: 'date' } } } } } }, responses: { '201': { description: 'Evidence uploaded and audited' }, '413': { description: 'File exceeds 10 MB' }, '422': { description: 'Invalid file or metadata' } } },
+      },
+      '/compliance/evidence/{evidenceId}/download': {
+        get: { tags: ['Policies'], summary: 'Download accessible compliance evidence', security: [{ bearerAuth: [] }], parameters: [{ name: 'evidenceId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }], responses: { '200': { description: 'Evidence file' }, '404': { description: 'Evidence is missing or inaccessible' } } },
       },
       '/security-monitoring/log-sources/{logSourceId}': {
         patch: {
