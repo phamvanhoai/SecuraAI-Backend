@@ -131,6 +131,33 @@ async function main(): Promise<void> {
       permission_id: takeTrainingAssessmentPermission.permission_id,
     },
   });
+  const assignIncidentPermission = await prisma.permissions.upsert({
+    where: { code: 'incidents.assign' },
+    update: {
+      module: 'incident-management',
+      action: 'assign',
+      description: 'Assign an active security officer to an incident',
+    },
+    create: {
+      code: 'incidents.assign',
+      module: 'incident-management',
+      action: 'assign',
+      description: 'Assign an active security officer to an incident',
+    },
+  });
+  await prisma.role_permissions.upsert({
+    where: {
+      role_id_permission_id: {
+        role_id: securityOfficerRole.role_id,
+        permission_id: assignIncidentPermission.permission_id,
+      },
+    },
+    update: {},
+    create: {
+      role_id: securityOfficerRole.role_id,
+      permission_id: assignIncidentPermission.permission_id,
+    },
+  });
   const executiveRole = await prisma.roles.upsert({
     where: { code: 'EXECUTIVE' },
     update: {

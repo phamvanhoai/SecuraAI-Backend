@@ -2,6 +2,7 @@ import type { Prisma } from '@prisma/client';
 import { prisma } from '../../database/prisma.js';
 import type {
   ClassificationQueueQuery,
+  AssignIncidentInput,
   ClassifyIncidentInput,
   MyIncidentsQuery,
   ReportIncidentInput,
@@ -14,6 +15,24 @@ const auditRequestContext = (
   user_agent: context.userAgent,
 });
 export const incidentManagementRepository = {
+  listAssignmentOptions() {
+    return prisma.users.findMany({
+      where: {
+        status: 'active',
+        deleted_at: null,
+        user_roles_user_roles_user_idTousers: {
+          some: {
+            roles: {
+              role_permissions: { some: { permissions: { code: 'incidents.classify' } } },
+            },
+          },
+        },
+      },
+      select: { user_id: true, full_name: true, email: true },
+      orderBy: [{ full_name: 'asc' }, { user_id: 'asc' }],
+      take: 200,
+    });
+  },
   createReport(
     input: ReportIncidentInput,
     actorUserId: string,
@@ -174,7 +193,111 @@ export const incidentManagementRepository = {
           orderBy: [{ created_at: 'desc' }, { audit_log_id: 'desc' }],
         })
       : [];
-    return { items, total, classificationAudits };
+    const assignments = incidentIds.length
+      ? await prisma.incident_assignments.findMany({
+          where: { incident_id: { in: incidentIds }, completed_at: null },
+          select: {
+            incident_id: true,
+            assigned_at: true,
+            users_incident_assignments_assignee_user_idTousers: {
+              select: { user_id: true, full_name: true, email: true },
+            },
+          },
+          orderBy: [{ assigned_at: 'desc' }, { incident_assignment_id: 'desc' }],
+        })
+      : [];
+    return { items, total, classificationAudits, assignments };
+  },
+  assignHandler(
+    incidentId: string,
+    input: AssignIncidentInput,
+    actorUserId: string,
+    context: RequestContext,
+  ) {
+    return prisma.$transaction(async (tx) => {
+      const [current, assignee] = await Promise.all([
+        tx.incidents.findUnique({
+          where: { incident_id: incidentId },
+          select: { incident_id: true, status: true },
+        }),
+        tx.users.findFirst({
+          where: {
+            user_id: input.assigneeUserId,
+            status: 'active',
+            deleted_at: null,
+            user_roles_user_roles_user_idTousers: {
+              some: {
+                roles: {
+                  role_permissions: { some: { permissions: { code: 'incidents.classify' } } },
+                },
+              },
+            },
+          },
+          select: { user_id: true, full_name: true, email: true },
+        }),
+      ]);
+      if (!current) return { outcome: 'not_found' as const };
+      if (current.status === 'resolved' || current.status === 'closed')
+        return { outcome: 'terminal' as const };
+      if (!assignee) return { outcome: 'invalid_assignee' as const };
+      const now = new Date();
+      await tx.incident_assignments.updateMany({
+        where: { incident_id: incidentId, completed_at: null },
+        data: { completed_at: now },
+      });
+      await tx.incident_assignments.create({
+        data: {
+          incident_id: incidentId,
+          assignee_user_id: assignee.user_id,
+          assigned_by_user_id: actorUserId,
+          assigned_at: now,
+        },
+      });
+      const status = current.status === 'reported' ? 'assigned' : current.status;
+      const incident = await tx.incidents.update({
+        where: { incident_id: incidentId },
+        data: { status, updated_at: now },
+        select: {
+          incident_id: true,
+          incident_code: true,
+          title: true,
+          description: true,
+          category: true,
+          severity: true,
+          status: true,
+          occurred_at: true,
+          detected_at: true,
+          created_at: true,
+        },
+      });
+      await tx.incident_updates.create({
+        data: {
+          incident_id: incidentId,
+          user_id: actorUserId,
+          status_from: current.status,
+          status_to: status,
+          note: `Assigned to ${assignee.full_name}. ${input.note}`,
+        },
+      });
+      await tx.audit_logs.create({
+        data: {
+          actor_user_id: actorUserId,
+          module: 'incident-management',
+          action: 'incident.handler_assigned',
+          entity_type: 'incident',
+          entity_id: incidentId,
+          before_data: { status: current.status },
+          after_data: {
+            status,
+            assigneeUserId: assignee.user_id,
+            assigneeName: assignee.full_name,
+            note: input.note,
+          },
+          ...auditRequestContext(context),
+        },
+      });
+      return { outcome: 'assigned' as const, incident, assignee, assignedAt: now };
+    });
   },
   classifySeverity(
     incidentId: string,

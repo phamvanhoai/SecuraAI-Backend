@@ -2,6 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { AppError } from '../../common/errors/app-error.js';
 import type {
   ClassificationQueueQuery,
+  AssignIncidentInput,
   ClassifyIncidentInput,
   MyIncidentsQuery,
   ReportIncidentInput,
@@ -15,6 +16,10 @@ const requireReportPermission = (actor: Actor) => {
 const requireClassifyPermission = (actor: Actor) => {
   if (!actor.permissions.includes('incidents.classify'))
     throw new AppError(403, 'FORBIDDEN', 'Incident classification permission required');
+};
+const requireAssignPermission = (actor: Actor) => {
+  if (!actor.permissions.includes('incidents.assign'))
+    throw new AppError(403, 'FORBIDDEN', 'Incident assignment permission required');
 };
 type ClassificationSummary = {
   count: number;
@@ -41,6 +46,7 @@ const mapIncident = (
     description?: string;
   },
   classification?: ClassificationSummary,
+  assignment?: { assigned_at: Date; user: { user_id: string; full_name: string; email: string } },
 ) => ({
   id: item.incident_id,
   incidentCode: item.incident_code,
@@ -59,6 +65,16 @@ const mapIncident = (
         classifiedAt: classification.classifiedAt,
         classifiedBy: classification.classifiedBy,
         rationale: classification.rationale,
+      }
+    : null,
+  currentAssignment: assignment
+    ? {
+        assignedAt: assignment.assigned_at.toISOString(),
+        assignee: {
+          id: assignment.user.user_id,
+          name: assignment.user.full_name,
+          email: assignment.user.email,
+        },
       }
     : null,
 });
@@ -102,6 +118,15 @@ export const incidentManagementService = {
     requireClassifyPermission(actor);
     const result = await incidentManagementRepository.listClassificationQueue(query);
     const summaries = new Map<string, ClassificationSummary>();
+    const assignments = new Map<
+      string,
+      { assigned_at: Date; user: { user_id: string; full_name: string; email: string } }
+    >();
+    for (const assignment of result.assignments) {
+      const user = assignment.users_incident_assignments_assignee_user_idTousers;
+      if (user && !assignments.has(assignment.incident_id))
+        assignments.set(assignment.incident_id, { assigned_at: assignment.assigned_at, user });
+    }
     for (const audit of result.classificationAudits) {
       if (!audit.entity_id) continue;
       const existing = summaries.get(audit.entity_id);
@@ -117,7 +142,9 @@ export const incidentManagementService = {
       });
     }
     return {
-      items: result.items.map((item) => mapIncident(item, summaries.get(item.incident_id))),
+      items: result.items.map((item) =>
+        mapIncident(item, summaries.get(item.incident_id), assignments.get(item.incident_id)),
+      ),
       pagination: {
         page: query.page,
         limit: query.limit,
@@ -125,6 +152,41 @@ export const incidentManagementService = {
         totalPages: Math.max(1, Math.ceil(result.total / query.limit)),
       },
     };
+  },
+  async assignmentOptions(actor: Actor) {
+    requireAssignPermission(actor);
+    const users = await incidentManagementRepository.listAssignmentOptions();
+    return {
+      users: users.map((user) => ({ id: user.user_id, name: user.full_name, email: user.email })),
+    };
+  },
+  async assign(
+    incidentId: string,
+    input: AssignIncidentInput,
+    actor: Actor,
+    context: { ipAddress: string | null; userAgent: string | null },
+  ) {
+    requireAssignPermission(actor);
+    const result = await incidentManagementRepository.assignHandler(
+      incidentId,
+      input,
+      actor.userId,
+      context,
+    );
+    if (result.outcome === 'not_found')
+      throw new AppError(404, 'INCIDENT_NOT_FOUND', 'Incident not found');
+    if (result.outcome === 'terminal')
+      throw new AppError(
+        409,
+        'INCIDENT_TERMINAL',
+        'Resolved or closed incidents cannot be assigned',
+      );
+    if (result.outcome === 'invalid_assignee')
+      throw new AppError(422, 'INVALID_ASSIGNEE', 'Select an active security officer');
+    return mapIncident(result.incident, undefined, {
+      assigned_at: result.assignedAt,
+      user: result.assignee,
+    });
   },
   async classify(
     incidentId: string,

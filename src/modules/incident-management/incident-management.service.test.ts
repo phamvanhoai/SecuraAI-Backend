@@ -5,6 +5,8 @@ const mocks = vi.hoisted(() => ({
   find: vi.fn(),
   queue: vi.fn(),
   classify: vi.fn(),
+  options: vi.fn(),
+  assign: vi.fn(),
 }));
 vi.mock('./incident-management.repository.js', () => ({
   incidentManagementRepository: {
@@ -13,6 +15,8 @@ vi.mock('./incident-management.repository.js', () => ({
     findOwnReport: mocks.find,
     listClassificationQueue: mocks.queue,
     classifySeverity: mocks.classify,
+    listAssignmentOptions: mocks.options,
+    assignHandler: mocks.assign,
   },
 }));
 import { incidentManagementService } from './incident-management.service.js';
@@ -118,6 +122,7 @@ describe('incident reporting service', () => {
       ],
       total: 1,
       classificationAudits: [],
+      assignments: [],
     });
     const result = await incidentManagementService.listForClassification(
       { page: 1, limit: 10 },
@@ -128,6 +133,55 @@ describe('incident reporting service', () => {
       classified: false,
       classificationCount: 0,
       lastClassification: null,
+    });
+  });
+  it('requires incidents.assign to assign a handler', async () => {
+    await expect(
+      incidentManagementService.assign(
+        '11111111-1111-4111-8111-111111111111',
+        {
+          assigneeUserId: '22222222-2222-4222-8222-222222222222',
+          note: 'Assign to the officer responsible for endpoint response.',
+        },
+        { userId: 'officer-1', permissions: ['incidents.classify'] },
+        { ipAddress: null, userAgent: null },
+      ),
+    ).rejects.toMatchObject({ statusCode: 403 });
+  });
+  it('returns the active handler after assignment', async () => {
+    mocks.assign.mockResolvedValue({
+      outcome: 'assigned',
+      incident: {
+        incident_id: '11111111-1111-4111-8111-111111111111',
+        incident_code: 'INC-001',
+        title: 'Suspicious activity',
+        description: 'A sufficiently detailed incident description.',
+        category: 'other',
+        severity: 'high',
+        status: 'assigned',
+        occurred_at: null,
+        detected_at: new Date('2026-09-17T00:00:00Z'),
+        created_at: new Date('2026-09-17T00:00:00Z'),
+      },
+      assignee: {
+        user_id: '22222222-2222-4222-8222-222222222222',
+        full_name: 'Security Officer',
+        email: 'officer@example.com',
+      },
+      assignedAt: new Date('2026-09-17T01:00:00Z'),
+    });
+    const result = await incidentManagementService.assign(
+      '11111111-1111-4111-8111-111111111111',
+      {
+        assigneeUserId: '22222222-2222-4222-8222-222222222222',
+        note: 'Assign to the officer responsible for endpoint response.',
+      },
+      { userId: 'officer-1', permissions: ['incidents.assign'] },
+      { ipAddress: null, userAgent: null },
+    );
+    expect(result).toMatchObject({
+      status: 'assigned',
+      currentAssignment: { assignee: { name: 'Security Officer' } },
     });
   });
 });
