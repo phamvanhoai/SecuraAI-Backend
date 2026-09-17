@@ -6,6 +6,7 @@ import {
   updateIncidentProgressBodySchema,
   uploadIncidentEvidenceBodySchema,
   incidentEvidenceQuerySchema,
+  removeIncidentEvidenceBodySchema,
   reportIncidentBodySchema,
 } from './report-incident.dto.js';
 describe('reportIncidentBodySchema', () => {
@@ -94,5 +95,13 @@ describe('incidentEvidenceQuerySchema', () => {
   it('applies defaults and bounds evidence pagination', () => {
     expect(incidentEvidenceQuerySchema.parse({})).toEqual({ page: 1, limit: 10 });
     expect(incidentEvidenceQuerySchema.safeParse({ page: 0, limit: 51 }).success).toBe(false);
+  });
+});
+describe('removeIncidentEvidenceBodySchema', () => {
+  it('requires a documented removal reason', () => {
+    expect(
+      removeIncidentEvidenceBodySchema.parse({ reason: '  Uploaded to the wrong incident.  ' }),
+    ).toEqual({ reason: 'Uploaded to the wrong incident.' });
+    expect(removeIncidentEvidenceBodySchema.safeParse({ reason: 'mistake' }).success).toBe(false);
   });
 });

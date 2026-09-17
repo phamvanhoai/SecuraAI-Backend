@@ -6,6 +6,7 @@ import type {
   UpdateIncidentProgressInput,
   UploadIncidentEvidenceInput,
   IncidentEvidenceQuery,
+  RemoveIncidentEvidenceInput,
   ClassifyIncidentInput,
   MyIncidentsQuery,
   ReportIncidentInput,
@@ -33,6 +34,20 @@ const incidentEvidenceSelect = {
     },
   },
 } satisfies Prisma.incident_evidenceSelect;
+type RemovableEvidence = {
+  incident_evidence_id: string;
+  incident_id: string;
+  description: string | null;
+  created_at: Date;
+  uploaded_by_user_id: string | null;
+  files: {
+    file_id: string;
+    original_name: string;
+    mime_type: string | null;
+    size_bytes: bigint | null;
+    checksum: string | null;
+  };
+};
 export const incidentManagementRepository = {
   findIncident(incidentId: string) {
     return prisma.incidents.findUnique({
@@ -69,10 +84,93 @@ export const incidentManagementRepository = {
       select: {
         incident_evidence_id: true,
         incident_id: true,
+        description: true,
+        created_at: true,
+        uploaded_by_user_id: true,
+        incidents: {
+          select: {
+            status: true,
+            incident_assignments: {
+              where: { completed_at: null },
+              select: { assignee_user_id: true },
+              orderBy: [{ assigned_at: 'desc' }, { incident_assignment_id: 'desc' }],
+              take: 1,
+            },
+          },
+        },
         files: {
-          select: { file_id: true, storage_key: true, original_name: true, mime_type: true },
+          select: {
+            file_id: true,
+            storage_key: true,
+            original_name: true,
+            mime_type: true,
+            size_bytes: true,
+            checksum: true,
+          },
         },
       },
+    });
+  },
+  removeEvidence(
+    evidence: RemovableEvidence,
+    input: RemoveIncidentEvidenceInput,
+    actorUserId: string,
+    isCoordinator: boolean,
+    context: RequestContext,
+  ) {
+    return prisma.$transaction(async (tx) => {
+      const current = await tx.incident_evidence.findUnique({
+        where: { incident_evidence_id: evidence.incident_evidence_id },
+        select: {
+          incidents: {
+            select: {
+              status: true,
+              incident_assignments: {
+                where: { completed_at: null },
+                select: { assignee_user_id: true },
+                orderBy: [{ assigned_at: 'desc' }, { incident_assignment_id: 'desc' }],
+                take: 1,
+              },
+            },
+          },
+        },
+      });
+      if (!current) return { outcome: 'not_found' as const };
+      if (current.incidents.status === 'closed') return { outcome: 'closed' as const };
+      if (
+        !isCoordinator &&
+        current.incidents.incident_assignments[0]?.assignee_user_id !== actorUserId
+      )
+        return { outcome: 'not_handler' as const };
+      const removed = await tx.incident_evidence.deleteMany({
+        where: { incident_evidence_id: evidence.incident_evidence_id },
+      });
+      if (!removed.count) return { outcome: 'not_found' as const };
+      await tx.files.delete({ where: { file_id: evidence.files.file_id } });
+      await tx.audit_logs.create({
+        data: {
+          actor_user_id: actorUserId,
+          module: 'incident-management',
+          action: 'incident.evidence_removed',
+          entity_type: 'incident_evidence',
+          entity_id: evidence.incident_evidence_id,
+          before_data: {
+            incidentId: evidence.incident_id,
+            fileId: evidence.files.file_id,
+            originalName: evidence.files.original_name,
+            mimeType: evidence.files.mime_type,
+            sizeBytes:
+              evidence.files.size_bytes === null ? null : Number(evidence.files.size_bytes),
+            checksum: evidence.files.checksum,
+            description: evidence.description,
+            uploadedByUserId: evidence.uploaded_by_user_id,
+            createdAt: evidence.created_at.toISOString(),
+          },
+          after_data: { reason: input.reason },
+          ...auditRequestContext(context),
+        },
+      });
+      return { outcome: 'removed' as const };
     });
   },
   recordEvidenceDownload(

@@ -10,6 +10,7 @@ import {
   listIncidentEvidence,
   uploadIncidentEvidence,
   downloadIncidentEvidence,
+  removeIncidentEvidence,
   getMyIncident,
   listIncidentsForClassification,
   listMyIncidents,
@@ -24,6 +25,8 @@ import {
   incidentEvidenceQuerySchema,
   myIncidentsQuerySchema,
   reportIncidentBodySchema,
+  removeIncidentEvidenceBodySchema,
+  incidentEvidenceParamsSchema,
 } from './dto/report-incident.dto.js';
 import { uploadIncidentEvidenceFile } from './incident-evidence.upload.js';
 
@@ -34,6 +37,13 @@ incidentManagementRouter.get(
   authenticate,
   authorize('incidents.evidence.manage'),
   asyncHandler(downloadIncidentEvidence),
+);
+incidentManagementRouter.delete(
+  '/evidence/:evidenceId',
+  authenticate,
+  authorize('incidents.evidence.manage'),
+  validate({ params: incidentEvidenceParamsSchema, body: removeIncidentEvidenceBodySchema }),
+  asyncHandler(removeIncidentEvidence),
 );
 incidentManagementRouter.get(
   '/:incidentId/evidence',

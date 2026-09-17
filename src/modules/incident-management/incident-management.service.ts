@@ -1,14 +1,16 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { mkdir, rm, writeFile } from 'node:fs/promises';
+import { mkdir, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { AppError } from '../../common/errors/app-error.js';
 import { env } from '../../config/env.js';
+import { logger } from '../../config/logger.js';
 import type {
   ClassificationQueueQuery,
   AssignIncidentInput,
   UpdateIncidentProgressInput,
   UploadIncidentEvidenceInput,
   IncidentEvidenceQuery,
+  RemoveIncidentEvidenceInput,
   ClassifyIncidentInput,
   MyIncidentsQuery,
   ReportIncidentInput,
@@ -204,6 +206,74 @@ export const incidentManagementService = {
       name: evidence.files.original_name,
       mimeType: evidence.files.mime_type ?? 'application/octet-stream',
     };
+  },
+  async removeEvidence(
+    evidenceId: string,
+    input: RemoveIncidentEvidenceInput,
+    actor: Actor,
+    context: { ipAddress: string | null; userAgent: string | null },
+  ) {
+    requireEvidencePermission(actor);
+    const evidence = await incidentManagementRepository.findEvidence(evidenceId);
+    if (!evidence) throw new AppError(404, 'EVIDENCE_NOT_FOUND', 'Incident evidence was not found');
+    if (evidence.incidents.status === 'closed')
+      throw new AppError(
+        409,
+        'INCIDENT_CLOSED',
+        'Evidence cannot be removed from a closed incident',
+      );
+    const activeHandlerId = evidence.incidents.incident_assignments[0]?.assignee_user_id;
+    const isCoordinator = actor.permissions.includes('incidents.assign');
+    if (!isCoordinator && activeHandlerId !== actor.userId)
+      throw new AppError(
+        403,
+        'NOT_INCIDENT_HANDLER',
+        'Only the active handler or an incident coordinator can remove evidence',
+      );
+    const absolute = evidencePath(evidence.files.storage_key);
+    const staged = `${absolute}.deleting-${randomUUID()}`;
+    try {
+      await rename(absolute, staged);
+    } catch {
+      throw new AppError(
+        409,
+        'EVIDENCE_FILE_MISSING',
+        'The evidence file is unavailable and was not removed',
+      );
+    }
+    try {
+      const result = await incidentManagementRepository.removeEvidence(
+        evidence,
+        input,
+        actor.userId,
+        isCoordinator,
+        context,
+      );
+      if (result.outcome === 'not_found')
+        throw new AppError(404, 'EVIDENCE_NOT_FOUND', 'Incident evidence was not found');
+      if (result.outcome === 'closed')
+        throw new AppError(
+          409,
+          'INCIDENT_CLOSED',
+          'Evidence cannot be removed from a closed incident',
+        );
+      if (result.outcome === 'not_handler')
+        throw new AppError(
+          403,
+          'NOT_INCIDENT_HANDLER',
+          'Only the active handler or an incident coordinator can remove evidence',
+        );
+    } catch (error: unknown) {
+      await rename(staged, absolute).catch(() => undefined);
+      throw error;
+    }
+    await rm(staged, { force: true }).catch((error: unknown) => {
+      logger.error(
+        { err: error, evidenceId },
+        'Removed evidence metadata but failed to purge the staged storage file',
+      );
+    });
+    return { id: evidenceId, removed: true as const };
   },
   async report(
     input: ReportIncidentInput,

@@ -329,4 +329,39 @@ export const incidentPaths = {
       },
     },
   },
+  '/incidents/evidence/{evidenceId}': {
+    delete: {
+      tags: ['Incidents'],
+      summary: 'Remove incorrectly uploaded incident evidence (UC163)',
+      description:
+        'Permanently removes an incorrectly uploaded evidence record and file. A reason is mandatory. Only the active handler or an incident coordinator may remove evidence, and closed incidents are immutable. The complete evidence metadata and reason are retained in the audit log.',
+      security: [{ bearerAuth: [] }],
+      parameters: [
+        {
+          name: 'evidenceId',
+          in: 'path',
+          required: true,
+          schema: { type: 'string', format: 'uuid' },
+        },
+      ],
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              required: ['reason'],
+              properties: { reason: { type: 'string', minLength: 10, maxLength: 2000 } },
+            },
+          },
+        },
+      },
+      responses: {
+        '200': { description: 'Evidence removed and audited' },
+        '403': { description: 'Caller is not the active handler or coordinator' },
+        '404': { description: 'Evidence not found' },
+        '409': { description: 'Incident is closed or the physical file is unavailable' },
+      },
+    },
+  },
 } as const;

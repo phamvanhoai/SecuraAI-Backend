@@ -8,6 +8,7 @@ import {
   uploadIncidentEvidenceBodySchema,
   incidentEvidenceParamsSchema,
   incidentEvidenceQuerySchema,
+  removeIncidentEvidenceBodySchema,
   incidentParamsSchema,
   myIncidentsQuerySchema,
   reportIncidentBodySchema,
@@ -115,4 +116,15 @@ export const downloadIncidentEvidence: RequestHandler = async (req, res) => {
   });
   res.type(file.mimeType);
   res.download(file.absolutePath, file.name);
+};
+export const removeIncidentEvidence: RequestHandler = async (req, res) => {
+  if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+  const { evidenceId } = incidentEvidenceParamsSchema.parse(req.params);
+  const data = await incidentManagementService.removeEvidence(
+    evidenceId,
+    removeIncidentEvidenceBodySchema.parse(req.body),
+    req.auth,
+    { ipAddress: req.ip ?? null, userAgent: req.get('user-agent')?.slice(0, 1000) ?? null },
+  );
+  res.json({ success: true, data });
 };
