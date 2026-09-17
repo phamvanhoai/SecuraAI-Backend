@@ -26,15 +26,13 @@ export const getRiskAssessmentDetail: RequestHandler = async (req, res) => {
 
 export const listRiskAssessmentCreateOptions: RequestHandler = async (req, res) => {
   if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
-  res
-    .status(200)
-    .json({
-      success: true,
-      data: await riskManagementService.listCreateOptions(
-        riskCreateOptionsQuerySchema.parse(req.query),
-        req.auth,
-      ),
-    });
+  res.status(200).json({
+    success: true,
+    data: await riskManagementService.listCreateOptions(
+      riskCreateOptionsQuerySchema.parse(req.query),
+      req.auth,
+    ),
+  });
 };
 
 export const createRiskAssessment: RequestHandler = async (req, res) => {

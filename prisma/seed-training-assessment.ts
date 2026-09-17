@@ -151,18 +151,26 @@ async function main(): Promise<void> {
       });
     }
 
+    const seededCampaignTitle = '[Sample] Employee phishing awareness campaign';
     let campaign = await transaction.training_campaigns.findFirst({
       where: {
         training_course_id: course.training_course_id,
-        title: '[Sample] Employee phishing awareness campaign',
+        title: seededCampaignTitle,
       },
       select: { training_campaign_id: true },
     });
     if (!campaign) {
+      campaign = await transaction.training_campaigns.findFirst({
+        where: { training_course_id: course.training_course_id },
+        orderBy: [{ created_at: 'asc' }, { training_campaign_id: 'asc' }],
+        select: { training_campaign_id: true },
+      });
+    }
+    if (!campaign) {
       campaign = await transaction.training_campaigns.create({
         data: {
           training_course_id: course.training_course_id,
-          title: '[Sample] Employee phishing awareness campaign',
+          title: seededCampaignTitle,
           start_date: new Date('2026-09-01T00:00:00.000Z'),
           due_date: new Date('2026-12-31T00:00:00.000Z'),
         },

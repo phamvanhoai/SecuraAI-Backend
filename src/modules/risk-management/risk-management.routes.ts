@@ -43,7 +43,6 @@ riskManagementRouter.post(
 riskManagementRouter.get(
   '/create-options',
   authenticate,
-  authorize('risks.create'),
   validate({ query: riskCreateOptionsQuerySchema }),
   asyncHandler(listRiskAssessmentCreateOptions),
 );

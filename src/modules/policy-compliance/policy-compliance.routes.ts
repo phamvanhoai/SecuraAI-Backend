@@ -39,8 +39,10 @@ import {
 } from './dto/update-policy-create-version.dto.js';
 import { controlAssessmentParamsSchema, createControlAssessmentBodySchema, listControlAssessmentsQuerySchema } from './dto/control-assessment.dto.js';
 import { createControlAssessment, getControlAssessmentHistory, listControlAssessments } from './control-assessment.controller.js';
+import { policyControlMappingRouter } from './policy-control-mapping.routes.js';
 
 export const policyComplianceRouter = Router();
+policyComplianceRouter.use(policyControlMappingRouter);
 policyComplianceRouter.use(policyAcknowledgementRouter);
 
 policyComplianceRouter.get('/control-assessments', authenticate, authorize('compliance.assess-controls'), validate({ query: listControlAssessmentsQuerySchema }), asyncHandler(listControlAssessments));

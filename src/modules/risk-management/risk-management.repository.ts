@@ -181,16 +181,48 @@ export const riskManagementRepository = {
   ) {
     return prisma.$transaction(async (transaction) => {
       const now = new Date();
-      const actor = await transaction.users.findUniqueOrThrow({
-        where: { user_id: context.actorUserId },
-        select: { full_name: true },
-      });
+      const [actor, current] = await Promise.all([
+        transaction.users.findFirst({
+          where: { user_id: context.actorUserId, deleted_at: null, status: 'active' },
+          select: { full_name: true },
+        }),
+        transaction.risk_assessments.findUnique({
+          where: { risk_assessment_id: id },
+          select: {
+            status: true,
+            updated_at: true,
+            _count: {
+              select: {
+                risk_treatment_plans: true,
+                incident_risk_links: true,
+                other_risk_assessments: true,
+              },
+            },
+          },
+        }),
+      ]);
+      if (!actor)
+        return { failure: 'ACTOR_INACTIVE' as const, cancelled: null };
+      if (!current)
+        return { failure: 'RISK_ASSESSMENT_CHANGED' as const, cancelled: null };
+      if (!['draft', 'rejected'].includes(current.status))
+        return { failure: 'RISK_NOT_CANCELLABLE' as const, cancelled: null };
+      if (current._count.risk_treatment_plans)
+        return { failure: 'RISK_HAS_TREATMENT_PLAN' as const, cancelled: null };
+      if (current._count.incident_risk_links)
+        return { failure: 'RISK_LINKED_TO_INCIDENT' as const, cancelled: null };
+      if (current._count.other_risk_assessments)
+        return { failure: 'RISK_HAS_SUCCESSOR' as const, cancelled: null };
+      if (current.updated_at.getTime() !== new Date(input.expectedUpdatedAt).getTime())
+        return { failure: 'RISK_ASSESSMENT_CHANGED' as const, cancelled: null };
       const changed = await transaction.risk_assessments.updateMany({
         where: {
           risk_assessment_id: id,
           updated_at: new Date(input.expectedUpdatedAt),
           status: { in: ['draft', 'rejected'] },
           risk_treatment_plans: { none: {} },
+          incident_risk_links: { none: {} },
+          other_risk_assessments: { none: {} },
         },
         data: {
           status: 'cancelled',
@@ -201,7 +233,8 @@ export const riskManagementRepository = {
           updated_at: now,
         },
       });
-      if (changed.count !== 1) return null;
+      if (changed.count !== 1)
+        return { failure: 'RISK_ASSESSMENT_CHANGED' as const, cancelled: null };
       const cancelled = await transaction.risk_assessments.findUniqueOrThrow({
         where: { risk_assessment_id: id },
         select: riskAssessmentDetailSelect,
@@ -223,7 +256,7 @@ export const riskManagementRepository = {
           user_agent: context.userAgent,
         },
       });
-      return cancelled;
+      return { failure: null, cancelled };
     });
   },
   async listCreateOptions(query: RiskCreateOptionsQuery) {
@@ -345,6 +378,80 @@ export const riskManagementRepository = {
     context: { actorUserId: string; ipAddress: string | null; userAgent: string | null },
   ) {
     return prisma.$transaction(async (transaction) => {
+      const normalizedTitle = input.title.normalize('NFKC').replace(/\s+/gu, ' ').toLowerCase();
+      const targetKey = input.assetId
+        ? `asset:${input.assetId}`
+        : `business-process:${input.businessProcessId ?? ''}`;
+      await transaction.$queryRaw`
+        SELECT pg_advisory_xact_lock(
+          hashtextextended(${`risk-assessment:create:${targetKey}:${normalizedTitle}`}, 0)
+        )
+      `;
+      if (
+        before.status === 'rejected' &&
+        (before.assets?.asset_id !== (input.assetId ?? null) ||
+          before.business_processes?.business_process_id !== (input.businessProcessId ?? null))
+      )
+        return { failure: 'TARGET_LOCKED' as const, duplicate: null, updated: null };
+      const [
+        assessor,
+        targetCount,
+        threatCount,
+        vulnerabilityCount,
+        treatmentCount,
+        incidentLinkCount,
+        duplicate,
+      ] =
+        await Promise.all([
+          transaction.users.count({
+            where: { user_id: context.actorUserId, deleted_at: null, status: 'active' },
+          }),
+          input.assetId
+            ? transaction.assets.count({
+                where: { asset_id: input.assetId, deleted_at: null, status: { not: 'disposed' } },
+              })
+            : transaction.business_processes.count({
+                where: { business_process_id: input.businessProcessId ?? '', status: 'active' },
+              }),
+          transaction.threats.count({
+            where: { threat_id: { in: input.threats.map(({ threatId }) => threatId) } },
+          }),
+          transaction.vulnerabilities.count({
+            where: {
+              vulnerability_id: {
+                in: input.vulnerabilities.map(({ vulnerabilityId }) => vulnerabilityId),
+              },
+            },
+          }),
+          transaction.risk_treatment_plans.count({ where: { risk_assessment_id: id } }),
+          transaction.incident_risk_links.count({ where: { risk_assessment_id: id } }),
+          transaction.risk_assessments.findFirst({
+            where: {
+              risk_assessment_id: { not: id },
+              title: { equals: input.title, mode: 'insensitive' },
+              ...(input.assetId
+                ? { asset_id: input.assetId }
+                : { business_process_id: input.businessProcessId ?? '' }),
+              status: {
+                in: ['draft', 'pending_approval', 'approved', 'in_treatment', 'rejected'],
+              },
+            },
+            select: { risk_code: true },
+          }),
+        ]);
+      if (!assessor)
+        return { failure: 'ASSESSOR_INACTIVE' as const, duplicate: null, updated: null };
+      if (!targetCount)
+        return { failure: 'TARGET_INVALID' as const, duplicate: null, updated: null };
+      if (threatCount !== input.threats.length)
+        return { failure: 'THREAT_NOT_FOUND' as const, duplicate: null, updated: null };
+      if (vulnerabilityCount !== input.vulnerabilities.length)
+        return { failure: 'VULNERABILITY_NOT_FOUND' as const, duplicate: null, updated: null };
+      if (treatmentCount)
+        return { failure: 'RISK_HAS_TREATMENT_PLAN' as const, duplicate: null, updated: null };
+      if (incidentLinkCount)
+        return { failure: 'RISK_LINKED_TO_INCIDENT' as const, duplicate: null, updated: null };
+      if (duplicate) return { failure: null, duplicate, updated: null };
       const changed = await transaction.risk_assessments.updateMany({
         where: {
           risk_assessment_id: id,
@@ -363,7 +470,8 @@ export const riskManagementRepository = {
           updated_at: new Date(),
         },
       });
-      if (changed.count !== 1) return null;
+      if (changed.count !== 1)
+        return { failure: 'RISK_ASSESSMENT_CHANGED' as const, duplicate: null, updated: null };
       await transaction.risk_assessment_threats.deleteMany({ where: { risk_assessment_id: id } });
       await transaction.risk_assessment_vulnerabilities.deleteMany({
         where: { risk_assessment_id: id },
@@ -427,7 +535,7 @@ export const riskManagementRepository = {
           user_agent: context.userAgent,
         },
       });
-      return updated;
+      return { failure: null, duplicate: null, updated };
     });
   },
   create(
