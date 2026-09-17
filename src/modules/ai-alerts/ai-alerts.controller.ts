@@ -14,6 +14,32 @@ import {
 } from './dto/alert-feedback.dto.js';
 import { confirmAlertBodySchema } from './dto/confirm-alert.dto.js';
 import { falsePositiveBodySchema } from './dto/false-positive.dto.js';
+import {
+  alertThresholdAssetParamsSchema,
+  listAlertThresholdsQuerySchema,
+  setAlertThresholdBodySchema,
+} from './dto/alert-threshold.dto.js';
+
+export const listAlertThresholds: RequestHandler = async (req, res) => {
+  if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+  const data = await aiAlertsService.listAlertThresholds(
+    listAlertThresholdsQuerySchema.parse(req.query),
+    req.auth,
+  );
+  res.status(200).json({ success: true, data });
+};
+
+export const setAlertThreshold: RequestHandler = async (req, res) => {
+  if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+  const { assetId } = alertThresholdAssetParamsSchema.parse(req.params);
+  const data = await aiAlertsService.setAlertThreshold(
+    assetId,
+    setAlertThresholdBodySchema.parse(req.body),
+    req.auth,
+    requestContext(req),
+  );
+  res.status(200).json({ success: true, data });
+};
 
 export const markFalsePositive: RequestHandler = async (req, res) => {
   if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');

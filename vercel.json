@@ -1,0 +1,3 @@
+{
+  "crons": [{ "path": "/api/v1/training/deadline-reminders/dispatch", "schedule": "0 1 * * *" }]
+}

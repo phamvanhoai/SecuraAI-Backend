@@ -20,6 +20,11 @@ const publicUserSelect = {
   last_login_at: true,
   created_at: true,
   departments: { select: { department_id: true, code: true, name: true } },
+  mfa_methods: {
+    where: { method_type: 'totp', is_enabled: true },
+    select: { mfa_method_id: true },
+    take: 1,
+  },
   user_roles_user_roles_user_idTousers: {
     select: {
       roles: {
@@ -123,6 +128,7 @@ export const usersService = {
             name: user.departments.name,
           }
         : null,
+      mfaEnabled: user.mfa_methods.length > 0,
       roles: user.user_roles_user_roles_user_idTousers.map(({ roles }) => ({
         code: roles.code,
         name: roles.name,

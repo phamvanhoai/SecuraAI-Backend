@@ -8,8 +8,16 @@ const mocks = vi.hoisted(() => ({
   findAuthUser: vi.fn(),
   findUserForPasswordChange: vi.fn(),
   findTotpMethod: vi.fn(),
+  findTotpMethodById: vi.fn(),
   saveTotpSecret: vi.fn(),
   enableTotpMethod: vi.fn(),
+  createMfaLoginChallenge: vi.fn(),
+  registerMfaChallengeAttempt: vi.fn(),
+  invalidateMfaLoginChallenge: vi.fn(),
+  consumeMfaLoginChallenge: vi.fn(),
+  claimTotpTimeStep: vi.fn(),
+  consumeRecoveryCode: vi.fn(),
+  disableTotpMethod: vi.fn(),
 }));
 
 vi.mock('../src/modules/auth/auth.repository.js', () => ({ authRepository: mocks }));
@@ -47,7 +55,15 @@ describe('TOTP MFA HTTP API', () => {
     });
     mocks.findTotpMethod.mockResolvedValue(null);
     mocks.saveTotpSecret.mockResolvedValue(undefined);
-    mocks.enableTotpMethod.mockResolvedValue(undefined);
+    mocks.enableTotpMethod.mockResolvedValue(true);
+    mocks.createMfaLoginChallenge.mockResolvedValue(undefined);
+    mocks.registerMfaChallengeAttempt.mockResolvedValue(null);
+    mocks.invalidateMfaLoginChallenge.mockResolvedValue(undefined);
+    mocks.consumeMfaLoginChallenge.mockResolvedValue(null);
+    mocks.findTotpMethodById.mockResolvedValue(null);
+    mocks.claimTotpTimeStep.mockResolvedValue(true);
+    mocks.consumeRecoveryCode.mockResolvedValue(false);
+    mocks.disableTotpMethod.mockResolvedValue(undefined);
     mocks.findAuthUser.mockResolvedValue(null);
   });
 
@@ -79,7 +95,12 @@ describe('TOTP MFA HTTP API', () => {
 
     expect(response.status).toBe(200);
     expect(response.body.data.message).toContain('MFA enabled successfully');
-    expect(mocks.enableTotpMethod).toHaveBeenCalledWith(userId);
+    expect(mocks.enableTotpMethod).toHaveBeenCalledWith(
+      userId,
+      expect.any(BigInt),
+      expect.arrayContaining([expect.stringMatching(/^[a-f0-9]{64}$/)]),
+    );
+    expect(response.body.data.recoveryCodes).toHaveLength(10);
   });
 
   it('rejects an invalid authenticator code', async () => {
@@ -100,7 +121,7 @@ describe('TOTP MFA HTTP API', () => {
     expect(mocks.enableTotpMethod).not.toHaveBeenCalled();
   });
 
-  it('requires MFA during login when the account has MFA enabled', async () => {
+  it('returns a short-lived challenge without issuing a session when MFA is enabled', async () => {
     const secret = generateSecret();
     mocks.findTotpMethod.mockResolvedValue({
       mfa_method_id: 'mfa-method-id',
@@ -122,7 +143,140 @@ describe('TOTP MFA HTTP API', () => {
       .post('/api/v1/auth/login')
       .send({ email: 'user@example.com', password: 'CurrentPassword1!' });
 
+    expect(response.status).toBe(200);
+    expect(response.body.data).toEqual({
+      mfaRequired: true,
+      challengeToken: expect.any(String),
+      expiresIn: 300,
+    });
+    expect(response.body.data.accessToken).toBeUndefined();
+    expect(response.body.data.refreshToken).toBeUndefined();
+    expect(mocks.createMfaLoginChallenge).toHaveBeenCalledWith({
+      mfaMethodId: 'mfa-method-id',
+      tokenHash: expect.stringMatching(/^[a-f0-9]{64}$/),
+      expiresAt: expect.any(Date),
+      ipAddress: expect.any(String),
+    });
+  });
+
+  it('consumes a valid login challenge and returns tokens', async () => {
+    const secret = generateSecret();
+    const code = await generate({ secret });
+    mocks.registerMfaChallengeAttempt.mockResolvedValue({
+      mfaMethodId: 'mfa-method-id',
+      secretEncrypted: encryptSecret(secret),
+      attempts: 1,
+    });
+    mocks.findTotpMethodById.mockResolvedValue({
+      secret_encrypted: encryptSecret(secret),
+      last_used_totp_step: null,
+    });
+    mocks.consumeMfaLoginChallenge.mockResolvedValue({
+      kind: 'authenticated',
+      user: {
+        user_id: userId,
+        email: 'user@example.com',
+        password_hash: await argon2.hash('CurrentPassword1!'),
+        status: 'active',
+        deleted_at: null,
+        user_roles_user_roles_user_idTousers: [],
+      },
+    });
+
+    const response = await request(createApp())
+      .post('/api/v1/auth/mfa/challenge/verify')
+      .send({ challengeToken: 'a'.repeat(43), code });
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.accessToken).toEqual(expect.any(String));
+    expect(response.body.data.refreshToken).toEqual(expect.any(String));
+    expect(mocks.consumeMfaLoginChallenge).toHaveBeenCalledOnce();
+  });
+
+  it('invalidates a login challenge after the fifth invalid code', async () => {
+    const secret = generateSecret();
+    mocks.registerMfaChallengeAttempt.mockResolvedValue({
+      mfaMethodId: 'mfa-method-id',
+      secretEncrypted: encryptSecret(secret),
+      attempts: 5,
+    });
+
+    const response = await request(createApp())
+      .post('/api/v1/auth/mfa/challenge/verify')
+      .send({ challengeToken: 'b'.repeat(43), code: '000000' });
+
     expect(response.status).toBe(401);
-    expect(response.body.error.code).toBe('MFA_REQUIRED');
+    expect(response.body.error.code).toBe('INVALID_MFA_CODE');
+    expect(mocks.invalidateMfaLoginChallenge).toHaveBeenCalledOnce();
+  });
+
+  it('accepts an unused recovery code for a login challenge', async () => {
+    mocks.registerMfaChallengeAttempt.mockResolvedValue({
+      mfaMethodId: 'mfa-method-id',
+      secretEncrypted: 'encrypted-secret',
+      attempts: 1,
+    });
+    mocks.consumeRecoveryCode.mockResolvedValue(true);
+    mocks.consumeMfaLoginChallenge.mockResolvedValue({
+      kind: 'authenticated',
+      user: {
+        user_id: userId,
+        status: 'active',
+        deleted_at: null,
+        user_roles_user_roles_user_idTousers: [],
+      },
+    });
+
+    const response = await request(createApp())
+      .post('/api/v1/auth/mfa/challenge/verify')
+      .send({ challengeToken: 'c'.repeat(43), code: 'ABCD-EF12-3456' });
+
+    expect(response.status).toBe(200);
+    expect(mocks.consumeRecoveryCode).toHaveBeenCalledWith(
+      'mfa-method-id',
+      expect.stringMatching(/^[a-f0-9]{64}$/),
+    );
+  });
+
+  it('rejects a replayed TOTP time step', async () => {
+    const secret = generateSecret();
+    const code = await generate({ secret });
+    mocks.registerMfaChallengeAttempt.mockResolvedValue({
+      mfaMethodId: 'mfa-method-id',
+      secretEncrypted: encryptSecret(secret),
+      attempts: 1,
+    });
+    mocks.findTotpMethodById.mockResolvedValue({
+      secret_encrypted: encryptSecret(secret),
+      last_used_totp_step: null,
+    });
+    mocks.claimTotpTimeStep.mockResolvedValue(false);
+
+    const response = await request(createApp())
+      .post('/api/v1/auth/mfa/challenge/verify')
+      .send({ challengeToken: 'd'.repeat(43), code });
+
+    expect(response.status).toBe(401);
+    expect(response.body.error.code).toBe('INVALID_MFA_CODE');
+    expect(mocks.consumeMfaLoginChallenge).not.toHaveBeenCalled();
+  });
+
+  it('disables MFA after password and fresh authenticator verification', async () => {
+    const secret = generateSecret();
+    const code = await generate({ secret });
+    mocks.findTotpMethod.mockResolvedValue({
+      mfa_method_id: 'mfa-method-id',
+      secret_encrypted: encryptSecret(secret),
+      is_enabled: true,
+      last_used_totp_step: null,
+    });
+
+    const response = await request(createApp())
+      .post('/api/v1/auth/mfa/disable')
+      .set('authorization', `Bearer ${accessToken}`)
+      .send({ currentPassword: 'CurrentPassword1!', code });
+
+    expect(response.status).toBe(200);
+    expect(mocks.disableTotpMethod).toHaveBeenCalledWith(userId);
   });
 });

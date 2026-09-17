@@ -27,7 +27,6 @@ export class WazuhConnector implements IntegrationConnector {
     const password = extractString(config.password, 'wazuh');
     const verifySsl = config.verifySsl !== false;
     const timeoutMs = options?.timeoutMs ?? 10000;
-    const stepTimeout = Math.min(Math.max(timeoutMs, 5000), 15000);
     const startTime = Date.now();
 
     // Step 1: Authenticate with HTTP Basic Auth to get JWT Token
@@ -43,7 +42,7 @@ export class WazuhConnector implements IntegrationConnector {
           Authorization: basicAuthHeader,
           Accept: 'text/plain, application/json',
         },
-        timeoutMs: stepTimeout,
+        timeoutMs,
         rejectUnauthorized: verifySsl,
       });
     } catch (err: unknown) {
@@ -102,7 +101,7 @@ export class WazuhConnector implements IntegrationConnector {
           Authorization: `Bearer ${jwtToken}`,
           Accept: 'application/json',
         },
-        timeoutMs: stepTimeout,
+        timeoutMs,
         rejectUnauthorized: verifySsl,
       });
     } catch (err: unknown) {
@@ -146,14 +145,14 @@ export class WazuhConnector implements IntegrationConnector {
       connected: true,
       statusCode: infoRes.statusCode,
       latencyMs: totalLatency,
-      message: 'Wazuh API connection established successfully',
+      message: 'Wazuh API connected and authenticated successfully',
       provider: 'wazuh',
-      verifySslWarning: !verifySsl,
       details: {
         title,
         apiVersion,
         hostname,
       },
+      verifySslWarning: !verifySsl,
     };
   }
 }

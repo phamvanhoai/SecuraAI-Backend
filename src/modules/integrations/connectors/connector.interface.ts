@@ -1,25 +1,22 @@
-export type ConnectorTestResult = {
+export interface ConnectorTestResult {
   connected: boolean;
-  statusCode?: number | null | undefined;
+  statusCode?: number;
   latencyMs: number;
   message: string;
   provider: string;
-  verifySslWarning?: boolean | undefined;
-  details?: Record<string, unknown> | undefined;
-};
+  details?: Record<string, unknown>;
+  verifySslWarning?: boolean;
+}
 
-export type IntegrationEntity = {
+export interface IntegrationEntity {
   integration_id: string;
   name: string;
   integration_type: string;
   base_url: string | null;
   configuration: unknown;
   status: string;
-};
+}
 
 export interface IntegrationConnector {
-  testConnection(
-    integration: IntegrationEntity,
-    options?: { timeoutMs?: number },
-  ): Promise<ConnectorTestResult>;
+  testConnection(integration: IntegrationEntity, options?: { timeoutMs?: number }): Promise<ConnectorTestResult>;
 }

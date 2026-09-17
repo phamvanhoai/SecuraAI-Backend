@@ -12,6 +12,8 @@ import {
   listAlerts,
   listAlertFeedback,
   listModelConfigurations,
+  listAlertThresholds,
+  setAlertThreshold,
 } from './ai-alerts.controller.js';
 import {
   createModelConfigurationBodySchema,
@@ -26,8 +28,27 @@ import {
 } from './dto/alert-feedback.dto.js';
 import { confirmAlertBodySchema } from './dto/confirm-alert.dto.js';
 import { falsePositiveBodySchema } from './dto/false-positive.dto.js';
+import {
+  alertThresholdAssetParamsSchema,
+  listAlertThresholdsQuerySchema,
+  setAlertThresholdBodySchema,
+} from './dto/alert-threshold.dto.js';
 
 export const aiAlertsRouter = Router();
+aiAlertsRouter.get(
+  '/thresholds',
+  authenticate,
+  authorize('ai-alerts.thresholds.manage'),
+  validate({ query: listAlertThresholdsQuerySchema }),
+  asyncHandler(listAlertThresholds),
+);
+aiAlertsRouter.put(
+  '/thresholds/:assetId',
+  authenticate,
+  authorize('ai-alerts.thresholds.manage'),
+  validate({ params: alertThresholdAssetParamsSchema, body: setAlertThresholdBodySchema }),
+  asyncHandler(setAlertThreshold),
+);
 aiAlertsRouter.get(
   '/:alertId/explanation',
   authenticate,
