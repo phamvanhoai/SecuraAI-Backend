@@ -1,6 +1,7 @@
 import swaggerJsdoc from 'swagger-jsdoc';
 import { env } from '../config/env.js';
 import { trainingReminderPaths } from './training-reminders.openapi.js';
+import { accountLockPaths } from './account-lock.openapi.js';
 
 export const openApiSpec = swaggerJsdoc({
   definition: {
@@ -1351,6 +1352,7 @@ export const openApiSpec = swaggerJsdoc({
     },
     paths: {
       ...trainingReminderPaths,
+      ...accountLockPaths,
       '/training/enrollments/{enrollmentId}/withdraw': {
         post: {
           tags: ['Training Awareness'],

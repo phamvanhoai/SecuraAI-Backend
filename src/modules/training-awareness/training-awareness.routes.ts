@@ -13,6 +13,7 @@ import {
   getCompletionCampaign,
   getLatestCourseAssignment,
   listCompletionCampaigns,
+  withdrawEnrollment,
 } from './training-awareness.controller.js';
 import {
   assignmentOptionsQuerySchema,
@@ -20,6 +21,7 @@ import {
   assignCourseParamsSchema,
   createCourseBodySchema,
   listCoursesQuerySchema,
+  withdrawEnrollmentBodySchema,
 } from './dto/course.dto.js';
 import {
   assessmentParamsSchema,
@@ -31,6 +33,14 @@ import {
   completionCampaignsQuerySchema,
   completionEnrollmentsQuerySchema,
 } from './dto/completion.dto.js';
+
+import { reminderParamsSchema, reminderQuerySchema } from './dto/reminder.dto.js';
+import {
+  authenticateReminderCron,
+  dispatchTrainingReminders,
+  listTrainingReminders,
+  markTrainingReminderRead,
+} from './training-reminders.controller.js';
 
 export const trainingAwarenessRouter = Router();
 trainingAwarenessRouter.get(
@@ -132,12 +142,3 @@ trainingAwarenessRouter.post(
   validate({ params: assignCourseParamsSchema, body: assignCourseBodySchema }),
   asyncHandler(assignCourse),
 );
-import { withdrawEnrollment } from './training-awareness.controller.js';
-import { withdrawEnrollmentBodySchema } from './dto/course.dto.js';
-import { reminderParamsSchema, reminderQuerySchema } from './dto/reminder.dto.js';
-import {
-  authenticateReminderCron,
-  dispatchTrainingReminders,
-  listTrainingReminders,
-  markTrainingReminderRead,
-} from './training-reminders.controller.js';

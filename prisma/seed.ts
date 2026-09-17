@@ -670,13 +670,15 @@ async function main(): Promise<void> {
         ['roles.delete', 'delete', 'Delete custom roles'],
         ['users.create', 'create', 'Initialize user accounts'],
         ['users.read', 'read', 'View user accounts'],
+        ['users.lock', 'lock', 'Lock active user accounts'],
+        ['users.unlock', 'unlock', 'Unlock locked user accounts'],
         ['mfa-recovery.manage', 'manage-mfa-recovery', 'Review and decide MFA recovery requests'],
       ] as const
     ).map(([code, action, description]) =>
       prisma.permissions.upsert({
         where: { code },
-        update: { module: 'access-control', action, description },
-        create: { code, module: 'access-control', action, description },
+        update: { module: code === 'users.lock' || code === 'users.unlock' ? 'users' : 'access-control', action, description },
+        create: { code, module: code === 'users.lock' || code === 'users.unlock' ? 'users' : 'access-control', action, description },
       }),
     ),
   );
