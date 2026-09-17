@@ -37,6 +37,12 @@ export const assignIncidentBodySchema = z
     note: z.string().trim().min(10).max(2000),
   })
   .strict();
+export const updateIncidentProgressBodySchema = z
+  .object({
+    status: z.enum(['in_progress', 'escalated', 'resolved', 'closed']),
+    note: z.string().trim().min(10).max(5000),
+  })
+  .strict();
 export const classificationQueueQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(50).default(10),
@@ -51,4 +57,5 @@ export type ReportIncidentInput = z.infer<typeof reportIncidentBodySchema>;
 export type MyIncidentsQuery = z.infer<typeof myIncidentsQuerySchema>;
 export type ClassifyIncidentInput = z.infer<typeof classifyIncidentBodySchema>;
 export type AssignIncidentInput = z.infer<typeof assignIncidentBodySchema>;
+export type UpdateIncidentProgressInput = z.infer<typeof updateIncidentProgressBodySchema>;
 export type ClassificationQueueQuery = z.infer<typeof classificationQueueQuerySchema>;

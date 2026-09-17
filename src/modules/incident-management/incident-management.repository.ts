@@ -3,6 +3,7 @@ import { prisma } from '../../database/prisma.js';
 import type {
   ClassificationQueueQuery,
   AssignIncidentInput,
+  UpdateIncidentProgressInput,
   ClassifyIncidentInput,
   MyIncidentsQuery,
   ReportIncidentInput,
@@ -297,6 +298,99 @@ export const incidentManagementRepository = {
         },
       });
       return { outcome: 'assigned' as const, incident, assignee, assignedAt: now };
+    });
+  },
+  updateProgress(
+    incidentId: string,
+    input: UpdateIncidentProgressInput,
+    actorUserId: string,
+    canManageAssignments: boolean,
+    context: RequestContext,
+  ) {
+    return prisma.$transaction(async (tx) => {
+      const current = await tx.incidents.findUnique({
+        where: { incident_id: incidentId },
+        select: {
+          incident_id: true,
+          status: true,
+          incident_assignments: {
+            where: { completed_at: null },
+            select: { incident_assignment_id: true, assignee_user_id: true },
+            orderBy: [{ assigned_at: 'desc' }, { incident_assignment_id: 'desc' }],
+            take: 1,
+          },
+        },
+      });
+      if (!current) return { outcome: 'not_found' as const };
+      const activeAssignment = current.incident_assignments[0];
+      if (!activeAssignment && !(current.status === 'resolved' && canManageAssignments))
+        return { outcome: 'unassigned' as const };
+      if (
+        activeAssignment &&
+        activeAssignment.assignee_user_id !== actorUserId &&
+        !canManageAssignments
+      )
+        return { outcome: 'not_handler' as const };
+      if (current.status === input.status) return { outcome: 'unchanged' as const };
+      const transitions: Record<string, readonly string[]> = {
+        assigned: ['in_progress', 'escalated'],
+        in_progress: ['escalated', 'resolved'],
+        escalated: ['in_progress', 'resolved'],
+        resolved: ['closed'],
+      };
+      if (!transitions[current.status]?.includes(input.status))
+        return { outcome: 'invalid_transition' as const };
+      const now = new Date();
+      const incident = await tx.incidents.update({
+        where: { incident_id: incidentId },
+        data: {
+          status: input.status,
+          updated_at: now,
+          ...(input.status === 'escalated' ? { escalated_at: now } : {}),
+          ...(input.status === 'resolved' ? { resolved_at: now } : {}),
+          ...(input.status === 'closed' ? { closed_at: now } : {}),
+        },
+        select: {
+          incident_id: true,
+          incident_code: true,
+          title: true,
+          description: true,
+          category: true,
+          severity: true,
+          status: true,
+          occurred_at: true,
+          detected_at: true,
+          created_at: true,
+        },
+      });
+      await tx.incident_updates.create({
+        data: {
+          incident_id: incidentId,
+          user_id: actorUserId,
+          status_from: current.status,
+          status_to: input.status,
+          note: input.note,
+        },
+      });
+      if (input.status === 'resolved' || input.status === 'closed') {
+        await tx.incident_assignments.updateMany({
+          where: { incident_id: incidentId, completed_at: null },
+          data: { completed_at: now },
+        });
+      }
+      await tx.audit_logs.create({
+        data: {
+          actor_user_id: actorUserId,
+          module: 'incident-management',
+          action: 'incident.progress_updated',
+          entity_type: 'incident',
+          entity_id: incidentId,
+          before_data: { status: current.status },
+          after_data: { status: input.status, note: input.note },
+          ...auditRequestContext(context),
+        },
+      });
+      return { outcome: 'updated' as const, incident };
     });
   },
   classifySeverity(

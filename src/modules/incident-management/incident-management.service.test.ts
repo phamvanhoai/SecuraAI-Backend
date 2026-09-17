@@ -7,6 +7,7 @@ const mocks = vi.hoisted(() => ({
   classify: vi.fn(),
   options: vi.fn(),
   assign: vi.fn(),
+  progress: vi.fn(),
 }));
 vi.mock('./incident-management.repository.js', () => ({
   incidentManagementRepository: {
@@ -17,6 +18,7 @@ vi.mock('./incident-management.repository.js', () => ({
     classifySeverity: mocks.classify,
     listAssignmentOptions: mocks.options,
     assignHandler: mocks.assign,
+    updateProgress: mocks.progress,
   },
 }));
 import { incidentManagementService } from './incident-management.service.js';
@@ -183,5 +185,76 @@ describe('incident reporting service', () => {
       status: 'assigned',
       currentAssignment: { assignee: { name: 'Security Officer' } },
     });
+  });
+  it('requires incidents.update-progress to update handling status', async () => {
+    await expect(
+      incidentManagementService.updateProgress(
+        '11111111-1111-4111-8111-111111111111',
+        { status: 'in_progress', note: 'Investigation has started with endpoint log collection.' },
+        { userId: 'officer-1', permissions: ['incidents.assign'] },
+        { ipAddress: null, userAgent: null },
+      ),
+    ).rejects.toMatchObject({ statusCode: 403 });
+  });
+  it('returns the updated handling status', async () => {
+    mocks.progress.mockResolvedValue({
+      outcome: 'updated',
+      incident: {
+        incident_id: '11111111-1111-4111-8111-111111111111',
+        incident_code: 'INC-001',
+        title: 'Suspicious activity',
+        description: 'A sufficiently detailed incident description.',
+        category: 'other',
+        severity: 'high',
+        status: 'in_progress',
+        occurred_at: null,
+        detected_at: new Date('2026-09-17T00:00:00Z'),
+        created_at: new Date('2026-09-17T00:00:00Z'),
+      },
+    });
+    const result = await incidentManagementService.updateProgress(
+      '11111111-1111-4111-8111-111111111111',
+      { status: 'in_progress', note: 'Investigation has started with endpoint log collection.' },
+      { userId: 'officer-1', permissions: ['incidents.update-progress'] },
+      { ipAddress: null, userAgent: null },
+    );
+    expect(result.status).toBe('in_progress');
+    expect(mocks.progress).toHaveBeenCalledWith(
+      '11111111-1111-4111-8111-111111111111',
+      expect.any(Object),
+      'officer-1',
+      false,
+      expect.any(Object),
+    );
+  });
+  it('allows an incident coordinator override and rejects an unrelated officer', async () => {
+    mocks.progress.mockResolvedValueOnce({ outcome: 'not_handler' });
+    await expect(
+      incidentManagementService.updateProgress(
+        '11111111-1111-4111-8111-111111111111',
+        { status: 'escalated', note: 'Escalating because the incident affects multiple services.' },
+        { userId: 'officer-2', permissions: ['incidents.update-progress'] },
+        { ipAddress: null, userAgent: null },
+      ),
+    ).rejects.toMatchObject({ statusCode: 403, code: 'NOT_INCIDENT_HANDLER' });
+    mocks.progress.mockResolvedValueOnce({ outcome: 'invalid_transition' });
+    await expect(
+      incidentManagementService.updateProgress(
+        '11111111-1111-4111-8111-111111111111',
+        { status: 'escalated', note: 'Escalating because the incident affects multiple services.' },
+        {
+          userId: 'coordinator-1',
+          permissions: ['incidents.update-progress', 'incidents.assign'],
+        },
+        { ipAddress: null, userAgent: null },
+      ),
+    ).rejects.toMatchObject({ statusCode: 409, code: 'INVALID_STATUS_TRANSITION' });
+    expect(mocks.progress).toHaveBeenLastCalledWith(
+      '11111111-1111-4111-8111-111111111111',
+      expect.any(Object),
+      'coordinator-1',
+      true,
+      expect.any(Object),
+    );
   });
 });

@@ -204,4 +204,47 @@ export const incidentPaths = {
       },
     },
   },
+  '/incidents/{incidentId}/progress': {
+    patch: {
+      tags: ['Incidents'],
+      summary: 'Update incident handling progress (UC58)',
+      description:
+        'Applies a controlled workflow transition and records an incident update and audit log atomically. The active handler may update progress; a caller with incidents.assign may coordinate an override. Resolving or closing completes the active assignment. Requires incidents.update-progress.',
+      security: [{ bearerAuth: [] }],
+      parameters: [
+        {
+          name: 'incidentId',
+          in: 'path',
+          required: true,
+          schema: { type: 'string', format: 'uuid' },
+        },
+      ],
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              required: ['status', 'note'],
+              properties: {
+                status: {
+                  type: 'string',
+                  enum: ['in_progress', 'escalated', 'resolved', 'closed'],
+                },
+                note: { type: 'string', minLength: 10, maxLength: 5000 },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        '200': { description: 'Incident progress updated' },
+        '403': { description: 'Caller is neither the active handler nor an incident coordinator' },
+        '404': { description: 'Incident not found' },
+        '409': {
+          description: 'Incident is unassigned, or workflow transition is invalid or unchanged',
+        },
+      },
+    },
+  },
 } as const;
