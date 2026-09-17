@@ -348,5 +348,30 @@ describe('Manage Integration API Keys HTTP API (UC 13.3 - Admin Only)', () => {
       expect(res.status).toBe(200);
       expect(res.body.data.status).toBe('EXPIRED');
     });
+
+    it('filters API keys list by isActive query parameter (true/false) and search', async () => {
+      vi.spyOn(integrationsRepository, 'findById').mockResolvedValue(mockIntegration);
+      const findSpy = vi.spyOn(integrationsRepository, 'findApiKeysByIntegrationId').mockResolvedValue([mockApiKeyRecord]);
+
+      const resActive = await request(app)
+        .get(`/api/v1/integrations/${mockIntegrationId}/api-keys?isActive=true&search=Splunk`)
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      expect(resActive.status).toBe(200);
+      expect(findSpy).toHaveBeenCalledWith(
+        mockIntegrationId,
+        expect.objectContaining({ isActive: true, search: 'Splunk' }),
+      );
+
+      const resInactive = await request(app)
+        .get(`/api/v1/integrations/${mockIntegrationId}/api-keys?isActive=false`)
+        .set('Authorization', `Bearer ${adminToken}`);
+
+      expect(resInactive.status).toBe(200);
+      expect(findSpy).toHaveBeenCalledWith(
+        mockIntegrationId,
+        expect.objectContaining({ isActive: false }),
+      );
+    });
   });
 });

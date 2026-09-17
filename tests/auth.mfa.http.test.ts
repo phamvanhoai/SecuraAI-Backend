@@ -56,7 +56,7 @@ describe('TOTP MFA HTTP API', () => {
     mocks.findTotpMethod.mockResolvedValue(null);
     mocks.saveTotpSecret.mockResolvedValue(undefined);
     mocks.enableTotpMethod.mockResolvedValue(true);
-    mocks.createMfaLoginChallenge.mockResolvedValue(undefined);
+    mocks.createMfaLoginChallenge.mockResolvedValue(true);
     mocks.registerMfaChallengeAttempt.mockResolvedValue(null);
     mocks.invalidateMfaLoginChallenge.mockResolvedValue(undefined);
     mocks.consumeMfaLoginChallenge.mockResolvedValue(null);
@@ -156,6 +156,8 @@ describe('TOTP MFA HTTP API', () => {
       tokenHash: expect.stringMatching(/^[a-f0-9]{64}$/),
       expiresAt: expect.any(Date),
       ipAddress: expect.any(String),
+      expectedLockVersion: null,
+      passwordHash: expect.any(String),
     });
   });
 

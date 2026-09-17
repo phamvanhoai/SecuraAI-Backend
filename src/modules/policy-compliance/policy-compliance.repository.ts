@@ -7,6 +7,7 @@ import type {
 } from './dto/manage-policy-draft.dto.js';
 import type { UpdatePolicyCreateVersionInput } from './dto/update-policy-create-version.dto.js';
 import type { ListPolicyDepartmentAssignmentsQuery } from './dto/assign-policy-departments.dto.js';
+import type { ListPolicyVersionHistoryQuery } from './dto/policy-version-history.dto.js';
 
 type DatabaseClient = PrismaClient | Prisma.TransactionClient;
 
@@ -190,6 +191,84 @@ export const policyComplianceRepository = {
     return prisma.policies.findUnique({
       where: { policy_code: policyCode },
       select: { policy_id: true },
+    });
+  },
+
+  async listPolicyVersionHistory(
+    query: ListPolicyVersionHistoryQuery,
+    visibleStatuses?: readonly string[],
+  ) {
+    const where: Prisma.policy_versionsWhereInput = {
+      ...(query.status !== 'all'
+        ? {
+            status:
+              visibleStatuses && !visibleStatuses.includes(query.status)
+                ? { in: [] }
+                : query.status,
+          }
+        : visibleStatuses
+          ? { status: { in: [...visibleStatuses] } }
+          : {}),
+      ...(query.q !== undefined && {
+        policies: {
+          OR: [
+            { policy_code: { contains: query.q, mode: 'insensitive' } },
+            { title: { contains: query.q, mode: 'insensitive' } },
+          ],
+        },
+      }),
+    };
+    const select = {
+      policy_version_id: true,
+      policy_id: true,
+      version_number: true,
+      change_summary: true,
+      status: true,
+      effective_date: true,
+      created_at: true,
+      published_at: true,
+      users_policy_versions_created_by_user_idTousers: {
+        select: { user_id: true, full_name: true },
+      },
+      users_policy_versions_published_by_user_idTousers: {
+        select: { user_id: true, full_name: true },
+      },
+      policies: { select: { policy_code: true, title: true, description: true } },
+    } satisfies Prisma.policy_versionsSelect;
+    const [total, items] = await prisma.$transaction([
+      prisma.policy_versions.count({ where }),
+      prisma.policy_versions.findMany({
+        where,
+        select,
+        orderBy: [{ created_at: 'desc' }, { version_number: 'desc' }],
+        skip: (query.page - 1) * query.limit,
+        take: query.limit,
+      }),
+    ]);
+    return { total, items };
+  },
+
+  findPolicyVersionHistoryDetail(policyId: string, versionId: string) {
+    return prisma.policy_versions.findFirst({
+      where: { policy_id: policyId, policy_version_id: versionId },
+      select: {
+        policy_version_id: true,
+        policy_id: true,
+        version_number: true,
+        content: true,
+        change_summary: true,
+        status: true,
+        effective_date: true,
+        created_at: true,
+        published_at: true,
+        users_policy_versions_created_by_user_idTousers: {
+          select: { user_id: true, full_name: true },
+        },
+        users_policy_versions_published_by_user_idTousers: {
+          select: { user_id: true, full_name: true },
+        },
+        policies: { select: { policy_code: true, title: true, description: true } },
+      },
     });
   },
 

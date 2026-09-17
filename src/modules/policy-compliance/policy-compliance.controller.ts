@@ -29,8 +29,32 @@ import {
   policyAcknowledgementParamsSchema,
 } from './dto/acknowledge-policy.dto.js';
 import { policyAcknowledgementService } from './policy-acknowledgement.service.js';
+import {
+  listPolicyVersionHistoryQuerySchema,
+  policyVersionHistoryParamsSchema,
+} from './dto/policy-version-history.dto.js';
 
 type CreatePolicyDraftResponse = { success: true; data: PolicyDraftResponse };
+
+export const listPolicyVersionHistory: RequestHandler = async (req, res) => {
+  if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+  const data = await policyComplianceService.listPolicyVersionHistory(
+    listPolicyVersionHistoryQuerySchema.parse(req.query),
+    req.auth,
+  );
+  res.status(200).json({ success: true, data });
+};
+
+export const getPolicyVersionHistoryDetail: RequestHandler = async (req, res) => {
+  if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+  const { policyId, versionId } = policyVersionHistoryParamsSchema.parse(req.params);
+  const data = await policyComplianceService.getPolicyVersionHistoryDetail(
+    policyId,
+    versionId,
+    req.auth,
+  );
+  res.status(200).json({ success: true, data });
+};
 
 export const listPolicyDepartmentAssignments: RequestHandler = async (req, res) => {
   if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
@@ -67,15 +91,10 @@ export const getMyPolicyAcknowledgement: RequestHandler = async (req, res) => {
 export const acknowledgePolicyVersion: RequestHandler = async (req, res) => {
   if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
   const { policyId, versionId } = policyAcknowledgementParamsSchema.parse(req.params);
-  const data = await policyAcknowledgementService.acknowledge(
-    policyId,
-    versionId,
-    req.auth,
-    {
-      ipAddress: req.ip ?? null,
-      userAgent: req.get('user-agent')?.slice(0, 1000) ?? null,
-    },
-  );
+  const data = await policyAcknowledgementService.acknowledge(policyId, versionId, req.auth, {
+    ipAddress: req.ip ?? null,
+    userAgent: req.get('user-agent')?.slice(0, 1000) ?? null,
+  });
   res.status(200).json({ success: true, data });
 };
 

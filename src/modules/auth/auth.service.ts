@@ -28,20 +28,11 @@ import type {
 } from './dto/mfa.dto.js';
 import type { LoginInput } from './auth.schema.js';
 
-const authUserInclude = {
-  user_roles_user_roles_user_idTousers: {
-    include: {
-      roles: {
-        include: { role_permissions: { include: { permissions: true } } },
-      },
-    },
-  },
-} as const;
-
 const getAccessClaims = (user: Awaited<ReturnType<typeof authRepository.findAuthUser>>) => {
   if (!user) throw new AppError(401, 'INVALID_CREDENTIALS', 'Email or password is incorrect');
   return {
     userId: user.user_id,
+    ...(user.locked_at ? { accountLockVersion: user.locked_at.toISOString() } : {}),
     roles: user.user_roles_user_roles_user_idTousers.map(({ roles }) => roles.code),
     permissions: [
       ...new Set(
@@ -113,7 +104,8 @@ export const authService = {
       secret: decryptSecret(method.secret_encrypted),
       token: input.code,
     });
-    if (!result.valid) throw new AppError(400, 'INVALID_MFA_CODE', 'MFA code is invalid or expired');
+    if (!result.valid)
+      throw new AppError(400, 'INVALID_MFA_CODE', 'MFA code is invalid or expired');
     const recoveryCodes = createMfaRecoveryCodes();
     const enabled = await authRepository.enableTotpMethod(
       userId,
@@ -125,7 +117,8 @@ export const authService = {
     }
     return {
       recoveryCodes,
-      warning: 'Store these recovery codes securely. Each code can be used only once and will not be shown again.',
+      warning:
+        'Store these recovery codes securely. Each code can be used only once and will not be shown again.',
     };
   },
 
@@ -150,7 +143,8 @@ export const authService = {
         ? { afterTimeStep: Number(method.last_used_totp_step) }
         : {}),
     });
-    if (!result.valid) throw new AppError(400, 'INVALID_MFA_CODE', 'MFA code is invalid or expired');
+    if (!result.valid)
+      throw new AppError(400, 'INVALID_MFA_CODE', 'MFA code is invalid or expired');
     const claimed = await authRepository.claimTotpTimeStep(
       method.mfa_method_id,
       getVerifiedTimeStep(result),
@@ -171,7 +165,11 @@ export const authService = {
     }
 
     if (await argon2.verify(user.password_hash, input.newPassword)) {
-      throw new AppError(400, 'PASSWORD_UNCHANGED', 'New password must be different from the current password');
+      throw new AppError(
+        400,
+        'PASSWORD_UNCHANGED',
+        'New password must be different from the current password',
+      );
     }
 
     const passwordHash = await argon2.hash(input.newPassword, { type: argon2.argon2id });
@@ -207,7 +205,11 @@ export const authService = {
       passwordHash,
     );
     if (!consumed) {
-      throw new AppError(400, 'INVALID_PASSWORD_RESET_TOKEN', 'Password reset token is invalid or expired');
+      throw new AppError(
+        400,
+        'INVALID_PASSWORD_RESET_TOKEN',
+        'Password reset token is invalid or expired',
+      );
     }
   },
 
@@ -221,7 +223,8 @@ export const authService = {
         valid = false;
       }
     }
-    if (!user || !valid) throw new AppError(401, 'INVALID_CREDENTIALS', 'Email or password is incorrect');
+    if (!user || !valid)
+      throw new AppError(401, 'INVALID_CREDENTIALS', 'Email or password is incorrect');
     if (user.status !== 'active' || user.deleted_at)
       throw new AppError(403, 'ACCOUNT_INACTIVE', 'Account is not active');
 
@@ -231,34 +234,36 @@ export const authService = {
         throw new AppError(500, 'MFA_CONFIGURATION_ERROR', 'MFA configuration is invalid');
       }
       const challengeToken = createMfaChallengeToken();
-      await authRepository.createMfaLoginChallenge({
+      const challengeCreated = await authRepository.createMfaLoginChallenge({
         mfaMethodId: mfaMethod.mfa_method_id,
         tokenHash: hashToken(challengeToken),
         expiresAt: new Date(Date.now() + MFA_CHALLENGE_TTL_MS),
         ipAddress: sessionMetadata(req).ipAddress,
+        expectedLockVersion: user.locked_at?.toISOString() ?? null,
+        passwordHash: user.password_hash,
       });
+      if (!challengeCreated)
+        throw new AppError(401, 'INVALID_CREDENTIALS', 'Email or password is incorrect');
       return { mfaRequired: true as const, challengeToken, expiresIn: 300 };
     }
 
-    const claims = getAccessClaims(user);
     const refreshToken = createRefreshToken();
     const expiresAt = new Date(Date.now() + env.REFRESH_TOKEN_TTL_DAYS * 86_400_000);
-    await prisma.$transaction([
-      prisma.auth_sessions.create({
-        data: {
-          user_id: user.user_id,
-          refresh_token_hash: hashToken(refreshToken),
-          expires_at: expiresAt,
-          ip_address: sessionMetadata(req).ipAddress,
-          user_agent: sessionMetadata(req).userAgent,
-        },
-      }),
-      prisma.users.update({
-        where: { user_id: user.user_id },
-        data: { last_login_at: new Date() },
-      }),
-    ]);
-    return { accessToken: signAccessToken(claims), refreshToken, expiresIn: env.JWT_ACCESS_EXPIRES_IN };
+    const authenticatedUser = await authRepository.createLoginSession({
+      userId: user.user_id,
+      passwordHash: user.password_hash,
+      expectedLockVersion: user.locked_at?.toISOString() ?? null,
+      refreshTokenHash: hashToken(refreshToken),
+      expiresAt,
+      ...sessionMetadata(req),
+    });
+    if (!authenticatedUser)
+      throw new AppError(401, 'INVALID_CREDENTIALS', 'Email or password is incorrect');
+    return {
+      accessToken: signAccessToken(getAccessClaims(authenticatedUser)),
+      refreshToken,
+      expiresIn: env.JWT_ACCESS_EXPIRES_IN,
+    };
   },
 
   async verifyMfaChallenge(input: VerifyMfaChallengeBody, req: Request) {
@@ -325,34 +330,17 @@ export const authService = {
   },
 
   async refresh(refreshToken: string, req: Request) {
-    const session = await prisma.auth_sessions.findFirst({
-      where: { refresh_token_hash: hashToken(refreshToken) },
-      include: { users: { include: authUserInclude } },
-    });
-    if (!session || session.revoked_at || session.expires_at <= new Date()) {
-      throw new AppError(401, 'INVALID_REFRESH_TOKEN', 'Refresh token is invalid or expired');
-    }
-    if (session.users.status !== 'active' || session.users.deleted_at)
-      throw new AppError(403, 'ACCOUNT_INACTIVE', 'Account is not active');
-
     const nextToken = createRefreshToken();
-    await prisma.$transaction([
-      prisma.auth_sessions.update({
-        where: { auth_session_id: session.auth_session_id },
-        data: { revoked_at: new Date() },
-      }),
-      prisma.auth_sessions.create({
-        data: {
-          user_id: session.user_id,
-          refresh_token_hash: hashToken(nextToken),
-          expires_at: new Date(Date.now() + env.REFRESH_TOKEN_TTL_DAYS * 86_400_000),
-          ip_address: sessionMetadata(req).ipAddress,
-          user_agent: sessionMetadata(req).userAgent,
-        },
-      }),
-    ]);
+    const user = await authRepository.rotateRefreshSession({
+      tokenHash: hashToken(refreshToken),
+      nextTokenHash: hashToken(nextToken),
+      expiresAt: new Date(Date.now() + env.REFRESH_TOKEN_TTL_DAYS * 86_400_000),
+      ...sessionMetadata(req),
+    });
+    if (!user)
+      throw new AppError(401, 'INVALID_REFRESH_TOKEN', 'Refresh token is invalid or expired');
     return {
-      accessToken: signAccessToken(getAccessClaims(session.users)),
+      accessToken: signAccessToken(getAccessClaims(user)),
       refreshToken: nextToken,
       expiresIn: env.JWT_ACCESS_EXPIRES_IN,
     };
