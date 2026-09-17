@@ -153,4 +153,55 @@ export const incidentPaths = {
       },
     },
   },
+  '/incidents/assignment-options': {
+    get: {
+      tags: ['Incidents'],
+      summary: 'List eligible incident handlers (UC57)',
+      description:
+        'Returns up to 200 active users whose role grants incidents.classify. Requires incidents.assign.',
+      security: [{ bearerAuth: [] }],
+      responses: {
+        '200': { description: 'Eligible active security officers' },
+        '403': { description: 'Incident assignment permission required' },
+      },
+    },
+  },
+  '/incidents/{incidentId}/assignee': {
+    patch: {
+      tags: ['Incidents'],
+      summary: 'Assign or reassign an incident handler (UC57)',
+      description:
+        'Closes any active assignment, creates the new assignment, updates reported incidents to assigned, and records incident history and audit data atomically. Requires incidents.assign.',
+      security: [{ bearerAuth: [] }],
+      parameters: [
+        {
+          name: 'incidentId',
+          in: 'path',
+          required: true,
+          schema: { type: 'string', format: 'uuid' },
+        },
+      ],
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              required: ['assigneeUserId', 'note'],
+              properties: {
+                assigneeUserId: { type: 'string', format: 'uuid' },
+                note: { type: 'string', minLength: 10, maxLength: 2000 },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        '200': { description: 'Incident handler assigned' },
+        '404': { description: 'Incident not found' },
+        '409': { description: 'Resolved or closed incident cannot be assigned' },
+        '422': { description: 'Assignee is not an eligible active security officer' },
+      },
+    },
+  },
 } as const;

@@ -4,6 +4,8 @@ import { validate } from '../../common/middleware/validate.js';
 import { asyncHandler } from '../../common/utils/async-handler.js';
 import {
   classifyIncidentSeverity,
+  assignIncidentHandler,
+  listIncidentAssignmentOptions,
   getMyIncident,
   listIncidentsForClassification,
   listMyIncidents,
@@ -12,6 +14,7 @@ import {
 import {
   classificationQueueQuerySchema,
   classifyIncidentBodySchema,
+  assignIncidentBodySchema,
   incidentParamsSchema,
   myIncidentsQuerySchema,
   reportIncidentBodySchema,
@@ -19,6 +22,19 @@ import {
 
 export const incidentManagementRouter = Router();
 
+incidentManagementRouter.get(
+  '/assignment-options',
+  authenticate,
+  authorize('incidents.assign'),
+  asyncHandler(listIncidentAssignmentOptions),
+);
+incidentManagementRouter.patch(
+  '/:incidentId/assignee',
+  authenticate,
+  authorize('incidents.assign'),
+  validate({ params: incidentParamsSchema, body: assignIncidentBodySchema }),
+  asyncHandler(assignIncidentHandler),
+);
 incidentManagementRouter.get(
   '/mine',
   authenticate,
