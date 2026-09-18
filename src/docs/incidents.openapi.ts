@@ -153,4 +153,215 @@ export const incidentPaths = {
       },
     },
   },
+  '/incidents/assignment-options': {
+    get: {
+      tags: ['Incidents'],
+      summary: 'List eligible incident handlers (UC57)',
+      description:
+        'Returns up to 200 active users whose role grants incidents.classify. Requires incidents.assign.',
+      security: [{ bearerAuth: [] }],
+      responses: {
+        '200': { description: 'Eligible active security officers' },
+        '403': { description: 'Incident assignment permission required' },
+      },
+    },
+  },
+  '/incidents/{incidentId}/assignee': {
+    patch: {
+      tags: ['Incidents'],
+      summary: 'Assign or reassign an incident handler (UC57)',
+      description:
+        'Closes any active assignment, creates the new assignment, updates reported incidents to assigned, and records incident history and audit data atomically. Requires incidents.assign.',
+      security: [{ bearerAuth: [] }],
+      parameters: [
+        {
+          name: 'incidentId',
+          in: 'path',
+          required: true,
+          schema: { type: 'string', format: 'uuid' },
+        },
+      ],
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              required: ['assigneeUserId', 'note'],
+              properties: {
+                assigneeUserId: { type: 'string', format: 'uuid' },
+                note: { type: 'string', minLength: 10, maxLength: 2000 },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        '200': { description: 'Incident handler assigned' },
+        '404': { description: 'Incident not found' },
+        '409': { description: 'Resolved or closed incident cannot be assigned' },
+        '422': { description: 'Assignee is not an eligible active security officer' },
+      },
+    },
+  },
+  '/incidents/{incidentId}/progress': {
+    patch: {
+      tags: ['Incidents'],
+      summary: 'Update incident handling progress (UC58)',
+      description:
+        'Applies a controlled workflow transition and records an incident update and audit log atomically. The active handler may update progress; a caller with incidents.assign may coordinate an override. Resolving or closing completes the active assignment. Requires incidents.update-progress.',
+      security: [{ bearerAuth: [] }],
+      parameters: [
+        {
+          name: 'incidentId',
+          in: 'path',
+          required: true,
+          schema: { type: 'string', format: 'uuid' },
+        },
+      ],
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              required: ['status', 'note'],
+              properties: {
+                status: {
+                  type: 'string',
+                  enum: ['in_progress', 'escalated', 'resolved', 'closed'],
+                },
+                note: { type: 'string', minLength: 10, maxLength: 5000 },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        '200': { description: 'Incident progress updated' },
+        '403': { description: 'Caller is neither the active handler nor an incident coordinator' },
+        '404': { description: 'Incident not found' },
+        '409': {
+          description: 'Incident is unassigned, or workflow transition is invalid or unchanged',
+        },
+      },
+    },
+  },
+  '/incidents/{incidentId}/evidence': {
+    get: {
+      tags: ['Incidents'],
+      summary: 'List incident evidence and logs (UC59)',
+      description: 'Returns a paginated evidence list. Requires incidents.evidence.manage.',
+      security: [{ bearerAuth: [] }],
+      parameters: [
+        {
+          name: 'incidentId',
+          in: 'path',
+          required: true,
+          schema: { type: 'string', format: 'uuid' },
+        },
+        { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
+        {
+          name: 'limit',
+          in: 'query',
+          schema: { type: 'integer', minimum: 1, maximum: 50, default: 10 },
+        },
+      ],
+      responses: {
+        '200': { description: 'Incident evidence list' },
+        '404': { description: 'Incident not found' },
+      },
+    },
+    post: {
+      tags: ['Incidents'],
+      summary: 'Attach incident evidence or logs (UC59)',
+      description:
+        'Stores the file with a SHA-256 checksum and writes metadata and audit data atomically. Only the active handler or an incident coordinator may attach files. Closed incidents are read-only. Requires incidents.evidence.manage.',
+      security: [{ bearerAuth: [] }],
+      parameters: [
+        {
+          name: 'incidentId',
+          in: 'path',
+          required: true,
+          schema: { type: 'string', format: 'uuid' },
+        },
+      ],
+      requestBody: {
+        required: true,
+        content: {
+          'multipart/form-data': {
+            schema: {
+              type: 'object',
+              required: ['file'],
+              properties: {
+                file: { type: 'string', format: 'binary' },
+                description: { type: 'string', maxLength: 2000 },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        '201': { description: 'Evidence attached' },
+        '409': { description: 'Incident is closed' },
+        '413': { description: 'File exceeds 20 MB' },
+        '422': { description: 'Missing, empty or unsupported file' },
+      },
+    },
+  },
+  '/incidents/evidence/{evidenceId}/download': {
+    get: {
+      tags: ['Incidents'],
+      summary: 'Download incident evidence (UC59)',
+      description: 'Downloads are recorded in the audit log. Requires incidents.evidence.manage.',
+      security: [{ bearerAuth: [] }],
+      parameters: [
+        {
+          name: 'evidenceId',
+          in: 'path',
+          required: true,
+          schema: { type: 'string', format: 'uuid' },
+        },
+      ],
+      responses: {
+        '200': { description: 'Evidence file' },
+        '404': { description: 'Evidence not found' },
+      },
+    },
+  },
+  '/incidents/evidence/{evidenceId}': {
+    delete: {
+      tags: ['Incidents'],
+      summary: 'Remove incorrectly uploaded incident evidence (UC163)',
+      description:
+        'Permanently removes an incorrectly uploaded evidence record and file. A reason is mandatory. Only the active handler or an incident coordinator may remove evidence, and closed incidents are immutable. The complete evidence metadata and reason are retained in the audit log.',
+      security: [{ bearerAuth: [] }],
+      parameters: [
+        {
+          name: 'evidenceId',
+          in: 'path',
+          required: true,
+          schema: { type: 'string', format: 'uuid' },
+        },
+      ],
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              required: ['reason'],
+              properties: { reason: { type: 'string', minLength: 10, maxLength: 2000 } },
+            },
+          },
+        },
+      },
+      responses: {
+        '200': { description: 'Evidence removed and audited' },
+        '403': { description: 'Caller is not the active handler or coordinator' },
+        '404': { description: 'Evidence not found' },
+        '409': { description: 'Incident is closed or the physical file is unavailable' },
+      },
+    },
+  },
 } as const;

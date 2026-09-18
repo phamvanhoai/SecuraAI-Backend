@@ -41,6 +41,7 @@ describe('training course assessment persistence', () => {
           maxAttempts: 3,
           questions: [
             {
+              type: 'single_choice',
               text: 'Which message is suspicious?',
               options: [
                 { text: 'Unexpected reset link', isCorrect: true },
@@ -68,8 +69,8 @@ describe('training course assessment persistence', () => {
               quiz_questions: {
                 create: [
                   expect.objectContaining({
+                    question_type: 'single_choice',
                     display_order: 1,
-                    question_type: 'multiple_choice',
                     quiz_options: {
                       create: [
                         expect.objectContaining({ display_order: 1, is_correct: true }),
