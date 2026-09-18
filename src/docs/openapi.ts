@@ -1,5 +1,4 @@
 import swaggerJsdoc from 'swagger-jsdoc';
-import { loginHistoryPaths } from './login-history.openapi.js';
 import { departmentTrainingReportPaths } from './department-training-report.openapi.js';
 import { env } from '../config/env.js';
 import { trainingReminderPaths } from './training-reminders.openapi.js';
@@ -1418,7 +1417,6 @@ export const openApiSpec = swaggerJsdoc({
       },
     },
     paths: {
-      ...loginHistoryPaths,
       ...trainingReminderPaths,
       ...departmentTrainingReportPaths,
       ...complianceReminderPaths,

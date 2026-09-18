@@ -1,6 +1,5 @@
 import argon2 from 'argon2';
 import { randomInt } from 'node:crypto';
-import { isIP } from 'node:net';
 import QRCode from 'qrcode';
 import type { Request } from 'express';
 import { prisma } from '../../database/prisma.js';
@@ -61,7 +60,7 @@ const getVerifiedTimeStep = (result: { valid: boolean }): bigint => {
 const loadOtp = () => import('otplib');
 
 const sessionMetadata = (req: Request) => ({
-  ipAddress: req.ip && isIP(req.ip) ? req.ip : null,
+  ipAddress: req.ip ?? null,
   userAgent: req.get('user-agent')?.slice(0, 1000) ?? null,
 });
 
@@ -224,24 +223,10 @@ export const authService = {
         valid = false;
       }
     }
-    if (!user || !valid) {
-      await authRepository.recordLoginFailure({
-        userId: user?.user_id ?? null,
-        email: input.email,
-        reason: 'INVALID_CREDENTIALS',
-        ...sessionMetadata(req),
-      });
+    if (!user || !valid)
       throw new AppError(401, 'INVALID_CREDENTIALS', 'Email or password is incorrect');
-    }
-    if (user.status !== 'active' || user.deleted_at) {
-      await authRepository.recordLoginFailure({
-        userId: user.user_id,
-        email: input.email,
-        reason: 'ACCOUNT_INACTIVE',
-        ...sessionMetadata(req),
-      });
+    if (user.status !== 'active' || user.deleted_at)
       throw new AppError(403, 'ACCOUNT_INACTIVE', 'Account is not active');
-    }
 
     const mfaMethod = await authRepository.findTotpMethod(user.user_id);
     if (mfaMethod?.is_enabled) {
@@ -315,12 +300,6 @@ export const authService = {
       }
     }
     if (!codeValid) {
-      await authRepository.recordLoginFailure({
-        userId: challenge.userId,
-        email: challenge.email,
-        reason: 'INVALID_MFA_CODE',
-        ...sessionMetadata(req),
-      });
       if (challenge.attempts >= MFA_CHALLENGE_MAX_ATTEMPTS) {
         await authRepository.invalidateMfaLoginChallenge(challenge.mfaMethodId, tokenHash);
       }
