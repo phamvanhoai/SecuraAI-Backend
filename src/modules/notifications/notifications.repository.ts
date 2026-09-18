@@ -149,9 +149,12 @@ export const notificationsRepository = {
     query: { page: number; limit: number; status: 'all' | 'unread'; search?: string | undefined },
   ) {
     const search = query.search?.replace(/[\\%_]/g, '\\$&');
-    const where: Prisma.notificationsWhereInput = {
+    const summaryWhere: Prisma.notificationsWhereInput = {
       user_id: userId,
       type: { in: ['training_deadline_3d', 'training_deadline_1d'] },
+    };
+    const where: Prisma.notificationsWhereInput = {
+      ...summaryWhere,
       ...(query.status === 'unread' ? { is_read: false } : {}),
       ...(search
         ? {
@@ -171,6 +174,8 @@ export const notificationsRepository = {
         take: query.limit,
       }),
       prisma.notifications.count({ where }),
+      prisma.notifications.count({ where: summaryWhere }),
+      prisma.notifications.count({ where: { ...summaryWhere, is_read: false } }),
     ]);
   },
   async markTrainingReminderRead(userId: string, notificationId: string, now: Date) {

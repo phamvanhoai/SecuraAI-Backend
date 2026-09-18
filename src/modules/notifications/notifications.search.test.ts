@@ -11,7 +11,7 @@ vi.mock('../../database/prisma.js', () => ({
 describe('training reminder search before pagination', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mocks.transaction.mockResolvedValue([[], 0]);
+    mocks.transaction.mockResolvedValue([[], 0, 0, 0]);
   });
   it('keeps actor ownership, unread filter and the same search in list and count', async () => {
     await notificationsRepository.listTrainingReminders('employee-1', {
@@ -35,6 +35,19 @@ describe('training reminder search before pagination', () => {
       take: 10,
     });
     expect(mocks.count).toHaveBeenCalledWith({ where: filter });
+    expect(mocks.count).toHaveBeenCalledWith({
+      where: {
+        user_id: 'employee-1',
+        type: { in: ['training_deadline_3d', 'training_deadline_1d'] },
+      },
+    });
+    expect(mocks.count).toHaveBeenCalledWith({
+      where: {
+        user_id: 'employee-1',
+        type: { in: ['training_deadline_3d', 'training_deadline_1d'] },
+        is_read: false,
+      },
+    });
   });
   it('treats wildcard characters as literal user text', async () => {
     await notificationsRepository.listTrainingReminders('employee-1', {

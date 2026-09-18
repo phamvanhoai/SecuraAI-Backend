@@ -34,7 +34,7 @@ export const trainingRemindersService = {
               milestone,
               now,
               title: 'Training deadline approaching',
-              message: `Complete "${enrollment.training_campaigns.training_courses.title}" for "${enrollment.training_campaigns.title}" by ${deadline} (end of day UTC). Open My training assessments to continue.`,
+              message: `Complete "${enrollment.training_campaigns.training_courses.title}" for "${enrollment.training_campaigns.title}" by ${deadline} (end of day UTC). Open My assigned training to continue.`,
             });
           },
         );

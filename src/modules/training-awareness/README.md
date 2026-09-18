@@ -51,8 +51,8 @@ themselves. Email sending and channel preference editing remain separate use cas
 - Only published, started campaigns with unfinished enrollments qualify:
   `assigned`, `in_progress`, or `overdue`, progress below 100%, no completion date
   and no certificate. Cancelled/withdrawn/completed enrollments do not qualify.
-  A passed latest assessment is also excluded, consistent with the existing
-  assessment API, even when a historical enrollment has stale progress.
+  Enrollment completion is authoritative: passing a lesson or final quiz alone
+  does not suppress reminders while required course work remains incomplete.
 - Dates use **UTC calendar days**, consistent with existing assessment deadlines.
   The due date remains available through the end of that UTC day.
 - Default milestones are 3 days and 1 day before the deadline. A missed run can
@@ -74,7 +74,8 @@ title/message case-insensitively before pagination, with the same filter applied
 to the count. Course names refer to the historical notification message. Search
 combines with unread and actor ownership; `%`, `_`, and backslash are literals.
 
-- `GET /training/deadline-reminders?page=1&limit=10&status=all|unread`: own inbox.
+- `GET /training/deadline-reminders?page=1&limit=10&status=all|unread`: own inbox,
+  with account-wide total and unread summary counts unaffected by search/filter.
 - `PATCH /training/deadline-reminders/{notificationId}/read`: own reminder only;
   idempotent, missing/other-user notification returns 404.
 - `GET /training/deadline-reminders/dispatch`: scheduler only, requires exact
