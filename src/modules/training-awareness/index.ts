@@ -7,6 +7,9 @@ export const trainingAwarenessModule: ModuleManifest = {
   description: 'Security awareness courses, campaigns, quizzes and certificates',
   tables: [
     'training_courses',
+    'training_lessons',
+    'training_materials',
+    'training_lesson_progress',
     'training_campaigns',
     'training_campaign_targets',
     'training_enrollments',

@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../database/prisma.js';
+import type { CourseUpload } from './course-material.upload.js';
 import type {
   AssignCourseBody,
   AssignmentOptionsQuery,
@@ -431,63 +432,140 @@ export const trainingAwarenessRepository = {
     ]);
     return { items, total };
   },
-  createCourse(input: CreateCourseBody, context: RequestContext): Promise<CourseRecord> {
-    return prisma.$transaction(async (transaction) => {
-      const course = await transaction.training_courses.create({
-        data: {
-          title: input.title,
-          description: input.description ?? null,
-          content: input.content,
-          status: input.status,
-          created_by_user_id: context.actorUserId,
-          ...(input.assessment
-            ? {
-                quizzes: {
-                  create: {
-                    title: input.assessment.title,
-                    passing_score: input.assessment.passingScore,
-                    max_attempts: input.assessment.maxAttempts,
-                    quiz_questions: {
-                      create: input.assessment.questions.map((question, questionIndex) => ({
-                        question_text: question.text,
-                        question_type: question.type,
-                        score: 1,
-                        display_order: questionIndex + 1,
-                        quiz_options: {
-                          create: question.options.map((option, optionIndex) => ({
-                            option_text: option.text,
-                            is_correct: option.isCorrect,
-                            display_order: optionIndex + 1,
-                          })),
-                        },
-                      })),
+  createCourse(
+    input: CreateCourseBody,
+    context: RequestContext,
+    uploads: readonly CourseUpload[] = [],
+  ): Promise<CourseRecord> {
+    return prisma.$transaction(
+      async (transaction) => {
+        const course = await transaction.training_courses.create({
+          data: {
+            title: input.title,
+            description: input.description ?? null,
+            content: input.content,
+            status: input.status,
+            created_by_user_id: context.actorUserId,
+            ...(input.assessment
+              ? {
+                  quizzes: {
+                    create: {
+                      title: input.assessment.title,
+                      passing_score: input.assessment.passingScore,
+                      max_attempts: input.assessment.maxAttempts,
+                      quiz_questions: {
+                        create: input.assessment.questions.map((question, questionIndex) => ({
+                          question_text: question.text,
+                          question_type: question.type,
+                          score: 1,
+                          display_order: questionIndex + 1,
+                          quiz_options: {
+                            create: question.options.map((option, optionIndex) => ({
+                              option_text: option.text,
+                              is_correct: option.isCorrect,
+                              display_order: optionIndex + 1,
+                            })),
+                          },
+                        })),
+                      },
                     },
                   },
-                },
-              }
-            : {}),
-        },
-        select: courseSelect,
-      });
-      await transaction.audit_logs.create({
-        data: {
-          actor_user_id: context.actorUserId,
-          module: 'training-awareness',
-          action: 'training_course.created',
-          entity_type: 'training_course',
-          entity_id: course.training_course_id,
-          after_data: {
-            title: course.title,
-            status: course.status,
-            assessmentCreated: Boolean(input.assessment),
-            questionCount: input.assessment?.questions.length ?? 0,
+                }
+              : {}),
           },
-          ip_address: context.ipAddress,
-          user_agent: context.userAgent,
-        },
-      });
-      return course;
-    });
+          select: courseSelect,
+        });
+
+        for (const [lessonIndex, lesson] of (input.lessons ?? []).entries()) {
+          const createdLesson = await transaction.training_lessons.create({
+            data: {
+              training_course_id: course.training_course_id,
+              title: lesson.title,
+              description: lesson.description ?? null,
+              display_order: lessonIndex + 1,
+              is_required: lesson.isRequired,
+            },
+            select: { training_lesson_id: true },
+          });
+          for (const [materialIndex, material] of lesson.materials.entries()) {
+            const upload = uploads.find((item) => item.key === material.uploadKey);
+            const file = upload
+              ? await transaction.files.create({
+                  data: {
+                    original_name: upload.originalName,
+                    storage_key: upload.storageKey,
+                    mime_type: upload.mimeType,
+                    size_bytes: upload.sizeBytes,
+                    checksum: upload.checksum,
+                    uploaded_by_user_id: context.actorUserId,
+                  },
+                  select: { file_id: true },
+                })
+              : undefined;
+            await transaction.training_materials.create({
+              data: {
+                training_lesson_id: createdLesson.training_lesson_id,
+                title: material.title,
+                material_type: material.type,
+                content: material.content ?? null,
+                external_url: material.externalUrl ?? null,
+                file_id: file?.file_id ?? null,
+                display_order: materialIndex + 1,
+              },
+              select: { training_material_id: true },
+            });
+          }
+          if (lesson.assessment) {
+            await transaction.quizzes.create({
+              data: {
+                training_course_id: course.training_course_id,
+                training_lesson_id: createdLesson.training_lesson_id,
+                title: lesson.assessment.title,
+                passing_score: lesson.assessment.passingScore,
+                max_attempts: lesson.assessment.maxAttempts,
+                quiz_questions: {
+                  create: lesson.assessment.questions.map((question, index) => ({
+                    question_text: question.text,
+                    question_type: question.type,
+                    score: 1,
+                    display_order: index + 1,
+                    quiz_options: {
+                      create: question.options.map((option, optionIndex) => ({
+                        option_text: option.text,
+                        is_correct: option.isCorrect,
+                        display_order: optionIndex + 1,
+                      })),
+                    },
+                  })),
+                },
+              },
+              select: { quiz_id: true },
+            });
+          }
+        }
+        await transaction.audit_logs.create({
+          data: {
+            actor_user_id: context.actorUserId,
+            module: 'training-awareness',
+            action: 'training_course.created',
+            entity_type: 'training_course',
+            entity_id: course.training_course_id,
+            after_data: {
+              title: course.title,
+              status: course.status,
+              assessmentCreated: Boolean(input.assessment),
+              lessonCount: input.lessons?.length ?? 0,
+              uploadedFileCount: uploads.length,
+              questionCount: input.assessment?.questions.length ?? 0,
+            },
+            ip_address: context.ipAddress,
+            user_agent: context.userAgent,
+          },
+        });
+        return course;
+      },
+      { timeout: 30000 },
+    );
   },
   async listAssignmentOptions(query: AssignmentOptionsQuery) {
     const [users, departments] = await prisma.$transaction([

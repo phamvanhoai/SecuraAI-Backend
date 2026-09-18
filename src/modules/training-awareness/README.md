@@ -1,3 +1,35 @@
+# Create structured security awareness courses (UC75)
+
+Create drafts with ordered lessons and materials, optional lesson assessments and
+an optional final assessment. Reuses `training-courses.create` for creation and
+`training-courses.read` for content inspection/private downloads. Existing role
+permission grants apply; no new permission code is required.
+
+`POST /training/courses` accepts JSON, or multipart with a `payload` JSON string
+and UUID-named file fields referenced by `materials[].uploadKey`. Text uses
+`content`; links use `externalUrl`; video/PDF uses either an HTTPS URL or upload,
+never both. URLs are stored, not fetched/imported into local storage. Only PDF,
+MP4 and WebM are accepted, with MIME/extension and basic content signature checks,
+up to 10 files and 20 MiB per file. File bytes are streamed to a private local
+directory under FILE_STORAGE_DIR; metadata reuses `files`. Uploaded files are
+removed if validation or the database transaction fails. Creation has one
+transaction for course, lessons, materials, assessments, file metadata and audit.
+At most 50 lessons, 10 materials per lesson, 100 materials and 100 questions total.
+
+Structured courses must be created as drafts; publishing, editing structured
+drafts, learner progression and certificate eligibility are separate use cases.
+The legacy content-only JSON contract remains supported for compatibility.
+No automatic conversion of legacy content or changes to historical attempts.
+
+`GET /training/courses/{courseId}/content` returns ordered lessons/materials and
+assessment summaries without answer keys or internal storage paths.
+`GET /training/materials/{materialId}/download` returns a private attachment.
+
+Local upload requires a persistent server/VPS filesystem or Docker volume, with
+backup. Vercel local uploads are rejected; request-size limits of any frontend
+host/reverse proxy still apply. This task does not deploy Docker, add object
+storage, provide malware scanning/transcoding, or support video resume positions.
+
 # Training deadline reminders (UC79)
 
 Employees receive automatic **in-app** reminders; they do not send reminders to
