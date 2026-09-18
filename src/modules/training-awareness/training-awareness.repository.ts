@@ -633,6 +633,7 @@ export const trainingAwarenessRepository = {
         select: { training_course_id: true, status: true },
       });
       if (!course || course.status === 'archived') return { kind: 'course_not_found' as const };
+      if (course.status !== 'published') return { kind: 'course_not_published' as const };
 
       const uniqueUserIds = [...new Set(input.userIds)];
       const uniqueDepartmentIds = [...new Set(input.departmentIds)];

@@ -101,3 +101,9 @@ reminders, not an authoritative current assignment state.
 `GET /training/department-report` requires `training-department-reports.read`, assigned to Admin/Executive by the permission-only migration and seed. No schema change is required. Supports `page`, `limit`, `q`; returns department metrics, organization-wide summary, and pagination in the standard envelope.
 
 Employees are distinct users with non-withdrawn enrollments; assignments count separately per campaign. Completed means enrollment status `completed`. Overdue means incomplete with campaign due date before today UTC. Current department membership is used because no assignment-time department snapshot exists. No-department employees are reported separately. Zero-assignment departments remain visible. Search does not affect summary metrics.
+# Assignment eligibility (UC76)
+
+Assignment creation and latest-campaign updates require a published course.
+Drafts return 409 COURSE_NOT_PUBLISHED before target resolution or campaign writes;
+archived courses remain unavailable (404). Existing campaign-scoped enrollment
+and historical result preservation rules are unchanged. No schema migration.

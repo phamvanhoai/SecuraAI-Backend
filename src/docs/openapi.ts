@@ -1871,7 +1871,7 @@ export const openApiSpec = swaggerJsdoc({
           tags: ['Training Awareness'],
           summary: 'Assign a training course',
           description:
-            'Requires training-courses.assign. Set createNewCampaign=true for a separate training cycle with fresh enrollments. Otherwise the latest campaign is updated; existing progress and completed results are preserved. The operation records an audit event atomically.',
+            'Requires training-courses.assign and a published course. Draft courses return 409; archived courses cannot be assigned. Set createNewCampaign=true for a separate training cycle with fresh enrollments. Otherwise the latest campaign is updated; existing progress and completed results are preserved. The operation records an audit event atomically.',
           security: [{ bearerAuth: [] }],
           parameters: [
             {
@@ -1891,6 +1891,7 @@ export const openApiSpec = swaggerJsdoc({
           },
           responses: {
             '201': { description: 'Course assignment campaign created or updated' },
+            '409': { description: 'Publish the course before assigning it' },
             '404': { description: 'Course not found' },
             '422': { description: 'Invalid dates or assignment targets' },
           },
