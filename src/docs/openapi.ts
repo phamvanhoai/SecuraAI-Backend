@@ -1897,6 +1897,75 @@ export const openApiSpec = swaggerJsdoc({
           },
         },
       },
+      '/training/learning': {
+        get: {
+          tags: ['Training Awareness'],
+          summary: 'List courses assigned to the current employee',
+          description:
+            'Requires training-assessments.take. Progress and results are campaign enrollment scoped.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
+            {
+              name: 'limit',
+              in: 'query',
+              schema: { type: 'integer', minimum: 1, maximum: 50, default: 10 },
+            },
+          ],
+          responses: {
+            '200': { description: 'Paginated assigned courses' },
+            '403': { description: 'Learner permission required' },
+          },
+        },
+      },
+      '/training/learning/{enrollmentId}': {
+        get: {
+          tags: ['Training Awareness'],
+          summary: 'Open an assigned course',
+          description:
+            'Returns ordered lessons, safe material metadata and assessment status for the enrollment owner only.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'enrollmentId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          responses: {
+            '200': { description: 'Assigned course content' },
+            '404': { description: 'Enrollment not found or not owned by caller' },
+          },
+        },
+      },
+      '/training/learning/{enrollmentId}/lessons/{lessonId}/complete': {
+        patch: {
+          tags: ['Training Awareness'],
+          summary: 'Complete an assigned lesson',
+          description:
+            'Requires ownership and campaign availability. A lesson assessment must be passed first when configured. Recomputes enrollment progress atomically.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'enrollmentId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+            {
+              name: 'lessonId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          responses: {
+            '200': { description: 'Lesson and enrollment progress updated' },
+            '409': { description: 'Assessment required or campaign unavailable' },
+          },
+        },
+      },
       '/ai-alerts/{alertId}/false-positive': {
         post: {
           tags: ['AI Alerts'],

@@ -96,14 +96,26 @@ assessments → Deadline reminders**. A published course must already be assigne
 started, unfinished and due within three UTC calendar days. Refresh reads the
 inbox; it does not trigger sending. Old deadlines are displayed as historical
 reminders, not an authoritative current assignment state.
+
 # UC81 — Department training completion report
 
 `GET /training/department-report` requires `training-department-reports.read`, assigned to Admin/Executive by the permission-only migration and seed. No schema change is required. Supports `page`, `limit`, `q`; returns department metrics, organization-wide summary, and pagination in the standard envelope.
 
 Employees are distinct users with non-withdrawn enrollments; assignments count separately per campaign. Completed means enrollment status `completed`. Overdue means incomplete with campaign due date before today UTC. Current department membership is used because no assignment-time department snapshot exists. No-department employees are reported separately. Zero-assignment departments remain visible. Search does not affect summary metrics.
+
 # Assignment eligibility (UC76)
 
 Assignment creation and latest-campaign updates require a published course.
 Drafts return 409 COURSE_NOT_PUBLISHED before target resolution or campaign writes;
 archived courses remain unavailable (404). Existing campaign-scoped enrollment
 and historical result preservation rules are unchanged. No schema migration.
+
+# Complete assigned training course (UC77)
+
+Employees use enrollment-scoped learning APIs to read ordered lesson materials,
+download only files belonging to their assignment, complete lessons, and take
+lesson/final assessments. Lesson progress and quiz attempts are scoped to the
+campaign enrollment, so an earlier campaign pass is not reused. A required
+lesson with an assessment completes only after a passing attempt. A course is
+completed only after every required lesson and, when configured, the final
+assessment are passed. Optional lessons do not block completion. No schema change.
