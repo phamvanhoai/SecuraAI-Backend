@@ -45,11 +45,53 @@ export const openApiSpec = swaggerJsdoc({
           additionalProperties: false,
           required: ['title', 'content'],
           properties: {
-            createNewCampaign: {
-              type: 'boolean',
-              default: false,
+            lessons: {
+              type: 'array',
+              minItems: 1,
+              maxItems: 50,
               description:
-                'When true, creates a separate assignment campaign instead of updating the latest campaign.',
+                'Ordered lessons; structured courses must be created as drafts. Maximum 100 materials and 100 questions across the course. Optional only for legacy clients.',
+              items: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['title', 'isRequired', 'materials'],
+                properties: {
+                  title: { type: 'string', minLength: 3, maxLength: 255 },
+                  description: { type: 'string', maxLength: 2000 },
+                  isRequired: { type: 'boolean' },
+                  materials: {
+                    type: 'array',
+                    minItems: 1,
+                    maxItems: 10,
+                    items: {
+                      type: 'object',
+                      additionalProperties: false,
+                      required: ['title', 'type'],
+                      properties: {
+                        title: { type: 'string', minLength: 1, maxLength: 255 },
+                        type: { type: 'string', enum: ['text', 'video', 'document', 'link'] },
+                        content: { type: 'string', maxLength: 50000 },
+                        externalUrl: {
+                          type: 'string',
+                          format: 'uri',
+                          maxLength: 2000,
+                          description:
+                            'HTTPS without credentials; backend stores but does not fetch the URL.',
+                        },
+                        uploadKey: {
+                          type: 'string',
+                          format: 'uuid',
+                          description:
+                            'Unique multipart file field name; at most 10 uploads. Exactly one source matching type.',
+                        },
+                      },
+                    },
+                  },
+                  assessment: {
+                    $ref: '#/components/schemas/CreateTrainingCourseRequest/properties/assessment',
+                  },
+                },
+              },
             },
             title: { type: 'string', minLength: 3, maxLength: 255 },
             description: { type: 'string', nullable: true, maxLength: 2000 },
@@ -1704,13 +1746,81 @@ export const openApiSpec = swaggerJsdoc({
               'application/json': {
                 schema: { $ref: '#/components/schemas/CreateTrainingCourseRequest' },
               },
+              'multipart/form-data': {
+                schema: {
+                  type: 'object',
+                  required: ['payload'],
+                  properties: {
+                    payload: {
+                      type: 'string',
+                      description: 'JSON encoded CreateTrainingCourseRequest, maximum 1 MiB',
+                    },
+                  },
+                  additionalProperties: { type: 'string', format: 'binary' },
+                  description:
+                    'File fields are UUID uploadKeys referenced by materials. Up to 10 PDF/MP4/WebM files, each at most 20 MiB. Local storage requires a persistent server filesystem, not Vercel.',
+                },
+              },
             },
           },
           responses: {
             '201': { description: 'Draft course created' },
+            '413': { description: 'Upload exceeds the per-file limit' },
+            '503': { description: 'Local storage is not supported in this deployment' },
             '401': { description: 'Authentication required' },
             '403': { description: 'training-courses.create permission required' },
             '422': { description: 'Invalid course data' },
+          },
+        },
+      },
+      '/training/courses/{courseId}/content': {
+        get: {
+          tags: ['Training Awareness'],
+          summary: 'View ordered lessons and materials',
+          security: [{ bearerAuth: [] }],
+          description:
+            'Requires training-courses.read. Returns lesson/material metadata and quiz summaries, never correct answers or storage keys.',
+          parameters: [
+            {
+              name: 'courseId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          responses: {
+            '200': {
+              description:
+                'Success envelope containing lessons with materials and assessment summaries',
+            },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'Permission required' },
+            '404': { description: 'Course not found' },
+            '422': { description: 'Invalid course ID' },
+          },
+        },
+      },
+      '/training/materials/{materialId}/download': {
+        get: {
+          tags: ['Training Awareness'],
+          summary: 'Download a private uploaded course material',
+          security: [{ bearerAuth: [] }],
+          description:
+            'Requires training-courses.read. Attachment download from local persistent storage. No public static uploads directory.',
+          parameters: [
+            {
+              name: 'materialId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          responses: {
+            '200': { description: 'File attachment' },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'Permission required' },
+            '404': { description: 'File unavailable' },
+            '422': { description: 'Invalid material ID' },
           },
         },
       },

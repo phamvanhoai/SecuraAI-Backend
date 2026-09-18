@@ -6,11 +6,13 @@ const prisma = new PrismaClient();
 
 async function verifyDatabaseSchema() {
   const sql = fs.readFileSync('project-docs/Database.sql', 'utf8');
+  const extension = JSON.parse(fs.readFileSync('prisma/schema-extensions.json', 'utf8'));
   const expected = [...sql.matchAll(/^CREATE TABLE "([^"]+)"/gm)]
     .map((match) => match[1])
+    .concat(extension.tables)
     .sort();
-  const expectedForeignKeys = (sql.match(/ADD FOREIGN KEY/g) || []).length;
-  const expectedChecks = (sql.match(/\bCHECK\s*\(/g) || []).length;
+  const expectedForeignKeys = (sql.match(/ADD FOREIGN KEY/g) || []).length + extension.foreignKeys;
+  const expectedChecks = (sql.match(/\bCHECK\s*\(/g) || []).length + extension.checks;
   const rows = await prisma.$queryRaw`
     SELECT table_name
     FROM information_schema.tables
