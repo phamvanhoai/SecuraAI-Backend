@@ -173,8 +173,11 @@ export const trainingAwarenessService = {
       items: result.items.map((enrollment) => {
         const quiz = enrollment.training_campaigns.training_courses.quizzes[0];
         if (!quiz) throw new Error('Assessment query returned an enrollment without a quiz');
-        const latestAttempt = quiz.quiz_attempts[0];
-        const passed = quiz.quiz_attempts.some((attempt) => attempt.passed);
+        const enrollmentAttempts = quiz.quiz_attempts.filter(
+          (attempt) => attempt.training_enrollment_id === enrollment.training_enrollment_id,
+        );
+        const latestAttempt = enrollmentAttempts[0];
+        const passed = enrollmentAttempts.some((attempt) => attempt.passed);
         return {
           enrollmentId: enrollment.training_enrollment_id,
           courseTitle: enrollment.training_campaigns.training_courses.title,
@@ -189,7 +192,7 @@ export const trainingAwarenessService = {
             title: quiz.title,
             passingScore: Number(quiz.passing_score),
             maxAttempts: quiz.max_attempts,
-            attemptsUsed: quiz.quiz_attempts.length,
+            attemptsUsed: enrollmentAttempts.length,
             latestScore:
               latestAttempt?.score === null || latestAttempt?.score === undefined
                 ? null
@@ -200,7 +203,7 @@ export const trainingAwarenessService = {
               enrollment.training_campaigns.start_date,
               enrollment.training_campaigns.due_date,
               passed,
-              quiz.quiz_attempts.length,
+              enrollmentAttempts.length,
               quiz.max_attempts,
             ),
           },
@@ -214,12 +217,13 @@ export const trainingAwarenessService = {
       },
     };
   },
-  async getMyAssessment(enrollmentId: string, actor: Actor) {
+  async getMyAssessment(enrollmentId: string, actor: Actor, lessonId: string | null = null) {
     if (!actor.permissions.includes('training-assessments.take'))
       throw new AppError(403, 'FORBIDDEN', 'Insufficient permissions');
     const enrollment = await trainingAwarenessRepository.getMyAssessment(
       enrollmentId,
       actor.userId,
+      lessonId,
     );
     const quiz = enrollment?.training_campaigns.training_courses.quizzes[0];
     if (!enrollment || !quiz)
@@ -266,13 +270,16 @@ export const trainingAwarenessService = {
     input: SubmitAssessmentBody,
     actor: Actor,
     context: RequestContext,
+    lessonId: string | null = null,
   ) {
     if (!actor.permissions.includes('training-assessments.take'))
       throw new AppError(403, 'FORBIDDEN', 'Insufficient permissions');
-    const result = await trainingAwarenessRepository.submitAssessment(enrollmentId, input, {
-      actorUserId: actor.userId,
-      ...context,
-    });
+    const result = await trainingAwarenessRepository.submitAssessment(
+      enrollmentId,
+      input,
+      { actorUserId: actor.userId, ...context },
+      lessonId,
+    );
     if (result.kind === 'not_found')
       throw new AppError(404, 'ASSESSMENT_NOT_FOUND', 'Assessment not found');
     if (result.kind === 'attempt_limit')
@@ -285,6 +292,12 @@ export const trainingAwarenessService = {
       );
     if (result.kind === 'already_passed')
       throw new AppError(409, 'ASSESSMENT_ALREADY_PASSED', 'Assessment has already been passed');
+    if (result.kind === 'required_lessons_incomplete')
+      throw new AppError(
+        409,
+        'REQUIRED_LESSONS_INCOMPLETE',
+        'Complete every required lesson before taking the final assessment',
+      );
     if (result.kind === 'invalid_answers')
       throw new AppError(422, 'INVALID_ASSESSMENT_ANSWERS', 'Answer every assessment question');
     return {

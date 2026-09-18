@@ -169,6 +169,7 @@ export const trainingAwarenessRepository = {
                   title: true,
                   description: true,
                   quizzes: {
+                    where: { training_lesson_id: null },
                     orderBy: [{ created_at: 'desc' }, { quiz_id: 'desc' }],
                     take: 1,
                     select: {
@@ -177,9 +178,14 @@ export const trainingAwarenessRepository = {
                       passing_score: true,
                       max_attempts: true,
                       quiz_attempts: {
-                        where: { user_id: userId, submitted_at: { not: null } },
+                        where: {
+                          training_enrollment_id: { not: null },
+                          user_id: userId,
+                          submitted_at: { not: null },
+                        },
                         select: {
                           quiz_attempt_id: true,
+                          training_enrollment_id: true,
                           score: true,
                           passed: true,
                           submitted_at: true,
@@ -200,7 +206,7 @@ export const trainingAwarenessRepository = {
     ]);
     return { items, total };
   },
-  getMyAssessment(enrollmentId: string, userId: string) {
+  getMyAssessment(enrollmentId: string, userId: string, lessonId: string | null = null) {
     return prisma.training_enrollments.findFirst({
       where: {
         training_enrollment_id: enrollmentId,
@@ -218,6 +224,7 @@ export const trainingAwarenessRepository = {
               select: {
                 title: true,
                 quizzes: {
+                  where: { training_lesson_id: lessonId },
                   orderBy: [{ created_at: 'desc' }, { quiz_id: 'desc' }],
                   take: 1,
                   select: {
@@ -239,7 +246,11 @@ export const trainingAwarenessRepository = {
                       },
                     },
                     quiz_attempts: {
-                      where: { user_id: userId, submitted_at: { not: null } },
+                      where: {
+                        training_enrollment_id: enrollmentId,
+                        user_id: userId,
+                        submitted_at: { not: null },
+                      },
                       select: {
                         quiz_attempt_id: true,
                         score: true,
@@ -257,7 +268,12 @@ export const trainingAwarenessRepository = {
       },
     });
   },
-  submitAssessment(enrollmentId: string, input: SubmitAssessmentBody, context: RequestContext) {
+  submitAssessment(
+    enrollmentId: string,
+    input: SubmitAssessmentBody,
+    context: RequestContext,
+    lessonId: string | null = null,
+  ) {
     return prisma.$transaction(
       async (transaction) => {
         const enrollment = await transaction.training_enrollments.findFirst({
@@ -275,7 +291,9 @@ export const trainingAwarenessRepository = {
                 due_date: true,
                 training_courses: {
                   select: {
+                    training_course_id: true,
                     quizzes: {
+                      where: { training_lesson_id: lessonId },
                       orderBy: [{ created_at: 'desc' }, { quiz_id: 'desc' }],
                       take: 1,
                       select: {
@@ -308,10 +326,28 @@ export const trainingAwarenessRepository = {
         if (now < enrollment.training_campaigns.start_date || now >= dueBoundary)
           return { kind: 'not_available' as const };
 
+        const courseId = enrollment.training_campaigns.training_courses.training_course_id;
+        const requiredLessons = await transaction.training_lessons.count({
+          where: { training_course_id: courseId, is_required: true },
+        });
+        const completedRequiredLessons = requiredLessons
+          ? await transaction.training_lesson_progress.count({
+              where: {
+                training_enrollment_id: enrollmentId,
+                status: 'completed',
+                training_lessons: { is_required: true, training_course_id: courseId },
+              },
+            })
+          : 0;
+        const allRequiredLessonsComplete = completedRequiredLessons === requiredLessons;
+        if (!lessonId && !allRequiredLessonsComplete)
+          return { kind: 'required_lessons_incomplete' as const };
+
         const previousAttempts = await transaction.quiz_attempts.findMany({
           where: {
             quiz_id: quiz.quiz_id,
             user_id: context.actorUserId,
+            training_enrollment_id: enrollmentId,
             submitted_at: { not: null },
           },
           select: { passed: true },
@@ -373,6 +409,7 @@ export const trainingAwarenessRepository = {
           data: {
             quiz_id: quiz.quiz_id,
             user_id: context.actorUserId,
+            training_enrollment_id: enrollmentId,
             score,
             passed,
             started_at: now,
@@ -381,11 +418,53 @@ export const trainingAwarenessRepository = {
           },
           select: { quiz_attempt_id: true, score: true, passed: true, submitted_at: true },
         });
+        if (lessonId && passed) {
+          await transaction.training_lesson_progress.upsert({
+            where: {
+              training_enrollment_id_training_lesson_id: {
+                training_enrollment_id: enrollmentId,
+                training_lesson_id: lessonId,
+              },
+            },
+            create: {
+              training_enrollment_id: enrollmentId,
+              training_lesson_id: lessonId,
+              status: 'completed',
+              started_at: now,
+              completed_at: now,
+              last_accessed_at: now,
+            },
+            update: { status: 'completed', completed_at: now, last_accessed_at: now },
+          });
+        }
+        const finalPassed = lessonId
+          ? Boolean(
+              await transaction.quiz_attempts.findFirst({
+                where: {
+                  training_enrollment_id: enrollmentId,
+                  passed: true,
+                  quizzes: { training_lesson_id: null },
+                },
+                select: { quiz_attempt_id: true },
+              }),
+            )
+          : passed;
+        const finalQuizExists = Boolean(
+          await transaction.quizzes.findFirst({
+            where: { training_course_id: courseId, training_lesson_id: null },
+            select: { quiz_id: true },
+          }),
+        );
+        const courseCompleted = allRequiredLessonsComplete && (!finalQuizExists || finalPassed);
+        const lessonProgress = requiredLessons
+          ? Math.floor((completedRequiredLessons / requiredLessons) * 90)
+          : 0;
         await transaction.training_enrollments.update({
           where: { training_enrollment_id: enrollment.training_enrollment_id },
           data: {
-            status: passed ? 'completed' : 'in_progress',
-            ...(passed ? { progress_percent: 100, completed_at: now } : {}),
+            status: courseCompleted ? 'completed' : 'in_progress',
+            progress_percent: courseCompleted ? 100 : lessonProgress,
+            ...(courseCompleted ? { completed_at: now } : {}),
             started_at: enrollment.started_at ?? now,
             last_accessed_at: now,
           },

@@ -1,4 +1,10 @@
 import { Router } from 'express';
+import {
+  completeMyLesson,
+  downloadMyMaterial,
+  getMyLearning,
+  listMyLearning,
+} from './learning.controller.js';
 import { parseCourseUpload } from './course-material.upload.js';
 import { getCourseContent, downloadCourseMaterial } from './course-content.controller.js';
 import { getDepartmentReport } from './department-report.controller.js';
@@ -13,8 +19,10 @@ import {
   listAssignmentOptions,
   listCourses,
   getMyAssessment,
+  getMyLessonAssessment,
   listMyAssessments,
   submitMyAssessment,
+  submitMyLessonAssessment,
   getCompletionCampaign,
   getLatestCourseAssignment,
   listCompletionCampaigns,
@@ -47,6 +55,42 @@ import {
 } from './training-reminders.controller.js';
 
 export const trainingAwarenessRouter = Router();
+trainingAwarenessRouter.get(
+  '/learning',
+  authenticate,
+  authorize('training-assessments.take'),
+  asyncHandler(listMyLearning),
+);
+trainingAwarenessRouter.get(
+  '/learning/:enrollmentId',
+  authenticate,
+  authorize('training-assessments.take'),
+  asyncHandler(getMyLearning),
+);
+trainingAwarenessRouter.patch(
+  '/learning/:enrollmentId/lessons/:lessonId/complete',
+  authenticate,
+  authorize('training-assessments.take'),
+  asyncHandler(completeMyLesson),
+);
+trainingAwarenessRouter.get(
+  '/learning/:enrollmentId/materials/:materialId/download',
+  authenticate,
+  authorize('training-assessments.take'),
+  asyncHandler(downloadMyMaterial),
+);
+trainingAwarenessRouter.get(
+  '/learning/:enrollmentId/lessons/:lessonId/assessment',
+  authenticate,
+  authorize('training-assessments.take'),
+  asyncHandler(getMyLessonAssessment),
+);
+trainingAwarenessRouter.post(
+  '/learning/:enrollmentId/lessons/:lessonId/assessment/attempts',
+  authenticate,
+  authorize('training-assessments.take'),
+  asyncHandler(submitMyLessonAssessment),
+);
 trainingAwarenessRouter.get(
   '/courses/:courseId/content',
   authenticate,

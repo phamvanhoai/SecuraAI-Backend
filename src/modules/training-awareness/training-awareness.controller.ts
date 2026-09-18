@@ -69,6 +69,25 @@ export const submitMyAssessment: RequestHandler = async (req, res) => {
   res.status(201).json({ success: true, data });
 };
 
+export const getMyLessonAssessment: RequestHandler = async (req, res) => {
+  if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+  const { enrollmentId } = assessmentParamsSchema.parse(req.params);
+  const lessonId = z.string().uuid().parse(req.params.lessonId);
+  const data = await trainingAwarenessService.getMyAssessment(enrollmentId, req.auth, lessonId);
+  res.status(200).json({ success: true, data });
+};
+
+export const submitMyLessonAssessment: RequestHandler = async (req, res) => {
+  if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+  const { enrollmentId } = assessmentParamsSchema.parse(req.params);
+  const lessonId = z.string().uuid().parse(req.params.lessonId);
+  const data = await trainingAwarenessService.submitMyAssessment(
+    enrollmentId, submitAssessmentBodySchema.parse(req.body), req.auth,
+    { ipAddress: req.ip ?? null, userAgent: req.get('user-agent')?.slice(0, 1000) ?? null }, lessonId,
+  );
+  res.status(201).json({ success: true, data });
+};
+
 export const listCourses: RequestHandler = async (req, res) => {
   if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
   const data = await trainingAwarenessService.listCourses(
