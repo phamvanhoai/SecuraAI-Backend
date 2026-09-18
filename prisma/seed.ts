@@ -985,6 +985,28 @@ async function main(): Promise<void> {
     update: {},
     create: { user_id: user.user_id, role_id: role.role_id },
   });
+  const loginHistoryPermission = await prisma.permissions.upsert({
+    where: { code: 'login-history.read' },
+    update: { module: 'audit-settings', action: 'read', description: 'View login history' },
+    create: {
+      code: 'login-history.read',
+      module: 'audit-settings',
+      action: 'read',
+      description: 'View login history',
+    },
+  });
+  for (const historyRole of [role, securityOfficerRole]) {
+    await prisma.role_permissions.upsert({
+      where: {
+        role_id_permission_id: {
+          role_id: historyRole.role_id,
+          permission_id: loginHistoryPermission.permission_id,
+        },
+      },
+      update: {},
+      create: { role_id: historyRole.role_id, permission_id: loginHistoryPermission.permission_id },
+    });
+  }
   await prisma.$transaction([
     prisma.role_permissions.deleteMany({
       where: {
