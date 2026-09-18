@@ -20,6 +20,25 @@ const passwordChangeUserSelect = {
 } as const;
 
 export const authRepository = {
+  async recordLoginFailure(input: {
+    userId: string | null;
+    email: string;
+    reason: string;
+    ipAddress: string | null;
+    userAgent: string | null;
+  }): Promise<void> {
+    await prisma.login_history.create({
+      data: {
+        user_id: input.userId,
+        email_attempted: input.email,
+        success: false,
+        failure_reason: input.reason,
+        ip_address: input.ipAddress,
+        user_agent: input.userAgent,
+      },
+      select: { login_history_id: true },
+    });
+  },
   async createLoginSession(input: {
     userId: string;
     passwordHash: string;
@@ -57,6 +76,16 @@ export const authRepository = {
         where: { user_id: user.user_id },
         data: { last_login_at: new Date() },
         select: { user_id: true },
+      });
+      await database.login_history.create({
+        data: {
+          user_id: user.user_id,
+          email_attempted: user.email,
+          success: true,
+          ip_address: input.ipAddress,
+          user_agent: input.userAgent,
+        },
+        select: { login_history_id: true },
       });
       return user;
     });
@@ -293,6 +322,8 @@ export const authRepository = {
         select: {
           mfa_method_id: true,
           secret_encrypted: true,
+          user_id: true,
+          users: { select: { email: true } },
           login_challenge_attempts: true,
         },
       });
@@ -311,6 +342,8 @@ export const authRepository = {
       return {
         mfaMethodId: challenge.mfa_method_id,
         secretEncrypted: challenge.secret_encrypted,
+        userId: challenge.user_id,
+        email: challenge.users.email,
         attempts: challenge.login_challenge_attempts + 1,
       };
     });
@@ -385,6 +418,16 @@ export const authRepository = {
         where: { user_id: method.user_id },
         data: { last_login_at: new Date() },
         include: authUserInclude,
+      });
+      await database.login_history.create({
+        data: {
+          user_id: authenticatedUser.user_id,
+          email_attempted: authenticatedUser.email,
+          success: true,
+          ip_address: input.ipAddress,
+          user_agent: input.userAgent,
+        },
+        select: { login_history_id: true },
       });
       return { kind: 'authenticated' as const, user: authenticatedUser };
     });
