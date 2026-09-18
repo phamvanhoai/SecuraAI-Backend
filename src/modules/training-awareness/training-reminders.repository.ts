@@ -20,7 +20,7 @@ const enrollmentSelect = {
     select: {
       due_date: true,
       title: true,
-      training_courses: { select: { title: true, training_course_id: true } },
+      training_courses: { select: { title: true } },
     },
   },
 } satisfies Prisma.training_enrollmentsSelect;
@@ -44,11 +44,6 @@ export const trainingRemindersRepository = {
         AND u.status = 'active' AND u.deleted_at IS NULL AND u.disabled_at IS NULL
         AND NOT EXISTS (SELECT 1 FROM training_certificates cert
           WHERE cert.training_enrollment_id = e.training_enrollment_id)
-        AND NOT EXISTS (SELECT 1 FROM quiz_attempts qa
-          WHERE qa.user_id = e.user_id AND qa.passed = true AND qa.submitted_at IS NOT NULL
-            AND qa.quiz_id = (SELECT q.quiz_id FROM quizzes q
-              WHERE q.training_course_id = course.training_course_id
-              ORDER BY q.created_at DESC, q.quiz_id DESC LIMIT 1))
         AND EXISTS (SELECT 1 FROM user_roles ur
           JOIN role_permissions rp ON rp.role_id = ur.role_id
           JOIN permissions p ON p.permission_id = rp.permission_id
@@ -101,22 +96,6 @@ export const trainingRemindersRepository = {
         select: enrollmentSelect,
       });
       if (!enrollment) return false;
-      // Assessment availability already treats a passed latest quiz as complete,
-      // even if a historical/reassigned enrollment still has stale progress.
-      const latestQuiz = await tx.quizzes.findFirst({
-        where: {
-          training_course_id: enrollment.training_campaigns.training_courses.training_course_id,
-        },
-        orderBy: [{ created_at: 'desc' }, { quiz_id: 'desc' }],
-        select: {
-          quiz_attempts: {
-            where: { user_id: enrollment.user_id, passed: true, submitted_at: { not: null } },
-            take: 1,
-            select: { quiz_attempt_id: true },
-          },
-        },
-      });
-      if (latestQuiz?.quiz_attempts.length) return false;
       const preference = await tx.notification_preferences.findUnique({
         where: {
           user_id_event_type: {

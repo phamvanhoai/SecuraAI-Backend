@@ -6,7 +6,6 @@ const mocks = vi.hoisted(() => ({
   find: vi.fn(),
   preference: vi.fn(),
   transaction: vi.fn(),
-  quiz: vi.fn(),
 }));
 vi.mock('../../database/prisma.js', () => ({
   prisma: {
@@ -18,7 +17,6 @@ const tx = {
   $queryRaw: mocks.query,
   training_enrollments: { findFirst: mocks.find },
   notification_preferences: { findUnique: mocks.preference },
-  quizzes: { findFirst: mocks.quiz },
 };
 
 describe('training reminder repository', () => {
@@ -36,6 +34,7 @@ describe('training reminder repository', () => {
     expect(query.sql).toContain("course.status = 'published'");
     expect(query.sql).toContain('c.start_date <=');
     expect(query.sql).toContain('training_certificates');
+    expect(query.sql).not.toContain('quiz_attempts');
     expect(query.sql).toContain("p.code = 'training-assessments.take'");
     expect(query.sql).toContain('pref.in_app_enabled = false');
     expect(query.sql).toContain('n.notification_id');
@@ -68,7 +67,6 @@ describe('training reminder repository', () => {
       user_id: 'employee',
       training_campaigns: { training_courses: { training_course_id: 'course' } },
     });
-    mocks.quiz.mockResolvedValue(null);
     mocks.preference.mockResolvedValue({ in_app_enabled: false });
     const deliver = vi.fn();
     expect(
@@ -80,28 +78,28 @@ describe('training reminder repository', () => {
     ).toBe(false);
     expect(deliver).not.toHaveBeenCalled();
   });
-  it('does not remind an already passed assessment with stale enrollment progress', async () => {
-    mocks.find.mockResolvedValue({
+  it('keeps an unfinished enrollment eligible regardless of lesson or quiz history', async () => {
+    const enrollment = {
       user_id: 'employee',
       training_campaigns: { training_courses: { training_course_id: 'course' } },
-    });
-    mocks.quiz.mockResolvedValue({ quiz_attempts: [{ quiz_attempt_id: 'passed-attempt' }] });
-    const deliver = vi.fn();
+    };
+    mocks.find.mockResolvedValue(enrollment);
+    mocks.preference.mockResolvedValue(null);
+    const deliver = vi.fn().mockResolvedValue(true);
     expect(
       await trainingRemindersRepository.processCandidate(
         '00000000-0000-4000-8000-000000000001',
         new Date(),
         deliver,
       ),
-    ).toBe(false);
-    expect(deliver).not.toHaveBeenCalled();
+    ).toBe(true);
+    expect(deliver).toHaveBeenCalledWith(enrollment, tx);
   });
   it('sends inside the transaction when eligible with default preferences', async () => {
     const enrollment = {
       user_id: 'employee',
       training_campaigns: { training_courses: { training_course_id: 'course' } },
     };
-    mocks.quiz.mockResolvedValue(null);
     mocks.find.mockResolvedValue(enrollment);
     mocks.preference.mockResolvedValue(null);
     const deliver = vi.fn().mockResolvedValue(true);

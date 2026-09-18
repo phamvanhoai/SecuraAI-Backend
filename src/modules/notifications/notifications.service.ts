@@ -126,9 +126,11 @@ export const notificationsService = {
     query: { page: number; limit: number; status: 'all' | 'unread'; search?: string | undefined },
   ) {
     requireEmployeePermission(actor);
-    const [items, total] = await notificationsRepository.listTrainingReminders(actor.userId, query);
+    const [items, total, accountTotal, unread] =
+      await notificationsRepository.listTrainingReminders(actor.userId, query);
     return {
       items: items.map(mapReminder),
+      summary: { total: accountTotal, unread },
       pagination: {
         page: query.page,
         limit: query.limit,
