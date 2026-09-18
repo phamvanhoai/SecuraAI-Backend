@@ -1,11 +1,10 @@
 import argon2 from 'argon2';
 import jwt from 'jsonwebtoken';
 import request from 'supertest';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { encryptSecret } from '../src/common/utils/encryption.js';
 
 const mocks = vi.hoisted(() => ({
-  recordLoginFailure: vi.fn(),
   findAuthUser: vi.fn(),
   findUserForPasswordChange: vi.fn(),
   findTotpMethod: vi.fn(),
@@ -46,10 +45,7 @@ const accessToken = jwt.sign(
 );
 
 describe('TOTP MFA HTTP API', () => {
-  afterEach(() => vi.useRealTimers());
   beforeEach(async () => {
-    vi.useFakeTimers({ toFake: ['Date'] });
-    vi.setSystemTime(new Date(Math.floor(Date.now() / 30000) * 30000 + 5000));
     vi.clearAllMocks();
     mocks.findUserForPasswordChange.mockResolvedValue({
       email: 'user@example.com',
