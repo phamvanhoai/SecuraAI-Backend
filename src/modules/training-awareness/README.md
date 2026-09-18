@@ -30,6 +30,17 @@ backup. Vercel local uploads are rejected; request-size limits of any frontend
 host/reverse proxy still apply. This task does not deploy Docker, add object
 storage, provide malware scanning/transcoding, or support video resume positions.
 
+# Track training completion (UC78)
+
+`GET /training/completion` and `GET /training/completion/{campaignId}` require
+`training-completion.read`. Campaign totals exclude withdrawn enrollments and use
+the persisted enrollment status/progress as the authoritative completion record.
+The campaign detail also returns campaign-wide metrics, required lesson progress,
+the latest final-assessment score/pass state, learner activity and certificate
+state for every paginated employee. Lesson quizzes are not treated as the final
+assessment. Overdue is derived from the campaign due date and never overrides a
+completed or withdrawn enrollment. No schema change or new permission is needed.
+
 # Training deadline reminders (UC79)
 
 Employees receive automatic **in-app** reminders; they do not send reminders to
