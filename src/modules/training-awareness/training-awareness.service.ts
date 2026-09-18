@@ -357,6 +357,8 @@ export const trainingAwarenessService = {
     });
     if (result.kind === 'course_not_found')
       throw new AppError(404, 'COURSE_NOT_FOUND', 'Course not found');
+    if (result.kind === 'course_not_published')
+      throw new AppError(409, 'COURSE_NOT_PUBLISHED', 'Publish the course before assigning it');
     if (result.kind === 'invalid_targets')
       throw new AppError(
         422,
