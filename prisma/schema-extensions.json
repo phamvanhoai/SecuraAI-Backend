@@ -1,0 +1,5 @@
+{
+  "tables": ["training_lessons", "training_materials", "training_lesson_progress"],
+  "foreignKeys": 7,
+  "checks": 6
+}

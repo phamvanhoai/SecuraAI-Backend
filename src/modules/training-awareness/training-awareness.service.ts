@@ -1,4 +1,5 @@
 import { AppError } from '../../common/errors/app-error.js';
+import type { CourseUpload } from './course-material.upload.js';
 import { trainingAwarenessRepository, type CourseRecord } from './training-awareness.repository.js';
 import type {
   AssignCourseBody,
@@ -312,13 +313,51 @@ export const trainingAwarenessService = {
       },
     };
   },
-  async createCourse(input: CreateCourseBody, actor: Actor, context: RequestContext) {
+  async createCourse(
+    input: CreateCourseBody,
+    actor: Actor,
+    context: RequestContext,
+    uploads: readonly CourseUpload[] = [],
+  ) {
     if (!actor.permissions.includes('training-courses.create'))
       throw new AppError(403, 'FORBIDDEN', 'Insufficient permissions');
-    const course = await trainingAwarenessRepository.createCourse(input, {
-      actorUserId: actor.userId,
-      ...context,
-    });
+    const keys =
+      input.lessons?.flatMap((lesson) =>
+        lesson.materials.flatMap((material) => (material.uploadKey ? [material.uploadKey] : [])),
+      ) ?? [];
+    if (
+      keys.length !== uploads.length ||
+      new Set(uploads.map((upload) => upload.key)).size !== uploads.length ||
+      keys.some((key) => !uploads.some((upload) => upload.key === key))
+    )
+      throw new AppError(
+        422,
+        'TRAINING_FILES_MISMATCH',
+        'Every uploaded material must have exactly one matching file',
+      );
+    for (const lesson of input.lessons ?? [])
+      for (const material of lesson.materials) {
+        const upload = uploads.find((item) => item.key === material.uploadKey);
+        if (
+          upload &&
+          (material.type === 'video'
+            ? !upload.mimeType.startsWith('video/')
+            : upload.mimeType !== 'application/pdf')
+        )
+          throw new AppError(
+            422,
+            'TRAINING_FILE_TYPE_MISMATCH',
+            'The file type does not match the lesson material',
+          );
+      }
+    const course = await trainingAwarenessRepository.createCourse(
+      input,
+      {
+        actorUserId: actor.userId,
+        ...context,
+      },
+      uploads,
+    );
     return toCourseResponse(course);
   },
   async listAssignmentOptions(query: AssignmentOptionsQuery, actor: Actor) {

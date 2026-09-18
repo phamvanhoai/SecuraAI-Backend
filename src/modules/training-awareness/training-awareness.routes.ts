@@ -1,4 +1,6 @@
 import { Router } from 'express';
+import { parseCourseUpload } from './course-material.upload.js';
+import { getCourseContent, downloadCourseMaterial } from './course-content.controller.js';
 import { getDepartmentReport } from './department-report.controller.js';
 import { departmentReportQuerySchema } from './dto/department-report.dto.js';
 import { getCertificate, issueCertificate } from './certificate.controller.js';
@@ -22,7 +24,6 @@ import {
   assignmentOptionsQuerySchema,
   assignCourseBodySchema,
   assignCourseParamsSchema,
-  createCourseBodySchema,
   listCoursesQuerySchema,
   withdrawEnrollmentBodySchema,
 } from './dto/course.dto.js';
@@ -46,6 +47,18 @@ import {
 } from './training-reminders.controller.js';
 
 export const trainingAwarenessRouter = Router();
+trainingAwarenessRouter.get(
+  '/courses/:courseId/content',
+  authenticate,
+  authorize('training-courses.read'),
+  asyncHandler(getCourseContent),
+);
+trainingAwarenessRouter.get(
+  '/materials/:materialId/download',
+  authenticate,
+  authorize('training-courses.read'),
+  asyncHandler(downloadCourseMaterial),
+);
 trainingAwarenessRouter.get(
   '/department-report',
   authenticate,
@@ -149,7 +162,7 @@ trainingAwarenessRouter.post(
   '/courses',
   authenticate,
   authorize('training-courses.create'),
-  validate({ body: createCourseBodySchema }),
+  parseCourseUpload,
   asyncHandler(createCourse),
 );
 trainingAwarenessRouter.get(
