@@ -131,6 +131,19 @@ export const trainingAwarenessService = {
     if (!result)
       throw new AppError(404, 'TRAINING_CAMPAIGN_NOT_FOUND', 'Training campaign not found');
     const isOverdue = isPastDueDate(result.campaign.due_date);
+    const activeGroups = result.statusGroups.filter((group) => group.status !== 'withdrawn');
+    const assigned = activeGroups.reduce((sum, group) => sum + group._count._all, 0);
+    const completed = activeGroups
+      .filter((group) => group.status === 'completed')
+      .reduce((sum, group) => sum + group._count._all, 0);
+    const inProgress = activeGroups
+      .filter((group) => group.status === 'in_progress')
+      .reduce((sum, group) => sum + group._count._all, 0);
+    const withdrawn = result.statusGroups
+      .filter((group) => group.status === 'withdrawn')
+      .reduce((sum, group) => sum + group._count._all, 0);
+    const requiredLessonCount = result.campaign.training_courses.training_lessons.length;
+    const hasFinalAssessment = result.campaign.training_courses.quizzes.length > 0;
     return {
       campaign: {
         id: result.campaign.training_campaign_id,
@@ -138,25 +151,65 @@ export const trainingAwarenessService = {
         courseTitle: result.campaign.training_courses.title,
         startDate: result.campaign.start_date,
         dueDate: result.campaign.due_date,
+        requiredLessonCount,
+        hasFinalAssessment,
       },
-      items: result.items.map((enrollment) => ({
-        id: enrollment.training_enrollment_id,
-        user: {
-          id: enrollment.users.user_id,
-          name: enrollment.users.full_name,
-          email: enrollment.users.email,
-          employeeCode: enrollment.users.employee_code,
-        },
-        status:
-          isOverdue && enrollment.status !== 'completed' && enrollment.status !== 'withdrawn'
-            ? 'overdue'
-            : enrollment.status,
-        progressPercent: enrollment.progress_percent,
-        startedAt: enrollment.started_at,
-        completedAt: enrollment.completed_at,
-        lastAccessedAt: enrollment.last_accessed_at,
-        certificateNumber: enrollment.training_certificates?.certificate_number ?? null,
-      })),
+      summary: {
+        assigned,
+        completed,
+        inProgress,
+        notStarted: Math.max(0, assigned - completed - inProgress),
+        overdue: isOverdue ? Math.max(0, assigned - completed) : 0,
+        withdrawn,
+        completionRate: assigned ? Math.round((completed / assigned) * 100) : 0,
+        averageProgress: assigned
+          ? Math.round(
+              activeGroups.reduce(
+                (sum, group) => sum + Number(group._avg.progress_percent ?? 0) * group._count._all,
+                0,
+              ) / assigned,
+            )
+          : 0,
+      },
+      items: result.items.map((enrollment) => {
+        const completedLessonCount = new Set(
+          enrollment.training_lesson_progress
+            .filter((progress) => progress.status === 'completed')
+            .map((progress) => progress.training_lesson_id),
+        ).size;
+        const latestAssessment = enrollment.quiz_attempts[0];
+        return {
+          id: enrollment.training_enrollment_id,
+          user: {
+            id: enrollment.users.user_id,
+            name: enrollment.users.full_name,
+            email: enrollment.users.email,
+            employeeCode: enrollment.users.employee_code,
+          },
+          status:
+            isOverdue && enrollment.status !== 'completed' && enrollment.status !== 'withdrawn'
+              ? 'overdue'
+              : enrollment.status,
+          progressPercent: enrollment.progress_percent,
+          requiredLessons: {
+            completed: completedLessonCount,
+            total: requiredLessonCount,
+          },
+          finalAssessment: {
+            required: hasFinalAssessment,
+            passed: enrollment.quiz_attempts.some((attempt) => attempt.passed === true),
+            latestScore:
+              latestAssessment?.score === null || latestAssessment?.score === undefined
+                ? null
+                : Number(latestAssessment.score),
+            lastSubmittedAt: latestAssessment?.submitted_at ?? null,
+          },
+          startedAt: enrollment.started_at,
+          completedAt: enrollment.completed_at,
+          lastAccessedAt: enrollment.last_accessed_at,
+          certificateNumber: enrollment.training_certificates?.certificate_number ?? null,
+        };
+      }),
       pagination: {
         page: query.page,
         limit: query.limit,

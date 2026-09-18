@@ -30,6 +30,17 @@ backup. Vercel local uploads are rejected; request-size limits of any frontend
 host/reverse proxy still apply. This task does not deploy Docker, add object
 storage, provide malware scanning/transcoding, or support video resume positions.
 
+# Track training completion (UC78)
+
+`GET /training/completion` and `GET /training/completion/{campaignId}` require
+`training-completion.read`. Campaign totals exclude withdrawn enrollments and use
+the persisted enrollment status/progress as the authoritative completion record.
+The campaign detail also returns campaign-wide metrics, required lesson progress,
+the latest final-assessment score/pass state, learner activity and certificate
+state for every paginated employee. Lesson quizzes are not treated as the final
+assessment. Overdue is derived from the campaign due date and never overrides a
+completed or withdrawn enrollment. No schema change or new permission is needed.
+
 # Training deadline reminders (UC79)
 
 Employees receive automatic **in-app** reminders; they do not send reminders to
@@ -96,11 +107,13 @@ assessments → Deadline reminders**. A published course must already be assigne
 started, unfinished and due within three UTC calendar days. Refresh reads the
 inbox; it does not trigger sending. Old deadlines are displayed as historical
 reminders, not an authoritative current assignment state.
+
 # UC81 — Department training completion report
 
 `GET /training/department-report` requires `training-department-reports.read`, assigned to Admin/Executive by the permission-only migration and seed. No schema change is required. Supports `page`, `limit`, `q`; returns department metrics, organization-wide summary, and pagination in the standard envelope.
 
 Employees are distinct users with non-withdrawn enrollments; assignments count separately per campaign. Completed means enrollment status `completed`. Overdue means incomplete with campaign due date before today UTC. Current department membership is used because no assignment-time department snapshot exists. No-department employees are reported separately. Zero-assignment departments remain visible. Search does not affect summary metrics.
+
 # Assignment eligibility (UC76)
 
 Assignment creation and latest-campaign updates require a published course.

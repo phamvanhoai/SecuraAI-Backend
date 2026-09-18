@@ -98,10 +98,28 @@ export const trainingAwarenessRepository = {
         title: true,
         start_date: true,
         due_date: true,
-        training_courses: { select: { title: true } },
+        training_courses: {
+          select: {
+            title: true,
+            training_lessons: {
+              where: { is_required: true },
+              select: { training_lesson_id: true },
+            },
+            quizzes: {
+              where: { training_lesson_id: null },
+              select: { quiz_id: true },
+              orderBy: [{ created_at: 'desc' }, { quiz_id: 'desc' }],
+              take: 1,
+            },
+          },
+        },
       },
     });
     if (!campaign) return null;
+    const requiredLessonIds = campaign.training_courses.training_lessons.map(
+      (lesson) => lesson.training_lesson_id,
+    );
+    const finalQuizIds = campaign.training_courses.quizzes.map((quiz) => quiz.quiz_id);
     const dueBoundary = new Date(campaign.due_date);
     dueBoundary.setUTCDate(dueBoundary.getUTCDate() + 1);
     const overdue = dueBoundary <= new Date() && query.status === 'overdue';
@@ -133,6 +151,15 @@ export const trainingAwarenessRepository = {
           started_at: true,
           completed_at: true,
           last_accessed_at: true,
+          training_lesson_progress: {
+            where: { training_lesson_id: { in: requiredLessonIds } },
+            select: { training_lesson_id: true, status: true },
+          },
+          quiz_attempts: {
+            where: { quiz_id: { in: finalQuizIds }, submitted_at: { not: null } },
+            select: { score: true, passed: true, submitted_at: true },
+            orderBy: { submitted_at: 'desc' },
+          },
           training_certificates: { select: { certificate_number: true } },
           users: {
             select: { user_id: true, full_name: true, email: true, employee_code: true },
@@ -143,7 +170,14 @@ export const trainingAwarenessRepository = {
         take: query.limit,
       }),
     ]);
-    return { campaign, items, total };
+    const statusGroups = await prisma.training_enrollments.groupBy({
+      by: ['status'],
+      where: { training_campaign_id: campaignId },
+      orderBy: { status: 'asc' },
+      _count: { _all: true },
+      _avg: { progress_percent: true },
+    });
+    return { campaign, items, statusGroups, total };
   },
   async listMyAssessments(userId: string, query: ListMyAssessmentsQuery) {
     const where: Prisma.training_enrollmentsWhereInput = {

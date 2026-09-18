@@ -1578,7 +1578,7 @@ export const openApiSpec = swaggerJsdoc({
           tags: ['Training Awareness'],
           summary: 'View employee completion for a training campaign',
           description:
-            'Requires training-completion.read. Supports employee search and enrollment-status filtering. Each employee includes nullable certificateNumber to distinguish issued certificates from eligibility for issuance.',
+            "Requires training-completion.read. Supports employee search and enrollment-status filtering. Returns campaign-wide completion metrics plus each employee's required-lesson completion, final-assessment result, activity, enrollment progress and nullable certificateNumber.",
           security: [{ bearerAuth: [] }],
           parameters: [
             {
