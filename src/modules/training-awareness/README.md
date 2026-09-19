@@ -1,3 +1,17 @@
+# Edit security awareness course drafts (UC160)
+
+`GET /training/courses/{courseId}` and `PATCH /training/courses/{courseId}`
+require `training-courses.update`, granted to Admin and Security Officer. Editing
+covers course information, ordered lessons, text/HTTPS/file materials, lesson
+assessments and the final assessment. Correct answers are returned only through
+this protected editor endpoint.
+
+Only unassigned drafts are editable. Published, archived, or assigned courses
+return `409`; historical learner progress is never rewritten. `expectedUpdatedAt`
+rejects stale saves. Updates and audit records are atomic. Existing private files
+may be retained or replaced; removed file records and local objects are cleaned
+up. No table or column changes are required.
+
 # Create structured security awareness courses (UC75)
 
 Create drafts with ordered lessons and materials, optional lesson assessments and

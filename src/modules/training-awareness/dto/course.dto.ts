@@ -73,12 +73,64 @@ export const courseMaterialSchema = z
       });
   });
 
+const editableCourseMaterialSchema = z
+  .object({
+    title: z.string().trim().min(1).max(255),
+    type: z.enum(['text', 'video', 'document', 'link']),
+    content: z.string().trim().max(50000).optional(),
+    externalUrl: z
+      .url()
+      .max(2000)
+      .refine((value) => {
+        try {
+          const url = new URL(value);
+          return url.protocol === 'https:' && !url.username && !url.password;
+        } catch {
+          return false;
+        }
+      }, 'Use an HTTPS URL without credentials')
+      .optional(),
+    uploadKey: z.uuid().optional(),
+    existingFileId: z.uuid().optional(),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    const sources = [value.externalUrl, value.uploadKey, value.existingFileId].filter(
+      Boolean,
+    ).length;
+    const valid =
+      value.type === 'text'
+        ? Boolean(value.content) && sources === 0
+        : value.type === 'link'
+          ? Boolean(value.externalUrl) &&
+            !value.content &&
+            !value.uploadKey &&
+            !value.existingFileId
+          : !value.content && sources === 1;
+    if (!valid)
+      context.addIssue({
+        code: 'custom',
+        path: ['content'],
+        message: 'Provide exactly one source matching the material type',
+      });
+  });
+
 export const courseLessonSchema = z
   .object({
     title: z.string().trim().min(3).max(255),
     description: z.string().trim().max(2000).optional(),
     isRequired: z.boolean(),
     materials: z.array(courseMaterialSchema).min(1).max(10),
+    assessment: courseAssessmentSchema.optional(),
+  })
+  .strict();
+
+const editableCourseLessonSchema = z
+  .object({
+    title: z.string().trim().min(3).max(255),
+    description: z.string().trim().max(2000).optional(),
+    isRequired: z.boolean(),
+    materials: z.array(editableCourseMaterialSchema).min(1).max(10),
     assessment: courseAssessmentSchema.optional(),
   })
   .strict();
@@ -142,6 +194,44 @@ export const createCourseBodySchema = z
     }
   });
 
+export const updateCourseDraftBodySchema = z
+  .object({
+    title: z.string().trim().min(3).max(255),
+    description: z.string().trim().max(2000).nullable().optional(),
+    content: z.string().trim().min(10).max(50000),
+    lessons: z.array(editableCourseLessonSchema).min(1).max(50),
+    assessment: courseAssessmentSchema.optional(),
+    expectedUpdatedAt: z.iso.datetime({ offset: true }),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    const keys = value.lessons.flatMap((lesson) =>
+      lesson.materials.flatMap((material) => (material.uploadKey ? [material.uploadKey] : [])),
+    );
+    const materialCount = value.lessons.reduce(
+      (count, lesson) => count + lesson.materials.length,
+      0,
+    );
+    const questionCount =
+      (value.assessment?.questions.length ?? 0) +
+      value.lessons.reduce(
+        (count, lesson) => count + (lesson.assessment?.questions.length ?? 0),
+        0,
+      );
+    if (materialCount > 100 || questionCount > 100)
+      context.addIssue({
+        code: 'custom',
+        path: ['lessons'],
+        message: 'A course may contain at most 100 materials and 100 assessment questions',
+      });
+    if (new Set(keys).size !== keys.length || keys.length > 10)
+      context.addIssue({
+        code: 'custom',
+        path: ['lessons'],
+        message: 'Use unique upload keys and at most 10 uploaded files',
+      });
+  });
+
 export const listCoursesQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(20),
@@ -190,6 +280,7 @@ export const assignCourseBodySchema = z
   });
 
 export type CreateCourseBody = z.infer<typeof createCourseBodySchema>;
+export type UpdateCourseDraftBody = z.infer<typeof updateCourseDraftBodySchema>;
 export type ListCoursesQuery = z.infer<typeof listCoursesQuerySchema>;
 export type AssignCourseParams = z.infer<typeof assignCourseParamsSchema>;
 export type AssignCourseBody = z.infer<typeof assignCourseBodySchema>;

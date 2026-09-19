@@ -6,6 +6,9 @@ const mocks = vi.hoisted(() => ({ listCourses: vi.fn(), createCourse: vi.fn() })
 vi.mock('../src/modules/training-awareness/training-awareness.repository.js', () => ({
   trainingAwarenessRepository: mocks,
 }));
+vi.mock('../src/modules/training-awareness/course-draft.repository.js', () => ({
+  courseDraftRepository: { find: vi.fn(), update: vi.fn() },
+}));
 import { createApp } from '../src/app.js';
 
 const token = (permissions: string[]): string =>
@@ -77,5 +80,27 @@ describe('training courses HTTP API', () => {
       ).status,
     ).toBe(422);
     expect(mocks.createCourse).not.toHaveBeenCalled();
+  });
+
+  it('protects draft editing and validates the complete edit body', async () => {
+    const courseId = 'e2ef8324-9ac0-4e7f-b16d-50050274a72e';
+    expect((await request(createApp()).get(`/api/v1/training/courses/${courseId}`)).status).toBe(
+      401,
+    );
+    expect(
+      (
+        await request(createApp())
+          .get(`/api/v1/training/courses/${courseId}`)
+          .set('authorization', `Bearer ${token(['training-courses.read'])}`)
+      ).status,
+    ).toBe(403);
+    expect(
+      (
+        await request(createApp())
+          .patch(`/api/v1/training/courses/${courseId}`)
+          .set('authorization', `Bearer ${token(['training-courses.update'])}`)
+          .send({ title: 'Incomplete draft' })
+      ).status,
+    ).toBe(422);
   });
 });
