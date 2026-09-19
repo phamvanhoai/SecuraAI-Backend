@@ -2848,6 +2848,93 @@ export const openApiSpec = swaggerJsdoc({
           },
         },
       },
+      '/risks/treatment-plans': {
+        get: {
+          tags: ['Risk Assessments'],
+          summary: 'List risk treatment plans',
+          description:
+            'Requires risk-treatment-plans.read. Returns a server-paginated list with risk context, owner, active-action progress, completed action count, and overdue state.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
+            {
+              name: 'limit',
+              in: 'query',
+              schema: { type: 'integer', minimum: 1, maximum: 100, default: 10 },
+            },
+            { name: 'q', in: 'query', schema: { type: 'string', maxLength: 100 } },
+            {
+              name: 'status',
+              in: 'query',
+              schema: {
+                type: 'string',
+                enum: [
+                  'draft',
+                  'pending_approval',
+                  'approved',
+                  'in_progress',
+                  'completed',
+                  'rejected',
+                  'cancelled',
+                ],
+              },
+            },
+            {
+              name: 'strategy',
+              in: 'query',
+              schema: { type: 'string', enum: ['avoid', 'mitigate', 'transfer', 'accept'] },
+            },
+            { name: 'ownerId', in: 'query', schema: { type: 'string', format: 'uuid' } },
+            { name: 'targetFrom', in: 'query', schema: { type: 'string', format: 'date' } },
+            { name: 'targetTo', in: 'query', schema: { type: 'string', format: 'date' } },
+            { name: 'overdue', in: 'query', schema: { type: 'boolean' } },
+            {
+              name: 'sortBy',
+              in: 'query',
+              schema: {
+                type: 'string',
+                enum: ['riskCode', 'strategy', 'status', 'targetDate', 'createdAt', 'updatedAt'],
+                default: 'updatedAt',
+              },
+            },
+            {
+              name: 'sortOrder',
+              in: 'query',
+              schema: { type: 'string', enum: ['asc', 'desc'], default: 'desc' },
+            },
+          ],
+          responses: {
+            '200': { description: 'Paginated treatment plan list' },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'The risk-treatment-plans.read permission is required' },
+            '422': { description: 'Invalid query parameters' },
+          },
+        },
+      },
+      '/risks/treatment-plans/{treatmentPlanId}': {
+        get: {
+          tags: ['Risk Assessments'],
+          summary: 'View risk treatment plan detail',
+          description:
+            'Requires risk-treatment-plans.read. Returns the plan, associated risk and target, owner and creator, latest approval state, progress summary, and all treatment actions.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'treatmentPlanId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          responses: {
+            '200': { description: 'Treatment plan detail' },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'The risk-treatment-plans.read permission is required' },
+            '404': { description: 'Treatment plan not found' },
+            '422': { description: 'Invalid treatment plan identifier' },
+          },
+        },
+      },
       '/risks/treatment-plans/{treatmentPlanId}/submit': {
         post: {
           tags: ['Risk Assessments'],
