@@ -33,7 +33,15 @@ describe('department training report', () => {
     expect(departmentReportRepository.get).not.toHaveBeenCalled();
   });
   it('preserves global summary when searching and paginating', async () => {
-    const summary = { employees: 12, assigned: 30, completed: 15, overdue: 3, completionRate: 50 };
+    const summary = {
+      employees: 20,
+      assignedEmployees: 12,
+      assigned: 30,
+      completed: 15,
+      overdue: 3,
+      coverageRate: 60,
+      completionRate: 50,
+    };
     vi.mocked(departmentReportRepository.get).mockResolvedValue({ items: [], total: 21, summary });
     const result = await departmentReportService.get(
       { page: 2, limit: 10, q: 'IT', progress: 'overdue' },
