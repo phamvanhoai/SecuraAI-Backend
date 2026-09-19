@@ -101,6 +101,22 @@ within the reminder window. Already delivered jobs are excluded before the
 candidate limit, so the next run progresses through the remaining recipients.
 Database failures do not record a successful delivery; the next run retries.
 
+# Issue training completion certificate (UC80)
+
+`GET|POST /training/enrollments/{enrollmentId}/certificate` keeps certificate
+issuance enrollment-scoped. A certificate may be issued only when the enrollment
+is completed, has a completion timestamp and 100% progress. If the course has a
+final assessment (a course quiz without a lesson), that same enrollment must have
+a submitted passing attempt. Lesson assessments and attempts from earlier
+campaigns never satisfy this requirement. Courses without a final assessment do
+not invent an extra assessment requirement.
+
+The response includes the individual eligibility checks so the UI can explain
+why issuance is unavailable. An existing certificate remains viewable and POST is
+idempotent. Issuance and its audit record are written atomically. UC80 stores
+certificate metadata only; it does not generate a PDF or change the database
+schema.
+
 ## Where to test
 
 Login as an Employee, open **Notifications** (header bell) or **My training

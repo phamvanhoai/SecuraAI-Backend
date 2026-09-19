@@ -58,7 +58,12 @@ describe('certificate repository', () => {
     expect(mocks.audit).toHaveBeenCalledOnce();
     expect(mocks.pass).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { quiz_id: id, user_id: id, passed: true, submitted_at: { not: null } },
+        where: {
+          quiz_id: id,
+          training_enrollment_id: id,
+          passed: true,
+          submitted_at: { not: null },
+        },
       }),
     );
   });
@@ -72,9 +77,20 @@ describe('certificate repository', () => {
     expect((await certificateRepository.issue(id, context)).kind).toBe('ineligible');
     expect(mocks.create).not.toHaveBeenCalled();
   });
-  it('requires a submitted passing assessment', async () => {
+  it('requires a submitted passing final assessment for the enrollment', async () => {
     mocks.pass.mockResolvedValue(null);
     expect((await certificateRepository.issue(id, context)).kind).toBe('ineligible');
+  });
+  it('does not require an assessment when the course has no final assessment', async () => {
+    mocks.read.mockResolvedValue({
+      ...enrollment,
+      training_campaigns: {
+        ...enrollment.training_campaigns,
+        training_courses: { title: 'Course', quizzes: [] },
+      },
+    });
+    expect((await certificateRepository.issue(id, context)).kind).toBe('issued');
+    expect(mocks.pass).not.toHaveBeenCalled();
   });
   it('does not duplicate a certificate or its audit on repeated requests', async () => {
     mocks.read.mockResolvedValue({
