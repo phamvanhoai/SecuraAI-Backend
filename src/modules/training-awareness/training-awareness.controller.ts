@@ -1,5 +1,7 @@
 import type { RequestHandler } from 'express';
+import { z } from 'zod';
 import { AppError } from '../../common/errors/app-error.js';
+import { cleanupCourseUploads, inspectCourseUploads } from './course-material.upload.js';
 import { trainingAwarenessService } from './training-awareness.service.js';
 import {
   assignmentOptionsQuerySchema,
@@ -67,6 +69,25 @@ export const submitMyAssessment: RequestHandler = async (req, res) => {
   res.status(201).json({ success: true, data });
 };
 
+export const getMyLessonAssessment: RequestHandler = async (req, res) => {
+  if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+  const { enrollmentId } = assessmentParamsSchema.parse(req.params);
+  const lessonId = z.string().uuid().parse(req.params.lessonId);
+  const data = await trainingAwarenessService.getMyAssessment(enrollmentId, req.auth, lessonId);
+  res.status(200).json({ success: true, data });
+};
+
+export const submitMyLessonAssessment: RequestHandler = async (req, res) => {
+  if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+  const { enrollmentId } = assessmentParamsSchema.parse(req.params);
+  const lessonId = z.string().uuid().parse(req.params.lessonId);
+  const data = await trainingAwarenessService.submitMyAssessment(
+    enrollmentId, submitAssessmentBodySchema.parse(req.body), req.auth,
+    { ipAddress: req.ip ?? null, userAgent: req.get('user-agent')?.slice(0, 1000) ?? null }, lessonId,
+  );
+  res.status(201).json({ success: true, data });
+};
+
 export const listCourses: RequestHandler = async (req, res) => {
   if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
   const data = await trainingAwarenessService.listCourses(
@@ -78,12 +99,32 @@ export const listCourses: RequestHandler = async (req, res) => {
 
 export const createCourse: RequestHandler = async (req, res) => {
   if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
-  const data = await trainingAwarenessService.createCourse(
-    createCourseBodySchema.parse(req.body),
-    req.auth,
-    { ipAddress: req.ip ?? null, userAgent: req.get('user-agent')?.slice(0, 1000) ?? null },
-  );
-  res.status(201).json({ success: true, data });
+  const files = Array.isArray(req.files) ? req.files : [];
+  let saved = false;
+  try {
+    let body: unknown = req.body;
+    if (req.is('multipart/form-data')) {
+      const multipart = z
+        .object({ payload: z.string().max(1024 * 1024) })
+        .strict()
+        .parse(body);
+      try {
+        body = JSON.parse(multipart.payload) as unknown;
+      } catch {
+        throw new AppError(422, 'INVALID_COURSE_PAYLOAD', 'Invalid course payload');
+      }
+    }
+    const data = await trainingAwarenessService.createCourse(
+      createCourseBodySchema.parse(body),
+      req.auth,
+      { ipAddress: req.ip ?? null, userAgent: req.get('user-agent')?.slice(0, 1000) ?? null },
+      await inspectCourseUploads(files),
+    );
+    saved = true;
+    res.status(201).json({ success: true, data });
+  } finally {
+    if (!saved) await cleanupCourseUploads(files);
+  }
 };
 
 export const listAssignmentOptions: RequestHandler = async (req, res) => {

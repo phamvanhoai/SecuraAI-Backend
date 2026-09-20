@@ -2,6 +2,11 @@ import { describe, expect, it } from 'vitest';
 import {
   classificationQueueQuerySchema,
   classifyIncidentBodySchema,
+  assignIncidentBodySchema,
+  updateIncidentProgressBodySchema,
+  uploadIncidentEvidenceBodySchema,
+  incidentEvidenceQuerySchema,
+  removeIncidentEvidenceBodySchema,
   reportIncidentBodySchema,
 } from './report-incident.dto.js';
 describe('reportIncidentBodySchema', () => {
@@ -48,5 +53,55 @@ describe('classifyIncidentBodySchema', () => {
     expect(
       classifyIncidentBodySchema.safeParse({ severity: 'urgent', rationale: 'bad' }).success,
     ).toBe(false);
+  });
+});
+describe('assignIncidentBodySchema', () => {
+  it('requires a valid user and documented assignment reason', () => {
+    expect(
+      assignIncidentBodySchema.safeParse({
+        assigneeUserId: '22222222-2222-4222-8222-222222222222',
+        note: 'Assign to the officer responsible for endpoint response.',
+      }).success,
+    ).toBe(true);
+    expect(
+      assignIncidentBodySchema.safeParse({ assigneeUserId: 'invalid', note: 'short' }).success,
+    ).toBe(false);
+  });
+});
+describe('updateIncidentProgressBodySchema', () => {
+  it('accepts documented workflow progress and rejects unsupported status', () => {
+    expect(
+      updateIncidentProgressBodySchema.safeParse({
+        status: 'in_progress',
+        note: 'Investigation has started with endpoint log collection.',
+      }).success,
+    ).toBe(true);
+    expect(
+      updateIncidentProgressBodySchema.safeParse({ status: 'assigned', note: 'Too short' }).success,
+    ).toBe(false);
+  });
+});
+describe('uploadIncidentEvidenceBodySchema', () => {
+  it('normalizes optional descriptions and enforces the length boundary', () => {
+    expect(uploadIncidentEvidenceBodySchema.parse({ description: '  ' })).toEqual({
+      description: null,
+    });
+    expect(
+      uploadIncidentEvidenceBodySchema.safeParse({ description: 'x'.repeat(2001) }).success,
+    ).toBe(false);
+  });
+});
+describe('incidentEvidenceQuerySchema', () => {
+  it('applies defaults and bounds evidence pagination', () => {
+    expect(incidentEvidenceQuerySchema.parse({})).toEqual({ page: 1, limit: 10 });
+    expect(incidentEvidenceQuerySchema.safeParse({ page: 0, limit: 51 }).success).toBe(false);
+  });
+});
+describe('removeIncidentEvidenceBodySchema', () => {
+  it('requires a documented removal reason', () => {
+    expect(
+      removeIncidentEvidenceBodySchema.parse({ reason: '  Uploaded to the wrong incident.  ' }),
+    ).toEqual({ reason: 'Uploaded to the wrong incident.' });
+    expect(removeIncidentEvidenceBodySchema.safeParse({ reason: 'mistake' }).success).toBe(false);
   });
 });

@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../database/prisma.js';
+import type { CourseUpload } from './course-material.upload.js';
 import type {
   AssignCourseBody,
   AssignmentOptionsQuery,
@@ -97,10 +98,28 @@ export const trainingAwarenessRepository = {
         title: true,
         start_date: true,
         due_date: true,
-        training_courses: { select: { title: true } },
+        training_courses: {
+          select: {
+            title: true,
+            training_lessons: {
+              where: { is_required: true },
+              select: { training_lesson_id: true },
+            },
+            quizzes: {
+              where: { training_lesson_id: null },
+              select: { quiz_id: true },
+              orderBy: [{ created_at: 'desc' }, { quiz_id: 'desc' }],
+              take: 1,
+            },
+          },
+        },
       },
     });
     if (!campaign) return null;
+    const requiredLessonIds = campaign.training_courses.training_lessons.map(
+      (lesson) => lesson.training_lesson_id,
+    );
+    const finalQuizIds = campaign.training_courses.quizzes.map((quiz) => quiz.quiz_id);
     const dueBoundary = new Date(campaign.due_date);
     dueBoundary.setUTCDate(dueBoundary.getUTCDate() + 1);
     const overdue = dueBoundary <= new Date() && query.status === 'overdue';
@@ -132,6 +151,15 @@ export const trainingAwarenessRepository = {
           started_at: true,
           completed_at: true,
           last_accessed_at: true,
+          training_lesson_progress: {
+            where: { training_lesson_id: { in: requiredLessonIds } },
+            select: { training_lesson_id: true, status: true },
+          },
+          quiz_attempts: {
+            where: { quiz_id: { in: finalQuizIds }, submitted_at: { not: null } },
+            select: { score: true, passed: true, submitted_at: true },
+            orderBy: { submitted_at: 'desc' },
+          },
           training_certificates: { select: { certificate_number: true } },
           users: {
             select: { user_id: true, full_name: true, email: true, employee_code: true },
@@ -142,7 +170,14 @@ export const trainingAwarenessRepository = {
         take: query.limit,
       }),
     ]);
-    return { campaign, items, total };
+    const statusGroups = await prisma.training_enrollments.groupBy({
+      by: ['status'],
+      where: { training_campaign_id: campaignId },
+      orderBy: { status: 'asc' },
+      _count: { _all: true },
+      _avg: { progress_percent: true },
+    });
+    return { campaign, items, statusGroups, total };
   },
   async listMyAssessments(userId: string, query: ListMyAssessmentsQuery) {
     const where: Prisma.training_enrollmentsWhereInput = {
@@ -168,6 +203,7 @@ export const trainingAwarenessRepository = {
                   title: true,
                   description: true,
                   quizzes: {
+                    where: { training_lesson_id: null },
                     orderBy: [{ created_at: 'desc' }, { quiz_id: 'desc' }],
                     take: 1,
                     select: {
@@ -176,9 +212,14 @@ export const trainingAwarenessRepository = {
                       passing_score: true,
                       max_attempts: true,
                       quiz_attempts: {
-                        where: { user_id: userId, submitted_at: { not: null } },
+                        where: {
+                          training_enrollment_id: { not: null },
+                          user_id: userId,
+                          submitted_at: { not: null },
+                        },
                         select: {
                           quiz_attempt_id: true,
+                          training_enrollment_id: true,
                           score: true,
                           passed: true,
                           submitted_at: true,
@@ -199,7 +240,7 @@ export const trainingAwarenessRepository = {
     ]);
     return { items, total };
   },
-  getMyAssessment(enrollmentId: string, userId: string) {
+  getMyAssessment(enrollmentId: string, userId: string, lessonId: string | null = null) {
     return prisma.training_enrollments.findFirst({
       where: {
         training_enrollment_id: enrollmentId,
@@ -217,6 +258,7 @@ export const trainingAwarenessRepository = {
               select: {
                 title: true,
                 quizzes: {
+                  where: { training_lesson_id: lessonId },
                   orderBy: [{ created_at: 'desc' }, { quiz_id: 'desc' }],
                   take: 1,
                   select: {
@@ -238,7 +280,11 @@ export const trainingAwarenessRepository = {
                       },
                     },
                     quiz_attempts: {
-                      where: { user_id: userId, submitted_at: { not: null } },
+                      where: {
+                        training_enrollment_id: enrollmentId,
+                        user_id: userId,
+                        submitted_at: { not: null },
+                      },
                       select: {
                         quiz_attempt_id: true,
                         score: true,
@@ -256,7 +302,12 @@ export const trainingAwarenessRepository = {
       },
     });
   },
-  submitAssessment(enrollmentId: string, input: SubmitAssessmentBody, context: RequestContext) {
+  submitAssessment(
+    enrollmentId: string,
+    input: SubmitAssessmentBody,
+    context: RequestContext,
+    lessonId: string | null = null,
+  ) {
     return prisma.$transaction(
       async (transaction) => {
         const enrollment = await transaction.training_enrollments.findFirst({
@@ -274,7 +325,9 @@ export const trainingAwarenessRepository = {
                 due_date: true,
                 training_courses: {
                   select: {
+                    training_course_id: true,
                     quizzes: {
+                      where: { training_lesson_id: lessonId },
                       orderBy: [{ created_at: 'desc' }, { quiz_id: 'desc' }],
                       take: 1,
                       select: {
@@ -307,10 +360,28 @@ export const trainingAwarenessRepository = {
         if (now < enrollment.training_campaigns.start_date || now >= dueBoundary)
           return { kind: 'not_available' as const };
 
+        const courseId = enrollment.training_campaigns.training_courses.training_course_id;
+        const requiredLessons = await transaction.training_lessons.count({
+          where: { training_course_id: courseId, is_required: true },
+        });
+        const completedRequiredLessons = requiredLessons
+          ? await transaction.training_lesson_progress.count({
+              where: {
+                training_enrollment_id: enrollmentId,
+                status: 'completed',
+                training_lessons: { is_required: true, training_course_id: courseId },
+              },
+            })
+          : 0;
+        const allRequiredLessonsComplete = completedRequiredLessons === requiredLessons;
+        if (!lessonId && !allRequiredLessonsComplete)
+          return { kind: 'required_lessons_incomplete' as const };
+
         const previousAttempts = await transaction.quiz_attempts.findMany({
           where: {
             quiz_id: quiz.quiz_id,
             user_id: context.actorUserId,
+            training_enrollment_id: enrollmentId,
             submitted_at: { not: null },
           },
           select: { passed: true },
@@ -372,6 +443,7 @@ export const trainingAwarenessRepository = {
           data: {
             quiz_id: quiz.quiz_id,
             user_id: context.actorUserId,
+            training_enrollment_id: enrollmentId,
             score,
             passed,
             started_at: now,
@@ -380,11 +452,53 @@ export const trainingAwarenessRepository = {
           },
           select: { quiz_attempt_id: true, score: true, passed: true, submitted_at: true },
         });
+        if (lessonId && passed) {
+          await transaction.training_lesson_progress.upsert({
+            where: {
+              training_enrollment_id_training_lesson_id: {
+                training_enrollment_id: enrollmentId,
+                training_lesson_id: lessonId,
+              },
+            },
+            create: {
+              training_enrollment_id: enrollmentId,
+              training_lesson_id: lessonId,
+              status: 'completed',
+              started_at: now,
+              completed_at: now,
+              last_accessed_at: now,
+            },
+            update: { status: 'completed', completed_at: now, last_accessed_at: now },
+          });
+        }
+        const finalPassed = lessonId
+          ? Boolean(
+              await transaction.quiz_attempts.findFirst({
+                where: {
+                  training_enrollment_id: enrollmentId,
+                  passed: true,
+                  quizzes: { training_lesson_id: null },
+                },
+                select: { quiz_attempt_id: true },
+              }),
+            )
+          : passed;
+        const finalQuizExists = Boolean(
+          await transaction.quizzes.findFirst({
+            where: { training_course_id: courseId, training_lesson_id: null },
+            select: { quiz_id: true },
+          }),
+        );
+        const courseCompleted = allRequiredLessonsComplete && (!finalQuizExists || finalPassed);
+        const lessonProgress = requiredLessons
+          ? Math.floor((completedRequiredLessons / requiredLessons) * 90)
+          : 0;
         await transaction.training_enrollments.update({
           where: { training_enrollment_id: enrollment.training_enrollment_id },
           data: {
-            status: passed ? 'completed' : 'in_progress',
-            ...(passed ? { progress_percent: 100, completed_at: now } : {}),
+            status: courseCompleted ? 'completed' : 'in_progress',
+            progress_percent: courseCompleted ? 100 : lessonProgress,
+            ...(courseCompleted ? { completed_at: now } : {}),
             started_at: enrollment.started_at ?? now,
             last_accessed_at: now,
           },
@@ -415,9 +529,10 @@ export const trainingAwarenessRepository = {
     );
   },
   async listCourses(query: ListCoursesQuery): Promise<{ items: CourseRecord[]; total: number }> {
-    const where: Prisma.training_coursesWhereInput = query.q
-      ? { title: { contains: query.q, mode: 'insensitive' } }
-      : {};
+    const where: Prisma.training_coursesWhereInput = {
+      ...(query.q ? { title: { contains: query.q, mode: 'insensitive' as const } } : {}),
+      ...(query.status ? { status: query.status } : {}),
+    };
     const [total, items] = await prisma.$transaction([
       prisma.training_courses.count({ where }),
       prisma.training_courses.findMany({
@@ -430,63 +545,140 @@ export const trainingAwarenessRepository = {
     ]);
     return { items, total };
   },
-  createCourse(input: CreateCourseBody, context: RequestContext): Promise<CourseRecord> {
-    return prisma.$transaction(async (transaction) => {
-      const course = await transaction.training_courses.create({
-        data: {
-          title: input.title,
-          description: input.description ?? null,
-          content: input.content,
-          status: input.status,
-          created_by_user_id: context.actorUserId,
-          ...(input.assessment
-            ? {
-                quizzes: {
-                  create: {
-                    title: input.assessment.title,
-                    passing_score: input.assessment.passingScore,
-                    max_attempts: input.assessment.maxAttempts,
-                    quiz_questions: {
-                      create: input.assessment.questions.map((question, questionIndex) => ({
-                        question_text: question.text,
-                        question_type: 'multiple_choice',
-                        score: 1,
-                        display_order: questionIndex + 1,
-                        quiz_options: {
-                          create: question.options.map((option, optionIndex) => ({
-                            option_text: option.text,
-                            is_correct: option.isCorrect,
-                            display_order: optionIndex + 1,
-                          })),
-                        },
-                      })),
+  createCourse(
+    input: CreateCourseBody,
+    context: RequestContext,
+    uploads: readonly CourseUpload[] = [],
+  ): Promise<CourseRecord> {
+    return prisma.$transaction(
+      async (transaction) => {
+        const course = await transaction.training_courses.create({
+          data: {
+            title: input.title,
+            description: input.description ?? null,
+            content: input.content,
+            status: input.status,
+            created_by_user_id: context.actorUserId,
+            ...(input.assessment
+              ? {
+                  quizzes: {
+                    create: {
+                      title: input.assessment.title,
+                      passing_score: input.assessment.passingScore,
+                      max_attempts: input.assessment.maxAttempts,
+                      quiz_questions: {
+                        create: input.assessment.questions.map((question, questionIndex) => ({
+                          question_text: question.text,
+                          question_type: question.type,
+                          score: 1,
+                          display_order: questionIndex + 1,
+                          quiz_options: {
+                            create: question.options.map((option, optionIndex) => ({
+                              option_text: option.text,
+                              is_correct: option.isCorrect,
+                              display_order: optionIndex + 1,
+                            })),
+                          },
+                        })),
+                      },
                     },
                   },
-                },
-              }
-            : {}),
-        },
-        select: courseSelect,
-      });
-      await transaction.audit_logs.create({
-        data: {
-          actor_user_id: context.actorUserId,
-          module: 'training-awareness',
-          action: 'training_course.created',
-          entity_type: 'training_course',
-          entity_id: course.training_course_id,
-          after_data: {
-            title: course.title,
-            status: course.status,
-            assessmentCreated: Boolean(input.assessment),
-            questionCount: input.assessment?.questions.length ?? 0,
+                }
+              : {}),
           },
-          ip_address: context.ipAddress,
-          user_agent: context.userAgent,
-        },
-      });
-      return course;
-    });
+          select: courseSelect,
+        });
+
+        for (const [lessonIndex, lesson] of (input.lessons ?? []).entries()) {
+          const createdLesson = await transaction.training_lessons.create({
+            data: {
+              training_course_id: course.training_course_id,
+              title: lesson.title,
+              description: lesson.description ?? null,
+              display_order: lessonIndex + 1,
+              is_required: lesson.isRequired,
+            },
+            select: { training_lesson_id: true },
+          });
+          for (const [materialIndex, material] of lesson.materials.entries()) {
+            const upload = uploads.find((item) => item.key === material.uploadKey);
+            const file = upload
+              ? await transaction.files.create({
+                  data: {
+                    original_name: upload.originalName,
+                    storage_key: upload.storageKey,
+                    mime_type: upload.mimeType,
+                    size_bytes: upload.sizeBytes,
+                    checksum: upload.checksum,
+                    uploaded_by_user_id: context.actorUserId,
+                  },
+                  select: { file_id: true },
+                })
+              : undefined;
+            await transaction.training_materials.create({
+              data: {
+                training_lesson_id: createdLesson.training_lesson_id,
+                title: material.title,
+                material_type: material.type,
+                content: material.content ?? null,
+                external_url: material.externalUrl ?? null,
+                file_id: file?.file_id ?? null,
+                display_order: materialIndex + 1,
+              },
+              select: { training_material_id: true },
+            });
+          }
+          if (lesson.assessment) {
+            await transaction.quizzes.create({
+              data: {
+                training_course_id: course.training_course_id,
+                training_lesson_id: createdLesson.training_lesson_id,
+                title: lesson.assessment.title,
+                passing_score: lesson.assessment.passingScore,
+                max_attempts: lesson.assessment.maxAttempts,
+                quiz_questions: {
+                  create: lesson.assessment.questions.map((question, index) => ({
+                    question_text: question.text,
+                    question_type: question.type,
+                    score: 1,
+                    display_order: index + 1,
+                    quiz_options: {
+                      create: question.options.map((option, optionIndex) => ({
+                        option_text: option.text,
+                        is_correct: option.isCorrect,
+                        display_order: optionIndex + 1,
+                      })),
+                    },
+                  })),
+                },
+              },
+              select: { quiz_id: true },
+            });
+          }
+        }
+        await transaction.audit_logs.create({
+          data: {
+            actor_user_id: context.actorUserId,
+            module: 'training-awareness',
+            action: 'training_course.created',
+            entity_type: 'training_course',
+            entity_id: course.training_course_id,
+            after_data: {
+              title: course.title,
+              status: course.status,
+              assessmentCreated: Boolean(input.assessment),
+              lessonCount: input.lessons?.length ?? 0,
+              uploadedFileCount: uploads.length,
+              questionCount: input.assessment?.questions.length ?? 0,
+            },
+            ip_address: context.ipAddress,
+            user_agent: context.userAgent,
+          },
+        });
+        return course;
+      },
+      { timeout: 30000 },
+    );
   },
   async listAssignmentOptions(query: AssignmentOptionsQuery) {
     const [users, departments] = await prisma.$transaction([
@@ -554,6 +746,7 @@ export const trainingAwarenessRepository = {
         select: { training_course_id: true, status: true },
       });
       if (!course || course.status === 'archived') return { kind: 'course_not_found' as const };
+      if (course.status !== 'published') return { kind: 'course_not_published' as const };
 
       const uniqueUserIds = [...new Set(input.userIds)];
       const uniqueDepartmentIds = [...new Set(input.departmentIds)];

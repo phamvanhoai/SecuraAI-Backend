@@ -1,5 +1,18 @@
 import { Router } from 'express';
+import {
+  completeMyLesson,
+  downloadMyMaterial,
+  getMyLearning,
+  listMyLearning,
+} from './learning.controller.js';
+import { parseCourseUpload } from './course-material.upload.js';
+import { getCourseDraft, updateCourseDraft } from './course-draft.controller.js';
+import { getCourseContent, downloadCourseMaterial } from './course-content.controller.js';
+import { getDepartmentReport } from './department-report.controller.js';
+import { departmentReportQuerySchema } from './dto/department-report.dto.js';
 import { getCertificate, issueCertificate } from './certificate.controller.js';
+import { listMyCertificates } from './my-certificates.controller.js';
+import { myCertificatesQuerySchema } from './dto/my-certificates.dto.js';
 import { authenticate, authorize } from '../../common/middleware/authenticate.js';
 import { validate } from '../../common/middleware/validate.js';
 import { asyncHandler } from '../../common/utils/async-handler.js';
@@ -9,8 +22,10 @@ import {
   listAssignmentOptions,
   listCourses,
   getMyAssessment,
+  getMyLessonAssessment,
   listMyAssessments,
   submitMyAssessment,
+  submitMyLessonAssessment,
   getCompletionCampaign,
   getLatestCourseAssignment,
   listCompletionCampaigns,
@@ -20,7 +35,6 @@ import {
   assignmentOptionsQuerySchema,
   assignCourseBodySchema,
   assignCourseParamsSchema,
-  createCourseBodySchema,
   listCoursesQuerySchema,
   withdrawEnrollmentBodySchema,
 } from './dto/course.dto.js';
@@ -44,6 +58,68 @@ import {
 } from './training-reminders.controller.js';
 
 export const trainingAwarenessRouter = Router();
+trainingAwarenessRouter.get(
+  '/my-certificates',
+  authenticate,
+  authorize('training-certificates.read-own'),
+  validate({ query: myCertificatesQuerySchema }),
+  asyncHandler(listMyCertificates),
+);
+trainingAwarenessRouter.get(
+  '/learning',
+  authenticate,
+  authorize('training-assessments.take'),
+  asyncHandler(listMyLearning),
+);
+trainingAwarenessRouter.get(
+  '/learning/:enrollmentId',
+  authenticate,
+  authorize('training-assessments.take'),
+  asyncHandler(getMyLearning),
+);
+trainingAwarenessRouter.patch(
+  '/learning/:enrollmentId/lessons/:lessonId/complete',
+  authenticate,
+  authorize('training-assessments.take'),
+  asyncHandler(completeMyLesson),
+);
+trainingAwarenessRouter.get(
+  '/learning/:enrollmentId/materials/:materialId/download',
+  authenticate,
+  authorize('training-assessments.take'),
+  asyncHandler(downloadMyMaterial),
+);
+trainingAwarenessRouter.get(
+  '/learning/:enrollmentId/lessons/:lessonId/assessment',
+  authenticate,
+  authorize('training-assessments.take'),
+  asyncHandler(getMyLessonAssessment),
+);
+trainingAwarenessRouter.post(
+  '/learning/:enrollmentId/lessons/:lessonId/assessment/attempts',
+  authenticate,
+  authorize('training-assessments.take'),
+  asyncHandler(submitMyLessonAssessment),
+);
+trainingAwarenessRouter.get(
+  '/courses/:courseId/content',
+  authenticate,
+  authorize('training-courses.read'),
+  asyncHandler(getCourseContent),
+);
+trainingAwarenessRouter.get(
+  '/materials/:materialId/download',
+  authenticate,
+  authorize('training-courses.read'),
+  asyncHandler(downloadCourseMaterial),
+);
+trainingAwarenessRouter.get(
+  '/department-report',
+  authenticate,
+  authorize('training-department-reports.read'),
+  validate({ query: departmentReportQuerySchema }),
+  asyncHandler(getDepartmentReport),
+);
 trainingAwarenessRouter.get(
   '/enrollments/:enrollmentId/certificate',
   authenticate,
@@ -140,8 +216,22 @@ trainingAwarenessRouter.post(
   '/courses',
   authenticate,
   authorize('training-courses.create'),
-  validate({ body: createCourseBodySchema }),
+  parseCourseUpload,
   asyncHandler(createCourse),
+);
+trainingAwarenessRouter.get(
+  '/courses/:courseId',
+  authenticate,
+  authorize('training-courses.update'),
+  validate({ params: assignCourseParamsSchema }),
+  asyncHandler(getCourseDraft),
+);
+trainingAwarenessRouter.patch(
+  '/courses/:courseId',
+  authenticate,
+  authorize('training-courses.update'),
+  parseCourseUpload,
+  asyncHandler(updateCourseDraft),
 );
 trainingAwarenessRouter.get(
   '/assignment-options',

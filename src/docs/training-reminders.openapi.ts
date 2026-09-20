@@ -61,9 +61,17 @@ export const trainingReminderPaths = {
       responses: {
         '200': response({
           type: 'object',
-          required: ['items', 'pagination'],
+          required: ['items', 'summary', 'pagination'],
           properties: {
             items: { type: 'array', items: reminder },
+            summary: {
+              type: 'object',
+              required: ['total', 'unread'],
+              properties: {
+                total: { type: 'integer', minimum: 0 },
+                unread: { type: 'integer', minimum: 0 },
+              },
+            },
             pagination: {
               type: 'object',
               required: ['page', 'limit', 'total', 'totalPages'],

@@ -5,6 +5,7 @@ import { authenticate, authorize } from '../../common/middleware/authenticate.js
 import { asyncHandler } from '../../common/utils/async-handler.js';
 import { validate } from '../../common/middleware/validate.js';
 import {
+  getUser,
   initializeAccount,
   listUsers,
   me,
@@ -13,6 +14,7 @@ import {
 } from './users.controller.js';
 import { accountLockBodySchema, accountLockParamsSchema } from './dto/account-lock.dto.js';
 import { createUserBodySchema } from './dto/create-user.dto.js';
+import { getUserParamsSchema } from './dto/get-user.dto.js';
 
 export const usersRouter = Router();
 const requireAccountAdmin: RequestHandler = (req, _res, next) => {
@@ -33,6 +35,13 @@ usersRouter.post(
   asyncHandler(initializeAccount),
 );
 usersRouter.get('/me', authenticate, asyncHandler(me));
+usersRouter.get(
+  '/:userId',
+  authenticate,
+  authorize('users.read'),
+  validate({ params: getUserParamsSchema }),
+  asyncHandler(getUser),
+);
 usersRouter.post(
   '/:userId/lock',
   authenticate,

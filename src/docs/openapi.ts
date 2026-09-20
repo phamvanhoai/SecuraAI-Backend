@@ -1,4 +1,6 @@
 import swaggerJsdoc from 'swagger-jsdoc';
+import { loginHistoryPaths } from './login-history.openapi.js';
+import { departmentTrainingReportPaths } from './department-training-report.openapi.js';
 import { env } from '../config/env.js';
 import { trainingReminderPaths } from './training-reminders.openapi.js';
 import { complianceReminderPaths } from './compliance-reminders.openapi.js';
@@ -43,11 +45,53 @@ export const openApiSpec = swaggerJsdoc({
           additionalProperties: false,
           required: ['title', 'content'],
           properties: {
-            createNewCampaign: {
-              type: 'boolean',
-              default: false,
+            lessons: {
+              type: 'array',
+              minItems: 1,
+              maxItems: 50,
               description:
-                'When true, creates a separate assignment campaign instead of updating the latest campaign.',
+                'Ordered lessons; structured courses must be created as drafts. Maximum 100 materials and 100 questions across the course. Optional only for legacy clients.',
+              items: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['title', 'isRequired', 'materials'],
+                properties: {
+                  title: { type: 'string', minLength: 3, maxLength: 255 },
+                  description: { type: 'string', maxLength: 2000 },
+                  isRequired: { type: 'boolean' },
+                  materials: {
+                    type: 'array',
+                    minItems: 1,
+                    maxItems: 10,
+                    items: {
+                      type: 'object',
+                      additionalProperties: false,
+                      required: ['title', 'type'],
+                      properties: {
+                        title: { type: 'string', minLength: 1, maxLength: 255 },
+                        type: { type: 'string', enum: ['text', 'video', 'document', 'link'] },
+                        content: { type: 'string', maxLength: 50000 },
+                        externalUrl: {
+                          type: 'string',
+                          format: 'uri',
+                          maxLength: 2000,
+                          description:
+                            'HTTPS without credentials; backend stores but does not fetch the URL.',
+                        },
+                        uploadKey: {
+                          type: 'string',
+                          format: 'uuid',
+                          description:
+                            'Unique multipart file field name; at most 10 uploads. Exactly one source matching type.',
+                        },
+                      },
+                    },
+                  },
+                  assessment: {
+                    $ref: '#/components/schemas/CreateTrainingCourseRequest/properties/assessment',
+                  },
+                },
+              },
             },
             title: { type: 'string', minLength: 3, maxLength: 255 },
             description: { type: 'string', nullable: true, maxLength: 2000 },
@@ -73,14 +117,21 @@ export const openApiSpec = swaggerJsdoc({
                   maxItems: 50,
                   items: {
                     type: 'object',
-                    required: ['text', 'options'],
+                    required: ['type', 'text', 'options'],
                     properties: {
+                      type: {
+                        type: 'string',
+                        enum: ['single_choice', 'multiple_choice'],
+                        description:
+                          'Single choice requires exactly one correct option; multiple choice requires at least two.',
+                      },
                       text: { type: 'string', minLength: 3, maxLength: 2000 },
                       options: {
                         type: 'array',
                         minItems: 2,
                         maxItems: 6,
-                        description: 'Exactly one option must have isCorrect=true.',
+                        description:
+                          'Correct-option count is validated according to the question type.',
                         items: {
                           type: 'object',
                           required: ['text', 'isCorrect'],
@@ -626,6 +677,64 @@ export const openApiSpec = swaggerJsdoc({
               properties: { code: { type: 'string' }, message: { type: 'string' } },
             },
             requestId: { type: 'string' },
+          },
+        },
+        UserDetail: {
+          type: 'object',
+          required: [
+            'id',
+            'email',
+            'fullName',
+            'status',
+            'mustChangePassword',
+            'mfaEnabled',
+            'roles',
+            'createdAt',
+            'updatedAt',
+          ],
+          properties: {
+            id: { type: 'string', format: 'uuid' },
+            email: { type: 'string', format: 'email' },
+            fullName: { type: 'string' },
+            phone: { type: 'string', nullable: true },
+            employeeCode: { type: 'string', nullable: true },
+            avatarUrl: { type: 'string', nullable: true },
+            status: {
+              type: 'string',
+              enum: ['active', 'inactive', 'locked', 'disabled'],
+            },
+            mustChangePassword: { type: 'boolean' },
+            emailVerifiedAt: { type: 'string', format: 'date-time', nullable: true },
+            lastLoginAt: { type: 'string', format: 'date-time', nullable: true },
+            lastLockedAt: { type: 'string', format: 'date-time', nullable: true },
+            disabledAt: { type: 'string', format: 'date-time', nullable: true },
+            mfaEnabled: { type: 'boolean' },
+            department: {
+              type: 'object',
+              nullable: true,
+              required: ['id', 'code', 'name'],
+              properties: {
+                id: { type: 'string', format: 'uuid' },
+                code: { type: 'string' },
+                name: { type: 'string' },
+              },
+            },
+            roles: {
+              type: 'array',
+              items: {
+                type: 'object',
+                required: ['id', 'code', 'name', 'assignedAt'],
+                properties: {
+                  id: { type: 'string', format: 'uuid' },
+                  code: { type: 'string' },
+                  name: { type: 'string' },
+                  description: { type: 'string', nullable: true },
+                  assignedAt: { type: 'string', format: 'date-time' },
+                },
+              },
+            },
+            createdAt: { type: 'string', format: 'date-time' },
+            updatedAt: { type: 'string', format: 'date-time' },
           },
         },
         CurrentUser: {
@@ -1409,7 +1518,9 @@ export const openApiSpec = swaggerJsdoc({
       },
     },
     paths: {
+      ...loginHistoryPaths,
       ...trainingReminderPaths,
+      ...departmentTrainingReportPaths,
       ...complianceReminderPaths,
       ...incidentPaths,
       ...accountLockPaths,
@@ -1449,12 +1560,43 @@ export const openApiSpec = swaggerJsdoc({
           },
         },
       },
+      '/training/my-certificates': {
+        get: {
+          tags: ['Training Awareness'],
+          summary: 'List my issued training certificates (UC165)',
+          description:
+            'Requires training-certificates.read-own. Returns only certificates belonging to the signed-in user; certificate metadata only, not a generated PDF.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'page',
+              in: 'query',
+              schema: { type: 'integer', minimum: 1, maximum: 100000, default: 1 },
+            },
+            {
+              name: 'limit',
+              in: 'query',
+              schema: { type: 'integer', minimum: 1, maximum: 50, default: 10 },
+            },
+            { name: 'q', in: 'query', schema: { type: 'string', maxLength: 100 } },
+          ],
+          responses: {
+            '200': {
+              description:
+                'Paginated certificates with id, number, issuedAt, issuedBy, enrollmentId, completedAt, campaignTitle and courseTitle',
+            },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'Insufficient permissions' },
+            '422': { description: 'Invalid query' },
+          },
+        },
+      },
       '/training/enrollments/{enrollmentId}/certificate': {
         get: {
           tags: ['Training Awareness'],
           summary: 'View training completion certificate and eligibility',
           description:
-            'Requires training-completion.read. Returns enrollmentId, learnerName, courseTitle, campaignTitle, completedAt, eligible and nullable certificate { id, number, issuedAt, issuedBy }. Existing certificates remain viewable even if the course assessment changes.',
+            'Requires training-completion.read. Returns enrollment and certificate metadata plus explicit eligibility requirements: completed enrollment, 100% progress and an enrollment-scoped passing final assessment when the course has one. Lesson assessments and attempts from another campaign do not qualify. Existing certificates remain viewable even if course content later changes.',
           security: [{ bearerAuth: [] }],
           parameters: [
             {
@@ -1476,7 +1618,7 @@ export const openApiSpec = swaggerJsdoc({
           tags: ['Training Awareness'],
           summary: 'Issue training completion certificate (UC80)',
           description:
-            'Requires training-certificates.issue. No request body. Requires completed enrollment, 100% progress, completedAt and a submitted passing attempt for the latest course quiz. Creates one certificate per enrollment and its audit record atomically. Repeated requests return the existing certificate. Returns the same metadata as GET; no PDF file is generated.',
+            'Requires training-certificates.issue. No request body. Requires completed enrollment, 100% progress, completedAt and, only when configured, a submitted passing final-assessment attempt scoped to this enrollment. Creates one certificate per enrollment and its audit record atomically. Repeated requests return the existing certificate. Returns the same metadata as GET; no PDF file is generated.',
           security: [{ bearerAuth: [] }],
           parameters: [
             {
@@ -1525,7 +1667,7 @@ export const openApiSpec = swaggerJsdoc({
           tags: ['Training Awareness'],
           summary: 'View employee completion for a training campaign',
           description:
-            'Requires training-completion.read. Supports employee search and enrollment-status filtering. Each employee includes nullable certificateNumber to distinguish issued certificates from eligibility for issuance.',
+            "Requires training-completion.read. Supports employee search and enrollment-status filtering. Returns campaign-wide completion metrics plus each employee's required-lesson completion, final-assessment result, activity, enrollment progress and nullable certificateNumber.",
           security: [{ bearerAuth: [] }],
           parameters: [
             {
@@ -1693,13 +1835,140 @@ export const openApiSpec = swaggerJsdoc({
               'application/json': {
                 schema: { $ref: '#/components/schemas/CreateTrainingCourseRequest' },
               },
+              'multipart/form-data': {
+                schema: {
+                  type: 'object',
+                  required: ['payload'],
+                  properties: {
+                    payload: {
+                      type: 'string',
+                      description: 'JSON encoded CreateTrainingCourseRequest, maximum 1 MiB',
+                    },
+                  },
+                  additionalProperties: { type: 'string', format: 'binary' },
+                  description:
+                    'File fields are UUID uploadKeys referenced by materials. Up to 10 PDF/MP4/WebM files, each at most 20 MiB. Local storage requires a persistent server filesystem, not Vercel.',
+                },
+              },
             },
           },
           responses: {
             '201': { description: 'Draft course created' },
+            '413': { description: 'Upload exceeds the per-file limit' },
+            '503': { description: 'Local storage is not supported in this deployment' },
             '401': { description: 'Authentication required' },
             '403': { description: 'training-courses.create permission required' },
             '422': { description: 'Invalid course data' },
+          },
+        },
+      },
+      '/training/courses/{courseId}/content': {
+        get: {
+          tags: ['Training Awareness'],
+          summary: 'View ordered lessons and materials',
+          security: [{ bearerAuth: [] }],
+          description:
+            'Requires training-courses.read. Returns lesson/material metadata and quiz summaries, never correct answers or storage keys.',
+          parameters: [
+            {
+              name: 'courseId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          responses: {
+            '200': {
+              description:
+                'Success envelope containing lessons with materials and assessment summaries',
+            },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'Permission required' },
+            '404': { description: 'Course not found' },
+            '422': { description: 'Invalid course ID' },
+          },
+        },
+      },
+      '/training/courses/{courseId}': {
+        get: {
+          tags: ['Training Awareness'],
+          summary: 'Get an editable security awareness course draft (UC160)',
+          description:
+            'Requires training-courses.update. Returns the complete unassigned draft, including correct-answer metadata and private-file metadata needed to prefill the editor.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'courseId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          responses: {
+            '200': { description: 'Complete editable draft' },
+            '403': { description: 'training-courses.update permission required' },
+            '404': { description: 'Course not found' },
+            '409': { description: 'Course is not a draft or has assignments' },
+          },
+        },
+        patch: {
+          tags: ['Training Awareness'],
+          summary: 'Edit a security awareness course draft (UC160)',
+          description:
+            'Requires training-courses.update. Atomically replaces an unassigned draft’s lessons, materials and assessments. expectedUpdatedAt prevents lost updates. Existing private files may be retained; replacement files use UUID upload keys. No schema change.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'courseId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': { schema: { type: 'object' } },
+              'multipart/form-data': {
+                schema: {
+                  type: 'object',
+                  required: ['payload'],
+                  properties: { payload: { type: 'string' } },
+                  additionalProperties: { type: 'string', format: 'binary' },
+                },
+              },
+            },
+          },
+          responses: {
+            '200': { description: 'Draft updated and audited' },
+            '403': { description: 'training-courses.update permission required' },
+            '404': { description: 'Course not found' },
+            '409': { description: 'Not editable or stale draft' },
+            '422': { description: 'Invalid draft or file references' },
+          },
+        },
+      },
+      '/training/materials/{materialId}/download': {
+        get: {
+          tags: ['Training Awareness'],
+          summary: 'Download a private uploaded course material',
+          security: [{ bearerAuth: [] }],
+          description:
+            'Requires training-courses.read. Attachment download from local persistent storage. No public static uploads directory.',
+          parameters: [
+            {
+              name: 'materialId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          responses: {
+            '200': { description: 'File attachment' },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'Permission required' },
+            '404': { description: 'File unavailable' },
+            '422': { description: 'Invalid material ID' },
           },
         },
       },
@@ -1750,7 +2019,7 @@ export const openApiSpec = swaggerJsdoc({
           tags: ['Training Awareness'],
           summary: 'Assign a training course',
           description:
-            'Requires training-courses.assign. Set createNewCampaign=true for a separate training cycle with fresh enrollments. Otherwise the latest campaign is updated; existing progress and completed results are preserved. The operation records an audit event atomically.',
+            'Requires training-courses.assign and a published course. Draft courses return 409; archived courses cannot be assigned. Set createNewCampaign=true for a separate training cycle with fresh enrollments. Otherwise the latest campaign is updated; existing progress and completed results are preserved. The operation records an audit event atomically.',
           security: [{ bearerAuth: [] }],
           parameters: [
             {
@@ -1770,8 +2039,78 @@ export const openApiSpec = swaggerJsdoc({
           },
           responses: {
             '201': { description: 'Course assignment campaign created or updated' },
+            '409': { description: 'Publish the course before assigning it' },
             '404': { description: 'Course not found' },
             '422': { description: 'Invalid dates or assignment targets' },
+          },
+        },
+      },
+      '/training/learning': {
+        get: {
+          tags: ['Training Awareness'],
+          summary: 'List courses assigned to the current employee',
+          description:
+            'Requires training-assessments.take. Progress and results are campaign enrollment scoped.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
+            {
+              name: 'limit',
+              in: 'query',
+              schema: { type: 'integer', minimum: 1, maximum: 50, default: 10 },
+            },
+          ],
+          responses: {
+            '200': { description: 'Paginated assigned courses' },
+            '403': { description: 'Learner permission required' },
+          },
+        },
+      },
+      '/training/learning/{enrollmentId}': {
+        get: {
+          tags: ['Training Awareness'],
+          summary: 'Open an assigned course',
+          description:
+            'Returns ordered lessons, safe material metadata and assessment status for the enrollment owner only.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'enrollmentId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          responses: {
+            '200': { description: 'Assigned course content' },
+            '404': { description: 'Enrollment not found or not owned by caller' },
+          },
+        },
+      },
+      '/training/learning/{enrollmentId}/lessons/{lessonId}/complete': {
+        patch: {
+          tags: ['Training Awareness'],
+          summary: 'Complete an assigned lesson',
+          description:
+            'Requires ownership and campaign availability. A lesson assessment must be passed first when configured. Recomputes enrollment progress atomically.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'enrollmentId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+            {
+              name: 'lessonId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          responses: {
+            '200': { description: 'Lesson and enrollment progress updated' },
+            '409': { description: 'Assessment required or campaign unavailable' },
           },
         },
       },
@@ -2448,6 +2787,44 @@ export const openApiSpec = swaggerJsdoc({
           },
         },
       },
+      '/users/{userId}': {
+        get: {
+          tags: ['Users'],
+          summary: 'View a user account',
+          description:
+            'Returns safe account, department, role, MFA, and activity metadata. Requires users.read.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'userId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          responses: {
+            '200': {
+              description: 'User account details',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    required: ['success', 'data'],
+                    properties: {
+                      success: { type: 'boolean', example: true },
+                      data: { $ref: '#/components/schemas/UserDetail' },
+                    },
+                  },
+                },
+              },
+            },
+            '401': { description: 'Unauthorized' },
+            '403': { description: 'Missing users.read permission' },
+            '404': { description: 'User was not found' },
+            '422': { description: 'Invalid user identifier' },
+          },
+        },
+      },
       '/risks': {
         post: {
           tags: ['Risk Assessments'],
@@ -2654,6 +3031,93 @@ export const openApiSpec = swaggerJsdoc({
                 'Treatment plan, incident link, later assessment, or concurrent change prevents cancellation',
             },
             '422': { description: 'Invalid input or assessment status is not cancellable' },
+          },
+        },
+      },
+      '/risks/treatment-plans': {
+        get: {
+          tags: ['Risk Assessments'],
+          summary: 'List risk treatment plans',
+          description:
+            'Requires risk-treatment-plans.read. Returns a server-paginated list with risk context, owner, active-action progress, completed action count, and overdue state.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
+            {
+              name: 'limit',
+              in: 'query',
+              schema: { type: 'integer', minimum: 1, maximum: 100, default: 10 },
+            },
+            { name: 'q', in: 'query', schema: { type: 'string', maxLength: 100 } },
+            {
+              name: 'status',
+              in: 'query',
+              schema: {
+                type: 'string',
+                enum: [
+                  'draft',
+                  'pending_approval',
+                  'approved',
+                  'in_progress',
+                  'completed',
+                  'rejected',
+                  'cancelled',
+                ],
+              },
+            },
+            {
+              name: 'strategy',
+              in: 'query',
+              schema: { type: 'string', enum: ['avoid', 'mitigate', 'transfer', 'accept'] },
+            },
+            { name: 'ownerId', in: 'query', schema: { type: 'string', format: 'uuid' } },
+            { name: 'targetFrom', in: 'query', schema: { type: 'string', format: 'date' } },
+            { name: 'targetTo', in: 'query', schema: { type: 'string', format: 'date' } },
+            { name: 'overdue', in: 'query', schema: { type: 'boolean' } },
+            {
+              name: 'sortBy',
+              in: 'query',
+              schema: {
+                type: 'string',
+                enum: ['riskCode', 'strategy', 'status', 'targetDate', 'createdAt', 'updatedAt'],
+                default: 'updatedAt',
+              },
+            },
+            {
+              name: 'sortOrder',
+              in: 'query',
+              schema: { type: 'string', enum: ['asc', 'desc'], default: 'desc' },
+            },
+          ],
+          responses: {
+            '200': { description: 'Paginated treatment plan list' },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'The risk-treatment-plans.read permission is required' },
+            '422': { description: 'Invalid query parameters' },
+          },
+        },
+      },
+      '/risks/treatment-plans/{treatmentPlanId}': {
+        get: {
+          tags: ['Risk Assessments'],
+          summary: 'View risk treatment plan detail',
+          description:
+            'Requires risk-treatment-plans.read. Returns the plan, associated risk and target, owner and creator, latest approval state, progress summary, and all treatment actions.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'treatmentPlanId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          responses: {
+            '200': { description: 'Treatment plan detail' },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'The risk-treatment-plans.read permission is required' },
+            '404': { description: 'Treatment plan not found' },
+            '422': { description: 'Invalid treatment plan identifier' },
           },
         },
       },

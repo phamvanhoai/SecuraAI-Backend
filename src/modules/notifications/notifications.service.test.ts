@@ -20,14 +20,18 @@ describe('own training reminders', () => {
     expect(mocks.listTrainingReminders).not.toHaveBeenCalled();
   });
   it('scopes the inbox to the actor and produces bounded pagination', async () => {
-    mocks.listTrainingReminders.mockResolvedValue([[], 0]);
+    mocks.listTrainingReminders.mockResolvedValue([[], 0, 4, 2]);
     expect(
       await notificationsService.listTrainingReminders(actor, {
         page: 1,
         limit: 10,
         status: 'unread',
       }),
-    ).toEqual({ items: [], pagination: { page: 1, limit: 10, total: 0, totalPages: 1 } });
+    ).toEqual({
+      items: [],
+      summary: { total: 4, unread: 2 },
+      pagination: { page: 1, limit: 10, total: 0, totalPages: 1 },
+    });
     expect(mocks.listTrainingReminders).toHaveBeenCalledWith(actor.userId, {
       page: 1,
       limit: 10,

@@ -16,7 +16,43 @@ const userListSelect = {
   },
 } as const;
 
+const userDetailSelect = {
+  user_id: true,
+  email: true,
+  full_name: true,
+  phone: true,
+  employee_code: true,
+  avatar_url: true,
+  status: true,
+  must_change_password: true,
+  email_verified_at: true,
+  last_login_at: true,
+  locked_at: true,
+  disabled_at: true,
+  created_at: true,
+  updated_at: true,
+  departments: { select: { department_id: true, code: true, name: true } },
+  user_roles_user_roles_user_idTousers: {
+    select: {
+      assigned_at: true,
+      roles: { select: { role_id: true, code: true, name: true, description: true } },
+    },
+  },
+  mfa_methods: {
+    where: { method_type: 'totp', is_enabled: true },
+    select: { mfa_method_id: true },
+    take: 1,
+  },
+} as const;
+
 export const usersRepository = {
+  findById(userId: string) {
+    return prisma.users.findFirst({
+      where: { user_id: userId, deleted_at: null },
+      select: userDetailSelect,
+    });
+  },
+
   async list(query: ListUsersQuery) {
     const where = {
       deleted_at: null,

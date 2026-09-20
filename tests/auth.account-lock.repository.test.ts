@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Prisma } from '@prisma/client';
 
 const mocks = vi.hoisted(() => ({
+  history: vi.fn(),
   transaction: vi.fn(),
   query: vi.fn(),
   user: vi.fn(),
@@ -15,6 +16,7 @@ const mocks = vi.hoisted(() => ({
 }));
 vi.mock('../src/database/prisma.js', () => ({
   prisma: {
+    login_history: { create: mocks.history },
     $transaction: mocks.transaction,
     $queryRaw: mocks.query,
     users: { findUnique: mocks.user, update: mocks.updateUser },
@@ -36,6 +38,7 @@ import { authRepository } from '../src/modules/auth/auth.repository.js';
 const userId = '22222222-2222-4222-8222-222222222222';
 const user = {
   user_id: userId,
+  email: 'user@example.test',
   status: 'active',
   deleted_at: null,
   locked_at: null,
@@ -92,6 +95,7 @@ describe('account lock races at authentication database boundary', () => {
       await expect(authRepository.createLoginSession(login)).resolves.toBeNull();
       await expect(authRepository.createMfaLoginChallenge(challenge)).resolves.toBe(false);
       expect(mocks.createSession).not.toHaveBeenCalled();
+      expect(mocks.history).not.toHaveBeenCalled();
       expect(mocks.updateMethod).not.toHaveBeenCalled();
     },
   );
@@ -107,6 +111,47 @@ describe('account lock races at authentication database boundary', () => {
       mocks.user.mock.invocationCallOrder[0] ?? Infinity,
     );
     expect(mocks.createSession).toHaveBeenCalledOnce();
+    expect(mocks.history).toHaveBeenCalledWith({
+      data: {
+        user_id: userId,
+        email_attempted: 'user@example.test',
+        success: true,
+        ip_address: null,
+        user_agent: null,
+      },
+      select: { login_history_id: true },
+    });
+  });
+
+  it('records successful MFA login inside the session transaction', async () => {
+    mocks.consume.mockResolvedValue({ count: 1 });
+    mocks.updateUser.mockResolvedValue(user);
+    await expect(
+      authRepository.consumeMfaLoginChallenge({
+        mfaMethodId: 'method',
+        tokenHash: 'valid-challenge',
+        refreshTokenHash: login.refreshTokenHash,
+        sessionExpiresAt: login.expiresAt,
+        ipAddress: '::1',
+        userAgent: 'Test browser',
+      }),
+    ).resolves.toMatchObject({ kind: 'authenticated' });
+    expect(mocks.createSession).toHaveBeenCalledOnce();
+    expect(mocks.history).toHaveBeenCalledWith({
+      data: {
+        user_id: userId,
+        email_attempted: 'user@example.test',
+        success: true,
+        ip_address: '::1',
+        user_agent: 'Test browser',
+      },
+      select: { login_history_id: true },
+    });
+  });
+
+  it('does not return a login session when the history write fails', async () => {
+    mocks.history.mockRejectedValue(new Error('History unavailable'));
+    await expect(authRepository.createLoginSession(login)).rejects.toThrow('History unavailable');
   });
 
   it('rejects refresh when the account became locked before rotation', async () => {

@@ -15,6 +15,23 @@ import {
   approveTreatmentPlanBodySchema,
   approveTreatmentPlanParamsSchema,
 } from './dto/approve-treatment-plan.dto.js';
+import { listTreatmentPlansQuerySchema } from './dto/list-treatment-plans-query.dto.js';
+
+export const listRiskTreatmentPlans: RequestHandler = async (req, res) => {
+  if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+  const data = await riskManagementService.listTreatmentPlans(
+    listTreatmentPlansQuerySchema.parse(req.query),
+    req.auth,
+  );
+  res.status(200).json({ success: true, data });
+};
+
+export const getRiskTreatmentPlanDetail: RequestHandler = async (req, res) => {
+  if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+  const { treatmentPlanId } = treatmentPlanParamsSchema.parse(req.params);
+  const data = await riskManagementService.getTreatmentPlanById(treatmentPlanId, req.auth);
+  res.status(200).json({ success: true, data });
+};
 
 export const approveRiskTreatmentPlan: RequestHandler = async (req, res) => {
   if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
@@ -98,6 +115,8 @@ export const cancelRiskAssessment: RequestHandler = async (req, res) => {
 };
 
 export const riskManagementController = {
+  listRiskTreatmentPlans,
+  getRiskTreatmentPlanDetail,
   listRiskAssessments,
   getRiskAssessmentDetail,
   listRiskAssessmentCreateOptions,

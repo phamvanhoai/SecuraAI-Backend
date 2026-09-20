@@ -38,16 +38,16 @@ Swagger UI: `http://localhost:3000/docs`. Replace every example secret before no
 
 ## Main commands
 
-| Command | Purpose |
-|---|---|
-| `npm run dev` | Run with hot reload |
-| `npm run build && npm start` | Build/run production output |
-| `npm run db:migrate` | Create/apply a development migration |
-| `npm run db:deploy` | Apply committed production migrations |
-| `npm run db:seed` | Create initial admin role/user |
-| `npm run lint` | Static analysis |
-| `npm run typecheck` | Strict TypeScript validation |
-| `npm test` | Run tests |
+| Command                      | Purpose                               |
+| ---------------------------- | ------------------------------------- |
+| `npm run dev`                | Run with hot reload                   |
+| `npm run build && npm start` | Build/run production output           |
+| `npm run db:migrate`         | Create/apply a development migration  |
+| `npm run db:deploy`          | Apply committed production migrations |
+| `npm run db:seed`            | Create initial admin role/user        |
+| `npm run lint`               | Static analysis                       |
+| `npm run typecheck`          | Strict TypeScript validation          |
+| `npm test`                   | Run tests                             |
 
 ## Structure
 

@@ -1,4 +1,5 @@
 import { AppError } from '../../common/errors/app-error.js';
+import type { CourseUpload } from './course-material.upload.js';
 import { trainingAwarenessRepository, type CourseRecord } from './training-awareness.repository.js';
 import type {
   AssignCourseBody,
@@ -130,6 +131,19 @@ export const trainingAwarenessService = {
     if (!result)
       throw new AppError(404, 'TRAINING_CAMPAIGN_NOT_FOUND', 'Training campaign not found');
     const isOverdue = isPastDueDate(result.campaign.due_date);
+    const activeGroups = result.statusGroups.filter((group) => group.status !== 'withdrawn');
+    const assigned = activeGroups.reduce((sum, group) => sum + group._count._all, 0);
+    const completed = activeGroups
+      .filter((group) => group.status === 'completed')
+      .reduce((sum, group) => sum + group._count._all, 0);
+    const inProgress = activeGroups
+      .filter((group) => group.status === 'in_progress')
+      .reduce((sum, group) => sum + group._count._all, 0);
+    const withdrawn = result.statusGroups
+      .filter((group) => group.status === 'withdrawn')
+      .reduce((sum, group) => sum + group._count._all, 0);
+    const requiredLessonCount = result.campaign.training_courses.training_lessons.length;
+    const hasFinalAssessment = result.campaign.training_courses.quizzes.length > 0;
     return {
       campaign: {
         id: result.campaign.training_campaign_id,
@@ -137,25 +151,65 @@ export const trainingAwarenessService = {
         courseTitle: result.campaign.training_courses.title,
         startDate: result.campaign.start_date,
         dueDate: result.campaign.due_date,
+        requiredLessonCount,
+        hasFinalAssessment,
       },
-      items: result.items.map((enrollment) => ({
-        id: enrollment.training_enrollment_id,
-        user: {
-          id: enrollment.users.user_id,
-          name: enrollment.users.full_name,
-          email: enrollment.users.email,
-          employeeCode: enrollment.users.employee_code,
-        },
-        status:
-          isOverdue && enrollment.status !== 'completed' && enrollment.status !== 'withdrawn'
-            ? 'overdue'
-            : enrollment.status,
-        progressPercent: enrollment.progress_percent,
-        startedAt: enrollment.started_at,
-        completedAt: enrollment.completed_at,
-        lastAccessedAt: enrollment.last_accessed_at,
-        certificateNumber: enrollment.training_certificates?.certificate_number ?? null,
-      })),
+      summary: {
+        assigned,
+        completed,
+        inProgress,
+        notStarted: Math.max(0, assigned - completed - inProgress),
+        overdue: isOverdue ? Math.max(0, assigned - completed) : 0,
+        withdrawn,
+        completionRate: assigned ? Math.round((completed / assigned) * 100) : 0,
+        averageProgress: assigned
+          ? Math.round(
+              activeGroups.reduce(
+                (sum, group) => sum + Number(group._avg.progress_percent ?? 0) * group._count._all,
+                0,
+              ) / assigned,
+            )
+          : 0,
+      },
+      items: result.items.map((enrollment) => {
+        const completedLessonCount = new Set(
+          enrollment.training_lesson_progress
+            .filter((progress) => progress.status === 'completed')
+            .map((progress) => progress.training_lesson_id),
+        ).size;
+        const latestAssessment = enrollment.quiz_attempts[0];
+        return {
+          id: enrollment.training_enrollment_id,
+          user: {
+            id: enrollment.users.user_id,
+            name: enrollment.users.full_name,
+            email: enrollment.users.email,
+            employeeCode: enrollment.users.employee_code,
+          },
+          status:
+            isOverdue && enrollment.status !== 'completed' && enrollment.status !== 'withdrawn'
+              ? 'overdue'
+              : enrollment.status,
+          progressPercent: enrollment.progress_percent,
+          requiredLessons: {
+            completed: completedLessonCount,
+            total: requiredLessonCount,
+          },
+          finalAssessment: {
+            required: hasFinalAssessment,
+            passed: enrollment.quiz_attempts.some((attempt) => attempt.passed === true),
+            latestScore:
+              latestAssessment?.score === null || latestAssessment?.score === undefined
+                ? null
+                : Number(latestAssessment.score),
+            lastSubmittedAt: latestAssessment?.submitted_at ?? null,
+          },
+          startedAt: enrollment.started_at,
+          completedAt: enrollment.completed_at,
+          lastAccessedAt: enrollment.last_accessed_at,
+          certificateNumber: enrollment.training_certificates?.certificate_number ?? null,
+        };
+      }),
       pagination: {
         page: query.page,
         limit: query.limit,
@@ -172,8 +226,11 @@ export const trainingAwarenessService = {
       items: result.items.map((enrollment) => {
         const quiz = enrollment.training_campaigns.training_courses.quizzes[0];
         if (!quiz) throw new Error('Assessment query returned an enrollment without a quiz');
-        const latestAttempt = quiz.quiz_attempts[0];
-        const passed = quiz.quiz_attempts.some((attempt) => attempt.passed);
+        const enrollmentAttempts = quiz.quiz_attempts.filter(
+          (attempt) => attempt.training_enrollment_id === enrollment.training_enrollment_id,
+        );
+        const latestAttempt = enrollmentAttempts[0];
+        const passed = enrollmentAttempts.some((attempt) => attempt.passed);
         return {
           enrollmentId: enrollment.training_enrollment_id,
           courseTitle: enrollment.training_campaigns.training_courses.title,
@@ -188,7 +245,7 @@ export const trainingAwarenessService = {
             title: quiz.title,
             passingScore: Number(quiz.passing_score),
             maxAttempts: quiz.max_attempts,
-            attemptsUsed: quiz.quiz_attempts.length,
+            attemptsUsed: enrollmentAttempts.length,
             latestScore:
               latestAttempt?.score === null || latestAttempt?.score === undefined
                 ? null
@@ -199,7 +256,7 @@ export const trainingAwarenessService = {
               enrollment.training_campaigns.start_date,
               enrollment.training_campaigns.due_date,
               passed,
-              quiz.quiz_attempts.length,
+              enrollmentAttempts.length,
               quiz.max_attempts,
             ),
           },
@@ -213,12 +270,13 @@ export const trainingAwarenessService = {
       },
     };
   },
-  async getMyAssessment(enrollmentId: string, actor: Actor) {
+  async getMyAssessment(enrollmentId: string, actor: Actor, lessonId: string | null = null) {
     if (!actor.permissions.includes('training-assessments.take'))
       throw new AppError(403, 'FORBIDDEN', 'Insufficient permissions');
     const enrollment = await trainingAwarenessRepository.getMyAssessment(
       enrollmentId,
       actor.userId,
+      lessonId,
     );
     const quiz = enrollment?.training_campaigns.training_courses.quizzes[0];
     if (!enrollment || !quiz)
@@ -265,13 +323,16 @@ export const trainingAwarenessService = {
     input: SubmitAssessmentBody,
     actor: Actor,
     context: RequestContext,
+    lessonId: string | null = null,
   ) {
     if (!actor.permissions.includes('training-assessments.take'))
       throw new AppError(403, 'FORBIDDEN', 'Insufficient permissions');
-    const result = await trainingAwarenessRepository.submitAssessment(enrollmentId, input, {
-      actorUserId: actor.userId,
-      ...context,
-    });
+    const result = await trainingAwarenessRepository.submitAssessment(
+      enrollmentId,
+      input,
+      { actorUserId: actor.userId, ...context },
+      lessonId,
+    );
     if (result.kind === 'not_found')
       throw new AppError(404, 'ASSESSMENT_NOT_FOUND', 'Assessment not found');
     if (result.kind === 'attempt_limit')
@@ -284,6 +345,12 @@ export const trainingAwarenessService = {
       );
     if (result.kind === 'already_passed')
       throw new AppError(409, 'ASSESSMENT_ALREADY_PASSED', 'Assessment has already been passed');
+    if (result.kind === 'required_lessons_incomplete')
+      throw new AppError(
+        409,
+        'REQUIRED_LESSONS_INCOMPLETE',
+        'Complete every required lesson before taking the final assessment',
+      );
     if (result.kind === 'invalid_answers')
       throw new AppError(422, 'INVALID_ASSESSMENT_ANSWERS', 'Answer every assessment question');
     return {
@@ -312,13 +379,51 @@ export const trainingAwarenessService = {
       },
     };
   },
-  async createCourse(input: CreateCourseBody, actor: Actor, context: RequestContext) {
+  async createCourse(
+    input: CreateCourseBody,
+    actor: Actor,
+    context: RequestContext,
+    uploads: readonly CourseUpload[] = [],
+  ) {
     if (!actor.permissions.includes('training-courses.create'))
       throw new AppError(403, 'FORBIDDEN', 'Insufficient permissions');
-    const course = await trainingAwarenessRepository.createCourse(input, {
-      actorUserId: actor.userId,
-      ...context,
-    });
+    const keys =
+      input.lessons?.flatMap((lesson) =>
+        lesson.materials.flatMap((material) => (material.uploadKey ? [material.uploadKey] : [])),
+      ) ?? [];
+    if (
+      keys.length !== uploads.length ||
+      new Set(uploads.map((upload) => upload.key)).size !== uploads.length ||
+      keys.some((key) => !uploads.some((upload) => upload.key === key))
+    )
+      throw new AppError(
+        422,
+        'TRAINING_FILES_MISMATCH',
+        'Every uploaded material must have exactly one matching file',
+      );
+    for (const lesson of input.lessons ?? [])
+      for (const material of lesson.materials) {
+        const upload = uploads.find((item) => item.key === material.uploadKey);
+        if (
+          upload &&
+          (material.type === 'video'
+            ? !upload.mimeType.startsWith('video/')
+            : upload.mimeType !== 'application/pdf')
+        )
+          throw new AppError(
+            422,
+            'TRAINING_FILE_TYPE_MISMATCH',
+            'The file type does not match the lesson material',
+          );
+      }
+    const course = await trainingAwarenessRepository.createCourse(
+      input,
+      {
+        actorUserId: actor.userId,
+        ...context,
+      },
+      uploads,
+    );
     return toCourseResponse(course);
   },
   async listAssignmentOptions(query: AssignmentOptionsQuery, actor: Actor) {
@@ -357,6 +462,8 @@ export const trainingAwarenessService = {
     });
     if (result.kind === 'course_not_found')
       throw new AppError(404, 'COURSE_NOT_FOUND', 'Course not found');
+    if (result.kind === 'course_not_published')
+      throw new AppError(409, 'COURSE_NOT_PUBLISHED', 'Publish the course before assigning it');
     if (result.kind === 'invalid_targets')
       throw new AppError(
         422,

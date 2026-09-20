@@ -1,4 +1,15 @@
-# Lock and unlock user accounts (UC7)
+# Users module
+
+## View user accounts
+
+Administrators with `users.read` can list accounts through `GET /api/v1/users`
+and open one account through `GET /api/v1/users/{userId}`. Both operations are
+also available below `/api/v1/admin/users`. The detail response includes safe
+profile, department, assigned-role, MFA-state, and account-activity metadata;
+credential hashes, MFA secrets, refresh sessions, and recovery codes are never
+selected. Deleted or missing accounts return `USER_NOT_FOUND`.
+
+## Lock and unlock behavior
 
 The project proposal assigns UC7 to Admin. Authorization uses `users.lock` and
 `users.unlock`, granted to ADMIN by the explicit permission migration and seed.

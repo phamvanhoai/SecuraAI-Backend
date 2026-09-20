@@ -5,6 +5,7 @@ import { createUserBodySchema } from './dto/create-user.dto.js';
 import { listUsersQuerySchema } from './dto/list-users-query.dto.js';
 import { accountLockBodySchema, accountLockParamsSchema } from './dto/account-lock.dto.js';
 import { accountLockService } from './account-lock.service.js';
+import { getUserParamsSchema } from './dto/get-user.dto.js';
 
 const changeAccountLock =
   (action: 'lock' | 'unlock'): RequestHandler =>
@@ -41,6 +42,13 @@ export const listUsers: RequestHandler = async (req, res) => {
     throw new AppError(403, 'FORBIDDEN', 'Insufficient permissions');
   }
   const data = await usersService.list(listUsersQuerySchema.parse(req.query));
+  res.status(200).json({ success: true, data });
+};
+
+export const getUser: RequestHandler = async (req, res) => {
+  if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+  const { userId } = getUserParamsSchema.parse(req.params);
+  const data = await usersService.getById(userId);
   res.status(200).json({ success: true, data });
 };
 
