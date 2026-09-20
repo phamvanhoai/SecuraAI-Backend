@@ -3,13 +3,19 @@ import request from 'supertest';
 import { describe, expect, it, vi } from 'vitest';
 vi.mock('../src/modules/training-awareness/department-report.repository.js', () => ({
   departmentReportRepository: {
-    get: vi
-      .fn()
-      .mockResolvedValue({
-        items: [],
-        total: 0,
-        summary: { employees: 0, assigned: 0, completed: 0, overdue: 0, completionRate: 0 },
-      }),
+    get: vi.fn().mockResolvedValue({
+      items: [],
+      total: 0,
+      summary: {
+        employees: 0,
+        assignedEmployees: 0,
+        assigned: 0,
+        completed: 0,
+        overdue: 0,
+        coverageRate: 0,
+        completionRate: 0,
+      },
+    }),
   },
 }));
 import { createApp } from '../src/app.js';
