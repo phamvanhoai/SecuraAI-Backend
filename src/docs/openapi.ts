@@ -1502,6 +1502,37 @@ export const openApiSpec = swaggerJsdoc({
           },
         },
       },
+      '/training/my-certificates': {
+        get: {
+          tags: ['Training Awareness'],
+          summary: 'List my issued training certificates (UC165)',
+          description:
+            'Requires training-certificates.read-own. Returns only certificates belonging to the signed-in user; certificate metadata only, not a generated PDF.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'page',
+              in: 'query',
+              schema: { type: 'integer', minimum: 1, maximum: 100000, default: 1 },
+            },
+            {
+              name: 'limit',
+              in: 'query',
+              schema: { type: 'integer', minimum: 1, maximum: 50, default: 10 },
+            },
+            { name: 'q', in: 'query', schema: { type: 'string', maxLength: 100 } },
+          ],
+          responses: {
+            '200': {
+              description:
+                'Paginated certificates with id, number, issuedAt, issuedBy, enrollmentId, completedAt, campaignTitle and courseTitle',
+            },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'Insufficient permissions' },
+            '422': { description: 'Invalid query' },
+          },
+        },
+      },
       '/training/enrollments/{enrollmentId}/certificate': {
         get: {
           tags: ['Training Awareness'],

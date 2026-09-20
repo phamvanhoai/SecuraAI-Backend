@@ -1,5 +1,12 @@
 # Create structured security awareness courses (UC75)
 
+UC165: `GET /training/my-certificates?page=1&limit=10&q=` requires
+`training-certificates.read-own` and lists only certificates whose enrollment
+belongs to the authenticated user. It supports bounded pagination and search by
+certificate number, course or campaign. Certificates are metadata records;
+the endpoint does not claim a generated PDF. Grant the new permission to Admin
+and Employee with the data-only migration before testing.
+
 Create drafts with ordered lessons and materials, optional lesson assessments and
 an optional final assessment. Reuses `training-courses.create` for creation and
 `training-courses.read` for content inspection/private downloads. Existing role

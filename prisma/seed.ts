@@ -118,6 +118,35 @@ async function main(): Promise<void> {
       description: 'Take assigned post-training assessments',
     },
   });
+  const readOwnCertificatesPermission = await prisma.permissions.upsert({
+    where: { code: 'training-certificates.read-own' },
+    update: {
+      module: 'training-awareness',
+      action: 'read-own-certificates',
+      description: 'View certificates issued for the signed-in user (UC165)',
+    },
+    create: {
+      code: 'training-certificates.read-own',
+      module: 'training-awareness',
+      action: 'read-own-certificates',
+      description: 'View certificates issued for the signed-in user (UC165)',
+    },
+  });
+  for (const targetRole of [role, employeeRole]) {
+    await prisma.role_permissions.upsert({
+      where: {
+        role_id_permission_id: {
+          role_id: targetRole.role_id,
+          permission_id: readOwnCertificatesPermission.permission_id,
+        },
+      },
+      update: {},
+      create: {
+        role_id: targetRole.role_id,
+        permission_id: readOwnCertificatesPermission.permission_id,
+      },
+    });
+  }
   await prisma.role_permissions.upsert({
     where: {
       role_id_permission_id: {
