@@ -39,6 +39,43 @@ const publicUserSelect = {
 } as const;
 
 export const usersService = {
+  async getById(userId: string) {
+    const user = await usersRepository.findById(userId);
+    if (!user) throw new AppError(404, 'USER_NOT_FOUND', 'User was not found');
+
+    return {
+      id: user.user_id,
+      email: user.email,
+      fullName: user.full_name,
+      phone: user.phone,
+      employeeCode: user.employee_code,
+      avatarUrl: user.avatar_url,
+      status: user.status,
+      mustChangePassword: user.must_change_password,
+      emailVerifiedAt: user.email_verified_at,
+      lastLoginAt: user.last_login_at,
+      lastLockedAt: user.locked_at,
+      disabledAt: user.disabled_at,
+      mfaEnabled: user.mfa_methods.length > 0,
+      department: user.departments
+        ? {
+            id: user.departments.department_id,
+            code: user.departments.code,
+            name: user.departments.name,
+          }
+        : null,
+      roles: user.user_roles_user_roles_user_idTousers.map(({ assigned_at, roles }) => ({
+        id: roles.role_id,
+        code: roles.code,
+        name: roles.name,
+        description: roles.description,
+        assignedAt: assigned_at,
+      })),
+      createdAt: user.created_at,
+      updatedAt: user.updated_at,
+    };
+  },
+
   async list(query: ListUsersQuery) {
     const result = await usersRepository.list(query);
     return {
