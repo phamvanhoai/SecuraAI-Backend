@@ -24,6 +24,7 @@ const enrollmentSelect = {
         select: {
           title: true,
           quizzes: {
+            where: { training_lesson_id: null },
             orderBy: [{ created_at: 'desc' as const }, { quiz_id: 'desc' as const }],
             take: 1,
             select: { quiz_id: true },
@@ -40,25 +41,31 @@ async function readEnrollment(client: Prisma.TransactionClient, id: string) {
     select: enrollmentSelect,
   });
   if (!enrollment) return null;
-  const quiz = enrollment.training_campaigns.training_courses.quizzes[0];
-  const passed = quiz
+  const finalQuiz = enrollment.training_campaigns.training_courses.quizzes[0];
+  const passedFinalAssessment = finalQuiz
     ? await client.quiz_attempts.findFirst({
         where: {
-          quiz_id: quiz.quiz_id,
-          user_id: enrollment.user_id,
+          quiz_id: finalQuiz.quiz_id,
+          training_enrollment_id: enrollment.training_enrollment_id,
           passed: true,
           submitted_at: { not: null },
         },
         select: { quiz_attempt_id: true },
       })
     : null;
+  const requirements = {
+    courseCompleted: enrollment.status === 'completed' && enrollment.completed_at !== null,
+    progressComplete: enrollment.progress_percent === 100,
+    finalAssessmentRequired: finalQuiz !== undefined,
+    finalAssessmentPassed: finalQuiz ? passedFinalAssessment !== null : null,
+  };
   return {
     enrollment,
+    requirements,
     eligible:
-      enrollment.status === 'completed' &&
-      enrollment.progress_percent === 100 &&
-      enrollment.completed_at !== null &&
-      passed !== null,
+      requirements.courseCompleted &&
+      requirements.progressComplete &&
+      (!requirements.finalAssessmentRequired || requirements.finalAssessmentPassed === true),
   };
 }
 

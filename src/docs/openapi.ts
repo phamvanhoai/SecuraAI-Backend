@@ -1596,7 +1596,7 @@ export const openApiSpec = swaggerJsdoc({
           tags: ['Training Awareness'],
           summary: 'View training completion certificate and eligibility',
           description:
-            'Requires training-completion.read. Returns enrollmentId, learnerName, courseTitle, campaignTitle, completedAt, eligible and nullable certificate { id, number, issuedAt, issuedBy }. Existing certificates remain viewable even if the course assessment changes.',
+            'Requires training-completion.read. Returns enrollment and certificate metadata plus explicit eligibility requirements: completed enrollment, 100% progress and an enrollment-scoped passing final assessment when the course has one. Lesson assessments and attempts from another campaign do not qualify. Existing certificates remain viewable even if course content later changes.',
           security: [{ bearerAuth: [] }],
           parameters: [
             {
@@ -1618,7 +1618,7 @@ export const openApiSpec = swaggerJsdoc({
           tags: ['Training Awareness'],
           summary: 'Issue training completion certificate (UC80)',
           description:
-            'Requires training-certificates.issue. No request body. Requires completed enrollment, 100% progress, completedAt and a submitted passing attempt for the latest course quiz. Creates one certificate per enrollment and its audit record atomically. Repeated requests return the existing certificate. Returns the same metadata as GET; no PDF file is generated.',
+            'Requires training-certificates.issue. No request body. Requires completed enrollment, 100% progress, completedAt and, only when configured, a submitted passing final-assessment attempt scoped to this enrollment. Creates one certificate per enrollment and its audit record atomically. Repeated requests return the existing certificate. Returns the same metadata as GET; no PDF file is generated.',
           security: [{ bearerAuth: [] }],
           parameters: [
             {

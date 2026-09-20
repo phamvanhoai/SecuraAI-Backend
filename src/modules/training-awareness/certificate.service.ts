@@ -18,6 +18,7 @@ function mapCertificate(
     campaignTitle: enrollment.training_campaigns.title,
     completedAt: enrollment.completed_at,
     eligible,
+    requirements: result.requirements,
     certificate: certificate
       ? {
           id: certificate.training_certificate_id,
@@ -49,7 +50,7 @@ export const certificateService = {
       throw new AppError(
         409,
         'CERTIFICATE_NOT_ELIGIBLE',
-        'Complete the course and pass its assessment before issuing a certificate',
+        'Complete all required course work and pass the final assessment, when required, before issuing a certificate',
       );
     return mapCertificate(result.result);
   },
