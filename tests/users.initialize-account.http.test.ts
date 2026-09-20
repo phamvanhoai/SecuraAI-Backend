@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   list: vi.fn(),
+  listCreateOptions: vi.fn(),
   createInitializedUser: vi.fn(),
   sendInitializedAccountEmail: vi.fn(),
 }));
@@ -37,7 +38,25 @@ describe('user account initialization HTTP API', () => {
         full_name: 'Yen Nhi Doan',
       },
     });
-    mocks.list.mockResolvedValue({ items: [], total: 0, summary: { active: 0, inactive: 0, locked: 0, disabled: 0 } });
+    mocks.list.mockResolvedValue({
+      items: [],
+      total: 0,
+      summary: { active: 0, inactive: 0, locked: 0, disabled: 0 },
+    });
+    mocks.listCreateOptions.mockResolvedValue({
+      departments: [
+        { department_id: '00000000-0000-4000-8000-000000000020', code: 'SEC', name: 'Security' },
+      ],
+      roles: [
+        {
+          role_id: '00000000-0000-4000-8000-000000000030',
+          code: 'EMPLOYEE',
+          name: 'Employee',
+          description: null,
+          is_system: true,
+        },
+      ],
+    });
     mocks.sendInitializedAccountEmail.mockResolvedValue(undefined);
   });
 
@@ -45,8 +64,33 @@ describe('user account initialization HTTP API', () => {
     const path = '/api/v1/users';
     expect((await request(createApp()).post(path).send({})).status).toBe(401);
     expect(
-      (await request(createApp()).post(path).set('authorization', `Bearer ${token([])}`).send({})).status,
+      (
+        await request(createApp())
+          .post(path)
+          .set('authorization', `Bearer ${token([])}`)
+          .send({})
+      ).status,
     ).toBe(403);
+  });
+
+  it('returns active departments and roles for the create form', async () => {
+    const response = await request(createApp())
+      .get('/api/v1/admin/users/create-options')
+      .set('authorization', `Bearer ${token(['users.create'])}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.data).toEqual({
+      departments: [{ id: '00000000-0000-4000-8000-000000000020', code: 'SEC', name: 'Security' }],
+      roles: [
+        {
+          id: '00000000-0000-4000-8000-000000000030',
+          code: 'EMPLOYEE',
+          name: 'Employee',
+          description: null,
+          isSystem: true,
+        },
+      ],
+    });
   });
 
   it('lists users through the admin endpoint', async () => {
@@ -59,7 +103,11 @@ describe('user account initialization HTTP API', () => {
           employee_code: 'SEC-0241',
           status: 'active',
           created_at: new Date('2026-09-10T21:42:26.972Z'),
-          departments: { department_id: 'department-id', code: 'IT', name: 'Information Technology' },
+          departments: {
+            department_id: 'department-id',
+            code: 'IT',
+            name: 'Information Technology',
+          },
           user_roles_user_roles_user_idTousers: [{ roles: { code: 'EMPLOYEE', name: 'Employee' } }],
         },
       ],
