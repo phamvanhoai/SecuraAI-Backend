@@ -6,6 +6,7 @@ import {
   listMyLearning,
 } from './learning.controller.js';
 import { parseCourseUpload } from './course-material.upload.js';
+import { getCourseDraft, updateCourseDraft } from './course-draft.controller.js';
 import { getCourseContent, downloadCourseMaterial } from './course-content.controller.js';
 import { getDepartmentReport } from './department-report.controller.js';
 import { departmentReportQuerySchema } from './dto/department-report.dto.js';
@@ -217,6 +218,20 @@ trainingAwarenessRouter.post(
   authorize('training-courses.create'),
   parseCourseUpload,
   asyncHandler(createCourse),
+);
+trainingAwarenessRouter.get(
+  '/courses/:courseId',
+  authenticate,
+  authorize('training-courses.update'),
+  validate({ params: assignCourseParamsSchema }),
+  asyncHandler(getCourseDraft),
+);
+trainingAwarenessRouter.patch(
+  '/courses/:courseId',
+  authenticate,
+  authorize('training-courses.update'),
+  parseCourseUpload,
+  asyncHandler(updateCourseDraft),
 );
 trainingAwarenessRouter.get(
   '/assignment-options',

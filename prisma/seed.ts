@@ -73,6 +73,12 @@ async function main(): Promise<void> {
       action: 'assign-course',
       description: 'Assign training courses to users and departments',
     },
+    {
+      code: 'training-courses.update',
+      module: 'training-awareness',
+      action: 'update-course-draft',
+      description: 'Edit security awareness course drafts',
+    },
   ]) {
     const permission = await prisma.permissions.upsert({
       where: { code: permissionData.code },

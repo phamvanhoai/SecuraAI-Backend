@@ -75,6 +75,16 @@ export async function cleanupCourseUploads(files: readonly Express.Multer.File[]
   await Promise.all(files.map((file) => rm(path.join(root, file.filename), { force: true })));
 }
 
+export async function cleanupStoredCourseMaterials(storageKeys: readonly string[]): Promise<void> {
+  const storageRoot = path.resolve(env.FILE_STORAGE_DIR);
+  await Promise.allSettled(
+    storageKeys.map(async (storageKey) => {
+      const absolute = path.resolve(storageRoot, ...storageKey.split('/'));
+      if (absolute.startsWith(`${root}${path.sep}`)) await rm(absolute, { force: true });
+    }),
+  );
+}
+
 export async function inspectCourseUploads(
   files: readonly Express.Multer.File[],
 ): Promise<CourseUpload[]> {

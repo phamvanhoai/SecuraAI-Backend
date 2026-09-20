@@ -24,6 +24,7 @@ export const trainingAwarenessModule: ModuleManifest = {
     'View certificates issued to the signed-in employee (UC165)',
     'Issue and view training completion certificates for completed, passed enrollments',
     'Create and list security awareness course drafts',
+    'Edit unassigned security awareness course drafts (UC160)',
     'Assign courses to users and departments',
     'Take and automatically score post-training assessments',
     'Track campaign and employee training completion',

@@ -1889,6 +1889,65 @@ export const openApiSpec = swaggerJsdoc({
           },
         },
       },
+      '/training/courses/{courseId}': {
+        get: {
+          tags: ['Training Awareness'],
+          summary: 'Get an editable security awareness course draft (UC160)',
+          description:
+            'Requires training-courses.update. Returns the complete unassigned draft, including correct-answer metadata and private-file metadata needed to prefill the editor.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'courseId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          responses: {
+            '200': { description: 'Complete editable draft' },
+            '403': { description: 'training-courses.update permission required' },
+            '404': { description: 'Course not found' },
+            '409': { description: 'Course is not a draft or has assignments' },
+          },
+        },
+        patch: {
+          tags: ['Training Awareness'],
+          summary: 'Edit a security awareness course draft (UC160)',
+          description:
+            'Requires training-courses.update. Atomically replaces an unassigned draft’s lessons, materials and assessments. expectedUpdatedAt prevents lost updates. Existing private files may be retained; replacement files use UUID upload keys. No schema change.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'courseId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': { schema: { type: 'object' } },
+              'multipart/form-data': {
+                schema: {
+                  type: 'object',
+                  required: ['payload'],
+                  properties: { payload: { type: 'string' } },
+                  additionalProperties: { type: 'string', format: 'binary' },
+                },
+              },
+            },
+          },
+          responses: {
+            '200': { description: 'Draft updated and audited' },
+            '403': { description: 'training-courses.update permission required' },
+            '404': { description: 'Course not found' },
+            '409': { description: 'Not editable or stale draft' },
+            '422': { description: 'Invalid draft or file references' },
+          },
+        },
+      },
       '/training/materials/{materialId}/download': {
         get: {
           tags: ['Training Awareness'],

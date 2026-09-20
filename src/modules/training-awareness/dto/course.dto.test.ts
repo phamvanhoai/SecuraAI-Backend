@@ -3,6 +3,7 @@ import {
   assignmentOptionsQuerySchema,
   assignCourseBodySchema,
   createCourseBodySchema,
+  updateCourseDraftBodySchema,
 } from './course.dto.js';
 
 describe('createCourseBodySchema', () => {
@@ -53,6 +54,53 @@ describe('createCourseBodySchema', () => {
         status: 'published',
       }).success,
     ).toBe(false);
+  });
+});
+
+describe('updateCourseDraftBodySchema', () => {
+  const draft = {
+    title: 'Phishing awareness',
+    description: null,
+    content: 'Learn how to identify suspicious messages.',
+    expectedUpdatedAt: '2026-09-19T08:00:00.000Z',
+    lessons: [
+      {
+        title: 'Suspicious messages',
+        isRequired: true,
+        materials: [
+          {
+            title: 'Existing video',
+            type: 'video',
+            existingFileId: 'e2ef8324-9ac0-4e7f-b16d-50050274a72e',
+          },
+        ],
+      },
+    ],
+  };
+
+  it('accepts an existing private file from the same draft', () => {
+    expect(updateCourseDraftBodySchema.safeParse(draft).success).toBe(true);
+  });
+
+  it('requires optimistic concurrency and exactly one material source', () => {
+    expect(
+      updateCourseDraftBodySchema.safeParse({ ...draft, expectedUpdatedAt: undefined }).success,
+    ).toBe(false);
+    const invalid = {
+      ...draft,
+      lessons: [
+        {
+          ...draft.lessons[0]!,
+          materials: [
+            {
+              ...draft.lessons[0]!.materials[0]!,
+              externalUrl: 'https://example.com/video.mp4',
+            },
+          ],
+        },
+      ],
+    };
+    expect(updateCourseDraftBodySchema.safeParse(invalid).success).toBe(false);
   });
 });
 
