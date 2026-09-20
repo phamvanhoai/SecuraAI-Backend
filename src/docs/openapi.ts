@@ -679,6 +679,64 @@ export const openApiSpec = swaggerJsdoc({
             requestId: { type: 'string' },
           },
         },
+        UserDetail: {
+          type: 'object',
+          required: [
+            'id',
+            'email',
+            'fullName',
+            'status',
+            'mustChangePassword',
+            'mfaEnabled',
+            'roles',
+            'createdAt',
+            'updatedAt',
+          ],
+          properties: {
+            id: { type: 'string', format: 'uuid' },
+            email: { type: 'string', format: 'email' },
+            fullName: { type: 'string' },
+            phone: { type: 'string', nullable: true },
+            employeeCode: { type: 'string', nullable: true },
+            avatarUrl: { type: 'string', nullable: true },
+            status: {
+              type: 'string',
+              enum: ['active', 'inactive', 'locked', 'disabled'],
+            },
+            mustChangePassword: { type: 'boolean' },
+            emailVerifiedAt: { type: 'string', format: 'date-time', nullable: true },
+            lastLoginAt: { type: 'string', format: 'date-time', nullable: true },
+            lastLockedAt: { type: 'string', format: 'date-time', nullable: true },
+            disabledAt: { type: 'string', format: 'date-time', nullable: true },
+            mfaEnabled: { type: 'boolean' },
+            department: {
+              type: 'object',
+              nullable: true,
+              required: ['id', 'code', 'name'],
+              properties: {
+                id: { type: 'string', format: 'uuid' },
+                code: { type: 'string' },
+                name: { type: 'string' },
+              },
+            },
+            roles: {
+              type: 'array',
+              items: {
+                type: 'object',
+                required: ['id', 'code', 'name', 'assignedAt'],
+                properties: {
+                  id: { type: 'string', format: 'uuid' },
+                  code: { type: 'string' },
+                  name: { type: 'string' },
+                  description: { type: 'string', nullable: true },
+                  assignedAt: { type: 'string', format: 'date-time' },
+                },
+              },
+            },
+            createdAt: { type: 'string', format: 'date-time' },
+            updatedAt: { type: 'string', format: 'date-time' },
+          },
+        },
         CurrentUser: {
           type: 'object',
           required: [
@@ -2667,6 +2725,44 @@ export const openApiSpec = swaggerJsdoc({
             '409': { description: 'Email or employee code already exists' },
             '422': { description: 'Invalid role, department, or request body' },
             '503': { description: 'Email service is not configured or unavailable' },
+          },
+        },
+      },
+      '/users/{userId}': {
+        get: {
+          tags: ['Users'],
+          summary: 'View a user account',
+          description:
+            'Returns safe account, department, role, MFA, and activity metadata. Requires users.read.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'userId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          responses: {
+            '200': {
+              description: 'User account details',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    required: ['success', 'data'],
+                    properties: {
+                      success: { type: 'boolean', example: true },
+                      data: { $ref: '#/components/schemas/UserDetail' },
+                    },
+                  },
+                },
+              },
+            },
+            '401': { description: 'Unauthorized' },
+            '403': { description: 'Missing users.read permission' },
+            '404': { description: 'User was not found' },
+            '422': { description: 'Invalid user identifier' },
           },
         },
       },
