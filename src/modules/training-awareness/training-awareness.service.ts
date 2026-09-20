@@ -1,16 +1,25 @@
 import { AppError } from '../../common/errors/app-error.js';
-import { trainingAwarenessRepository, type CourseRecord } from './training-awareness.repository.js';
+import {
+  trainingAwarenessRepository,
+  type CourseDraftDetailRecord,
+  type CourseRecord,
+} from './training-awareness.repository.js';
 import type {
   AssignCourseBody,
   AssignmentOptionsQuery,
   CreateCourseBody,
   ListCoursesQuery,
+  UpdateCourseDraftBody,
 } from './dto/course.dto.js';
 import type { ListMyAssessmentsQuery, SubmitAssessmentBody } from './dto/assessment.dto.js';
 import type { CompletionCampaignsQuery, CompletionEnrollmentsQuery } from './dto/completion.dto.js';
 
 type Actor = { userId: string; permissions: readonly string[] };
 type RequestContext = { ipAddress: string | null; userAgent: string | null };
+
+const canUpdateCourseDraft = (actor: Actor): boolean =>
+  actor.permissions.includes('training-courses.update') ||
+  actor.permissions.includes('training-courses.create');
 
 const isPastDueDate = (dueDate: Date, now = new Date()) => {
   const dueBoundary = new Date(dueDate);
@@ -28,6 +37,28 @@ const toCourseResponse = (course: CourseRecord) => ({
   createdAt: course.created_at,
   updatedAt: course.updated_at,
 });
+
+const toCourseDraftDetailResponse = (course: CourseDraftDetailRecord) => {
+  const quiz = course.quizzes[0];
+  return {
+    ...toCourseResponse(course),
+    assessment: quiz
+      ? {
+          title: quiz.title,
+          passingScore: Number(quiz.passing_score),
+          maxAttempts: quiz.max_attempts,
+          questions: quiz.quiz_questions.map((question) => ({
+            type: question.question_type,
+            text: question.question_text,
+            options: question.quiz_options.map((option) => ({
+              text: option.option_text,
+              isCorrect: option.is_correct,
+            })),
+          })),
+        }
+      : null,
+  };
+};
 
 const assessmentAvailability = (
   startDate: Date,
@@ -320,6 +351,33 @@ export const trainingAwarenessService = {
       ...context,
     });
     return toCourseResponse(course);
+  },
+  async getCourseDraft(courseId: string, actor: Actor) {
+    if (!canUpdateCourseDraft(actor))
+      throw new AppError(403, 'FORBIDDEN', 'Insufficient permissions');
+    const course = await trainingAwarenessRepository.getCourseDraft(courseId);
+    if (!course) throw new AppError(404, 'TRAINING_COURSE_NOT_FOUND', 'Training course not found');
+    if (course.status !== 'draft')
+      throw new AppError(409, 'TRAINING_COURSE_NOT_DRAFT', 'Only draft courses can be edited');
+    return toCourseDraftDetailResponse(course);
+  },
+  async updateCourseDraft(
+    courseId: string,
+    input: UpdateCourseDraftBody,
+    actor: Actor,
+    context: RequestContext,
+  ) {
+    if (!canUpdateCourseDraft(actor))
+      throw new AppError(403, 'FORBIDDEN', 'Insufficient permissions');
+    const result = await trainingAwarenessRepository.updateCourseDraft(courseId, input, {
+      actorUserId: actor.userId,
+      ...context,
+    });
+    if (result.kind === 'not_found')
+      throw new AppError(404, 'TRAINING_COURSE_NOT_FOUND', 'Training course not found');
+    if (result.kind === 'not_draft')
+      throw new AppError(409, 'TRAINING_COURSE_NOT_DRAFT', 'Only draft courses can be edited');
+    return toCourseDraftDetailResponse(result.course);
   },
   async listAssignmentOptions(query: AssignmentOptionsQuery, actor: Actor) {
     if (!actor.permissions.includes('training-courses.assign'))

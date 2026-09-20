@@ -57,6 +57,21 @@ within the reminder window. Already delivered jobs are excluded before the
 candidate limit, so the next run progresses through the remaining recipients.
 Database failures do not record a successful delivery; the next run retries.
 
+## Edit security awareness course draft (UC161)
+
+- `GET /training/courses/{courseId}` returns draft content and assessment data for
+  editing. `PATCH` on the same route atomically replaces the editable fields and
+  optional assessment.
+- Both routes accept `training-courses.update` or the existing
+  `training-courses.create` permission for backward compatibility. The update
+  permission is assigned by migration and seed to Admin and Security Officer.
+  Published and archived courses return `409`; their
+  historical assignments, attempts, results and certificates are never rewritten.
+- Updates write `training_course.draft_updated` to the audit log. Course material
+  itself is not copied into the audit record; the audit records whether it changed.
+- No table or column changes are required. The migration adds only the permission
+  catalog row and role mappings.
+
 ## Where to test
 
 Login as an Employee, open **Notifications** (header bell) or **My training

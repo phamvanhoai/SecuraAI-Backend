@@ -29,20 +29,24 @@ const assessmentQuestionSchema = z
     }
   });
 
+const courseDraftFieldsSchema = z.object({
+  title: z.string().trim().min(3).max(255),
+  description: z.string().trim().max(2000).nullable().optional(),
+  content: z.string().trim().min(10).max(50000),
+  assessment: z
+    .object({
+      title: z.string().trim().min(3).max(255),
+      passingScore: z.number().min(0).max(100),
+      maxAttempts: z.number().int().min(1).max(10),
+      questions: z.array(assessmentQuestionSchema).min(1).max(50),
+    })
+    .optional(),
+});
+
 export const createCourseBodySchema = z
   .object({
-    title: z.string().trim().min(3).max(255),
-    description: z.string().trim().max(2000).nullable().optional(),
-    content: z.string().trim().min(10).max(50000),
+    ...courseDraftFieldsSchema.shape,
     status: z.enum(['draft', 'published']).default('draft'),
-    assessment: z
-      .object({
-        title: z.string().trim().min(3).max(255),
-        passingScore: z.number().min(0).max(100),
-        maxAttempts: z.number().int().min(1).max(10),
-        questions: z.array(assessmentQuestionSchema).min(1).max(50),
-      })
-      .optional(),
   })
   .strict()
   .superRefine((value, context) => {
@@ -54,6 +58,8 @@ export const createCourseBodySchema = z
       });
     }
   });
+
+export const updateCourseDraftBodySchema = courseDraftFieldsSchema.strict();
 
 export const listCoursesQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
@@ -103,6 +109,7 @@ export const assignCourseBodySchema = z
   });
 
 export type CreateCourseBody = z.infer<typeof createCourseBodySchema>;
+export type UpdateCourseDraftBody = z.infer<typeof updateCourseDraftBodySchema>;
 export type ListCoursesQuery = z.infer<typeof listCoursesQuerySchema>;
 export type AssignCourseParams = z.infer<typeof assignCourseParamsSchema>;
 export type AssignCourseBody = z.infer<typeof assignCourseBodySchema>;

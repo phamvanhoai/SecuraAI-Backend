@@ -3,6 +3,7 @@ import {
   assignmentOptionsQuerySchema,
   assignCourseBodySchema,
   createCourseBodySchema,
+  updateCourseDraftBodySchema,
 } from './course.dto.js';
 
 describe('createCourseBodySchema', () => {
@@ -50,6 +51,28 @@ describe('createCourseBodySchema', () => {
         title: 'Incomplete course',
         description: null,
         content: 'Content without a completion assessment.',
+        status: 'published',
+      }).success,
+    ).toBe(false);
+  });
+});
+
+describe('updateCourseDraftBodySchema', () => {
+  it('accepts editable draft fields without a status transition', () => {
+    expect(
+      updateCourseDraftBodySchema.safeParse({
+        title: 'Updated phishing awareness',
+        description: null,
+        content: 'Updated learning objectives and training material.',
+      }).success,
+    ).toBe(true);
+  });
+
+  it('rejects attempts to change draft status through the edit endpoint', () => {
+    expect(
+      updateCourseDraftBodySchema.safeParse({
+        title: 'Updated phishing awareness',
+        content: 'Updated learning objectives and training material.',
         status: 'published',
       }).success,
     ).toBe(false);

@@ -6,6 +6,8 @@ const repositoryMocks = vi.hoisted(() => ({
   getMyAssessment: vi.fn(),
   submitAssessment: vi.fn(),
   withdrawEnrollment: vi.fn(),
+  getCourseDraft: vi.fn(),
+  updateCourseDraft: vi.fn(),
 }));
 
 vi.mock('./training-awareness.repository.js', () => ({
@@ -88,5 +90,55 @@ describe('trainingAwarenessService assessments', () => {
       statusCode: 409,
       code: 'ASSESSMENT_ATTEMPT_LIMIT_REACHED',
     });
+  });
+});
+
+describe('trainingAwarenessService draft course editing', () => {
+  const actor = { userId: 'user-1', permissions: ['training-courses.update'] };
+  const context = { ipAddress: null, userAgent: null };
+
+  beforeEach(() => vi.clearAllMocks());
+
+  it('requires update or create permission', async () => {
+    await expect(
+      trainingAwarenessService.getCourseDraft('course-1', { userId: 'user-1', permissions: [] }),
+    ).rejects.toMatchObject({ statusCode: 403, code: 'FORBIDDEN' });
+    expect(repositoryMocks.getCourseDraft).not.toHaveBeenCalled();
+  });
+
+  it('accepts the existing create permission for backward compatibility', async () => {
+    repositoryMocks.getCourseDraft.mockResolvedValue({
+      training_course_id: 'course-1',
+      title: 'Draft course',
+      description: null,
+      content: 'Draft training material.',
+      status: 'draft',
+      created_by_user_id: 'user-1',
+      created_at: new Date('2026-09-18T00:00:00.000Z'),
+      updated_at: new Date('2026-09-18T00:00:00.000Z'),
+      quizzes: [],
+    });
+    await expect(
+      trainingAwarenessService.getCourseDraft('course-1', {
+        userId: 'user-1',
+        permissions: ['training-courses.create'],
+      }),
+    ).resolves.toMatchObject({ id: 'course-1', status: 'draft' });
+  });
+
+  it('rejects edits when the repository observes a non-draft course', async () => {
+    repositoryMocks.updateCourseDraft.mockResolvedValue({ kind: 'not_draft' });
+    await expect(
+      trainingAwarenessService.updateCourseDraft(
+        'course-1',
+        {
+          title: 'Updated awareness course',
+          description: null,
+          content: 'Updated training material for employees.',
+        },
+        actor,
+        context,
+      ),
+    ).rejects.toMatchObject({ statusCode: 409, code: 'TRAINING_COURSE_NOT_DRAFT' });
   });
 });

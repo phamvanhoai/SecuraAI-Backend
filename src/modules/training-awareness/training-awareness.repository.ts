@@ -5,6 +5,7 @@ import type {
   AssignmentOptionsQuery,
   CreateCourseBody,
   ListCoursesQuery,
+  UpdateCourseDraftBody,
 } from './dto/course.dto.js';
 import type { ListMyAssessmentsQuery, SubmitAssessmentBody } from './dto/assessment.dto.js';
 import type { CompletionCampaignsQuery, CompletionEnrollmentsQuery } from './dto/completion.dto.js';
@@ -21,6 +22,33 @@ const courseSelect = {
 } satisfies Prisma.training_coursesSelect;
 
 export type CourseRecord = Prisma.training_coursesGetPayload<{ select: typeof courseSelect }>;
+const courseDraftDetailSelect = {
+  ...courseSelect,
+  quizzes: {
+    orderBy: [{ created_at: 'desc' as const }, { quiz_id: 'desc' as const }],
+    take: 1,
+    select: {
+      quiz_id: true,
+      title: true,
+      passing_score: true,
+      max_attempts: true,
+      quiz_questions: {
+        orderBy: [{ display_order: 'asc' as const }, { quiz_question_id: 'asc' as const }],
+        select: {
+          question_text: true,
+          question_type: true,
+          quiz_options: {
+            orderBy: [{ display_order: 'asc' as const }, { quiz_option_id: 'asc' as const }],
+            select: { option_text: true, is_correct: true },
+          },
+        },
+      },
+    },
+  },
+} satisfies Prisma.training_coursesSelect;
+export type CourseDraftDetailRecord = Prisma.training_coursesGetPayload<{
+  select: typeof courseDraftDetailSelect;
+}>;
 type RequestContext = { actorUserId: string; ipAddress: string | null; userAgent: string | null };
 
 export const trainingAwarenessRepository = {
@@ -487,6 +515,95 @@ export const trainingAwarenessRepository = {
         },
       });
       return course;
+    });
+  },
+  getCourseDraft(courseId: string): Promise<CourseDraftDetailRecord | null> {
+    return prisma.training_courses.findUnique({
+      where: { training_course_id: courseId },
+      select: courseDraftDetailSelect,
+    });
+  },
+  updateCourseDraft(courseId: string, input: UpdateCourseDraftBody, context: RequestContext) {
+    return prisma.$transaction(async (transaction) => {
+      const before = await transaction.training_courses.findUnique({
+        where: { training_course_id: courseId },
+        select: courseDraftDetailSelect,
+      });
+      if (!before) return { kind: 'not_found' as const };
+      if (before.status !== 'draft') return { kind: 'not_draft' as const };
+
+      const quizIds = (
+        await transaction.quizzes.findMany({
+          where: { training_course_id: courseId },
+          select: { quiz_id: true },
+        })
+      ).map((quiz) => quiz.quiz_id);
+      if (quizIds.length) {
+        await transaction.quiz_options.deleteMany({
+          where: { quiz_questions: { quiz_id: { in: quizIds } } },
+        });
+        await transaction.quiz_questions.deleteMany({ where: { quiz_id: { in: quizIds } } });
+        await transaction.quizzes.deleteMany({ where: { quiz_id: { in: quizIds } } });
+      }
+
+      const course = await transaction.training_courses.update({
+        where: { training_course_id: courseId },
+        data: {
+          title: input.title,
+          description: input.description ?? null,
+          content: input.content,
+          ...(input.assessment
+            ? {
+                quizzes: {
+                  create: {
+                    title: input.assessment.title,
+                    passing_score: input.assessment.passingScore,
+                    max_attempts: input.assessment.maxAttempts,
+                    quiz_questions: {
+                      create: input.assessment.questions.map((question, questionIndex) => ({
+                        question_text: question.text,
+                        question_type: question.type,
+                        score: 1,
+                        display_order: questionIndex + 1,
+                        quiz_options: {
+                          create: question.options.map((option, optionIndex) => ({
+                            option_text: option.text,
+                            is_correct: option.isCorrect,
+                            display_order: optionIndex + 1,
+                          })),
+                        },
+                      })),
+                    },
+                  },
+                },
+              }
+            : {}),
+        },
+        select: courseDraftDetailSelect,
+      });
+      await transaction.audit_logs.create({
+        data: {
+          actor_user_id: context.actorUserId,
+          module: 'training-awareness',
+          action: 'training_course.draft_updated',
+          entity_type: 'training_course',
+          entity_id: courseId,
+          before_data: {
+            title: before.title,
+            description: before.description,
+            assessmentCount: before.quizzes.length,
+          },
+          after_data: {
+            title: course.title,
+            description: course.description,
+            contentChanged: before.content !== course.content,
+            assessmentCount: course.quizzes.length,
+          },
+          ip_address: context.ipAddress,
+          user_agent: context.userAgent,
+        },
+      });
+      return { kind: 'updated' as const, course };
     });
   },
   async listAssignmentOptions(query: AssignmentOptionsQuery) {

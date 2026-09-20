@@ -1,4 +1,6 @@
 import { Router } from 'express';
+import type { RequestHandler } from 'express';
+import { AppError } from '../../common/errors/app-error.js';
 import { getDepartmentReport } from './department-report.controller.js';
 import { departmentReportQuerySchema } from './dto/department-report.dto.js';
 import { getCertificate, issueCertificate } from './certificate.controller.js';
@@ -15,8 +17,10 @@ import {
   submitMyAssessment,
   getCompletionCampaign,
   getLatestCourseAssignment,
+  getCourseDraft,
   listCompletionCampaigns,
   withdrawEnrollment,
+  updateCourseDraft,
 } from './training-awareness.controller.js';
 import {
   assignmentOptionsQuerySchema,
@@ -24,6 +28,7 @@ import {
   assignCourseParamsSchema,
   createCourseBodySchema,
   listCoursesQuerySchema,
+  updateCourseDraftBodySchema,
   withdrawEnrollmentBodySchema,
 } from './dto/course.dto.js';
 import {
@@ -46,6 +51,16 @@ import {
 } from './training-reminders.controller.js';
 
 export const trainingAwarenessRouter = Router();
+const authorizeCourseDraftUpdate: RequestHandler = (req, _res, next) => {
+  if (
+    !req.auth?.permissions.some((permission) =>
+      ['training-courses.update', 'training-courses.create'].includes(permission),
+    )
+  ) {
+    throw new AppError(403, 'FORBIDDEN', 'Insufficient permissions');
+  }
+  next();
+};
 trainingAwarenessRouter.get(
   '/department-report',
   authenticate,
@@ -151,6 +166,20 @@ trainingAwarenessRouter.post(
   authorize('training-courses.create'),
   validate({ body: createCourseBodySchema }),
   asyncHandler(createCourse),
+);
+trainingAwarenessRouter.get(
+  '/courses/:courseId',
+  authenticate,
+  authorizeCourseDraftUpdate,
+  validate({ params: assignCourseParamsSchema }),
+  asyncHandler(getCourseDraft),
+);
+trainingAwarenessRouter.patch(
+  '/courses/:courseId',
+  authenticate,
+  authorizeCourseDraftUpdate,
+  validate({ params: assignCourseParamsSchema, body: updateCourseDraftBodySchema }),
+  asyncHandler(updateCourseDraft),
 );
 trainingAwarenessRouter.get(
   '/assignment-options',

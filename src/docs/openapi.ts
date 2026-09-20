@@ -119,6 +119,51 @@ export const openApiSpec = swaggerJsdoc({
             updatedAt: { type: 'string', format: 'date-time' },
           },
         },
+        UpdateTrainingCourseDraftRequest: {
+          type: 'object',
+          additionalProperties: false,
+          required: ['title', 'content'],
+          properties: {
+            title: { type: 'string', minLength: 3, maxLength: 255 },
+            description: { type: 'string', nullable: true, maxLength: 2000 },
+            content: { type: 'string', minLength: 10, maxLength: 50000 },
+            assessment: {
+              type: 'object',
+              required: ['title', 'passingScore', 'maxAttempts', 'questions'],
+              properties: {
+                title: { type: 'string', minLength: 3, maxLength: 255 },
+                passingScore: { type: 'number', minimum: 0, maximum: 100 },
+                maxAttempts: { type: 'integer', minimum: 1, maximum: 10 },
+                questions: {
+                  type: 'array',
+                  minItems: 1,
+                  maxItems: 50,
+                  items: {
+                    type: 'object',
+                    required: ['type', 'text', 'options'],
+                    properties: {
+                      type: { type: 'string', enum: ['single_choice', 'multiple_choice'] },
+                      text: { type: 'string', minLength: 3, maxLength: 2000 },
+                      options: {
+                        type: 'array',
+                        minItems: 2,
+                        maxItems: 6,
+                        items: {
+                          type: 'object',
+                          required: ['text', 'isCorrect'],
+                          properties: {
+                            text: { type: 'string', minLength: 1, maxLength: 1000 },
+                            isCorrect: { type: 'boolean' },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
         AssignTrainingCourseRequest: {
           type: 'object',
           additionalProperties: false,
@@ -1709,6 +1754,59 @@ export const openApiSpec = swaggerJsdoc({
             '401': { description: 'Authentication required' },
             '403': { description: 'training-courses.create permission required' },
             '422': { description: 'Invalid course data' },
+          },
+        },
+      },
+      '/training/courses/{courseId}': {
+        get: {
+          tags: ['Training Awareness'],
+          summary: 'Get an editable security awareness course draft',
+          description:
+            'Requires training-courses.update or the existing training-courses.create permission. Returns draft content and its assessment with correct-answer metadata for form prefill.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'courseId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          responses: {
+            '200': { description: 'Editable draft course detail' },
+            '403': { description: 'training-courses.update or training-courses.create required' },
+            '404': { description: 'Course not found' },
+            '409': { description: 'Only draft courses can be edited' },
+          },
+        },
+        patch: {
+          tags: ['Training Awareness'],
+          summary: 'Edit a security awareness course draft',
+          description:
+            'Requires training-courses.update or the existing training-courses.create permission. Replaces draft content and optional assessment atomically, preserves published courses, and records an audit event.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'courseId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/UpdateTrainingCourseDraftRequest' },
+              },
+            },
+          },
+          responses: {
+            '200': { description: 'Draft updated' },
+            '403': { description: 'training-courses.update or training-courses.create required' },
+            '404': { description: 'Course not found' },
+            '409': { description: 'Only draft courses can be edited' },
+            '422': { description: 'Invalid draft data' },
           },
         },
       },
