@@ -18,6 +18,7 @@ import {
   createRiskTreatmentPlan,
   updateRiskTreatmentPlan,
   cancelRiskTreatmentPlan,
+  updateRiskTreatmentActionProgress,
 } from './risk-management.controller.js';
 import { listRiskAssessmentsQuerySchema } from './dto/list-risk-assessments-query.dto.js';
 import { riskAssessmentParamsSchema } from './dto/risk-assessment-params.dto.js';
@@ -44,6 +45,10 @@ import {
 } from './dto/create-treatment-plan.dto.js';
 import { updateTreatmentPlanBodySchema } from './dto/update-treatment-plan.dto.js';
 import { cancelTreatmentPlanBodySchema } from './dto/cancel-treatment-plan.dto.js';
+import {
+  treatmentActionProgressParamsSchema,
+  updateTreatmentActionProgressBodySchema,
+} from './dto/update-treatment-action-progress.dto.js';
 
 export const riskManagementRouter = Router();
 
@@ -85,6 +90,17 @@ riskManagementRouter.patch(
   authorize('risk-treatment-plans.update'),
   validate({ params: treatmentPlanParamsSchema, body: updateTreatmentPlanBodySchema }),
   asyncHandler(updateRiskTreatmentPlan),
+);
+
+riskManagementRouter.patch(
+  '/treatment-plans/:treatmentPlanId/actions/:actionId/progress',
+  authenticate,
+  authorize('risk-treatment-actions.update-progress'),
+  validate({
+    params: treatmentActionProgressParamsSchema,
+    body: updateTreatmentActionProgressBodySchema,
+  }),
+  asyncHandler(updateRiskTreatmentActionProgress),
 );
 
 riskManagementRouter.post(
