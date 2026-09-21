@@ -1,11 +1,5 @@
 import swaggerJsdoc from 'swagger-jsdoc';
-import { loginHistoryPaths } from './login-history.openapi.js';
-import { departmentTrainingReportPaths } from './department-training-report.openapi.js';
 import { env } from '../config/env.js';
-import { trainingReminderPaths } from './training-reminders.openapi.js';
-import { complianceReminderPaths } from './compliance-reminders.openapi.js';
-import { incidentPaths } from './incidents.openapi.js';
-import { accountLockPaths } from './account-lock.openapi.js';
 
 export const openApiSpec = swaggerJsdoc({
   definition: {
@@ -22,175 +16,98 @@ export const openApiSpec = swaggerJsdoc({
       { name: 'Users' },
       { name: 'Role Management' },
       { name: 'Assets' },
-      { name: 'Risk Assessments' },
       { name: 'Security Monitoring' },
       { name: 'AI Alerts' },
       { name: 'Policies' },
-      { name: 'Incidents' },
       { name: 'Integrations' },
       { name: 'Training Awareness' },
+      { name: 'Workflow Definitions' },
     ],
     components: {
-      securitySchemes: {
-        bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' },
-        reminderCronAuth: {
-          type: 'http',
-          scheme: 'bearer',
-          description: 'Server-only CRON_SECRET; not a user JWT',
-        },
-      },
+      securitySchemes: { bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' } },
       schemas: {
         CreateTrainingCourseRequest: {
-          type: 'object',
-          additionalProperties: false,
-          required: ['title', 'content'],
+          type: 'object', additionalProperties: false, required: ['title', 'content'],
           properties: {
-            lessons: {
-              type: 'array',
-              minItems: 1,
-              maxItems: 50,
-              description:
-                'Ordered lessons; structured courses must be created as drafts. Maximum 100 materials and 100 questions across the course. Optional only for legacy clients.',
-              items: {
-                type: 'object',
-                additionalProperties: false,
-                required: ['title', 'isRequired', 'materials'],
-                properties: {
-                  title: { type: 'string', minLength: 3, maxLength: 255 },
-                  description: { type: 'string', maxLength: 2000 },
-                  isRequired: { type: 'boolean' },
-                  materials: {
-                    type: 'array',
-                    minItems: 1,
-                    maxItems: 10,
-                    items: {
-                      type: 'object',
-                      additionalProperties: false,
-                      required: ['title', 'type'],
-                      properties: {
-                        title: { type: 'string', minLength: 1, maxLength: 255 },
-                        type: { type: 'string', enum: ['text', 'video', 'document', 'link'] },
-                        content: { type: 'string', maxLength: 50000 },
-                        externalUrl: {
-                          type: 'string',
-                          format: 'uri',
-                          maxLength: 2000,
-                          description:
-                            'HTTPS without credentials; backend stores but does not fetch the URL.',
-                        },
-                        uploadKey: {
-                          type: 'string',
-                          format: 'uuid',
-                          description:
-                            'Unique multipart file field name; at most 10 uploads. Exactly one source matching type.',
-                        },
-                      },
-                    },
-                  },
-                  assessment: {
-                    $ref: '#/components/schemas/CreateTrainingCourseRequest/properties/assessment',
-                  },
-                },
-              },
-            },
             title: { type: 'string', minLength: 3, maxLength: 255 },
             description: { type: 'string', nullable: true, maxLength: 2000 },
             content: { type: 'string', minLength: 10, maxLength: 50000 },
-            status: {
-              type: 'string',
-              enum: ['draft', 'published'],
-              default: 'draft',
-              description: 'Published courses require an assessment.',
-            },
-            assessment: {
-              type: 'object',
-              description:
-                'Optional post-training multiple-choice assessment created atomically with the course.',
-              required: ['title', 'passingScore', 'maxAttempts', 'questions'],
-              properties: {
-                title: { type: 'string', minLength: 3, maxLength: 255 },
-                passingScore: { type: 'number', minimum: 0, maximum: 100 },
-                maxAttempts: { type: 'integer', minimum: 1, maximum: 10 },
-                questions: {
-                  type: 'array',
-                  minItems: 1,
-                  maxItems: 50,
-                  items: {
-                    type: 'object',
-                    required: ['type', 'text', 'options'],
-                    properties: {
-                      type: {
-                        type: 'string',
-                        enum: ['single_choice', 'multiple_choice'],
-                        description:
-                          'Single choice requires exactly one correct option; multiple choice requires at least two.',
-                      },
-                      text: { type: 'string', minLength: 3, maxLength: 2000 },
-                      options: {
-                        type: 'array',
-                        minItems: 2,
-                        maxItems: 6,
-                        description:
-                          'Correct-option count is validated according to the question type.',
-                        items: {
-                          type: 'object',
-                          required: ['text', 'isCorrect'],
-                          properties: {
-                            text: { type: 'string', minLength: 1, maxLength: 1000 },
-                            isCorrect: { type: 'boolean' },
-                          },
-                        },
-                      },
-                    },
-                  },
-                },
-              },
-            },
           },
         },
         TrainingCourse: {
-          type: 'object',
-          required: ['id', 'title', 'status', 'createdAt', 'updatedAt'],
+          type: 'object', required: ['id', 'title', 'status', 'createdAt', 'updatedAt'],
           properties: {
-            id: { type: 'string', format: 'uuid' },
-            title: { type: 'string' },
-            description: { type: 'string', nullable: true },
-            content: { type: 'string' },
+            id: { type: 'string', format: 'uuid' }, title: { type: 'string' },
+            description: { type: 'string', nullable: true }, content: { type: 'string' },
             status: { type: 'string', enum: ['draft', 'published', 'archived'] },
             createdByUserId: { type: 'string', format: 'uuid', nullable: true },
             createdAt: { type: 'string', format: 'date-time' },
             updatedAt: { type: 'string', format: 'date-time' },
           },
         },
-        AssignTrainingCourseRequest: {
+        WorkflowDefinitionListItem: {
           type: 'object',
-          additionalProperties: false,
-          required: ['title', 'startDate', 'dueDate', 'userIds', 'departmentIds'],
+          required: ['workflowId', 'name', 'entityType', 'isActive', 'stepsCount', 'createdAt', 'updatedAt'],
           properties: {
-            changeReason: {
-              type: 'string',
-              minLength: 3,
-              maxLength: 500,
-              description: 'Required when updating an existing campaign.',
+            workflowId: { type: 'string', format: 'uuid' },
+            name: { type: 'string' },
+            description: { type: 'string', nullable: true },
+            entityType: { type: 'string', enum: ['risk_treatment_plan', 'policy_version', 'incident_report', 'access_request'] },
+            isActive: { type: 'boolean' },
+            stepsCount: { type: 'integer' },
+            createdBy: {
+              type: 'object',
+              nullable: true,
+              properties: {
+                userId: { type: 'string', format: 'uuid' },
+                name: { type: 'string' },
+                email: { type: 'string' },
+              },
             },
-            title: { type: 'string', minLength: 3, maxLength: 255 },
-            startDate: { type: 'string', format: 'date' },
-            dueDate: { type: 'string', format: 'date' },
-            userIds: { type: 'array', maxItems: 200, items: { type: 'string', format: 'uuid' } },
-            departmentIds: {
+            createdAt: { type: 'string', format: 'date-time' },
+            updatedAt: { type: 'string', format: 'date-time' },
+          },
+        },
+        WorkflowDefinitionListResponse: {
+          type: 'object',
+          required: ['items', 'pagination', 'summary'],
+          properties: {
+            items: {
               type: 'array',
-              maxItems: 200,
-              items: { type: 'string', format: 'uuid' },
+              items: { $ref: '#/components/schemas/WorkflowDefinitionListItem' },
+            },
+            pagination: {
+              type: 'object',
+              required: ['page', 'limit', 'total', 'totalPages'],
+              properties: {
+                page: { type: 'integer' },
+                limit: { type: 'integer' },
+                total: { type: 'integer' },
+                totalPages: { type: 'integer' },
+              },
+            },
+            summary: {
+              type: 'object',
+              required: ['total', 'active', 'inactive'],
+              properties: {
+                total: { type: 'integer' },
+                active: { type: 'integer' },
+                inactive: { type: 'integer' },
+              },
             },
           },
         },
         LoginRequest: {
           type: 'object',
           required: ['email', 'password'],
-          additionalProperties: false,
           properties: {
             email: { type: 'string', format: 'email' },
             password: { type: 'string', format: 'password', minLength: 8 },
+            mfaCode: {
+              type: 'string',
+              pattern: '^\\d{6}$',
+              description: 'Required only when MFA is enabled for the account.',
+            },
           },
         },
         InitializeUserAccountRequest: {
@@ -204,38 +121,6 @@ export const openApiSpec = swaggerJsdoc({
             employeeCode: { type: 'string', maxLength: 50 },
             departmentId: { type: 'string', format: 'uuid' },
             roleCodes: { type: 'array', minItems: 1, maxItems: 10, items: { type: 'string' } },
-          },
-        },
-        UserCreateOptions: {
-          type: 'object',
-          required: ['departments', 'roles'],
-          properties: {
-            departments: {
-              type: 'array',
-              items: {
-                type: 'object',
-                required: ['id', 'code', 'name'],
-                properties: {
-                  id: { type: 'string', format: 'uuid' },
-                  code: { type: 'string' },
-                  name: { type: 'string' },
-                },
-              },
-            },
-            roles: {
-              type: 'array',
-              items: {
-                type: 'object',
-                required: ['id', 'code', 'name', 'isSystem'],
-                properties: {
-                  id: { type: 'string', format: 'uuid' },
-                  code: { type: 'string' },
-                  name: { type: 'string' },
-                  description: { type: 'string', nullable: true },
-                  isSystem: { type: 'boolean' },
-                },
-              },
-            },
           },
         },
         RefreshRequest: {
@@ -303,49 +188,6 @@ export const openApiSpec = swaggerJsdoc({
           additionalProperties: false,
           properties: {
             code: { type: 'string', pattern: '^\\d{6}$', example: '123456' },
-          },
-        },
-        VerifyMfaChallengeRequest: {
-          type: 'object',
-          required: ['challengeToken', 'code'],
-          additionalProperties: false,
-          properties: {
-            challengeToken: { type: 'string', minLength: 32, maxLength: 256 },
-            code: {
-              type: 'string',
-              pattern: '^(?:\\d{6}|[A-Za-z0-9]{4}(?:-[A-Za-z0-9]{4}){2})$',
-              description: 'A current authenticator code or one unused recovery code.',
-            },
-          },
-        },
-        DisableMfaRequest: {
-          type: 'object',
-          required: ['currentPassword', 'code'],
-          additionalProperties: false,
-          properties: {
-            currentPassword: { type: 'string', format: 'password' },
-            code: { type: 'string', pattern: '^\\d{6}$' },
-          },
-        },
-        CreateMfaRecoveryRequest: {
-          type: 'object',
-          required: ['challengeToken'],
-          additionalProperties: false,
-          properties: { challengeToken: { type: 'string', minLength: 32, maxLength: 256 } },
-        },
-        DecideMfaRecoveryRequest: {
-          type: 'object',
-          required: ['reason'],
-          additionalProperties: false,
-          properties: { reason: { type: 'string', minLength: 10, maxLength: 2000 } },
-        },
-        MfaChallenge: {
-          type: 'object',
-          required: ['mfaRequired', 'challengeToken', 'expiresIn'],
-          properties: {
-            mfaRequired: { type: 'boolean', enum: [true] },
-            challengeToken: { type: 'string' },
-            expiresIn: { type: 'integer', example: 300, description: 'Lifetime in seconds' },
           },
         },
         TokenPair: {
@@ -515,12 +357,7 @@ export const openApiSpec = swaggerJsdoc({
             integrationId: { type: 'string', format: 'uuid' },
             keyName: { type: 'string' },
             keyFingerprint: { type: 'string', nullable: true },
-            expiresAt: {
-              type: 'string',
-              format: 'date-time',
-              nullable: true,
-              description: 'Must be in the future (expiresAt > currentTime)',
-            },
+            expiresAt: { type: 'string', format: 'date-time', nullable: true, description: 'Must be in the future (expiresAt > currentTime)' },
             isActive: { type: 'boolean' },
             status: { type: 'string', enum: ['ACTIVE', 'INACTIVE', 'EXPIRED', 'REVOKED'] },
             createdAt: { type: 'string', format: 'date-time' },
@@ -538,10 +375,7 @@ export const openApiSpec = swaggerJsdoc({
             isActive: { type: 'boolean' },
             status: { type: 'string', enum: ['ACTIVE', 'INACTIVE', 'EXPIRED'] },
             createdAt: { type: 'string', format: 'date-time' },
-            secret: {
-              type: 'string',
-              description: 'Plaintext secret shown only once upon creation or rotation',
-            },
+            secret: { type: 'string', description: 'Plaintext secret shown only once upon creation or rotation' },
           },
         },
         ConnectionStatusSummaryResponse: {
@@ -616,8 +450,7 @@ export const openApiSpec = swaggerJsdoc({
             integrationIds: {
               type: 'array',
               items: { type: 'string', format: 'uuid' },
-              description:
-                'Optional list of specific integration IDs to probe. If omitted, all configured active integrations are probed.',
+              description: 'Optional list of specific integration IDs to probe. If omitted, all configured active integrations are probed.',
             },
             timeoutMs: {
               type: 'integer',
@@ -711,64 +544,6 @@ export const openApiSpec = swaggerJsdoc({
             requestId: { type: 'string' },
           },
         },
-        UserDetail: {
-          type: 'object',
-          required: [
-            'id',
-            'email',
-            'fullName',
-            'status',
-            'mustChangePassword',
-            'mfaEnabled',
-            'roles',
-            'createdAt',
-            'updatedAt',
-          ],
-          properties: {
-            id: { type: 'string', format: 'uuid' },
-            email: { type: 'string', format: 'email' },
-            fullName: { type: 'string' },
-            phone: { type: 'string', nullable: true },
-            employeeCode: { type: 'string', nullable: true },
-            avatarUrl: { type: 'string', nullable: true },
-            status: {
-              type: 'string',
-              enum: ['active', 'inactive', 'locked', 'disabled'],
-            },
-            mustChangePassword: { type: 'boolean' },
-            emailVerifiedAt: { type: 'string', format: 'date-time', nullable: true },
-            lastLoginAt: { type: 'string', format: 'date-time', nullable: true },
-            lastLockedAt: { type: 'string', format: 'date-time', nullable: true },
-            disabledAt: { type: 'string', format: 'date-time', nullable: true },
-            mfaEnabled: { type: 'boolean' },
-            department: {
-              type: 'object',
-              nullable: true,
-              required: ['id', 'code', 'name'],
-              properties: {
-                id: { type: 'string', format: 'uuid' },
-                code: { type: 'string' },
-                name: { type: 'string' },
-              },
-            },
-            roles: {
-              type: 'array',
-              items: {
-                type: 'object',
-                required: ['id', 'code', 'name', 'assignedAt'],
-                properties: {
-                  id: { type: 'string', format: 'uuid' },
-                  code: { type: 'string' },
-                  name: { type: 'string' },
-                  description: { type: 'string', nullable: true },
-                  assignedAt: { type: 'string', format: 'date-time' },
-                },
-              },
-            },
-            createdAt: { type: 'string', format: 'date-time' },
-            updatedAt: { type: 'string', format: 'date-time' },
-          },
-        },
         CurrentUser: {
           type: 'object',
           required: [
@@ -777,7 +552,6 @@ export const openApiSpec = swaggerJsdoc({
             'fullName',
             'status',
             'mustChangePassword',
-            'mfaEnabled',
             'roles',
             'permissions',
           ],
@@ -787,7 +561,6 @@ export const openApiSpec = swaggerJsdoc({
             fullName: { type: 'string' },
             status: { type: 'string' },
             mustChangePassword: { type: 'boolean' },
-            mfaEnabled: { type: 'boolean' },
             roles: {
               type: 'array',
               items: {
@@ -1275,45 +1048,6 @@ export const openApiSpec = swaggerJsdoc({
             enabled: { type: 'boolean', default: true },
           },
         },
-        AlertThreshold: {
-          type: 'object',
-          required: ['id', 'asset', 'threshold', 'riskLevelMin', 'enabled', 'updatedAt'],
-          properties: {
-            id: { type: 'string', format: 'uuid' },
-            asset: {
-              type: 'object',
-              required: ['id', 'assetCode', 'name'],
-              properties: {
-                id: { type: 'string', format: 'uuid' },
-                assetCode: { type: 'string' },
-                name: { type: 'string' },
-              },
-            },
-            threshold: { type: 'number', minimum: 0.01, maximum: 1 },
-            riskLevelMin: {
-              type: 'string',
-              nullable: true,
-              enum: ['low', 'medium', 'high', 'critical'],
-            },
-            enabled: { type: 'boolean' },
-            updatedByUserId: { type: 'string', format: 'uuid', nullable: true },
-            updatedAt: { type: 'string', format: 'date-time' },
-          },
-        },
-        SetAlertThresholdRequest: {
-          type: 'object',
-          additionalProperties: false,
-          required: ['threshold'],
-          properties: {
-            threshold: { type: 'number', minimum: 0.01, maximum: 1 },
-            riskLevelMin: {
-              type: 'string',
-              nullable: true,
-              enum: ['low', 'medium', 'high', 'critical'],
-            },
-            enabled: { type: 'boolean', default: true },
-          },
-        },
         CreateModelConfigurationRequest: {
           type: 'object',
           additionalProperties: false,
@@ -1550,335 +1284,13 @@ export const openApiSpec = swaggerJsdoc({
       },
     },
     paths: {
-      ...loginHistoryPaths,
-      ...trainingReminderPaths,
-      ...departmentTrainingReportPaths,
-      ...complianceReminderPaths,
-      ...incidentPaths,
-      ...accountLockPaths,
-      '/training/enrollments/{enrollmentId}/withdraw': {
-        post: {
-          tags: ['Training Awareness'],
-          summary: 'Withdraw an individual training assignment',
-          description:
-            'Requires training-courses.assign. Preserves history and quiz results, blocks further assessment access, and audits the reason and actor. Completed and withdrawn enrollments cannot be withdrawn.',
-          security: [{ bearerAuth: [] }],
-          parameters: [
-            {
-              name: 'enrollmentId',
-              in: 'path',
-              required: true,
-              schema: { type: 'string', format: 'uuid' },
-            },
-          ],
-          requestBody: {
-            required: true,
-            content: {
-              'application/json': {
-                schema: {
-                  type: 'object',
-                  additionalProperties: false,
-                  required: ['reason'],
-                  properties: { reason: { type: 'string', minLength: 3, maxLength: 500 } },
-                },
-              },
-            },
-          },
-          responses: {
-            '200': { description: 'Assignment withdrawn' },
-            '403': { description: 'Insufficient permissions' },
-            '409': { description: 'Enrollment completed, withdrawn, or unavailable' },
-            '422': { description: 'Invalid reason or identifier' },
-          },
-        },
-      },
-      '/training/my-certificates': {
-        get: {
-          tags: ['Training Awareness'],
-          summary: 'List my issued training certificates (UC165)',
-          description:
-            'Requires training-certificates.read-own. Returns only certificates belonging to the signed-in user; certificate metadata only, not a generated PDF.',
-          security: [{ bearerAuth: [] }],
-          parameters: [
-            {
-              name: 'page',
-              in: 'query',
-              schema: { type: 'integer', minimum: 1, maximum: 100000, default: 1 },
-            },
-            {
-              name: 'limit',
-              in: 'query',
-              schema: { type: 'integer', minimum: 1, maximum: 50, default: 10 },
-            },
-            { name: 'q', in: 'query', schema: { type: 'string', maxLength: 100 } },
-          ],
-          responses: {
-            '200': {
-              description:
-                'Paginated certificates with id, number, issuedAt, issuedBy, enrollmentId, completedAt, campaignTitle and courseTitle',
-            },
-            '401': { description: 'Authentication required' },
-            '403': { description: 'Insufficient permissions' },
-            '422': { description: 'Invalid query' },
-          },
-        },
-      },
-      '/training/certificates': {
-        get: {
-          tags: ['Training Awareness'],
-          summary: 'List issued training certificates (UC164)',
-          description:
-            'Requires training-certificates.read-issued. Returns paginated certificate metadata for Security Officers; no generated PDF is implied.',
-          security: [{ bearerAuth: [] }],
-          parameters: [
-            {
-              name: 'page',
-              in: 'query',
-              schema: { type: 'integer', minimum: 1, maximum: 100000, default: 1 },
-            },
-            {
-              name: 'limit',
-              in: 'query',
-              schema: { type: 'integer', minimum: 1, maximum: 50, default: 10 },
-            },
-            {
-              name: 'q',
-              in: 'query',
-              description: 'Employee, email, employee code, course, campaign or certificate number',
-              schema: { type: 'string', maxLength: 100 },
-            },
-          ],
-          responses: {
-            '200': { description: 'Paginated issued certificate metadata' },
-            '401': { description: 'Authentication required' },
-            '403': { description: 'Insufficient permissions' },
-            '422': { description: 'Invalid query' },
-          },
-        },
-      },
-      '/training/enrollments/{enrollmentId}/certificate': {
-        get: {
-          tags: ['Training Awareness'],
-          summary: 'View training completion certificate and eligibility',
-          description:
-            'Requires training-completion.read. Returns enrollment and certificate metadata plus explicit eligibility requirements: completed enrollment, 100% progress and an enrollment-scoped passing final assessment when the course has one. Lesson assessments and attempts from another campaign do not qualify. Existing certificates remain viewable even if course content later changes.',
-          security: [{ bearerAuth: [] }],
-          parameters: [
-            {
-              name: 'enrollmentId',
-              in: 'path',
-              required: true,
-              schema: { type: 'string', format: 'uuid' },
-            },
-          ],
-          responses: {
-            '200': { description: 'success/data envelope containing certificate metadata or null' },
-            '401': { description: 'Authentication required' },
-            '403': { description: 'Completion read permission required' },
-            '404': { description: 'Enrollment not found' },
-            '422': { description: 'Invalid enrollment UUID' },
-          },
-        },
-        post: {
-          tags: ['Training Awareness'],
-          summary: 'Issue training completion certificate (UC80)',
-          description:
-            'Requires training-certificates.issue. No request body. Requires completed enrollment, 100% progress, completedAt and, only when configured, a submitted passing final-assessment attempt scoped to this enrollment. Creates one certificate per enrollment and its audit record atomically. Repeated requests return the existing certificate. Returns the same metadata as GET; no PDF file is generated.',
-          security: [{ bearerAuth: [] }],
-          parameters: [
-            {
-              name: 'enrollmentId',
-              in: 'path',
-              required: true,
-              schema: { type: 'string', format: 'uuid' },
-            },
-          ],
-          responses: {
-            '200': { description: 'success/data envelope containing the persisted certificate' },
-            '401': { description: 'Authentication required' },
-            '403': { description: 'Certificate issue permission required' },
-            '404': { description: 'Enrollment not found' },
-            '409': { description: 'Course not completed or assessment not passed' },
-            '422': { description: 'Invalid enrollment UUID' },
-          },
-        },
-      },
-      '/training/completion': {
-        get: {
-          tags: ['Training Awareness'],
-          summary: 'Track training campaign completion',
-          description:
-            'Requires training-completion.read. Returns paginated campaign-level completion metrics. Optional courseId (UUID) limits results to that exact course.',
-          security: [{ bearerAuth: [] }],
-          parameters: [
-            { name: 'courseId', in: 'query', schema: { type: 'string', format: 'uuid' } },
-            { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
-            {
-              name: 'limit',
-              in: 'query',
-              schema: { type: 'integer', minimum: 1, maximum: 50, default: 10 },
-            },
-            { name: 'q', in: 'query', schema: { type: 'string', maxLength: 100 } },
-          ],
-          responses: {
-            '200': { description: 'Paginated training completion summary' },
-            '401': { description: 'Authentication required' },
-            '403': { description: 'training-completion.read permission required' },
-          },
-        },
-      },
-      '/training/completion/{campaignId}': {
-        get: {
-          tags: ['Training Awareness'],
-          summary: 'View employee completion for a training campaign',
-          description:
-            "Requires training-completion.read. Supports employee search and enrollment-status filtering. Returns campaign-wide completion metrics plus each employee's required-lesson completion, final-assessment result, activity, enrollment progress and nullable certificateNumber.",
-          security: [{ bearerAuth: [] }],
-          parameters: [
-            {
-              name: 'campaignId',
-              in: 'path',
-              required: true,
-              schema: { type: 'string', format: 'uuid' },
-            },
-            { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
-            {
-              name: 'limit',
-              in: 'query',
-              schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
-            },
-            { name: 'q', in: 'query', schema: { type: 'string', maxLength: 100 } },
-            {
-              name: 'status',
-              in: 'query',
-              schema: {
-                type: 'string',
-                enum: ['all', 'assigned', 'in_progress', 'completed', 'overdue', 'withdrawn'],
-                default: 'all',
-              },
-            },
-          ],
-          responses: {
-            '200': { description: 'Paginated employee completion details' },
-            '403': { description: 'training-completion.read permission required' },
-            '404': { description: 'Training campaign not found' },
-          },
-        },
-      },
-      '/training/assessments': {
-        get: {
-          tags: ['Training Awareness'],
-          summary: 'List post-training assessments assigned to the current employee',
-          description:
-            'Requires training-assessments.take. Results are scoped to authenticated-user enrollments and never expose correct options.',
-          security: [{ bearerAuth: [] }],
-          parameters: [
-            { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
-            {
-              name: 'limit',
-              in: 'query',
-              schema: { type: 'integer', minimum: 1, maximum: 50, default: 10 },
-            },
-          ],
-          responses: {
-            '200': { description: 'Paginated assigned assessment list' },
-            '401': { description: 'Authentication required' },
-            '403': { description: 'training-assessments.take permission required' },
-          },
-        },
-      },
-      '/training/assessments/{enrollmentId}': {
-        get: {
-          tags: ['Training Awareness'],
-          summary: 'Get an assigned post-training assessment',
-          description:
-            'Requires training-assessments.take. Returns questions and choices only when the enrollment belongs to the current employee.',
-          security: [{ bearerAuth: [] }],
-          parameters: [
-            {
-              name: 'enrollmentId',
-              in: 'path',
-              required: true,
-              schema: { type: 'string', format: 'uuid' },
-            },
-          ],
-          responses: {
-            '200': { description: 'Assessment questions without answer keys' },
-            '403': { description: 'training-assessments.take permission required' },
-            '404': { description: 'Assigned assessment not found' },
-          },
-        },
-      },
-      '/training/assessments/{enrollmentId}/attempts': {
-        post: {
-          tags: ['Training Awareness'],
-          summary: 'Submit a post-training assessment attempt',
-          description:
-            'Requires training-assessments.take. Validates enrollment ownership and attempt limits, scores answers server-side, updates training progress and records an audit event atomically.',
-          security: [{ bearerAuth: [] }],
-          parameters: [
-            {
-              name: 'enrollmentId',
-              in: 'path',
-              required: true,
-              schema: { type: 'string', format: 'uuid' },
-            },
-          ],
-          requestBody: {
-            required: true,
-            content: {
-              'application/json': {
-                schema: {
-                  type: 'object',
-                  required: ['answers'],
-                  additionalProperties: false,
-                  properties: {
-                    answers: {
-                      type: 'array',
-                      minItems: 1,
-                      maxItems: 200,
-                      items: {
-                        type: 'object',
-                        required: ['questionId', 'optionIds'],
-                        additionalProperties: false,
-                        properties: {
-                          questionId: { type: 'string', format: 'uuid' },
-                          optionIds: {
-                            type: 'array',
-                            minItems: 1,
-                            maxItems: 20,
-                            uniqueItems: true,
-                            items: { type: 'string', format: 'uuid' },
-                          },
-                        },
-                      },
-                    },
-                  },
-                },
-              },
-            },
-          },
-          responses: {
-            '201': { description: 'Assessment scored and attempt recorded' },
-            '404': { description: 'Assigned assessment not found' },
-            '409': { description: 'Maximum attempts reached' },
-            '422': { description: 'Answers are incomplete or invalid' },
-          },
-        },
-      },
       '/training/courses': {
         get: {
-          tags: ['Training Awareness'],
-          summary: 'List security awareness courses',
-          description: 'Requires training-courses.read.',
-          security: [{ bearerAuth: [] }],
+          tags: ['Training Awareness'], summary: 'List security awareness courses',
+          description: 'Requires training-courses.read.', security: [{ bearerAuth: [] }],
           parameters: [
             { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
-            {
-              name: 'limit',
-              in: 'query',
-              schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
-            },
+            { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 } },
             { name: 'q', in: 'query', schema: { type: 'string', minLength: 1, maxLength: 100 } },
           ],
           responses: {
@@ -1889,293 +1301,15 @@ export const openApiSpec = swaggerJsdoc({
           },
         },
         post: {
-          tags: ['Training Awareness'],
-          summary: 'Create security awareness course draft',
-          description:
-            'Requires training-courses.create. Creates draft and audit record atomically.',
+          tags: ['Training Awareness'], summary: 'Create security awareness course draft',
+          description: 'Requires training-courses.create. Creates draft and audit record atomically.',
           security: [{ bearerAuth: [] }],
-          requestBody: {
-            required: true,
-            content: {
-              'application/json': {
-                schema: { $ref: '#/components/schemas/CreateTrainingCourseRequest' },
-              },
-              'multipart/form-data': {
-                schema: {
-                  type: 'object',
-                  required: ['payload'],
-                  properties: {
-                    payload: {
-                      type: 'string',
-                      description: 'JSON encoded CreateTrainingCourseRequest, maximum 1 MiB',
-                    },
-                  },
-                  additionalProperties: { type: 'string', format: 'binary' },
-                  description:
-                    'File fields are UUID uploadKeys referenced by materials. Up to 10 PDF/MP4/WebM files, each at most 20 MiB. Local storage requires a persistent server filesystem, not Vercel.',
-                },
-              },
-            },
-          },
+          requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/CreateTrainingCourseRequest' } } } },
           responses: {
             '201': { description: 'Draft course created' },
-            '413': { description: 'Upload exceeds the per-file limit' },
-            '503': { description: 'Local storage is not supported in this deployment' },
             '401': { description: 'Authentication required' },
             '403': { description: 'training-courses.create permission required' },
             '422': { description: 'Invalid course data' },
-          },
-        },
-      },
-      '/training/courses/{courseId}/content': {
-        get: {
-          tags: ['Training Awareness'],
-          summary: 'View ordered lessons and materials',
-          security: [{ bearerAuth: [] }],
-          description:
-            'Requires training-courses.read. Returns lesson/material metadata and quiz summaries, never correct answers or storage keys.',
-          parameters: [
-            {
-              name: 'courseId',
-              in: 'path',
-              required: true,
-              schema: { type: 'string', format: 'uuid' },
-            },
-          ],
-          responses: {
-            '200': {
-              description:
-                'Success envelope containing lessons with materials and assessment summaries',
-            },
-            '401': { description: 'Authentication required' },
-            '403': { description: 'Permission required' },
-            '404': { description: 'Course not found' },
-            '422': { description: 'Invalid course ID' },
-          },
-        },
-      },
-      '/training/courses/{courseId}': {
-        get: {
-          tags: ['Training Awareness'],
-          summary: 'Get an editable security awareness course draft (UC160)',
-          description:
-            'Requires training-courses.update. Returns the complete unassigned draft, including correct-answer metadata and private-file metadata needed to prefill the editor.',
-          security: [{ bearerAuth: [] }],
-          parameters: [
-            {
-              name: 'courseId',
-              in: 'path',
-              required: true,
-              schema: { type: 'string', format: 'uuid' },
-            },
-          ],
-          responses: {
-            '200': { description: 'Complete editable draft' },
-            '403': { description: 'training-courses.update permission required' },
-            '404': { description: 'Course not found' },
-            '409': { description: 'Course is not a draft or has assignments' },
-          },
-        },
-        patch: {
-          tags: ['Training Awareness'],
-          summary: 'Edit a security awareness course draft (UC160)',
-          description:
-            'Requires training-courses.update. Atomically replaces an unassigned draft’s lessons, materials and assessments. expectedUpdatedAt prevents lost updates. Existing private files may be retained; replacement files use UUID upload keys. No schema change.',
-          security: [{ bearerAuth: [] }],
-          parameters: [
-            {
-              name: 'courseId',
-              in: 'path',
-              required: true,
-              schema: { type: 'string', format: 'uuid' },
-            },
-          ],
-          requestBody: {
-            required: true,
-            content: {
-              'application/json': { schema: { type: 'object' } },
-              'multipart/form-data': {
-                schema: {
-                  type: 'object',
-                  required: ['payload'],
-                  properties: { payload: { type: 'string' } },
-                  additionalProperties: { type: 'string', format: 'binary' },
-                },
-              },
-            },
-          },
-          responses: {
-            '200': { description: 'Draft updated and audited' },
-            '403': { description: 'training-courses.update permission required' },
-            '404': { description: 'Course not found' },
-            '409': { description: 'Not editable or stale draft' },
-            '422': { description: 'Invalid draft or file references' },
-          },
-        },
-      },
-      '/training/materials/{materialId}/download': {
-        get: {
-          tags: ['Training Awareness'],
-          summary: 'Download a private uploaded course material',
-          security: [{ bearerAuth: [] }],
-          description:
-            'Requires training-courses.read. Attachment download from local persistent storage. No public static uploads directory.',
-          parameters: [
-            {
-              name: 'materialId',
-              in: 'path',
-              required: true,
-              schema: { type: 'string', format: 'uuid' },
-            },
-          ],
-          responses: {
-            '200': { description: 'File attachment' },
-            '401': { description: 'Authentication required' },
-            '403': { description: 'Permission required' },
-            '404': { description: 'File unavailable' },
-            '422': { description: 'Invalid material ID' },
-          },
-        },
-      },
-      '/training/assignment-options': {
-        get: {
-          tags: ['Training Awareness'],
-          summary: 'List course assignment targets',
-          description:
-            'Requires training-courses.assign. Returns bounded active user and department options.',
-          security: [{ bearerAuth: [] }],
-          parameters: [
-            { name: 'userQ', in: 'query', schema: { type: 'string', maxLength: 100 } },
-            { name: 'departmentQ', in: 'query', schema: { type: 'string', maxLength: 100 } },
-            {
-              name: 'limit',
-              in: 'query',
-              schema: { type: 'integer', minimum: 1, maximum: 50, default: 20 },
-            },
-          ],
-          responses: {
-            '200': { description: 'Active users and departments' },
-            '401': { description: 'Authentication required' },
-            '403': { description: 'training-courses.assign permission required' },
-          },
-        },
-      },
-      '/training/courses/{courseId}/assignments': {
-        get: {
-          tags: ['Training Awareness'],
-          summary: 'Get the current course assignment',
-          description:
-            'Requires training-courses.assign. Returns the latest campaign dates and selected user and department targets, or null when the course has not been assigned.',
-          security: [{ bearerAuth: [] }],
-          parameters: [
-            {
-              name: 'courseId',
-              in: 'path',
-              required: true,
-              schema: { type: 'string', format: 'uuid' },
-            },
-          ],
-          responses: {
-            '200': { description: 'Current assignment or null' },
-            '403': { description: 'training-courses.assign permission required' },
-          },
-        },
-        post: {
-          tags: ['Training Awareness'],
-          summary: 'Assign a training course',
-          description:
-            'Requires training-courses.assign and a published course. Draft courses return 409; archived courses cannot be assigned. Set createNewCampaign=true for a separate training cycle with fresh enrollments. Otherwise the latest campaign is updated; existing progress and completed results are preserved. The operation records an audit event atomically.',
-          security: [{ bearerAuth: [] }],
-          parameters: [
-            {
-              name: 'courseId',
-              in: 'path',
-              required: true,
-              schema: { type: 'string', format: 'uuid' },
-            },
-          ],
-          requestBody: {
-            required: true,
-            content: {
-              'application/json': {
-                schema: { $ref: '#/components/schemas/AssignTrainingCourseRequest' },
-              },
-            },
-          },
-          responses: {
-            '201': { description: 'Course assignment campaign created or updated' },
-            '409': { description: 'Publish the course before assigning it' },
-            '404': { description: 'Course not found' },
-            '422': { description: 'Invalid dates or assignment targets' },
-          },
-        },
-      },
-      '/training/learning': {
-        get: {
-          tags: ['Training Awareness'],
-          summary: 'List courses assigned to the current employee',
-          description:
-            'Requires training-assessments.take. Progress and results are campaign enrollment scoped.',
-          security: [{ bearerAuth: [] }],
-          parameters: [
-            { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
-            {
-              name: 'limit',
-              in: 'query',
-              schema: { type: 'integer', minimum: 1, maximum: 50, default: 10 },
-            },
-          ],
-          responses: {
-            '200': { description: 'Paginated assigned courses' },
-            '403': { description: 'Learner permission required' },
-          },
-        },
-      },
-      '/training/learning/{enrollmentId}': {
-        get: {
-          tags: ['Training Awareness'],
-          summary: 'Open an assigned course',
-          description:
-            'Returns ordered lessons, safe material metadata and assessment status for the enrollment owner only.',
-          security: [{ bearerAuth: [] }],
-          parameters: [
-            {
-              name: 'enrollmentId',
-              in: 'path',
-              required: true,
-              schema: { type: 'string', format: 'uuid' },
-            },
-          ],
-          responses: {
-            '200': { description: 'Assigned course content' },
-            '404': { description: 'Enrollment not found or not owned by caller' },
-          },
-        },
-      },
-      '/training/learning/{enrollmentId}/lessons/{lessonId}/complete': {
-        patch: {
-          tags: ['Training Awareness'],
-          summary: 'Complete an assigned lesson',
-          description:
-            'Requires ownership and campaign availability. A lesson assessment must be passed first when configured. Recomputes enrollment progress atomically.',
-          security: [{ bearerAuth: [] }],
-          parameters: [
-            {
-              name: 'enrollmentId',
-              in: 'path',
-              required: true,
-              schema: { type: 'string', format: 'uuid' },
-            },
-            {
-              name: 'lessonId',
-              in: 'path',
-              required: true,
-              schema: { type: 'string', format: 'uuid' },
-            },
-          ],
-          responses: {
-            '200': { description: 'Lesson and enrollment progress updated' },
-            '409': { description: 'Assessment required or campaign unavailable' },
           },
         },
       },
@@ -2409,19 +1543,14 @@ export const openApiSpec = swaggerJsdoc({
           },
           responses: {
             '200': {
-              description: 'Authenticated, or MFA challenge required before tokens are issued',
+              description: 'Authenticated',
               content: {
                 'application/json': {
                   schema: {
                     type: 'object',
                     properties: {
                       success: { type: 'boolean' },
-                      data: {
-                        oneOf: [
-                          { $ref: '#/components/schemas/TokenPair' },
-                          { $ref: '#/components/schemas/MfaChallenge' },
-                        ],
-                      },
+                      data: { $ref: '#/components/schemas/TokenPair' },
                     },
                   },
                 },
@@ -2504,10 +1633,7 @@ export const openApiSpec = swaggerJsdoc({
             },
           },
           responses: {
-            '200': {
-              description:
-                'Authenticator URI, manual key, one-time QR code, and safety warning returned',
-            },
+            '200': { description: 'Authenticator URI and QR code data URL returned' },
             '400': { description: 'Current password is incorrect' },
             '401': { description: 'Unauthorized' },
             '409': { description: 'MFA is already enabled' },
@@ -2526,179 +1652,11 @@ export const openApiSpec = swaggerJsdoc({
             },
           },
           responses: {
-            '200': { description: 'MFA enabled and recovery codes returned once' },
+            '200': { description: 'MFA enabled' },
             '400': { description: 'MFA code is invalid or expired' },
             '401': { description: 'Unauthorized' },
             '404': { description: 'MFA setup is required' },
             '429': { description: 'Too many attempts' },
-          },
-        },
-      },
-      '/auth/mfa/challenge/verify': {
-        post: {
-          tags: ['Authentication'],
-          summary: 'Complete sign-in using an MFA login challenge',
-          requestBody: {
-            required: true,
-            content: {
-              'application/json': {
-                schema: { $ref: '#/components/schemas/VerifyMfaChallengeRequest' },
-              },
-            },
-          },
-          responses: {
-            '200': {
-              description: 'Challenge consumed and access/refresh tokens issued',
-              content: {
-                'application/json': {
-                  schema: {
-                    type: 'object',
-                    properties: {
-                      success: { type: 'boolean' },
-                      data: { $ref: '#/components/schemas/TokenPair' },
-                    },
-                  },
-                },
-              },
-            },
-            '401': { description: 'Invalid, expired, used, or exhausted challenge/code' },
-            '403': { description: 'Account is inactive' },
-            '422': { description: 'Invalid challenge or code format' },
-            '429': { description: 'Too many attempts from this IP' },
-          },
-        },
-      },
-      '/auth/mfa/disable': {
-        post: {
-          tags: ['Authentication'],
-          summary: 'Disable authenticator MFA and revoke existing sessions',
-          security: [{ bearerAuth: [] }],
-          requestBody: {
-            required: true,
-            content: {
-              'application/json': { schema: { $ref: '#/components/schemas/DisableMfaRequest' } },
-            },
-          },
-          responses: {
-            '200': { description: 'MFA disabled and existing sessions revoked' },
-            '400': { description: 'Current password or authenticator code is invalid' },
-            '401': { description: 'Unauthorized' },
-            '403': { description: 'Account is inactive' },
-            '409': { description: 'MFA is not enabled' },
-            '422': { description: 'Invalid request body' },
-            '429': { description: 'Too many attempts' },
-          },
-        },
-      },
-      '/auth/mfa/recovery-requests': {
-        post: {
-          tags: ['Authentication'],
-          summary: 'Request administrator-assisted MFA recovery from a current login challenge',
-          requestBody: {
-            required: true,
-            content: {
-              'application/json': {
-                schema: { $ref: '#/components/schemas/CreateMfaRecoveryRequest' },
-              },
-            },
-          },
-          responses: {
-            '202': { description: 'Recovery request created or existing pending request returned' },
-            '401': { description: 'Challenge is invalid or expired' },
-            '422': { description: 'Invalid request body' },
-            '429': { description: 'Too many requests from this IP' },
-            '503': { description: 'Recovery workflow is unavailable' },
-          },
-        },
-      },
-      '/admin/mfa-recovery-requests': {
-        get: {
-          tags: ['MFA Recovery Administration'],
-          summary: 'List MFA recovery requests',
-          security: [{ bearerAuth: [] }],
-          parameters: [
-            { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
-            {
-              name: 'limit',
-              in: 'query',
-              schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
-            },
-            {
-              name: 'status',
-              in: 'query',
-              schema: { type: 'string', enum: ['pending', 'approved', 'rejected'] },
-            },
-          ],
-          responses: {
-            '200': {
-              description: 'Paginated recovery requests with user and latest decision details',
-            },
-            '401': { description: 'Unauthorized' },
-            '403': { description: 'Missing mfa-recovery.manage permission' },
-          },
-        },
-      },
-      '/admin/mfa-recovery-requests/{requestId}/approve': {
-        post: {
-          tags: ['MFA Recovery Administration'],
-          summary: 'Approve an MFA recovery request',
-          security: [{ bearerAuth: [] }],
-          parameters: [
-            {
-              name: 'requestId',
-              in: 'path',
-              required: true,
-              schema: { type: 'string', format: 'uuid' },
-            },
-          ],
-          requestBody: {
-            required: true,
-            content: {
-              'application/json': {
-                schema: { $ref: '#/components/schemas/DecideMfaRecoveryRequest' },
-              },
-            },
-          },
-          responses: {
-            '200': {
-              description: 'MFA cleared, sessions revoked, action audited, and user notified',
-            },
-            '401': { description: 'Unauthorized' },
-            '403': { description: 'Missing mfa-recovery.manage permission' },
-            '404': { description: 'Request not found' },
-            '409': { description: 'Request was already decided' },
-            '422': { description: 'Invalid request ID or reason' },
-          },
-        },
-      },
-      '/admin/mfa-recovery-requests/{requestId}/reject': {
-        post: {
-          tags: ['MFA Recovery Administration'],
-          summary: 'Reject an MFA recovery request',
-          security: [{ bearerAuth: [] }],
-          parameters: [
-            {
-              name: 'requestId',
-              in: 'path',
-              required: true,
-              schema: { type: 'string', format: 'uuid' },
-            },
-          ],
-          requestBody: {
-            required: true,
-            content: {
-              'application/json': {
-                schema: { $ref: '#/components/schemas/DecideMfaRecoveryRequest' },
-              },
-            },
-          },
-          responses: {
-            '200': { description: 'Request rejected, action audited, and user notified' },
-            '401': { description: 'Unauthorized' },
-            '403': { description: 'Missing mfa-recovery.manage permission' },
-            '404': { description: 'Request not found' },
-            '409': { description: 'Request was already decided' },
-            '422': { description: 'Invalid request ID or reason' },
           },
         },
       },
@@ -2849,596 +1807,6 @@ export const openApiSpec = swaggerJsdoc({
             '409': { description: 'Email or employee code already exists' },
             '422': { description: 'Invalid role, department, or request body' },
             '503': { description: 'Email service is not configured or unavailable' },
-          },
-        },
-      },
-      '/users/{userId}': {
-        get: {
-          tags: ['Users'],
-          summary: 'View a user account',
-          description:
-            'Returns safe account, department, role, MFA, and activity metadata. Requires users.read.',
-          security: [{ bearerAuth: [] }],
-          parameters: [
-            {
-              name: 'userId',
-              in: 'path',
-              required: true,
-              schema: { type: 'string', format: 'uuid' },
-            },
-          ],
-          responses: {
-            '200': {
-              description: 'User account details',
-              content: {
-                'application/json': {
-                  schema: {
-                    type: 'object',
-                    required: ['success', 'data'],
-                    properties: {
-                      success: { type: 'boolean', example: true },
-                      data: { $ref: '#/components/schemas/UserDetail' },
-                    },
-                  },
-                },
-              },
-            },
-            '401': { description: 'Unauthorized' },
-            '403': { description: 'Missing users.read permission' },
-            '404': { description: 'User was not found' },
-            '422': { description: 'Invalid user identifier' },
-          },
-        },
-      },
-      '/users/create-options': {
-        get: {
-          tags: ['Users'],
-          summary: 'List options for creating a user account',
-          description: 'Returns active departments and assignable roles. Requires users.create.',
-          security: [{ bearerAuth: [] }],
-          responses: {
-            '200': {
-              description: 'User creation options',
-              content: {
-                'application/json': {
-                  schema: {
-                    type: 'object',
-                    required: ['success', 'data'],
-                    properties: {
-                      success: { type: 'boolean', example: true },
-                      data: { $ref: '#/components/schemas/UserCreateOptions' },
-                    },
-                  },
-                },
-              },
-            },
-            '401': { description: 'Unauthorized' },
-            '403': { description: 'Missing users.create permission' },
-          },
-        },
-      },
-      '/risks': {
-        post: {
-          tags: ['Risk Assessments'],
-          summary: 'Create a risk assessment draft',
-          description:
-            'Requires risks.create. Exactly one asset or business process target is required. The backend assigns the assessor, generates the risk code, and calculates score and level.',
-          security: [{ bearerAuth: [] }],
-          responses: {
-            '201': { description: 'Risk assessment draft created' },
-            '401': { description: 'Authentication required' },
-            '403': { description: 'The risks.create permission is required' },
-            '404': { description: 'Target or linked catalog item not found' },
-            '409': { description: 'Potential duplicate open risk' },
-            '422': { description: 'Invalid request or inactive target' },
-          },
-        },
-        get: {
-          tags: ['Risk Assessments'],
-          summary: 'List risk assessments',
-          description:
-            'Requires risks.read. Search, filtering, sorting and pagination are performed by the backend.',
-          security: [{ bearerAuth: [] }],
-          parameters: [
-            { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
-            {
-              name: 'limit',
-              in: 'query',
-              schema: { type: 'integer', minimum: 1, maximum: 100, default: 10 },
-            },
-            { name: 'q', in: 'query', schema: { type: 'string', maxLength: 100 } },
-            {
-              name: 'riskLevel',
-              in: 'query',
-              schema: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] },
-            },
-            {
-              name: 'status',
-              in: 'query',
-              schema: {
-                type: 'string',
-                enum: [
-                  'draft',
-                  'pending_approval',
-                  'approved',
-                  'in_treatment',
-                  'closed',
-                  'rejected',
-                  'cancelled',
-                ],
-              },
-            },
-            {
-              name: 'targetType',
-              in: 'query',
-              schema: { type: 'string', enum: ['asset', 'business_process'] },
-            },
-            { name: 'assessedFrom', in: 'query', schema: { type: 'string', format: 'date' } },
-            { name: 'assessedTo', in: 'query', schema: { type: 'string', format: 'date' } },
-            { name: 'hasTreatmentPlan', in: 'query', schema: { type: 'boolean' } },
-            {
-              name: 'sortBy',
-              in: 'query',
-              schema: {
-                type: 'string',
-                enum: ['riskCode', 'title', 'riskScore', 'riskLevel', 'assessedAt', 'updatedAt'],
-                default: 'updatedAt',
-              },
-            },
-            {
-              name: 'sortOrder',
-              in: 'query',
-              schema: { type: 'string', enum: ['asc', 'desc'], default: 'desc' },
-            },
-          ],
-          responses: {
-            '200': { description: 'Paginated risk assessment list' },
-            '401': { description: 'Authentication required' },
-            '403': { description: 'The risks.read permission is required' },
-            '422': { description: 'Invalid query parameters' },
-          },
-        },
-      },
-      '/risks/create-options': {
-        get: {
-          tags: ['Risk Assessments'],
-          summary: 'List valid options for creating a risk assessment',
-          description:
-            'Requires risks.create or risks.update. Returns one paginated option type at a time for active targets and threat/vulnerability catalog entries.',
-          security: [{ bearerAuth: [] }],
-          parameters: [
-            {
-              name: 'type',
-              in: 'query',
-              required: true,
-              schema: {
-                type: 'string',
-                enum: ['assets', 'businessProcesses', 'threats', 'vulnerabilities'],
-              },
-            },
-            { name: 'q', in: 'query', schema: { type: 'string', maxLength: 100 } },
-            { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
-            {
-              name: 'limit',
-              in: 'query',
-              schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
-            },
-          ],
-          responses: {
-            '200': { description: 'Risk creation options' },
-            '401': { description: 'Authentication required' },
-            '403': { description: 'The risks.create or risks.update permission is required' },
-            '422': { description: 'Invalid option type, search, or pagination parameters' },
-          },
-        },
-      },
-      '/risks/{riskAssessmentId}': {
-        patch: {
-          tags: ['Risk Assessments'],
-          summary: 'Update a draft or rejected risk assessment',
-          description:
-            'Requires risks.update. Only the assessor or an administrator may edit a draft or rejected assessment. Rejected assessments keep their original target. Assessments with a treatment plan or incident link cannot be edited. Recalculates score and level, replaces linked threats and vulnerabilities transactionally, and uses expectedUpdatedAt for optimistic concurrency.',
-          security: [{ bearerAuth: [] }],
-          parameters: [
-            {
-              name: 'riskAssessmentId',
-              in: 'path',
-              required: true,
-              schema: { type: 'string', format: 'uuid' },
-            },
-          ],
-          responses: {
-            '200': { description: 'Updated risk assessment detail' },
-            '401': { description: 'Authentication required' },
-            '403': { description: 'The risks.update permission is required' },
-            '404': { description: 'Risk assessment or target not found' },
-            '409': {
-              description:
-                'Potential duplicate, concurrent modification, treatment plan, or incident link',
-            },
-            '422': { description: 'Invalid input, inactive target, or non-editable status' },
-          },
-        },
-        get: {
-          tags: ['Risk Assessments'],
-          summary: 'View risk assessment details',
-          description:
-            'Requires risks.read. Returns the assessment target, risk analysis, linked threats and vulnerabilities, treatment plans and the previous assessment.',
-          security: [{ bearerAuth: [] }],
-          parameters: [
-            {
-              name: 'riskAssessmentId',
-              in: 'path',
-              required: true,
-              schema: { type: 'string', format: 'uuid' },
-            },
-          ],
-          responses: {
-            '200': { description: 'Risk assessment details' },
-            '401': { description: 'Authentication required' },
-            '403': { description: 'The risks.read permission is required' },
-            '404': { description: 'Risk assessment not found' },
-            '422': { description: 'Invalid risk assessment ID' },
-          },
-        },
-      },
-      '/risks/{riskAssessmentId}/cancel': {
-        post: {
-          tags: ['Risk Assessments'],
-          summary: 'Cancel a draft or rejected risk assessment',
-          description:
-            'Requires risks.cancel. Only the assessor or an administrator can cancel a draft or rejected assessment. Assessments with a treatment plan, incident link, or later assessment cannot be cancelled. The actor is revalidated inside the transaction, expectedUpdatedAt protects against concurrent changes, and the cancellation remains auditable.',
-          security: [{ bearerAuth: [] }],
-          parameters: [
-            {
-              name: 'riskAssessmentId',
-              in: 'path',
-              required: true,
-              schema: { type: 'string', format: 'uuid' },
-            },
-          ],
-          requestBody: {
-            required: true,
-            content: {
-              'application/json': {
-                schema: {
-                  type: 'object',
-                  additionalProperties: false,
-                  required: ['reason', 'expectedUpdatedAt'],
-                  properties: {
-                    reason: { type: 'string', minLength: 10, maxLength: 1000 },
-                    expectedUpdatedAt: { type: 'string', format: 'date-time' },
-                  },
-                },
-              },
-            },
-          },
-          responses: {
-            '200': { description: 'Cancelled risk assessment detail' },
-            '401': { description: 'Authentication required' },
-            '403': { description: 'Missing permission or actor is not the assessor/admin' },
-            '404': { description: 'Risk assessment not found' },
-            '409': {
-              description:
-                'Treatment plan, incident link, later assessment, or concurrent change prevents cancellation',
-            },
-            '422': { description: 'Invalid input or assessment status is not cancellable' },
-          },
-        },
-      },
-      '/risks/treatment-plans': {
-        post: {
-          tags: ['Risk Assessments'],
-          summary: 'Create a draft risk treatment plan',
-          description:
-            'Requires risk-treatment-plans.create. The caller must be the assessment assessor or an administrator. The assessment must be draft or rejected, have threats and vulnerabilities, and must not already have an active treatment plan. The plan and its initial actions are created atomically.',
-          security: [{ bearerAuth: [] }],
-          requestBody: {
-            required: true,
-            content: {
-              'application/json': {
-                schema: {
-                  type: 'object',
-                  additionalProperties: false,
-                  required: [
-                    'riskAssessmentId',
-                    'expectedRiskUpdatedAt',
-                    'strategy',
-                    'description',
-                    'ownerUserId',
-                    'targetDate',
-                    'actions',
-                  ],
-                  properties: {
-                    riskAssessmentId: { type: 'string', format: 'uuid' },
-                    expectedRiskUpdatedAt: { type: 'string', format: 'date-time' },
-                    strategy: {
-                      type: 'string',
-                      enum: ['avoid', 'mitigate', 'transfer', 'accept'],
-                    },
-                    description: { type: 'string', minLength: 10, maxLength: 5000 },
-                    ownerUserId: { type: 'string', format: 'uuid' },
-                    targetDate: { type: 'string', format: 'date' },
-                    actions: {
-                      type: 'array',
-                      maxItems: 100,
-                      items: {
-                        type: 'object',
-                        additionalProperties: false,
-                        required: ['title', 'assigneeUserId', 'dueDate'],
-                        properties: {
-                          title: { type: 'string', minLength: 3, maxLength: 255 },
-                          description: { type: 'string', maxLength: 2000 },
-                          assigneeUserId: { type: 'string', format: 'uuid' },
-                          dueDate: { type: 'string', format: 'date' },
-                        },
-                      },
-                    },
-                  },
-                },
-              },
-            },
-          },
-          responses: {
-            '201': { description: 'Created treatment plan detail' },
-            '401': { description: 'Authentication required' },
-            '403': { description: 'Missing permission or caller is not the assessor/admin' },
-            '404': { description: 'Risk assessment not found' },
-            '409': { description: 'Assessment changed, has an invalid status, or already has a plan' },
-            '422': { description: 'Invalid or incomplete plan data' },
-          },
-        },
-        get: {
-          tags: ['Risk Assessments'],
-          summary: 'List risk treatment plans',
-          description:
-            'Requires risk-treatment-plans.read. Returns a server-paginated list with risk context, owner, active-action progress, completed action count, and overdue state.',
-          security: [{ bearerAuth: [] }],
-          parameters: [
-            { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
-            {
-              name: 'limit',
-              in: 'query',
-              schema: { type: 'integer', minimum: 1, maximum: 100, default: 10 },
-            },
-            { name: 'q', in: 'query', schema: { type: 'string', maxLength: 100 } },
-            {
-              name: 'status',
-              in: 'query',
-              schema: {
-                type: 'string',
-                enum: [
-                  'draft',
-                  'pending_approval',
-                  'approved',
-                  'in_progress',
-                  'completed',
-                  'rejected',
-                  'cancelled',
-                ],
-              },
-            },
-            {
-              name: 'strategy',
-              in: 'query',
-              schema: { type: 'string', enum: ['avoid', 'mitigate', 'transfer', 'accept'] },
-            },
-            { name: 'ownerId', in: 'query', schema: { type: 'string', format: 'uuid' } },
-            { name: 'targetFrom', in: 'query', schema: { type: 'string', format: 'date' } },
-            { name: 'targetTo', in: 'query', schema: { type: 'string', format: 'date' } },
-            { name: 'overdue', in: 'query', schema: { type: 'boolean' } },
-            {
-              name: 'sortBy',
-              in: 'query',
-              schema: {
-                type: 'string',
-                enum: ['riskCode', 'strategy', 'status', 'targetDate', 'createdAt', 'updatedAt'],
-                default: 'updatedAt',
-              },
-            },
-            {
-              name: 'sortOrder',
-              in: 'query',
-              schema: { type: 'string', enum: ['asc', 'desc'], default: 'desc' },
-            },
-          ],
-          responses: {
-            '200': { description: 'Paginated treatment plan list' },
-            '401': { description: 'Authentication required' },
-            '403': { description: 'The risk-treatment-plans.read permission is required' },
-            '422': { description: 'Invalid query parameters' },
-          },
-        },
-      },
-      '/risks/treatment-plans/create-options': {
-        get: {
-          tags: ['Risk Assessments'],
-          summary: 'List active users for treatment plan ownership and assignment',
-          description:
-            'Requires risk-treatment-plans.create. Returns a server-paginated, searchable list of active users that may own a plan or be assigned an action.',
-          security: [{ bearerAuth: [] }],
-          parameters: [
-            { name: 'q', in: 'query', schema: { type: 'string', maxLength: 100 } },
-            { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
-            {
-              name: 'limit',
-              in: 'query',
-              schema: { type: 'integer', minimum: 1, maximum: 50, default: 20 },
-            },
-          ],
-          responses: {
-            '200': { description: 'Paginated active-user options' },
-            '401': { description: 'Authentication required' },
-            '403': { description: 'The risk-treatment-plans.create permission is required' },
-            '422': { description: 'Invalid query parameters' },
-          },
-        },
-      },
-      '/risks/treatment-plans/{treatmentPlanId}': {
-        patch: {
-          tags: ['Risk Assessments'],
-          summary: 'Update a draft or rejected risk treatment plan',
-          description:
-            'Requires risk-treatment-plans.update. Only the creator, owner, or administrator may update a draft or rejected plan whose linked assessment and target remain editable. Owner and assignees must be active, action dates must not exceed the plan target date, and expectedUpdatedAt prevents concurrent overwrites. Actions that have started or completed cannot be changed or removed.',
-          security: [{ bearerAuth: [] }],
-          parameters: [{ name: 'treatmentPlanId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
-          requestBody: { required: true, content: { 'application/json': { schema: {
-            type: 'object', additionalProperties: false,
-            required: ['expectedUpdatedAt', 'strategy', 'description', 'ownerUserId', 'targetDate', 'actions'],
-            properties: {
-              expectedUpdatedAt: { type: 'string', format: 'date-time' },
-              strategy: { type: 'string', enum: ['avoid', 'mitigate', 'transfer', 'accept'] },
-              description: { type: 'string', minLength: 10, maxLength: 5000 },
-              ownerUserId: { type: 'string', format: 'uuid' },
-              targetDate: { type: 'string', format: 'date' },
-              actions: { type: 'array', maxItems: 100, items: { type: 'object', additionalProperties: false, required: ['title', 'assignedToUserId', 'dueDate'], properties: {
-                id: { type: 'string', format: 'uuid' }, title: { type: 'string', minLength: 3, maxLength: 255 }, description: { type: 'string', maxLength: 2000 }, assignedToUserId: { type: 'string', format: 'uuid' }, dueDate: { type: 'string', format: 'date' },
-              } } },
-            },
-          } } } },
-          responses: {
-            '200': { description: 'Updated treatment plan detail' },
-            '403': { description: 'Missing permission or caller cannot manage the plan' },
-            '404': { description: 'Treatment plan not found' },
-            '409': { description: 'Plan or risk changed, is not editable, or a started action would be changed or removed' },
-            '422': { description: 'Invalid target, user, action, or date' },
-            '503': { description: 'The update transaction timed out and may be retried' },
-          },
-        },
-        get: {
-          tags: ['Risk Assessments'],
-          summary: 'View risk treatment plan detail',
-          description:
-            'Requires risk-treatment-plans.read. Returns the plan, associated risk and target, owner and creator, latest approval state, progress summary, and all treatment actions.',
-          security: [{ bearerAuth: [] }],
-          parameters: [
-            {
-              name: 'treatmentPlanId',
-              in: 'path',
-              required: true,
-              schema: { type: 'string', format: 'uuid' },
-            },
-          ],
-          responses: {
-            '200': { description: 'Treatment plan detail' },
-            '401': { description: 'Authentication required' },
-            '403': { description: 'The risk-treatment-plans.read permission is required' },
-            '404': { description: 'Treatment plan not found' },
-            '422': { description: 'Invalid treatment plan identifier' },
-          },
-        },
-      },
-      '/risks/treatment-plans/{treatmentPlanId}/cancel': {
-        post: {
-          tags: ['Risk Assessments'],
-          summary: 'Cancel a draft or rejected risk treatment plan',
-          description:
-            'Requires risk-treatment-plans.cancel. Only the creator, owner, or administrator may cancel a draft or rejected plan. All actions must be unstarted. The plan, cancellation actor, timestamp, reason, and pending actions are retained for audit. Any anomalous pending approval request is cancelled atomically, and expectedUpdatedAt prevents concurrent changes.',
-          security: [{ bearerAuth: [] }],
-          parameters: [{ name: 'treatmentPlanId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
-          requestBody: { required: true, content: { 'application/json': { schema: {
-            type: 'object', additionalProperties: false,
-            required: ['expectedUpdatedAt', 'reason'],
-            properties: {
-              expectedUpdatedAt: { type: 'string', format: 'date-time' },
-              reason: { type: 'string', minLength: 10, maxLength: 1000 },
-            },
-          } } } },
-          responses: {
-            '200': { description: 'Cancelled treatment plan detail' },
-            '403': { description: 'Missing permission or caller cannot manage the plan' },
-            '404': { description: 'Treatment plan not found' },
-            '409': { description: 'Plan or risk changed, is not cancellable, or an action has started' },
-            '422': { description: 'Invalid identifier, timestamp, or reason' },
-            '503': { description: 'The cancellation transaction timed out and may be retried' },
-          },
-        },
-      },
-      '/risks/treatment-plans/{treatmentPlanId}/submit': {
-        post: {
-          tags: ['Risk Assessments'],
-          summary: 'Submit a risk treatment plan for approval',
-          description:
-            'Requires risk-treatment-plans.submit. The plan and its risk assessment must be draft or rejected. They are submitted together into one approval workflow and become pending approval atomically. The plan must be owned or created by the caller (unless administrator), and exactly one active workflow with enough direct or delegated independent approvers must exist.',
-          security: [{ bearerAuth: [] }],
-          parameters: [
-            {
-              name: 'treatmentPlanId',
-              in: 'path',
-              required: true,
-              schema: { type: 'string', format: 'uuid' },
-            },
-          ],
-          requestBody: {
-            required: true,
-            content: {
-              'application/json': {
-                schema: {
-                  type: 'object',
-                  additionalProperties: false,
-                  required: ['expectedUpdatedAt'],
-                  properties: {
-                    expectedUpdatedAt: { type: 'string', format: 'date-time' },
-                    submissionNote: { type: 'string', maxLength: 1000 },
-                  },
-                },
-              },
-            },
-          },
-          responses: {
-            '200': { description: 'Treatment plan submitted and approval request created' },
-            '401': { description: 'Authentication required' },
-            '403': { description: 'Missing permission or caller does not own the plan' },
-            '404': { description: 'Treatment plan not found' },
-            '409': { description: 'Plan already submitted, started, or changed concurrently' },
-            '422': {
-              description:
-                'Plan is incomplete, risk is not submittable, or approval workflow is unavailable',
-            },
-          },
-        },
-      },
-      '/risks/treatment-plans/{treatmentPlanId}/approve': {
-        post: {
-          tags: ['Risk Assessments'],
-          summary: 'Approve the current step of a risk treatment plan',
-          description:
-            'Requires risk-treatment-plans.approve. The caller must be an active direct or delegated approver for the current workflow step and cannot approve their own submission. The submitted snapshot is checked before recording one approval per actor and step. Completing the final step approves both the risk assessment and its treatment plan atomically.',
-          security: [{ bearerAuth: [] }],
-          parameters: [
-            {
-              name: 'treatmentPlanId',
-              in: 'path',
-              required: true,
-              schema: { type: 'string', format: 'uuid' },
-            },
-          ],
-          requestBody: {
-            required: true,
-            content: {
-              'application/json': {
-                schema: {
-                  type: 'object',
-                  additionalProperties: false,
-                  required: ['approvalRequestId'],
-                  properties: {
-                    approvalRequestId: { type: 'string', format: 'uuid' },
-                    comment: { type: 'string', maxLength: 1000 },
-                  },
-                },
-              },
-            },
-          },
-          responses: {
-            '200': { description: 'Approval recorded and workflow advanced when applicable' },
-            '401': { description: 'Authentication required' },
-            '403': { description: 'Missing permission, self-approval, or ineligible approver' },
-            '404': { description: 'Treatment plan or approval request not found' },
-            '409': {
-              description: 'Request completed, duplicate decision, or submitted data changed',
-            },
-            '422': { description: 'Plan or workflow is no longer valid' },
-            '503': { description: 'Approval temporarily unavailable' },
           },
         },
       },
@@ -4325,124 +2693,6 @@ export const openApiSpec = swaggerJsdoc({
           },
         },
       },
-      '/compliance/policy-control-mappings': {
-        get: {
-          tags: ['Policies'],
-          summary: 'List published policy versions and standard control mappings',
-          description: 'Requires compliance.map-controls. Results are paginated.',
-          security: [{ bearerAuth: [] }],
-          parameters: [
-            { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
-            {
-              name: 'limit',
-              in: 'query',
-              schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
-            },
-            { name: 'q', in: 'query', schema: { type: 'string', maxLength: 100 } },
-          ],
-          responses: {
-            '200': { description: 'Published policy versions and mappings' },
-            '403': { description: 'The compliance.map-controls permission is required' },
-          },
-        },
-      },
-      '/compliance/frameworks': {
-        get: {
-          tags: ['Policies'],
-          summary: 'List compliance frameworks available for mapping',
-          security: [{ bearerAuth: [] }],
-          responses: {
-            '200': { description: 'Compliance frameworks and control counts' },
-            '403': { description: 'The compliance.map-controls permission is required' },
-          },
-        },
-      },
-      '/compliance/frameworks/{frameworkId}/controls': {
-        get: {
-          tags: ['Policies'],
-          summary: 'List controls in a compliance framework',
-          security: [{ bearerAuth: [] }],
-          parameters: [
-            {
-              name: 'frameworkId',
-              in: 'path',
-              required: true,
-              schema: { type: 'string', format: 'uuid' },
-            },
-            { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
-            {
-              name: 'limit',
-              in: 'query',
-              schema: { type: 'integer', minimum: 1, maximum: 100, default: 50 },
-            },
-            { name: 'q', in: 'query', schema: { type: 'string', maxLength: 100 } },
-          ],
-          responses: {
-            '200': { description: 'Framework controls' },
-            '404': { description: 'Compliance framework not found' },
-          },
-        },
-      },
-      '/compliance/policies/{policyId}/versions/{versionId}/frameworks/{frameworkId}/control-mappings':
-        {
-          put: {
-            tags: ['Policies'],
-            summary: 'Replace a policy version mapping for one framework',
-            description:
-              'Requires compliance.map-controls. Mappings for other frameworks are preserved.',
-            security: [{ bearerAuth: [] }],
-            parameters: [
-              {
-                name: 'policyId',
-                in: 'path',
-                required: true,
-                schema: { type: 'string', format: 'uuid' },
-              },
-              {
-                name: 'versionId',
-                in: 'path',
-                required: true,
-                schema: { type: 'string', format: 'uuid' },
-              },
-              {
-                name: 'frameworkId',
-                in: 'path',
-                required: true,
-                schema: { type: 'string', format: 'uuid' },
-              },
-            ],
-            requestBody: {
-              required: true,
-              content: {
-                'application/json': {
-                  schema: {
-                    type: 'object',
-                    required: ['mappings'],
-                    properties: {
-                      mappings: {
-                        type: 'array',
-                        maxItems: 100,
-                        items: {
-                          type: 'object',
-                          required: ['controlId'],
-                          properties: {
-                            controlId: { type: 'string', format: 'uuid' },
-                            notes: { type: 'string', nullable: true, maxLength: 1000 },
-                          },
-                        },
-                      },
-                    },
-                  },
-                },
-              },
-            },
-            responses: {
-              '200': { description: 'Framework mappings replaced' },
-              '404': { description: 'Published policy version not found' },
-              '422': { description: 'A selected control does not belong to the framework' },
-            },
-          },
-        },
       '/compliance/policies/department-assignments': {
         get: {
           tags: ['Policies'],
@@ -4683,62 +2933,6 @@ export const openApiSpec = swaggerJsdoc({
             '401': { description: 'Authentication required' },
             '403': { description: 'The log-sources.manage permission is required' },
             '404': { description: 'Related asset or integration was not found' },
-            '422': { description: 'Invalid request body' },
-          },
-        },
-      },
-      '/ai-alerts/thresholds': {
-        get: {
-          tags: ['AI Alerts'],
-          summary: 'List custom alert thresholds',
-          description:
-            'Returns paginated per-asset thresholds. Requires ai-alerts.thresholds.manage.',
-          security: [{ bearerAuth: [] }],
-          parameters: [
-            { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
-            {
-              name: 'limit',
-              in: 'query',
-              schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
-            },
-            { name: 'q', in: 'query', schema: { type: 'string', minLength: 1, maxLength: 100 } },
-          ],
-          responses: {
-            '200': { description: 'Paginated alert threshold list' },
-            '401': { description: 'Authentication required' },
-            '403': { description: 'The ai-alerts.thresholds.manage permission is required' },
-            '422': { description: 'Invalid query parameters' },
-          },
-        },
-      },
-      '/ai-alerts/thresholds/{assetId}': {
-        put: {
-          tags: ['AI Alerts'],
-          summary: 'Set a custom alert threshold for an asset',
-          description:
-            'Creates or replaces the single threshold assigned to an asset and records an audit event. Requires ai-alerts.thresholds.manage.',
-          security: [{ bearerAuth: [] }],
-          parameters: [
-            {
-              name: 'assetId',
-              in: 'path',
-              required: true,
-              schema: { type: 'string', format: 'uuid' },
-            },
-          ],
-          requestBody: {
-            required: true,
-            content: {
-              'application/json': {
-                schema: { $ref: '#/components/schemas/SetAlertThresholdRequest' },
-              },
-            },
-          },
-          responses: {
-            '200': { description: 'Alert threshold saved' },
-            '401': { description: 'Authentication required' },
-            '403': { description: 'The ai-alerts.thresholds.manage permission is required' },
-            '404': { description: 'Asset not found' },
             '422': { description: 'Invalid request body' },
           },
         },
@@ -5084,63 +3278,6 @@ export const openApiSpec = swaggerJsdoc({
           },
         },
       },
-      '/compliance/policies/version-history': {
-        get: {
-          tags: ['Policies'],
-          summary: 'List policy version history',
-          description: 'Available to every authenticated role.',
-          security: [{ bearerAuth: [] }],
-          parameters: [
-            { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
-            {
-              name: 'limit',
-              in: 'query',
-              schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
-            },
-            { name: 'q', in: 'query', schema: { type: 'string', maxLength: 255 } },
-            {
-              name: 'status',
-              in: 'query',
-              schema: {
-                type: 'string',
-                enum: ['all', 'draft', 'published', 'archived'],
-                default: 'all',
-              },
-            },
-          ],
-          responses: {
-            '200': { description: 'Paginated policy version history' },
-            '401': { description: 'Authentication required' },
-          },
-        },
-      },
-      '/compliance/policies/{policyId}/versions/{versionId}/history': {
-        get: {
-          tags: ['Policies'],
-          summary: 'Get policy version history detail',
-          description: 'Available to every authenticated role.',
-          security: [{ bearerAuth: [] }],
-          parameters: [
-            {
-              name: 'policyId',
-              in: 'path',
-              required: true,
-              schema: { type: 'string', format: 'uuid' },
-            },
-            {
-              name: 'versionId',
-              in: 'path',
-              required: true,
-              schema: { type: 'string', format: 'uuid' },
-            },
-          ],
-          responses: {
-            '200': { description: 'Policy version metadata and content' },
-            '401': { description: 'Authentication required' },
-            '404': { description: 'Policy version not found' },
-          },
-        },
-      },
       '/compliance/policies/{policyId}/versions': {
         post: {
           tags: ['Policies'],
@@ -5188,171 +3325,6 @@ export const openApiSpec = swaggerJsdoc({
                 'Policy is archived, is not published, already has a draft, or version number exists',
             },
             '422': { description: 'Invalid policy ID or request body' },
-          },
-        },
-      },
-      '/compliance/control-assessments': {
-        get: {
-          tags: ['Policies'],
-          summary: 'List framework controls and their latest compliance assessment',
-          description: 'Requires compliance.assess-controls.',
-          security: [{ bearerAuth: [] }],
-          parameters: [
-            { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
-            {
-              name: 'limit',
-              in: 'query',
-              schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
-            },
-            { name: 'q', in: 'query', schema: { type: 'string', maxLength: 100 } },
-            { name: 'frameworkId', in: 'query', schema: { type: 'string', format: 'uuid' } },
-            {
-              name: 'status',
-              in: 'query',
-              schema: {
-                type: 'string',
-                enum: ['compliant', 'partially_compliant', 'non_compliant', 'not_assessed'],
-              },
-            },
-            {
-              name: 'reviewState',
-              in: 'query',
-              schema: { type: 'string', enum: ['overdue', 'due_soon', 'scheduled', 'unscheduled'] },
-            },
-          ],
-          responses: {
-            '200': { description: 'Paginated controls and framework filter options' },
-            '401': { description: 'Authentication required' },
-            '403': { description: 'The compliance.assess-controls permission is required' },
-          },
-        },
-      },
-      '/compliance/controls/{controlId}/assessments': {
-        get: {
-          tags: ['Policies'],
-          summary: 'Get the 20 most recent assessments for a control',
-          security: [{ bearerAuth: [] }],
-          parameters: [
-            {
-              name: 'controlId',
-              in: 'path',
-              required: true,
-              schema: { type: 'string', format: 'uuid' },
-            },
-          ],
-          responses: {
-            '200': { description: 'Assessment history' },
-            '404': { description: 'Control not found' },
-          },
-        },
-        post: {
-          tags: ['Policies'],
-          summary: 'Record a control compliance assessment',
-          description:
-            'Creates an immutable history entry and audit log. Requires compliance.assess-controls.',
-          security: [{ bearerAuth: [] }],
-          parameters: [
-            {
-              name: 'controlId',
-              in: 'path',
-              required: true,
-              schema: { type: 'string', format: 'uuid' },
-            },
-          ],
-          requestBody: {
-            required: true,
-            content: {
-              'application/json': {
-                schema: {
-                  type: 'object',
-                  additionalProperties: false,
-                  required: ['complianceStatus'],
-                  properties: {
-                    complianceStatus: {
-                      type: 'string',
-                      enum: ['compliant', 'partially_compliant', 'non_compliant', 'not_assessed'],
-                    },
-                    score: { type: 'number', minimum: 0, maximum: 100, nullable: true },
-                    notes: { type: 'string', maxLength: 5000, nullable: true },
-                    nextReviewAt: { type: 'string', format: 'date-time', nullable: true },
-                  },
-                },
-              },
-            },
-          },
-          responses: {
-            '201': { description: 'Assessment recorded' },
-            '403': { description: 'The compliance.assess-controls permission is required' },
-            '404': { description: 'Control not found' },
-            '422': { description: 'Invalid assessment or review date' },
-          },
-        },
-      },
-      '/compliance/evidence/assessments': {
-        get: {
-          tags: ['Policies'],
-          summary: 'List control assessments accessible for compliance evidence',
-          description:
-            'Requires compliance.evidence.upload. Employee results are limited to controls covered by policies assigned to their department.',
-          security: [{ bearerAuth: [] }],
-          responses: {
-            '200': { description: 'Paginated assessments and evidence' },
-            '403': { description: 'Permission required' },
-          },
-        },
-      },
-      '/compliance/control-assessments/{assessmentId}/evidence': {
-        post: {
-          tags: ['Policies'],
-          summary: 'Upload compliance evidence',
-          security: [{ bearerAuth: [] }],
-          parameters: [
-            {
-              name: 'assessmentId',
-              in: 'path',
-              required: true,
-              schema: { type: 'string', format: 'uuid' },
-            },
-          ],
-          requestBody: {
-            required: true,
-            content: {
-              'multipart/form-data': {
-                schema: {
-                  type: 'object',
-                  required: ['file'],
-                  properties: {
-                    file: { type: 'string', format: 'binary' },
-                    description: { type: 'string', maxLength: 2000 },
-                    validUntil: { type: 'string', format: 'date' },
-                  },
-                },
-              },
-            },
-          },
-          responses: {
-            '201': { description: 'Evidence uploaded and audited' },
-            '413': { description: 'File exceeds 10 MB' },
-            '422': { description: 'Invalid file or metadata' },
-          },
-        },
-      },
-      '/compliance/evidence/{evidenceId}/download': {
-        get: {
-          tags: ['Policies'],
-          summary: 'Download accessible compliance evidence',
-          security: [{ bearerAuth: [] }],
-          parameters: [
-            {
-              name: 'evidenceId',
-              in: 'path',
-              required: true,
-              schema: { type: 'string', format: 'uuid' },
-            },
-          ],
-          responses: {
-            '200': { description: 'Evidence file' },
-            '404': { description: 'Evidence is missing or inaccessible' },
           },
         },
       },
@@ -5479,8 +3451,7 @@ export const openApiSpec = swaggerJsdoc({
         get: {
           tags: ['Integrations'],
           summary: 'Get live connection monitoring summary for all integrations',
-          description:
-            'Requires integrations.read (Admin). Aggregates fleet availability, 24h availability rate, average latency, failing endpoints, and recent connection logs.',
+          description: 'Requires integrations.read (Admin). Aggregates fleet availability, 24h availability rate, average latency, failing endpoints, and recent connection logs.',
           security: [{ bearerAuth: [] }],
           parameters: [
             {
@@ -5514,8 +3485,7 @@ export const openApiSpec = swaggerJsdoc({
         post: {
           tags: ['Integrations'],
           summary: 'Trigger batch connection check across configured integrations',
-          description:
-            'Requires integrations.update (Admin). Runs throttled concurrent health checks across configured integrations.',
+          description: 'Requires integrations.update (Admin). Runs throttled concurrent health checks across configured integrations.',
           security: [{ bearerAuth: [] }],
           requestBody: {
             required: false,
@@ -5550,8 +3520,7 @@ export const openApiSpec = swaggerJsdoc({
         get: {
           tags: ['Integrations'],
           summary: 'Get detailed connection status and telemetry for an integration',
-          description:
-            'Requires integrations.read (Admin). Returns 24h availability rate, latency statistics, and recent probe logs.',
+          description: 'Requires integrations.read (Admin). Returns 24h availability rate, latency statistics, and recent probe logs.',
           security: [{ bearerAuth: [] }],
           parameters: [
             { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
@@ -5587,8 +3556,7 @@ export const openApiSpec = swaggerJsdoc({
         post: {
           tags: ['Integrations'],
           summary: 'Test external connection to SIEM or Firewall',
-          description:
-            'Requires integrations.update (Admin). Probes external base URL and updates status/latency.',
+          description: 'Requires integrations.update (Admin). Probes external base URL and updates status/latency.',
           security: [{ bearerAuth: [] }],
           parameters: [
             { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
@@ -5868,74 +3836,10 @@ export const openApiSpec = swaggerJsdoc({
           },
         },
       },
-      '/integrations/logs/stats': {
-        get: {
-          tags: ['Integrations'],
-          summary: 'Get aggregation statistics for integration errors and warnings (UC13.5)',
-          security: [{ bearerAuth: [] }],
-          parameters: [
-            { name: 'integrationId', in: 'query', schema: { type: 'string', format: 'uuid' } },
-            { name: 'startDate', in: 'query', schema: { type: 'string', format: 'date-time' } },
-            { name: 'endDate', in: 'query', schema: { type: 'string', format: 'date-time' } },
-          ],
-          responses: {
-            '200': {
-              description: 'Aggregation statistics for integration errors',
-              content: {
-                'application/json': {
-                  schema: {
-                    type: 'object',
-                    properties: {
-                      success: { type: 'boolean', example: true },
-                      data: {
-                        type: 'object',
-                        properties: {
-                          totalErrors: { type: 'integer', example: 12 },
-                          totalWarnings: { type: 'integer', example: 5 },
-                          failedJobsCount: { type: 'integer', example: 3 },
-                          affectedIntegrationsCount: { type: 'integer', example: 2 },
-                        },
-                      },
-                    },
-                  },
-                },
-              },
-            },
-            '401': { description: 'Unauthorized' },
-            '403': { description: 'Forbidden' },
-          },
-        },
-      },
-      '/integrations/logs': {
-        get: {
-          tags: ['Integrations'],
-          summary: 'List data synchronization error logs and events across integrations (UC13.5)',
-          security: [{ bearerAuth: [] }],
-          parameters: [
-            { name: 'page', in: 'query', schema: { type: 'integer', default: 1 } },
-            { name: 'limit', in: 'query', schema: { type: 'integer', default: 20 } },
-            {
-              name: 'level',
-              in: 'query',
-              schema: { type: 'string', enum: ['info', 'warn', 'error'] },
-            },
-            { name: 'integrationId', in: 'query', schema: { type: 'string', format: 'uuid' } },
-            { name: 'syncJobId', in: 'query', schema: { type: 'string', format: 'uuid' } },
-            { name: 'search', in: 'query', schema: { type: 'string' } },
-            { name: 'startDate', in: 'query', schema: { type: 'string', format: 'date-time' } },
-            { name: 'endDate', in: 'query', schema: { type: 'string', format: 'date-time' } },
-          ],
-          responses: {
-            '200': { description: 'List of integration logs and error events' },
-            '401': { description: 'Unauthorized' },
-            '403': { description: 'Forbidden' },
-          },
-        },
-      },
       '/integrations/{id}/logs': {
         get: {
           tags: ['Integrations'],
-          summary: 'List integration logs and error events for a specific integration (UC13.5)',
+          summary: 'List integration logs and error events',
           security: [{ bearerAuth: [] }],
           parameters: [
             { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
@@ -5947,9 +3851,6 @@ export const openApiSpec = swaggerJsdoc({
               schema: { type: 'string', enum: ['info', 'warn', 'error'] },
             },
             { name: 'syncJobId', in: 'query', schema: { type: 'string', format: 'uuid' } },
-            { name: 'search', in: 'query', schema: { type: 'string' } },
-            { name: 'startDate', in: 'query', schema: { type: 'string', format: 'date-time' } },
-            { name: 'endDate', in: 'query', schema: { type: 'string', format: 'date-time' } },
           ],
           responses: {
             '200': { description: 'List of integration logs' },
@@ -5963,8 +3864,7 @@ export const openApiSpec = swaggerJsdoc({
         post: {
           tags: ['Integrations'],
           summary: 'Create and encrypt integration API key',
-          description:
-            'Requires integrations.update (Admin). Plaintext secret is returned only once in response.',
+          description: 'Requires integrations.update (Admin). Plaintext secret is returned only once in response.',
           security: [{ bearerAuth: [] }],
           parameters: [
             { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
@@ -6040,12 +3940,7 @@ export const openApiSpec = swaggerJsdoc({
           security: [{ bearerAuth: [] }],
           parameters: [
             { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
-            {
-              name: 'keyId',
-              in: 'path',
-              required: true,
-              schema: { type: 'string', format: 'uuid' },
-            },
+            { name: 'keyId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
           ],
           responses: {
             '200': {
@@ -6070,17 +3965,11 @@ export const openApiSpec = swaggerJsdoc({
         patch: {
           tags: ['Integrations'],
           summary: 'Update API key metadata',
-          description:
-            'Requires integrations.update (Admin). Allows updating keyName, expiresAt, and isActive.',
+          description: 'Requires integrations.update (Admin). Allows updating keyName, expiresAt, and isActive.',
           security: [{ bearerAuth: [] }],
           parameters: [
             { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
-            {
-              name: 'keyId',
-              in: 'path',
-              required: true,
-              schema: { type: 'string', format: 'uuid' },
-            },
+            { name: 'keyId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
           ],
           requestBody: {
             required: true,
@@ -6115,17 +4004,11 @@ export const openApiSpec = swaggerJsdoc({
         post: {
           tags: ['Integrations'],
           summary: 'Rotate API key secret',
-          description:
-            'Requires integrations.update (Admin). Re-encrypts secret and returns new secret once.',
+          description: 'Requires integrations.update (Admin). Re-encrypts secret and returns new secret once.',
           security: [{ bearerAuth: [] }],
           parameters: [
             { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
-            {
-              name: 'keyId',
-              in: 'path',
-              required: true,
-              schema: { type: 'string', format: 'uuid' },
-            },
+            { name: 'keyId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
           ],
           requestBody: {
             required: false,
@@ -6160,17 +4043,11 @@ export const openApiSpec = swaggerJsdoc({
         post: {
           tags: ['Integrations'],
           summary: 'Revoke and deactivate API key',
-          description:
-            'Requires integrations.update (Admin). Sets isActive to false and writes audit log.',
+          description: 'Requires integrations.update (Admin). Sets isActive to false and writes audit log.',
           security: [{ bearerAuth: [] }],
           parameters: [
             { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
-            {
-              name: 'keyId',
-              in: 'path',
-              required: true,
-              schema: { type: 'string', format: 'uuid' },
-            },
+            { name: 'keyId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
           ],
           responses: {
             '200': {
@@ -6190,6 +4067,41 @@ export const openApiSpec = swaggerJsdoc({
             '401': { description: 'Unauthorized' },
             '403': { description: 'Forbidden' },
             '404': { description: 'API key or integration not found' },
+          },
+        },
+      },
+      '/workflow-definitions': {
+        get: {
+          tags: ['Workflow Definitions'],
+          summary: 'List custom approval workflow definitions',
+          description: 'Requires workflows.read permission. Supports filtering by entityType, isActive, search, and pagination.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'page', in: 'query', schema: { type: 'integer', default: 1 } },
+            { name: 'limit', in: 'query', schema: { type: 'integer', default: 20 } },
+            { name: 'search', in: 'query', schema: { type: 'string' } },
+            { name: 'entityType', in: 'query', schema: { type: 'string', enum: ['risk_treatment_plan', 'policy_version', 'incident_report', 'access_request'] } },
+            { name: 'isActive', in: 'query', schema: { type: 'boolean' } },
+            { name: 'sortBy', in: 'query', schema: { type: 'string', enum: ['name', 'entityType', 'createdAt', 'updatedAt', 'isActive'], default: 'updatedAt' } },
+            { name: 'sortOrder', in: 'query', schema: { type: 'string', enum: ['asc', 'desc'], default: 'desc' } },
+          ],
+          responses: {
+            '200': {
+              description: 'Workflow definitions list retrieved successfully',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      success: { type: 'boolean', example: true },
+                      data: { $ref: '#/components/schemas/WorkflowDefinitionListResponse' },
+                    },
+                  },
+                },
+              },
+            },
+            '401': { description: 'Unauthorized' },
+            '403': { description: 'Forbidden' },
           },
         },
       },
