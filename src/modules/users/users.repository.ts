@@ -46,6 +46,21 @@ const userDetailSelect = {
 } as const;
 
 export const usersRepository = {
+  async listCreateOptions() {
+    const [departments, roles] = await prisma.$transaction([
+      prisma.departments.findMany({
+        where: { status: 'active' },
+        select: { department_id: true, code: true, name: true },
+        orderBy: [{ name: 'asc' }, { department_id: 'asc' }],
+      }),
+      prisma.roles.findMany({
+        select: { role_id: true, code: true, name: true, description: true, is_system: true },
+        orderBy: [{ name: 'asc' }, { role_id: 'asc' }],
+      }),
+    ]);
+    return { departments, roles };
+  },
+
   findById(userId: string) {
     return prisma.users.findFirst({
       where: { user_id: userId, deleted_at: null },
@@ -94,60 +109,63 @@ export const usersRepository = {
     passwordHash: string;
     actorUserId: string;
   }) {
-    return prisma.$transaction(async (database) => {
-      const roles = await database.roles.findMany({
-        where: { code: { in: input.body.roleCodes } },
-        select: { role_id: true, code: true },
-      });
-      if (roles.length !== new Set(input.body.roleCodes).size) {
-        return { kind: 'invalid_roles' as const };
-      }
-      if (input.body.departmentId) {
-        const department = await database.departments.findFirst({
-          where: { department_id: input.body.departmentId, status: 'active' },
-          select: { department_id: true },
+    return prisma.$transaction(
+      async (database) => {
+        const roles = await database.roles.findMany({
+          where: { code: { in: input.body.roleCodes } },
+          select: { role_id: true, code: true },
         });
-        if (!department) return { kind: 'invalid_department' as const };
-      }
+        if (roles.length !== new Set(input.body.roleCodes).size) {
+          return { kind: 'invalid_roles' as const };
+        }
+        if (input.body.departmentId) {
+          const department = await database.departments.findFirst({
+            where: { department_id: input.body.departmentId, status: 'active' },
+            select: { department_id: true },
+          });
+          if (!department) return { kind: 'invalid_department' as const };
+        }
 
-      const user = await database.users.create({
-        data: {
-          email: input.body.email,
-          full_name: input.body.fullName,
-          password_hash: input.passwordHash,
-          ...(input.body.phone !== undefined ? { phone: input.body.phone } : {}),
-          ...(input.body.employeeCode !== undefined
-            ? { employee_code: input.body.employeeCode }
-            : {}),
-          department_id: input.body.departmentId ?? null,
-          status: 'active',
-          must_change_password: true,
-          created_by_user_id: input.actorUserId,
-          user_roles_user_roles_user_idTousers: {
-            create: roles.map((role) => ({
-              role_id: role.role_id,
-              assigned_by_user_id: input.actorUserId,
-            })),
+        const user = await database.users.create({
+          data: {
+            email: input.body.email,
+            full_name: input.body.fullName,
+            password_hash: input.passwordHash,
+            ...(input.body.phone !== undefined ? { phone: input.body.phone } : {}),
+            ...(input.body.employeeCode !== undefined
+              ? { employee_code: input.body.employeeCode }
+              : {}),
+            department_id: input.body.departmentId ?? null,
+            status: 'active',
+            must_change_password: true,
+            created_by_user_id: input.actorUserId,
+            user_roles_user_roles_user_idTousers: {
+              create: roles.map((role) => ({
+                role_id: role.role_id,
+                assigned_by_user_id: input.actorUserId,
+              })),
+            },
           },
-        },
-        select: { user_id: true, email: true, full_name: true },
-      });
-      await database.audit_logs.create({
-        data: {
-          actor_user_id: input.actorUserId,
-          module: 'users',
-          action: 'user.initialized',
-          entity_type: 'user',
-          entity_id: user.user_id,
-          after_data: {
-            email: user.email,
-            fullName: user.full_name,
-            roleCodes: roles.map((role) => role.code),
+          select: { user_id: true, email: true, full_name: true },
+        });
+        await database.audit_logs.create({
+          data: {
+            actor_user_id: input.actorUserId,
+            module: 'users',
+            action: 'user.initialized',
+            entity_type: 'user',
+            entity_id: user.user_id,
+            after_data: {
+              email: user.email,
+              fullName: user.full_name,
+              roleCodes: roles.map((role) => role.code),
+            },
           },
-        },
-        select: { audit_log_id: true },
-      });
-      return { kind: 'created' as const, user };
-    }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
+          select: { audit_log_id: true },
+        });
+        return { kind: 'created' as const, user };
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
+    );
   },
 } as const;

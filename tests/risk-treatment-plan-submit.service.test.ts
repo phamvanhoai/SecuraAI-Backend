@@ -17,7 +17,10 @@ const actor = {
   permissions: ['risk-treatment-plans.submit'],
   roles: ['SECURITY_OFFICER'],
 };
-const input = { expectedUpdatedAt: '2026-09-16T10:00:00.000Z' };
+const input = {
+  expectedUpdatedAt: '2026-09-16T10:00:00.000Z',
+  expectedRiskUpdatedAt: '2026-09-16T10:00:00.000Z',
+};
 const context = { ipAddress: null, userAgent: null };
 const current = {
   risk_treatment_plan_id: planId,
@@ -89,5 +92,18 @@ describe('submit risk treatment plan service', () => {
     await expect(
       riskManagementService.submitTreatmentPlan(planId, input, actor, context),
     ).rejects.toMatchObject({ statusCode: 409, code: 'TREATMENT_PLAN_ALREADY_SUBMITTED' });
+
+    mocks.submitTreatmentPlan.mockResolvedValueOnce({
+      failure: 'RISK_NOT_SUBMITTABLE',
+      result: null,
+    });
+    await expect(
+      riskManagementService.submitTreatmentPlan(planId, input, actor, context),
+    ).rejects.toMatchObject({ statusCode: 409, code: 'RISK_ASSESSMENT_NOT_SUBMITTABLE' });
+
+    mocks.submitTreatmentPlan.mockResolvedValueOnce({ failure: 'RISK_INVALID', result: null });
+    await expect(
+      riskManagementService.submitTreatmentPlan(planId, input, actor, context),
+    ).rejects.toMatchObject({ statusCode: 422, code: 'RISK_ASSESSMENT_INVALID' });
   });
 });

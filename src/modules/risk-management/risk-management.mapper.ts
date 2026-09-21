@@ -42,6 +42,13 @@ export const toTreatmentPlanDetail = (plan: TreatmentPlanDetailRecord) => {
     targetDate: plan.target_date,
     submittedAt: plan.submitted_at,
     completedAt: plan.completed_at,
+    cancellation: plan.cancelled_at
+      ? {
+          cancelledAt: plan.cancelled_at,
+          reason: plan.cancellation_reason ?? '',
+          cancelledBy: person(plan.users_risk_treatment_plans_cancelled_by_user_idTousers),
+        }
+      : null,
     createdAt: plan.created_at,
     updatedAt: plan.updated_at,
     progressPercent,
@@ -247,15 +254,17 @@ export const toRiskAssessmentDetail = (
     notes,
   })),
   treatmentPlans: risk.risk_treatment_plans.map((plan) => {
-    const approval =
+    const approvalHistory =
       'treatmentPlanApprovals' in risk
-        ? risk.treatmentPlanApprovals.find(
+        ? risk.treatmentPlanApprovals.filter(
             ({ entity_id }) => entity_id === plan.risk_treatment_plan_id,
           )
-        : undefined;
+        : [];
+    const approval = approvalHistory[0];
     const currentStep = approval?.workflow_definitions.workflow_steps.find(
       ({ step_order }) => step_order === approval.current_step,
     );
+    const latestDecision = approval?.approval_actions[0];
     return {
       id: plan.risk_treatment_plan_id,
       strategy: plan.strategy,
@@ -281,6 +290,39 @@ export const toRiskAssessmentDetail = (
             submittedAt: approval.submitted_at,
             completedAt: approval.completed_at,
             submittedBy: person(approval.users),
+            latestDecision: latestDecision
+              ? {
+                  decision: latestDecision.decision,
+                  comment: latestDecision.comment,
+                  actedAt: latestDecision.acted_at,
+                  actedBy: person(latestDecision.users),
+                }
+              : null,
+            history: approvalHistory.flatMap((item) =>
+              item.approval_actions.length
+                ? item.approval_actions.map((action) => ({
+                    type: action.decision === 'returned' ? 'revision' : action.decision,
+                    decision: action.decision ?? null,
+                    comment: action.comment,
+                    actedAt: action.acted_at,
+                    actedBy: person(action.users),
+                    approvalRequestId: item.approval_request_id,
+                    submittedAt: item.submitted_at,
+                    completedAt: item.completed_at,
+                  }))
+                : [
+                    {
+                      type: 'submission',
+                    decision: 'submitted',
+                      comment: item.submission_note,
+                      actedAt: item.submitted_at,
+                      actedBy: person(item.users),
+                      approvalRequestId: item.approval_request_id,
+                      submittedAt: item.submitted_at,
+                      completedAt: item.completed_at,
+                    },
+                  ],
+            ),
           }
         : null,
       actions: plan.risk_treatment_actions.map((action) => ({

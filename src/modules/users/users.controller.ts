@@ -29,10 +29,7 @@ export const unlockAccount: RequestHandler = changeAccountLock('unlock');
 
 export const initializeAccount: RequestHandler = async (req, res) => {
   if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
-  const data = await usersService.initializeAccount(
-    createUserBodySchema.parse(req.body),
-    req.auth.userId,
-  );
+  const data = await usersService.initializeAccount(createUserBodySchema.parse(req.body), req.auth);
   res.status(201).json({ success: true, data });
 };
 
@@ -42,6 +39,12 @@ export const listUsers: RequestHandler = async (req, res) => {
     throw new AppError(403, 'FORBIDDEN', 'Insufficient permissions');
   }
   const data = await usersService.list(listUsersQuerySchema.parse(req.query));
+  res.status(200).json({ success: true, data });
+};
+
+export const listUserCreateOptions: RequestHandler = async (req, res) => {
+  if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+  const data = await usersService.listCreateOptions(req.auth);
   res.status(200).json({ success: true, data });
 };
 

@@ -1,5 +1,15 @@
 # Users module
 
+## Add user accounts
+
+Administrators with `users.create` can load active departments and assignable
+roles from `GET /api/v1/users/create-options`, then create an account with
+`POST /api/v1/users`. The routes are also available below `/api/v1/admin/users`.
+The service rechecks authorization, validates department and role references,
+hashes a generated temporary password with Argon2id, and creates the user, role
+assignments, and audit record atomically. The temporary password is sent only by
+email and must be changed after the first sign-in.
+
 ## View user accounts
 
 Administrators with `users.read` can list accounts through `GET /api/v1/users`
