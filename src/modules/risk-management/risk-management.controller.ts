@@ -15,6 +15,10 @@ import {
   approveTreatmentPlanBodySchema,
   approveTreatmentPlanParamsSchema,
 } from './dto/approve-treatment-plan.dto.js';
+import {
+  returnTreatmentPlanForRevisionBodySchema,
+  returnTreatmentPlanForRevisionParamsSchema,
+} from './dto/return-treatment-plan-for-revision.dto.js';
 import { listTreatmentPlansQuerySchema } from './dto/list-treatment-plans-query.dto.js';
 import {
   createTreatmentPlanBodySchema,
@@ -90,6 +94,22 @@ export const approveRiskTreatmentPlan: RequestHandler = async (req, res) => {
     ipAddress: req.ip ?? null,
     userAgent: req.get('user-agent')?.slice(0, 1000) ?? null,
   });
+  res.status(200).json({ success: true, data });
+};
+
+export const returnRiskTreatmentPlanForRevision: RequestHandler = async (req, res) => {
+  if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+  const { treatmentPlanId } = returnTreatmentPlanForRevisionParamsSchema.parse(req.params);
+  const input = returnTreatmentPlanForRevisionBodySchema.parse(req.body);
+  const data = await riskManagementService.returnTreatmentPlanForRevision(
+    treatmentPlanId,
+    input,
+    req.auth,
+    {
+      ipAddress: req.ip ?? null,
+      userAgent: req.get('user-agent')?.slice(0, 1000) ?? null,
+    },
+  );
   res.status(200).json({ success: true, data });
 };
 
