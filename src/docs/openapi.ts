@@ -206,6 +206,38 @@ export const openApiSpec = swaggerJsdoc({
             roleCodes: { type: 'array', minItems: 1, maxItems: 10, items: { type: 'string' } },
           },
         },
+        UserCreateOptions: {
+          type: 'object',
+          required: ['departments', 'roles'],
+          properties: {
+            departments: {
+              type: 'array',
+              items: {
+                type: 'object',
+                required: ['id', 'code', 'name'],
+                properties: {
+                  id: { type: 'string', format: 'uuid' },
+                  code: { type: 'string' },
+                  name: { type: 'string' },
+                },
+              },
+            },
+            roles: {
+              type: 'array',
+              items: {
+                type: 'object',
+                required: ['id', 'code', 'name', 'isSystem'],
+                properties: {
+                  id: { type: 'string', format: 'uuid' },
+                  code: { type: 'string' },
+                  name: { type: 'string' },
+                  description: { type: 'string', nullable: true },
+                  isSystem: { type: 'boolean' },
+                },
+              },
+            },
+          },
+        },
         RefreshRequest: {
           type: 'object',
           required: ['refreshToken'],
@@ -2822,6 +2854,33 @@ export const openApiSpec = swaggerJsdoc({
             '403': { description: 'Missing users.read permission' },
             '404': { description: 'User was not found' },
             '422': { description: 'Invalid user identifier' },
+          },
+        },
+      },
+      '/users/create-options': {
+        get: {
+          tags: ['Users'],
+          summary: 'List options for creating a user account',
+          description: 'Returns active departments and assignable roles. Requires users.create.',
+          security: [{ bearerAuth: [] }],
+          responses: {
+            '200': {
+              description: 'User creation options',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    required: ['success', 'data'],
+                    properties: {
+                      success: { type: 'boolean', example: true },
+                      data: { $ref: '#/components/schemas/UserCreateOptions' },
+                    },
+                  },
+                },
+              },
+            },
+            '401': { description: 'Unauthorized' },
+            '403': { description: 'Missing users.create permission' },
           },
         },
       },

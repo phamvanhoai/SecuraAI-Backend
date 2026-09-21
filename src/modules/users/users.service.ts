@@ -8,6 +8,14 @@ import type { CreateUserBody } from './dto/create-user.dto.js';
 import type { ListUsersQuery } from './dto/list-users-query.dto.js';
 import { usersRepository } from './users.repository.js';
 
+type UserActor = { userId: string; permissions: readonly string[] };
+
+const requirePermission = (actor: UserActor, permission: string): void => {
+  if (!actor.permissions.includes(permission)) {
+    throw new AppError(403, 'FORBIDDEN', 'Insufficient permissions');
+  }
+};
+
 const publicUserSelect = {
   user_id: true,
   email: true,
@@ -39,6 +47,25 @@ const publicUserSelect = {
 } as const;
 
 export const usersService = {
+  async listCreateOptions(actor: UserActor) {
+    requirePermission(actor, 'users.create');
+    const options = await usersRepository.listCreateOptions();
+    return {
+      departments: options.departments.map((department) => ({
+        id: department.department_id,
+        code: department.code,
+        name: department.name,
+      })),
+      roles: options.roles.map((role) => ({
+        id: role.role_id,
+        code: role.code,
+        name: role.name,
+        description: role.description,
+        isSystem: role.is_system,
+      })),
+    };
+  },
+
   async getById(userId: string) {
     const user = await usersRepository.findById(userId);
     if (!user) throw new AppError(404, 'USER_NOT_FOUND', 'User was not found');
@@ -87,7 +114,11 @@ export const usersService = {
         status: user.status,
         createdAt: user.created_at,
         department: user.departments
-          ? { id: user.departments.department_id, code: user.departments.code, name: user.departments.name }
+          ? {
+              id: user.departments.department_id,
+              code: user.departments.code,
+              name: user.departments.name,
+            }
           : null,
         roles: user.user_roles_user_roles_user_idTousers.map(({ roles }) => ({
           code: roles.code,
@@ -104,7 +135,8 @@ export const usersService = {
     };
   },
 
-  async initializeAccount(input: CreateUserBody, actorUserId: string) {
+  async initializeAccount(input: CreateUserBody, actor: UserActor) {
+    requirePermission(actor, 'users.create');
     const temporaryPassword = String(randomInt(10_000_000, 100_000_000));
     const temporaryPasswordHash = await argon2.hash(temporaryPassword, {
       type: argon2.argon2id,
@@ -113,7 +145,7 @@ export const usersService = {
       const result = await usersRepository.createInitializedUser({
         body: input,
         passwordHash: temporaryPasswordHash,
-        actorUserId,
+        actorUserId: actor.userId,
       });
       if (result.kind === 'invalid_roles') {
         throw new AppError(422, 'INVALID_ROLES', 'One or more role codes do not exist');

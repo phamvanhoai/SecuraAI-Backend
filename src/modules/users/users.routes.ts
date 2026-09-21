@@ -7,6 +7,7 @@ import { validate } from '../../common/middleware/validate.js';
 import {
   getUser,
   initializeAccount,
+  listUserCreateOptions,
   listUsers,
   me,
   lockAccount,
@@ -35,6 +36,12 @@ usersRouter.post(
   asyncHandler(initializeAccount),
 );
 usersRouter.get('/me', authenticate, asyncHandler(me));
+usersRouter.get(
+  '/create-options',
+  authenticate,
+  authorize('users.create'),
+  asyncHandler(listUserCreateOptions),
+);
 usersRouter.get(
   '/:userId',
   authenticate,
