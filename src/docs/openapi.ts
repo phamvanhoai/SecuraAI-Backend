@@ -1623,6 +1623,39 @@ export const openApiSpec = swaggerJsdoc({
           },
         },
       },
+      '/training/certificates': {
+        get: {
+          tags: ['Training Awareness'],
+          summary: 'List issued training certificates (UC164)',
+          description:
+            'Requires training-certificates.read-issued. Returns paginated certificate metadata for Security Officers; no generated PDF is implied.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'page',
+              in: 'query',
+              schema: { type: 'integer', minimum: 1, maximum: 100000, default: 1 },
+            },
+            {
+              name: 'limit',
+              in: 'query',
+              schema: { type: 'integer', minimum: 1, maximum: 50, default: 10 },
+            },
+            {
+              name: 'q',
+              in: 'query',
+              description: 'Employee, email, employee code, course, campaign or certificate number',
+              schema: { type: 'string', maxLength: 100 },
+            },
+          ],
+          responses: {
+            '200': { description: 'Paginated issued certificate metadata' },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'Insufficient permissions' },
+            '422': { description: 'Invalid query' },
+          },
+        },
+      },
       '/training/enrollments/{enrollmentId}/certificate': {
         get: {
           tags: ['Training Awareness'],

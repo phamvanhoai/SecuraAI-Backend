@@ -13,6 +13,8 @@ import { departmentReportQuerySchema } from './dto/department-report.dto.js';
 import { getCertificate, issueCertificate } from './certificate.controller.js';
 import { listMyCertificates } from './my-certificates.controller.js';
 import { myCertificatesQuerySchema } from './dto/my-certificates.dto.js';
+import { listIssuedCertificates } from './issued-certificates.controller.js';
+import { issuedCertificatesQuerySchema } from './dto/issued-certificates.dto.js';
 import { authenticate, authorize } from '../../common/middleware/authenticate.js';
 import { validate } from '../../common/middleware/validate.js';
 import { asyncHandler } from '../../common/utils/async-handler.js';
@@ -58,6 +60,13 @@ import {
 } from './training-reminders.controller.js';
 
 export const trainingAwarenessRouter = Router();
+trainingAwarenessRouter.get(
+  '/certificates',
+  authenticate,
+  authorize('training-certificates.read-issued'),
+  validate({ query: issuedCertificatesQuerySchema }),
+  asyncHandler(listIssuedCertificates),
+);
 trainingAwarenessRouter.get(
   '/my-certificates',
   authenticate,
