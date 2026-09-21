@@ -11,6 +11,7 @@ import {
   cancelRiskAssessment,
   submitRiskTreatmentPlan,
   approveRiskTreatmentPlan,
+  returnRiskTreatmentPlanForRevision,
   listRiskTreatmentPlans,
   getRiskTreatmentPlanDetail,
 } from './risk-management.controller.js';
@@ -28,6 +29,10 @@ import {
   approveTreatmentPlanBodySchema,
   approveTreatmentPlanParamsSchema,
 } from './dto/approve-treatment-plan.dto.js';
+import {
+  returnTreatmentPlanForRevisionBodySchema,
+  returnTreatmentPlanForRevisionParamsSchema,
+} from './dto/return-treatment-plan-for-revision.dto.js';
 import { listTreatmentPlansQuerySchema } from './dto/list-treatment-plans-query.dto.js';
 
 export const riskManagementRouter = Router();
@@ -54,6 +59,17 @@ riskManagementRouter.post(
   authorize('risk-treatment-plans.approve'),
   validate({ params: approveTreatmentPlanParamsSchema, body: approveTreatmentPlanBodySchema }),
   asyncHandler(approveRiskTreatmentPlan),
+);
+
+riskManagementRouter.post(
+  '/treatment-plans/:treatmentPlanId/return-for-revision',
+  authenticate,
+  authorize('risk-treatment-plans.approve'),
+  validate({
+    params: returnTreatmentPlanForRevisionParamsSchema,
+    body: returnTreatmentPlanForRevisionBodySchema,
+  }),
+  asyncHandler(returnRiskTreatmentPlanForRevision),
 );
 
 riskManagementRouter.post(

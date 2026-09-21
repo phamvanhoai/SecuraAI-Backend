@@ -2945,7 +2945,7 @@ export const openApiSpec = swaggerJsdoc({
           tags: ['Risk Assessments'],
           summary: 'Update a draft or rejected risk assessment',
           description:
-            'Requires risks.update. Only the assessor or an administrator may edit a draft or rejected assessment. Rejected assessments keep their original target. Assessments with a treatment plan or incident link cannot be edited. Recalculates score and level, replaces linked threats and vulnerabilities transactionally, and uses expectedUpdatedAt for optimistic concurrency.',
+            'Requires risks.update. Only the assessor or an administrator may edit a draft or rejected assessment. Rejected assessments keep their original target. Assessments with an active treatment plan or incident link cannot be edited; rejected or cancelled plans do not block revision. Recalculates score and level, replaces linked threats and vulnerabilities transactionally, and uses expectedUpdatedAt for optimistic concurrency.',
           security: [{ bearerAuth: [] }],
           parameters: [
             {
@@ -3124,9 +3124,9 @@ export const openApiSpec = swaggerJsdoc({
       '/risks/treatment-plans/{treatmentPlanId}/submit': {
         post: {
           tags: ['Risk Assessments'],
-          summary: 'Submit a risk treatment plan for approval',
+          summary: 'Submit a risk assessment and treatment plan for approval',
           description:
-            'Requires risk-treatment-plans.submit. The plan must be a complete draft or rejected plan owned or created by the caller (unless administrator), its risk must be approved, and exactly one active approval workflow with enough direct or delegated independent approvers must exist. Submission stores an immutable review snapshot and note; the approval request, notifications, and audit data are created atomically.',
+            'Requires risk-treatment-plans.submit. The linked risk assessment and treatment plan must both be complete draft or rejected records. Submission transitions both records to pending approval atomically, stores one immutable snapshot covering both, and creates one approval request. The plan must be owned or created by the caller unless they are an administrator, and exactly one active workflow with enough independent direct or delegated approvers must exist.',
           security: [{ bearerAuth: [] }],
           parameters: [
             {
@@ -3143,9 +3143,10 @@ export const openApiSpec = swaggerJsdoc({
                 schema: {
                   type: 'object',
                   additionalProperties: false,
-                  required: ['expectedUpdatedAt'],
+                  required: ['expectedUpdatedAt', 'expectedRiskUpdatedAt'],
                   properties: {
                     expectedUpdatedAt: { type: 'string', format: 'date-time' },
+                    expectedRiskUpdatedAt: { type: 'string', format: 'date-time' },
                     submissionNote: { type: 'string', maxLength: 1000 },
                   },
                 },
@@ -3153,14 +3154,14 @@ export const openApiSpec = swaggerJsdoc({
             },
           },
           responses: {
-            '200': { description: 'Treatment plan submitted and approval request created' },
+            '200': { description: 'Risk assessment and treatment plan submitted in one approval request' },
             '401': { description: 'Authentication required' },
             '403': { description: 'Missing permission or caller does not own the plan' },
             '404': { description: 'Treatment plan not found' },
-            '409': { description: 'Plan already submitted, started, or changed concurrently' },
+            '409': { description: 'Risk or plan is not submittable, already submitted, or changed concurrently' },
             '422': {
               description:
-                'Plan is incomplete, risk is not approved, or approval workflow is unavailable',
+                'Risk or plan is incomplete, invalid, or approval workflow is unavailable',
             },
           },
         },
@@ -3168,9 +3169,9 @@ export const openApiSpec = swaggerJsdoc({
       '/risks/treatment-plans/{treatmentPlanId}/approve': {
         post: {
           tags: ['Risk Assessments'],
-          summary: 'Approve the current step of a risk treatment plan',
+          summary: 'Approve the current step of a risk assessment and treatment plan',
           description:
-            'Requires risk-treatment-plans.approve. The caller must be an active direct or delegated approver for the current workflow step and cannot approve their own submission. The submitted snapshot is checked before recording one approval per actor and step. Completing the final step approves the treatment plan atomically.',
+            'Requires risk-treatment-plans.approve. The caller must be an active direct or delegated approver for the current workflow step and cannot approve their own submission. The immutable snapshot for both records is checked before recording one approval per actor and step. Completing the final step approves the risk assessment and treatment plan atomically.',
           security: [{ bearerAuth: [] }],
           parameters: [
             {
@@ -3206,6 +3207,54 @@ export const openApiSpec = swaggerJsdoc({
             },
             '422': { description: 'Plan or workflow is no longer valid' },
             '503': { description: 'Approval temporarily unavailable' },
+          },
+        },
+      },
+      '/risks/treatment-plans/{treatmentPlanId}/return-for-revision': {
+        post: {
+          tags: ['Risk Assessments'],
+          summary: 'Return a risk assessment and treatment plan for revision',
+          description:
+            'Requires risk-treatment-plans.approve. The caller must be an active direct or delegated approver for the current workflow step and cannot review their own submission. A reason and revision scope are required. The current approval request is rejected, while both the risk assessment and treatment plan are returned to rejected status atomically so they can be edited and submitted through a new approval request.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'treatmentPlanId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  additionalProperties: false,
+                  required: ['approvalRequestId', 'revisionScope', 'reason'],
+                  properties: {
+                    approvalRequestId: { type: 'string', format: 'uuid' },
+                    revisionScope: {
+                      type: 'string',
+                      enum: ['risk_assessment', 'treatment_plan', 'both'],
+                    },
+                    reason: { type: 'string', minLength: 10, maxLength: 1000 },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '200': { description: 'Risk assessment and treatment plan returned for revision' },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'Missing permission, self-review, or ineligible approver' },
+            '404': { description: 'Treatment plan or approval request not found' },
+            '409': {
+              description: 'Request completed, duplicate decision, or submitted data changed',
+            },
+            '422': { description: 'Invalid request or workflow configuration' },
+            '503': { description: 'Revision request temporarily unavailable' },
           },
         },
       },

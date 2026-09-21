@@ -48,7 +48,7 @@ describe('approve risk treatment plan service', () => {
     ).resolves.toEqual(result);
   });
 
-  it('maps self approval, duplicate decisions, and changed snapshots', async () => {
+  it('maps self approval, duplicate decisions, changed snapshots, and invalid submissions', async () => {
     mocks.approveTreatmentPlan.mockResolvedValueOnce({ failure: 'SELF_APPROVAL', result: null });
     await expect(
       riskManagementService.approveTreatmentPlan(planId, input, actor, context),
@@ -66,5 +66,10 @@ describe('approve risk treatment plan service', () => {
       statusCode: 409,
       code: 'TREATMENT_PLAN_CHANGED_AFTER_SUBMISSION',
     });
+
+    mocks.approveTreatmentPlan.mockResolvedValueOnce({ failure: 'PLAN_INVALID', result: null });
+    await expect(
+      riskManagementService.approveTreatmentPlan(planId, input, actor, context),
+    ).rejects.toMatchObject({ statusCode: 422, code: 'TREATMENT_PLAN_NO_LONGER_VALID' });
   });
 });

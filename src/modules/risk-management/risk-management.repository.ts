@@ -7,6 +7,7 @@ import type { CancelRiskAssessmentBody } from './dto/cancel-risk-assessment.dto.
 import type { RiskCreateOptionsQuery } from './dto/risk-create-options-query.dto.js';
 import type { SubmitTreatmentPlanBody } from './dto/submit-treatment-plan.dto.js';
 import type { ApproveTreatmentPlanBody } from './dto/approve-treatment-plan.dto.js';
+import type { ReturnTreatmentPlanForRevisionBody } from './dto/return-treatment-plan-for-revision.dto.js';
 import type { ListTreatmentPlansQuery } from './dto/list-treatment-plans-query.dto.js';
 
 const treatmentPlanListSelect = {
@@ -290,6 +291,15 @@ const treatmentPlanApprovalSelect = {
   submitted_at: true,
   completed_at: true,
   submission_note: true,
+  approval_actions: {
+    orderBy: { acted_at: 'desc' as const },
+    select: {
+      decision: true,
+      comment: true,
+      acted_at: true,
+      users: { select: { user_id: true, full_name: true, status: true, deleted_at: true } },
+    },
+  },
   users: { select: { user_id: true, full_name: true, status: true, deleted_at: true } },
   workflow_definitions: {
     select: {
@@ -469,7 +479,7 @@ export const riskManagementRepository = {
       async (transaction) => {
         await transaction.$executeRaw`
           SELECT pg_advisory_xact_lock(
-            hashtextextended(${`risk-treatment-plan:submit:${id}`}, 0)
+            hashtextextended(${`risk-treatment-plan:mutation:${id}`}, 0)
           )
         `;
         const [actor, plan] = await Promise.all([
@@ -491,7 +501,27 @@ export const riskManagementRepository = {
               submitted_at: true,
               updated_at: true,
               risk_assessments: {
-                select: { risk_code: true, title: true, status: true },
+                select: {
+                  risk_assessment_id: true,
+                  risk_code: true,
+                  title: true,
+                  status: true,
+                  likelihood: true,
+                  impact: true,
+                  risk_score: true,
+                  risk_level: true,
+                  updated_at: true,
+                  assets: { select: { asset_id: true, asset_code: true, name: true, status: true, deleted_at: true } },
+                  business_processes: { select: { business_process_id: true, code: true, name: true, status: true } },
+                  risk_assessment_threats: {
+                    orderBy: { threat_id: 'asc' },
+                    select: { threat_id: true, notes: true },
+                  },
+                  risk_assessment_vulnerabilities: {
+                    orderBy: { vulnerability_id: 'asc' },
+                    select: { vulnerability_id: true, notes: true },
+                  },
+                },
               },
               users_risk_treatment_plans_owner_user_idTousers: {
                 select: { user_id: true, full_name: true, status: true, deleted_at: true },
@@ -517,7 +547,7 @@ export const riskManagementRepository = {
         if (!plan) return { failure: 'PLAN_NOT_FOUND' as const, result: null };
         await transaction.$executeRaw`
           SELECT pg_advisory_xact_lock(
-            hashtextextended(${`risk-treatment-plan:risk:${plan.risk_assessment_id}`}, 0)
+            hashtextextended(${`risk-assessment:mutation:${plan.risk_assessment_id}`}, 0)
           )
         `;
         if (
@@ -528,8 +558,18 @@ export const riskManagementRepository = {
           return { failure: 'NOT_PLAN_OWNER' as const, result: null };
         if (!['draft', 'rejected'].includes(plan.status))
           return { failure: 'PLAN_NOT_SUBMITTABLE' as const, result: null };
-        if (!['approved', 'in_treatment'].includes(plan.risk_assessments.status))
-          return { failure: 'RISK_NOT_APPROVED' as const, result: null };
+        if (!['draft', 'rejected'].includes(plan.risk_assessments.status))
+          return { failure: 'RISK_NOT_SUBMITTABLE' as const, result: null };
+        if (plan.risk_assessments.updated_at.getTime() !== new Date(input.expectedRiskUpdatedAt).getTime())
+          return { failure: 'RISK_CHANGED' as const, result: null };
+        if (
+          !plan.risk_assessments.risk_assessment_threats.length ||
+          !plan.risk_assessments.risk_assessment_vulnerabilities.length ||
+          (!plan.risk_assessments.assets && !plan.risk_assessments.business_processes) ||
+          (plan.risk_assessments.assets && (plan.risk_assessments.assets.deleted_at !== null || plan.risk_assessments.assets.status === 'disposed')) ||
+          (plan.risk_assessments.business_processes && plan.risk_assessments.business_processes.status !== 'active')
+        )
+          return { failure: 'RISK_INVALID' as const, result: null };
         if (plan.description.normalize('NFKC').replace(/\s+/gu, ' ').trim().length < 10)
           return { failure: 'DESCRIPTION_REQUIRED' as const, result: null };
         const owner = plan.users_risk_treatment_plans_owner_user_idTousers;
@@ -675,6 +715,15 @@ export const riskManagementRepository = {
           data: { status: 'pending_approval', submitted_at: submittedAt, updated_at: submittedAt },
         });
         if (changed.count !== 1) return { failure: 'PLAN_CHANGED' as const, result: null };
+        const riskChanged = await transaction.risk_assessments.updateMany({
+          where: {
+            risk_assessment_id: plan.risk_assessment_id,
+            status: { in: ['draft', 'rejected'] },
+            updated_at: new Date(input.expectedRiskUpdatedAt),
+          },
+          data: { status: 'pending_approval', updated_at: submittedAt },
+        });
+        if (riskChanged.count !== 1) return { failure: 'RISK_CHANGED' as const, result: null };
         const request = await transaction.approval_requests.create({
           data: {
             workflow_definition_id: workflow.workflow_definition_id,
@@ -686,10 +735,21 @@ export const riskManagementRepository = {
             submitted_at: submittedAt,
             submission_note: input.submissionNote ?? null,
             entity_snapshot: {
-              riskAssessmentId: plan.risk_assessment_id,
-              riskCode: plan.risk_assessments.risk_code,
-              riskTitle: plan.risk_assessments.title,
-              riskStatus: plan.risk_assessments.status,
+              riskAssessment: {
+                id: plan.risk_assessments.risk_assessment_id,
+                code: plan.risk_assessments.risk_code,
+                title: plan.risk_assessments.title,
+                status: 'pending_approval',
+                likelihood: plan.risk_assessments.likelihood,
+                impact: plan.risk_assessments.impact,
+                score: plan.risk_assessments.risk_score,
+                level: plan.risk_assessments.risk_level,
+                target: plan.risk_assessments.assets
+                  ? { type: 'asset', id: plan.risk_assessments.assets.asset_id, code: plan.risk_assessments.assets.asset_code, name: plan.risk_assessments.assets.name }
+                  : { type: 'businessProcess', id: plan.risk_assessments.business_processes?.business_process_id ?? '', code: plan.risk_assessments.business_processes?.code ?? '', name: plan.risk_assessments.business_processes?.name ?? '' },
+                threats: plan.risk_assessments.risk_assessment_threats.map(({ threat_id, notes }) => ({ id: threat_id, notes })),
+                vulnerabilities: plan.risk_assessments.risk_assessment_vulnerabilities.map(({ vulnerability_id, notes }) => ({ id: vulnerability_id, notes })),
+              },
               strategy: plan.strategy,
               description: plan.description,
               ownerUserId: owner.user_id,
@@ -716,7 +776,7 @@ export const riskManagementRepository = {
           data: approvers.map((userId) => ({
             user_id: userId,
             type: 'approval_requested',
-            title: 'Risk treatment plan awaiting approval',
+            title: 'Risk assessment and treatment plan awaiting approval',
             message: `${plan.risk_assessments.risk_code} — ${plan.risk_assessments.title}`,
             entity_type: 'risk_treatment_plan',
             entity_id: id,
@@ -729,9 +789,14 @@ export const riskManagementRepository = {
             action: 'risk-treatment-plan.submitted',
             entity_type: 'risk_treatment_plan',
             entity_id: id,
-            before_data: { status: plan.status, submittedAt: plan.submitted_at },
+            before_data: {
+              planStatus: plan.status,
+              riskStatus: plan.risk_assessments.status,
+              submittedAt: plan.submitted_at,
+            },
             after_data: {
-              status: 'pending_approval',
+              planStatus: 'pending_approval',
+              riskStatus: 'pending_approval',
               submittedAt,
               approvalRequestId: request.approval_request_id,
               workflowDefinitionId: workflow.workflow_definition_id,
@@ -774,6 +839,11 @@ export const riskManagementRepository = {
   ) {
     return prisma.$transaction(
       async (transaction) => {
+        await transaction.$executeRaw`
+          SELECT pg_advisory_xact_lock(
+            hashtextextended(${`risk-treatment-plan:mutation:${id}`}, 0)
+          )
+        `;
         await transaction.$executeRaw`
           SELECT pg_advisory_xact_lock(
             hashtextextended(${`risk-treatment-plan:approval:${input.approvalRequestId}`}, 0)
@@ -873,7 +943,28 @@ export const riskManagementRepository = {
             owner_user_id: true,
             status: true,
             target_date: true,
-            risk_assessments: { select: { risk_code: true, title: true, status: true } },
+            risk_assessments: {
+              select: {
+                risk_assessment_id: true,
+                risk_code: true,
+                title: true,
+                status: true,
+                likelihood: true,
+                impact: true,
+                risk_score: true,
+                risk_level: true,
+                assets: { select: { asset_id: true, asset_code: true, name: true, status: true, deleted_at: true } },
+                business_processes: { select: { business_process_id: true, code: true, name: true, status: true } },
+                risk_assessment_threats: {
+                  orderBy: { threat_id: 'asc' },
+                  select: { threat_id: true, notes: true },
+                },
+                risk_assessment_vulnerabilities: {
+                  orderBy: { vulnerability_id: 'asc' },
+                  select: { vulnerability_id: true, notes: true },
+                },
+              },
+            },
             users_risk_treatment_plans_owner_user_idTousers: {
               select: { user_id: true, full_name: true, status: true, deleted_at: true },
             },
@@ -894,15 +985,31 @@ export const riskManagementRepository = {
           },
         });
         if (!plan) return { failure: 'PLAN_NOT_FOUND' as const, result: null };
+        await transaction.$executeRaw`
+          SELECT pg_advisory_xact_lock(
+            hashtextextended(${`risk-assessment:mutation:${plan.risk_assessment_id}`}, 0)
+          )
+        `;
         if (plan.status !== 'pending_approval')
           return { failure: 'PLAN_NOT_PENDING' as const, result: null };
         if (!request.entity_snapshot) return { failure: 'SNAPSHOT_MISSING' as const, result: null };
         const owner = plan.users_risk_treatment_plans_owner_user_idTousers;
         const currentSnapshot = {
-          riskAssessmentId: plan.risk_assessment_id,
-          riskCode: plan.risk_assessments.risk_code,
-          riskTitle: plan.risk_assessments.title,
-          riskStatus: plan.risk_assessments.status,
+          riskAssessment: {
+            id: plan.risk_assessments.risk_assessment_id,
+            code: plan.risk_assessments.risk_code,
+            title: plan.risk_assessments.title,
+            status: plan.risk_assessments.status,
+            likelihood: plan.risk_assessments.likelihood,
+            impact: plan.risk_assessments.impact,
+            score: plan.risk_assessments.risk_score,
+            level: plan.risk_assessments.risk_level,
+            target: plan.risk_assessments.assets
+              ? { type: 'asset', id: plan.risk_assessments.assets.asset_id, code: plan.risk_assessments.assets.asset_code, name: plan.risk_assessments.assets.name }
+              : { type: 'businessProcess', id: plan.risk_assessments.business_processes?.business_process_id ?? '', code: plan.risk_assessments.business_processes?.code ?? '', name: plan.risk_assessments.business_processes?.name ?? '' },
+            threats: plan.risk_assessments.risk_assessment_threats.map(({ threat_id, notes }) => ({ id: threat_id, notes })),
+            vulnerabilities: plan.risk_assessments.risk_assessment_vulnerabilities.map(({ vulnerability_id, notes }) => ({ id: vulnerability_id, notes })),
+          },
           strategy: plan.strategy,
           description: plan.description,
           ownerUserId: owner?.user_id ?? null,
@@ -925,7 +1032,15 @@ export const riskManagementRepository = {
         const today = new Date();
         today.setUTCHours(0, 0, 0, 0);
         if (
-          !['approved', 'in_treatment'].includes(plan.risk_assessments.status) ||
+          plan.risk_assessments.status !== 'pending_approval' ||
+          !plan.risk_assessments.risk_assessment_threats.length ||
+          !plan.risk_assessments.risk_assessment_vulnerabilities.length ||
+          (!plan.risk_assessments.assets && !plan.risk_assessments.business_processes) ||
+          (plan.risk_assessments.assets &&
+            (plan.risk_assessments.assets.deleted_at !== null ||
+              plan.risk_assessments.assets.status === 'disposed')) ||
+          (plan.risk_assessments.business_processes &&
+            plan.risk_assessments.business_processes.status !== 'active') ||
           !owner ||
           owner.deleted_at ||
           owner.status !== 'active' ||
@@ -1030,7 +1145,7 @@ export const riskManagementRepository = {
             data: nextApproverIds.map((user_id) => ({
               user_id,
               type: 'approval_requested',
-              title: 'Risk treatment plan awaiting approval',
+              title: 'Risk assessment and treatment plan awaiting approval',
               message: `${plan.risk_assessments.risk_code} — ${plan.risk_assessments.title}`,
               entity_type: 'risk_treatment_plan',
               entity_id: id,
@@ -1048,6 +1163,10 @@ export const riskManagementRepository = {
               where: { risk_treatment_plan_id: id },
               data: { status: planStatus, updated_at: now },
             }),
+            transaction.risk_assessments.update({
+              where: { risk_assessment_id: plan.risk_assessment_id },
+              data: { status: 'approved', assessed_at: now, updated_at: now },
+            }),
           ]);
           const recipients = [
             ...new Set(
@@ -1061,7 +1180,7 @@ export const riskManagementRepository = {
               data: recipients.map((user_id) => ({
                 user_id,
                 type: 'approval_completed',
-                title: 'Risk treatment plan approved',
+                title: 'Risk assessment and treatment plan approved',
                 message: `${plan.risk_assessments.risk_code} — ${plan.risk_assessments.title}`,
                 entity_type: 'risk_treatment_plan',
                 entity_id: id,
@@ -1082,6 +1201,7 @@ export const riskManagementRepository = {
             },
             after_data: {
               planStatus,
+              riskStatus: stepCompleted && !nextStep ? 'approved' : plan.risk_assessments.status,
               approvalStatus,
               currentStep,
               approvedStep: step.step_order,
@@ -1107,6 +1227,320 @@ export const riskManagementRepository = {
             stepCompleted,
             approvalCount,
             requiredApprovals: step.required_approvals,
+          },
+        };
+      },
+      {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+        maxWait: 5_000,
+        timeout: 15_000,
+      },
+    );
+  },
+  returnTreatmentPlanForRevision(
+    id: string,
+    input: ReturnTreatmentPlanForRevisionBody,
+    context: { actorUserId: string; ipAddress: string | null; userAgent: string | null },
+  ) {
+    return prisma.$transaction(
+      async (transaction) => {
+        await transaction.$executeRaw`
+          SELECT pg_advisory_xact_lock(
+            hashtextextended(${`risk-treatment-plan:mutation:${id}`}, 0)
+          )
+        `;
+        await transaction.$executeRaw`
+          SELECT pg_advisory_xact_lock(
+            hashtextextended(${`risk-treatment-plan:approval:${input.approvalRequestId}`}, 0)
+          )
+        `;
+
+        const now = new Date();
+        const request = await transaction.approval_requests.findUnique({
+          where: { approval_request_id: input.approvalRequestId },
+          select: {
+            approval_request_id: true,
+            entity_type: true,
+            entity_id: true,
+            requested_by_user_id: true,
+            current_step: true,
+            status: true,
+            entity_snapshot: true,
+            workflow_definitions: {
+              select: {
+                workflow_steps: {
+                  orderBy: { step_order: 'asc' },
+                  take: 21,
+                  select: {
+                    workflow_step_id: true,
+                    step_order: true,
+                    approver_role_id: true,
+                  },
+                },
+              },
+            },
+          },
+        });
+        if (!request || request.entity_type !== 'risk_treatment_plan' || request.entity_id !== id)
+          return { failure: 'REQUEST_NOT_FOUND' as const, result: null };
+        if (request.status !== 'pending')
+          return { failure: 'REQUEST_NOT_PENDING' as const, result: null };
+        if (request.requested_by_user_id === context.actorUserId)
+          return { failure: 'SELF_REVIEW' as const, result: null };
+
+        const actor = await transaction.users.findFirst({
+          where: { user_id: context.actorUserId, deleted_at: null, status: 'active' },
+          select: {
+            user_id: true,
+            user_roles_user_roles_user_idTousers: { select: { role_id: true } },
+          },
+        });
+        if (!actor) return { failure: 'ACTOR_INACTIVE' as const, result: null };
+
+        const steps = request.workflow_definitions.workflow_steps;
+        const step = steps.find(({ step_order }) => step_order === request.current_step);
+        if (
+          steps.length > 20 ||
+          !step?.approver_role_id ||
+          steps.some((item, index) => item.step_order !== index + 1)
+        )
+          return { failure: 'WORKFLOW_INVALID' as const, result: null };
+
+        const hasDirectRole = actor.user_roles_user_roles_user_idTousers.some(
+          ({ role_id }) => role_id === step.approver_role_id,
+        );
+        const delegation = hasDirectRole
+          ? null
+          : await transaction.approval_delegations.findFirst({
+              where: {
+                delegate_user_id: context.actorUserId,
+                is_active: true,
+                start_at: { lte: now },
+                end_at: { gte: now },
+                users_approval_delegations_delegator_user_idTousers: {
+                  deleted_at: null,
+                  status: 'active',
+                  user_roles_user_roles_user_idTousers: {
+                    some: { role_id: step.approver_role_id },
+                  },
+                },
+              },
+              select: { approval_delegation_id: true, delegator_user_id: true },
+            });
+        if (!hasDirectRole && !delegation)
+          return { failure: 'NOT_CURRENT_APPROVER' as const, result: null };
+
+        const existingAction = await transaction.approval_actions.findFirst({
+          where: {
+            approval_request_id: request.approval_request_id,
+            workflow_step_id: step.workflow_step_id,
+            acted_by_user_id: context.actorUserId,
+          },
+          select: { approval_action_id: true },
+        });
+        if (existingAction) return { failure: 'ALREADY_DECIDED' as const, result: null };
+
+        const plan = await transaction.risk_treatment_plans.findUnique({
+          where: { risk_treatment_plan_id: id },
+          select: {
+            risk_treatment_plan_id: true,
+            risk_assessment_id: true,
+            strategy: true,
+            description: true,
+            owner_user_id: true,
+            created_by_user_id: true,
+            status: true,
+            target_date: true,
+            risk_assessments: {
+              select: {
+                risk_assessment_id: true,
+                risk_code: true,
+                title: true,
+                status: true,
+                likelihood: true,
+                impact: true,
+                risk_score: true,
+                risk_level: true,
+                assets: {
+                  select: { asset_id: true, asset_code: true, name: true },
+                },
+                business_processes: {
+                  select: { business_process_id: true, code: true, name: true },
+                },
+                risk_assessment_threats: {
+                  orderBy: { threat_id: 'asc' },
+                  select: { threat_id: true, notes: true },
+                },
+                risk_assessment_vulnerabilities: {
+                  orderBy: { vulnerability_id: 'asc' },
+                  select: { vulnerability_id: true, notes: true },
+                },
+              },
+            },
+            users_risk_treatment_plans_owner_user_idTousers: {
+              select: { user_id: true, full_name: true },
+            },
+            risk_treatment_actions: {
+              where: { status: { not: 'cancelled' } },
+              orderBy: { risk_treatment_action_id: 'asc' },
+              take: 101,
+              select: {
+                risk_treatment_action_id: true,
+                title: true,
+                assigned_to_user_id: true,
+                due_date: true,
+                progress_percent: true,
+                status: true,
+              },
+            },
+          },
+        });
+        if (!plan) return { failure: 'PLAN_NOT_FOUND' as const, result: null };
+
+        await transaction.$executeRaw`
+          SELECT pg_advisory_xact_lock(
+            hashtextextended(${`risk-assessment:mutation:${plan.risk_assessment_id}`}, 0)
+          )
+        `;
+        if (plan.status !== 'pending_approval' || plan.risk_assessments.status !== 'pending_approval')
+          return { failure: 'NOT_PENDING' as const, result: null };
+        if (!request.entity_snapshot) return { failure: 'SNAPSHOT_MISSING' as const, result: null };
+
+        const owner = plan.users_risk_treatment_plans_owner_user_idTousers;
+        const currentSnapshot = {
+          riskAssessment: {
+            id: plan.risk_assessments.risk_assessment_id,
+            code: plan.risk_assessments.risk_code,
+            title: plan.risk_assessments.title,
+            status: plan.risk_assessments.status,
+            likelihood: plan.risk_assessments.likelihood,
+            impact: plan.risk_assessments.impact,
+            score: plan.risk_assessments.risk_score,
+            level: plan.risk_assessments.risk_level,
+            target: plan.risk_assessments.assets
+              ? {
+                  type: 'asset',
+                  id: plan.risk_assessments.assets.asset_id,
+                  code: plan.risk_assessments.assets.asset_code,
+                  name: plan.risk_assessments.assets.name,
+                }
+              : {
+                  type: 'businessProcess',
+                  id: plan.risk_assessments.business_processes?.business_process_id ?? '',
+                  code: plan.risk_assessments.business_processes?.code ?? '',
+                  name: plan.risk_assessments.business_processes?.name ?? '',
+                },
+            threats: plan.risk_assessments.risk_assessment_threats.map(
+              ({ threat_id, notes }) => ({ id: threat_id, notes }),
+            ),
+            vulnerabilities: plan.risk_assessments.risk_assessment_vulnerabilities.map(
+              ({ vulnerability_id, notes }) => ({ id: vulnerability_id, notes }),
+            ),
+          },
+          strategy: plan.strategy,
+          description: plan.description,
+          ownerUserId: owner?.user_id ?? null,
+          ownerFullName: owner?.full_name ?? null,
+          targetDate: plan.target_date?.toISOString() ?? null,
+          actions: plan.risk_treatment_actions.map((action) => ({
+            id: action.risk_treatment_action_id,
+            title: action.title,
+            assignedToUserId: action.assigned_to_user_id,
+            dueDate: action.due_date?.toISOString() ?? null,
+            progressPercent: action.progress_percent,
+            status: action.status,
+          })),
+        };
+        if (
+          JSON.stringify(canonicalJson(request.entity_snapshot)) !==
+          JSON.stringify(canonicalJson(currentSnapshot))
+        )
+          return { failure: 'SUBMISSION_CHANGED' as const, result: null };
+
+        const storedReason = `Revision scope: ${input.revisionScope}\nReason: ${input.reason}`;
+        await Promise.all([
+          transaction.approval_actions.create({
+            data: {
+              approval_request_id: request.approval_request_id,
+              workflow_step_id: step.workflow_step_id,
+              acted_by_user_id: context.actorUserId,
+              decision: 'returned',
+              comment: storedReason,
+              acted_at: now,
+            },
+          }),
+          transaction.approval_requests.update({
+            where: { approval_request_id: request.approval_request_id },
+            data: { status: 'rejected', completed_at: now },
+          }),
+          transaction.risk_treatment_plans.update({
+            where: { risk_treatment_plan_id: id },
+            data: { status: 'rejected', updated_at: now },
+          }),
+          transaction.risk_assessments.update({
+            where: { risk_assessment_id: plan.risk_assessment_id },
+            data: { status: 'rejected', assessed_at: null, updated_at: now },
+          }),
+        ]);
+
+        const recipients = [
+          ...new Set(
+            [request.requested_by_user_id, plan.owner_user_id, plan.created_by_user_id].filter(
+              (value): value is string => Boolean(value) && value !== context.actorUserId,
+            ),
+          ),
+        ];
+        if (recipients.length)
+          await transaction.notifications.createMany({
+            data: recipients.map((user_id) => ({
+              user_id,
+              type: 'approval_rejected',
+              title: 'Risk assessment and treatment plan returned for revision',
+              message: `${plan.risk_assessments.risk_code} - ${input.reason}`,
+              entity_type: 'risk_treatment_plan',
+              entity_id: id,
+            })),
+          });
+
+        await transaction.audit_logs.create({
+          data: {
+            actor_user_id: context.actorUserId,
+            module: 'risk-management',
+            action: 'risk-treatment-plan.returned-for-revision',
+            entity_type: 'risk_treatment_plan',
+            entity_id: id,
+            before_data: {
+              planStatus: plan.status,
+              riskStatus: plan.risk_assessments.status,
+              approvalStatus: request.status,
+              currentStep: request.current_step,
+            },
+            after_data: {
+              planStatus: 'rejected',
+              riskStatus: 'rejected',
+              approvalStatus: 'rejected',
+              revisionScope: input.revisionScope,
+              reason: input.reason,
+              delegatedForUserId: delegation?.delegator_user_id ?? null,
+              delegationId: delegation?.approval_delegation_id ?? null,
+            },
+            ip_address: context.ipAddress,
+            user_agent: context.userAgent,
+          },
+        });
+
+        return {
+          failure: null,
+          result: {
+            treatmentPlanId: id,
+            riskAssessmentId: plan.risk_assessment_id,
+            approvalRequestId: request.approval_request_id,
+            planStatus: 'rejected' as const,
+            riskStatus: 'rejected' as const,
+            approvalStatus: 'rejected' as const,
+            revisionScope: input.revisionScope,
+            reason: input.reason,
+            returnedAt: now,
           },
         };
       },
@@ -1364,7 +1798,12 @@ export const riskManagementRepository = {
             },
           },
         }),
-        transaction.risk_treatment_plans.count({ where: { risk_assessment_id: id } }),
+        transaction.risk_treatment_plans.count({
+          where: {
+            risk_assessment_id: id,
+            status: { notIn: ['rejected', 'cancelled'] },
+          },
+        }),
         transaction.incident_risk_links.count({ where: { risk_assessment_id: id } }),
         transaction.risk_assessments.findFirst({
           where: {

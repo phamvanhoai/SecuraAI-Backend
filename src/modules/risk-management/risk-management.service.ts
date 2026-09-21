@@ -14,6 +14,7 @@ import { Prisma } from '@prisma/client';
 import type { RiskCreateOptionsQuery } from './dto/risk-create-options-query.dto.js';
 import type { SubmitTreatmentPlanBody } from './dto/submit-treatment-plan.dto.js';
 import type { ApproveTreatmentPlanBody } from './dto/approve-treatment-plan.dto.js';
+import type { ReturnTreatmentPlanForRevisionBody } from './dto/return-treatment-plan-for-revision.dto.js';
 import type { ListTreatmentPlansQuery } from './dto/list-treatment-plans-query.dto.js';
 import { toTreatmentPlanDetail, toTreatmentPlanListItem } from './risk-management.mapper.js';
 
@@ -102,7 +103,7 @@ export const riskManagementService = {
       SELF_APPROVAL: [
         403,
         'SELF_APPROVAL_NOT_ALLOWED',
-        'You cannot approve a plan that you submitted',
+        'You cannot approve a risk assessment and treatment plan that you submitted',
       ],
       ACTOR_INACTIVE: [403, 'APPROVER_INACTIVE', 'The current user cannot approve treatment plans'],
       WORKFLOW_INVALID: [422, 'APPROVAL_WORKFLOW_INVALID', 'The approval workflow is invalid'],
@@ -130,12 +131,12 @@ export const riskManagementService = {
       PLAN_CHANGED: [
         409,
         'TREATMENT_PLAN_CHANGED_AFTER_SUBMISSION',
-        'The treatment plan changed after submission and cannot be approved',
+        'The submitted risk assessment or treatment plan changed and cannot be approved',
       ],
       PLAN_INVALID: [
         422,
         'TREATMENT_PLAN_NO_LONGER_VALID',
-        'The treatment plan no longer satisfies approval requirements',
+        'The risk assessment or treatment plan no longer satisfies approval requirements',
       ],
       NO_ELIGIBLE_APPROVER: [
         422,
@@ -150,6 +151,103 @@ export const riskManagementService = {
     if (!approval.result)
       throw new AppError(500, 'TREATMENT_PLAN_APPROVAL_FAILED', 'Unable to approve treatment plan');
     return approval.result;
+  },
+  async returnTreatmentPlanForRevision(
+    treatmentPlanId: string,
+    input: ReturnTreatmentPlanForRevisionBody,
+    actor: { userId: string; permissions: readonly string[] },
+    context: { ipAddress: string | null; userAgent: string | null },
+  ) {
+    if (!actor.permissions.includes('risk-treatment-plans.approve'))
+      throw new AppError(403, 'FORBIDDEN', 'Insufficient permissions');
+
+    let decision: Awaited<
+      ReturnType<typeof riskManagementRepository.returnTreatmentPlanForRevision>
+    >;
+    try {
+      decision = await riskManagementRepository.returnTreatmentPlanForRevision(
+        treatmentPlanId,
+        input,
+        { actorUserId: actor.userId, ...context },
+      );
+    } catch (error: unknown) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002')
+        throw new AppError(
+          409,
+          'APPROVAL_ALREADY_RECORDED',
+          'You already made a decision for this workflow step',
+        );
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034')
+        throw new AppError(
+          409,
+          'APPROVAL_STATE_CHANGED',
+          'The approval changed. Reload and try again',
+        );
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2028')
+        throw new AppError(
+          503,
+          'APPROVAL_TEMPORARILY_UNAVAILABLE',
+          'The revision request timed out. Please try again',
+        );
+      throw error;
+    }
+
+    const failures = {
+      REQUEST_NOT_FOUND: [404, 'APPROVAL_REQUEST_NOT_FOUND', 'Approval request was not found'],
+      REQUEST_NOT_PENDING: [
+        409,
+        'APPROVAL_REQUEST_NOT_PENDING',
+        'This approval request is no longer pending',
+      ],
+      SELF_REVIEW: [
+        403,
+        'SELF_REVIEW_NOT_ALLOWED',
+        'You cannot return a submission that you submitted',
+      ],
+      ACTOR_INACTIVE: [
+        403,
+        'APPROVER_INACTIVE',
+        'The current user cannot return submissions for revision',
+      ],
+      WORKFLOW_INVALID: [422, 'APPROVAL_WORKFLOW_INVALID', 'The approval workflow is invalid'],
+      NOT_CURRENT_APPROVER: [
+        403,
+        'NOT_CURRENT_APPROVER',
+        'You are not an eligible approver for the current step',
+      ],
+      ALREADY_DECIDED: [
+        409,
+        'APPROVAL_ALREADY_RECORDED',
+        'You already made a decision for this workflow step',
+      ],
+      PLAN_NOT_FOUND: [404, 'TREATMENT_PLAN_NOT_FOUND', 'Risk treatment plan was not found'],
+      NOT_PENDING: [
+        409,
+        'SUBMISSION_NOT_PENDING_APPROVAL',
+        'The risk assessment and treatment plan are no longer awaiting approval',
+      ],
+      SNAPSHOT_MISSING: [
+        409,
+        'APPROVAL_SNAPSHOT_MISSING',
+        'This legacy request must be resubmitted before a revision can be requested',
+      ],
+      SUBMISSION_CHANGED: [
+        409,
+        'SUBMISSION_CHANGED_AFTER_SUBMISSION',
+        'The submitted risk assessment or treatment plan changed. Reload and review it again',
+      ],
+    } as const;
+    if (decision.failure) {
+      const [status, code, message] = failures[decision.failure];
+      throw new AppError(status, code, message);
+    }
+    if (!decision.result)
+      throw new AppError(
+        500,
+        'REVISION_REQUEST_FAILED',
+        'Unable to return the submission for revision',
+      );
+    return decision.result;
   },
   async submitTreatmentPlan(
     treatmentPlanId: string,
@@ -214,10 +312,20 @@ export const riskManagementService = {
         'TREATMENT_PLAN_NOT_SUBMITTABLE',
         'Only draft or rejected treatment plans can be submitted',
       ],
-      RISK_NOT_APPROVED: [
+      RISK_NOT_SUBMITTABLE: [
+        409,
+        'RISK_ASSESSMENT_NOT_SUBMITTABLE',
+        'Only draft or rejected risk assessments can be submitted with their treatment plan',
+      ],
+      RISK_CHANGED: [
+        409,
+        'RISK_ASSESSMENT_CHANGED',
+        'The risk assessment changed while the plan was being submitted. Reload and try again',
+      ],
+      RISK_INVALID: [
         422,
-        'RISK_NOT_APPROVED',
-        'The risk assessment must be approved before its treatment plan can be submitted',
+        'RISK_ASSESSMENT_INVALID',
+        'The risk assessment no longer has a valid target, threat, or vulnerability',
       ],
       DESCRIPTION_REQUIRED: [
         422,
