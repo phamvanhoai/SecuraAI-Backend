@@ -32,6 +32,18 @@ const isRiskCodeConflict = (error: unknown): boolean => {
 };
 
 export const riskManagementService = {
+  async returnTreatmentPlanForRevision(
+    _treatmentPlanId: string,
+    _input: unknown,
+    _actor: { userId: string; permissions: readonly string[] },
+    _context: { ipAddress: string | null; userAgent: string | null },
+  ) {
+    throw new AppError(
+      501,
+      'REVISION_NOT_AVAILABLE',
+      'Treatment plan revision is temporarily unavailable',
+    );
+  },
   async cancelTreatmentPlan(
     treatmentPlanId: string,
     input: CancelTreatmentPlanBody,
@@ -65,11 +77,31 @@ export const riskManagementService = {
     const failures = {
       ACTOR_INACTIVE: [403, 'ACTOR_INACTIVE', 'The current user cannot cancel treatment plans'],
       PLAN_NOT_FOUND: [404, 'TREATMENT_PLAN_NOT_FOUND', 'Risk treatment plan was not found'],
-      NOT_PLAN_MANAGER: [403, 'FORBIDDEN', 'Only the plan creator, owner, or an administrator can cancel this plan'],
-      PLAN_NOT_CANCELLABLE: [409, 'TREATMENT_PLAN_NOT_CANCELLABLE', 'Only draft or rejected treatment plans can be cancelled'],
-      RISK_NOT_CANCELLABLE: [409, 'RISK_ASSESSMENT_NOT_CANCELLABLE', 'The linked risk assessment is no longer editable'],
-      PLAN_CHANGED: [409, 'TREATMENT_PLAN_CHANGED', 'The treatment plan changed. Reload and try again'],
-      ACTION_ALREADY_STARTED: [409, 'TREATMENT_ACTION_ALREADY_STARTED', 'A plan with started or completed actions cannot be cancelled'],
+      NOT_PLAN_MANAGER: [
+        403,
+        'FORBIDDEN',
+        'Only the plan creator, owner, or an administrator can cancel this plan',
+      ],
+      PLAN_NOT_CANCELLABLE: [
+        409,
+        'TREATMENT_PLAN_NOT_CANCELLABLE',
+        'Only draft or rejected treatment plans can be cancelled',
+      ],
+      RISK_NOT_CANCELLABLE: [
+        409,
+        'RISK_ASSESSMENT_NOT_CANCELLABLE',
+        'The linked risk assessment is no longer editable',
+      ],
+      PLAN_CHANGED: [
+        409,
+        'TREATMENT_PLAN_CHANGED',
+        'The treatment plan changed. Reload and try again',
+      ],
+      ACTION_ALREADY_STARTED: [
+        409,
+        'TREATMENT_ACTION_ALREADY_STARTED',
+        'A plan with started or completed actions cannot be cancelled',
+      ],
     } as const;
     if (result.failure) {
       const [status, code, message] = failures[result.failure];
@@ -112,22 +144,59 @@ export const riskManagementService = {
     const failures = {
       ACTOR_INACTIVE: [403, 'ACTOR_INACTIVE', 'The current user cannot update treatment plans'],
       PLAN_NOT_FOUND: [404, 'TREATMENT_PLAN_NOT_FOUND', 'Risk treatment plan was not found'],
-      NOT_PLAN_MANAGER: [403, 'FORBIDDEN', 'Only the plan creator, owner, or an administrator can update this plan'],
-      PLAN_NOT_EDITABLE: [409, 'TREATMENT_PLAN_NOT_EDITABLE', 'Only draft or rejected treatment plans can be updated'],
-      RISK_NOT_EDITABLE: [409, 'RISK_ASSESSMENT_NOT_EDITABLE', 'The linked risk assessment is no longer editable'],
-      RISK_TARGET_INVALID: [422, 'RISK_TARGET_INVALID', 'The assessment target is no longer active'],
-      PLAN_CHANGED: [409, 'TREATMENT_PLAN_CHANGED', 'The treatment plan changed. Reload and try again'],
-      ACTION_NOT_IN_PLAN: [422, 'TREATMENT_ACTION_INVALID', 'A treatment action does not belong to this plan'],
-      ACTION_ALREADY_STARTED: [409, 'TREATMENT_ACTION_ALREADY_STARTED', 'A started or completed action cannot be removed'],
-      USER_INACTIVE: [422, 'TREATMENT_PLAN_USER_INVALID', 'The owner and all assignees must be active users'],
+      NOT_PLAN_MANAGER: [
+        403,
+        'FORBIDDEN',
+        'Only the plan creator, owner, or an administrator can update this plan',
+      ],
+      PLAN_NOT_EDITABLE: [
+        409,
+        'TREATMENT_PLAN_NOT_EDITABLE',
+        'Only draft or rejected treatment plans can be updated',
+      ],
+      RISK_NOT_EDITABLE: [
+        409,
+        'RISK_ASSESSMENT_NOT_EDITABLE',
+        'The linked risk assessment is no longer editable',
+      ],
+      RISK_TARGET_INVALID: [
+        422,
+        'RISK_TARGET_INVALID',
+        'The assessment target is no longer active',
+      ],
+      PLAN_CHANGED: [
+        409,
+        'TREATMENT_PLAN_CHANGED',
+        'The treatment plan changed. Reload and try again',
+      ],
+      ACTION_NOT_IN_PLAN: [
+        422,
+        'TREATMENT_ACTION_INVALID',
+        'A treatment action does not belong to this plan',
+      ],
+      ACTION_ALREADY_STARTED: [
+        409,
+        'TREATMENT_ACTION_ALREADY_STARTED',
+        'A started or completed action cannot be removed',
+      ],
+      USER_INACTIVE: [
+        422,
+        'TREATMENT_PLAN_USER_INVALID',
+        'The owner and all assignees must be active users',
+      ],
       TARGET_DATE_PAST: [422, 'TARGET_DATE_IN_PAST', 'The target date cannot be in the past'],
-      ACTION_DUE_DATE_PAST: [422, 'ACTION_DUE_DATE_IN_PAST', 'Action due dates cannot be in the past'],
+      ACTION_DUE_DATE_PAST: [
+        422,
+        'ACTION_DUE_DATE_IN_PAST',
+        'Action due dates cannot be in the past',
+      ],
     } as const;
     if (result.failure) {
       const [status, code, message] = failures[result.failure];
       throw new AppError(status, code, message);
     }
-    if (!result.plan) throw new AppError(500, 'TREATMENT_PLAN_UPDATE_FAILED', 'Unable to update treatment plan');
+    if (!result.plan)
+      throw new AppError(500, 'TREATMENT_PLAN_UPDATE_FAILED', 'Unable to update treatment plan');
     return toTreatmentPlanDetail(result.plan);
   },
   async listTreatmentPlanCreateOptions(
@@ -185,15 +254,47 @@ export const riskManagementService = {
     const failures = {
       ACTOR_INACTIVE: [403, 'ACTOR_INACTIVE', 'The current user cannot create treatment plans'],
       RISK_NOT_FOUND: [404, 'RISK_ASSESSMENT_NOT_FOUND', 'Risk assessment was not found'],
-      NOT_RISK_ASSESSOR: [403, 'FORBIDDEN', 'Only the assessor or an administrator can create this plan'],
-      RISK_STATUS_INVALID: [409, 'RISK_STATUS_INVALID', 'Only draft or rejected assessments can receive a treatment plan'],
-      RISK_TARGET_INVALID: [422, 'RISK_TARGET_INVALID', 'The assessment target is no longer active'],
-      RISK_CHANGED: [409, 'RISK_ASSESSMENT_CHANGED', 'The risk assessment changed. Reload and try again'],
-      RISK_ANALYSIS_INCOMPLETE: [422, 'RISK_ANALYSIS_INCOMPLETE', 'The assessment requires at least one threat and one vulnerability'],
-      PLAN_ALREADY_EXISTS: [409, 'TREATMENT_PLAN_ALREADY_EXISTS', 'This risk assessment already has a treatment plan'],
-      USER_INACTIVE: [422, 'TREATMENT_PLAN_USER_INVALID', 'The owner and all assignees must be active users'],
+      NOT_RISK_ASSESSOR: [
+        403,
+        'FORBIDDEN',
+        'Only the assessor or an administrator can create this plan',
+      ],
+      RISK_STATUS_INVALID: [
+        409,
+        'RISK_STATUS_INVALID',
+        'Only draft or rejected assessments can receive a treatment plan',
+      ],
+      RISK_TARGET_INVALID: [
+        422,
+        'RISK_TARGET_INVALID',
+        'The assessment target is no longer active',
+      ],
+      RISK_CHANGED: [
+        409,
+        'RISK_ASSESSMENT_CHANGED',
+        'The risk assessment changed. Reload and try again',
+      ],
+      RISK_ANALYSIS_INCOMPLETE: [
+        422,
+        'RISK_ANALYSIS_INCOMPLETE',
+        'The assessment requires at least one threat and one vulnerability',
+      ],
+      PLAN_ALREADY_EXISTS: [
+        409,
+        'TREATMENT_PLAN_ALREADY_EXISTS',
+        'This risk assessment already has a treatment plan',
+      ],
+      USER_INACTIVE: [
+        422,
+        'TREATMENT_PLAN_USER_INVALID',
+        'The owner and all assignees must be active users',
+      ],
       TARGET_DATE_PAST: [422, 'TARGET_DATE_IN_PAST', 'The target date cannot be in the past'],
-      ACTION_DUE_DATE_PAST: [422, 'ACTION_DUE_DATE_IN_PAST', 'Action due dates cannot be in the past'],
+      ACTION_DUE_DATE_PAST: [
+        422,
+        'ACTION_DUE_DATE_IN_PAST',
+        'Action due dates cannot be in the past',
+      ],
     } as const;
     if (result.failure) {
       const [status, code, message] = failures[result.failure];
