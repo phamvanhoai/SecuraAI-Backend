@@ -1,2 +1,2 @@
-/** Export Zod schemas and inferred DTO types for ApprovalWorkflow use cases from this file. */
-export {};
+export * from './query-workflows.dto.js';
+export * from './workflow-definition-response.dto.js';
