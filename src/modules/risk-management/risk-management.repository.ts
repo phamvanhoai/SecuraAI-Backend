@@ -15,6 +15,7 @@ import type {
 import type { UpdateTreatmentPlanBody } from './dto/update-treatment-plan.dto.js';
 import type { CancelTreatmentPlanBody } from './dto/cancel-treatment-plan.dto.js';
 import type { UpdateTreatmentActionProgressBody } from './dto/update-treatment-action-progress.dto.js';
+import type { ReturnTreatmentPlanForRevisionBody } from './dto/return-treatment-plan-for-revision.dto.js';
 
 const treatmentPlanListSelect = {
   risk_treatment_plan_id: true,
