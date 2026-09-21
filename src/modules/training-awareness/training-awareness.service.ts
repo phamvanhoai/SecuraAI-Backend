@@ -317,6 +317,12 @@ export const trainingAwarenessService = {
       throw new AppError(409, 'ASSESSMENT_ALREADY_PASSED', 'Assessment has already been passed');
     if (result.kind === 'invalid_answers')
       throw new AppError(422, 'INVALID_ASSESSMENT_ANSWERS', 'Answer every assessment question');
+    if (!result.attempt)
+      throw new AppError(
+        500,
+        'ASSESSMENT_SUBMISSION_FAILED',
+        'Assessment submission did not create an attempt',
+      );
     return {
       attemptId: result.attempt.quiz_attempt_id,
       score: Number(result.attempt.score),
@@ -426,6 +432,12 @@ export const trainingAwarenessService = {
         422,
         'ASSIGNMENT_CHANGE_REASON_REQUIRED',
         'Enter a reason for this change',
+      );
+    if (!result.campaign)
+      throw new AppError(
+        500,
+        'COURSE_ASSIGNMENT_FAILED',
+        'Course assignment did not create a campaign',
       );
     return {
       id: result.campaign.training_campaign_id,
