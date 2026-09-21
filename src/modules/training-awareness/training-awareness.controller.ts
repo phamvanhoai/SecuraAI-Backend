@@ -9,6 +9,7 @@ import {
   assignCourseParamsSchema,
   createCourseBodySchema,
   listCoursesQuerySchema,
+  updateCourseDraftBodySchema,
 } from './dto/course.dto.js';
 import {
   assessmentParamsSchema,
@@ -125,6 +126,25 @@ export const createCourse: RequestHandler = async (req, res) => {
   } finally {
     if (!saved) await cleanupCourseUploads(files);
   }
+};
+
+export const getCourseDraft: RequestHandler = async (req, res) => {
+  if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+  const { courseId } = assignCourseParamsSchema.parse(req.params);
+  const data = await trainingAwarenessService.getCourseDraft(courseId, req.auth);
+  res.status(200).json({ success: true, data });
+};
+
+export const updateCourseDraft: RequestHandler = async (req, res) => {
+  if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+  const { courseId } = assignCourseParamsSchema.parse(req.params);
+  const data = await trainingAwarenessService.updateCourseDraft(
+    courseId,
+    updateCourseDraftBodySchema.parse(req.body),
+    req.auth,
+    { ipAddress: req.ip ?? null, userAgent: req.get('user-agent')?.slice(0, 1000) ?? null },
+  );
+  res.status(200).json({ success: true, data });
 };
 
 export const listAssignmentOptions: RequestHandler = async (req, res) => {
