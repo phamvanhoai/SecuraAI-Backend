@@ -6,6 +6,8 @@ import { listUsersQuerySchema } from './dto/list-users-query.dto.js';
 import { accountLockBodySchema, accountLockParamsSchema } from './dto/account-lock.dto.js';
 import { accountLockService } from './account-lock.service.js';
 import { getUserParamsSchema } from './dto/get-user.dto.js';
+import { accountDeactivationService } from './account-deactivation.service.js';
+import { deactivateUserBodySchema, deactivateUserParamsSchema } from './dto/deactivate-user.dto.js';
 import { updateUserBodySchema } from './dto/update-user.dto.js';
 
 const changeAccountLock =
@@ -27,6 +29,23 @@ const changeAccountLock =
   };
 export const lockAccount: RequestHandler = changeAccountLock('lock');
 export const unlockAccount: RequestHandler = changeAccountLock('unlock');
+
+const changeAccountAvailability =
+  (action: 'deactivate' | 'remove'): RequestHandler =>
+  async (req, res) => {
+    if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+    const { userId } = deactivateUserParamsSchema.parse(req.params);
+    const data = await accountDeactivationService.change(
+      userId,
+      action,
+      deactivateUserBodySchema.parse(req.body),
+      req.auth,
+      { ipAddress: req.ip ?? null, userAgent: req.get('user-agent')?.slice(0, 1000) ?? null },
+    );
+    res.status(200).json({ success: true, data });
+  };
+export const deactivateAccount: RequestHandler = changeAccountAvailability('deactivate');
+export const removeAccount: RequestHandler = changeAccountAvailability('remove');
 
 export const initializeAccount: RequestHandler = async (req, res) => {
   if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');

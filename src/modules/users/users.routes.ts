@@ -13,11 +13,14 @@ import {
   lockAccount,
   unlockAccount,
   updateUser,
+  deactivateAccount,
+  removeAccount,
 } from './users.controller.js';
 import { accountLockBodySchema, accountLockParamsSchema } from './dto/account-lock.dto.js';
 import { createUserBodySchema } from './dto/create-user.dto.js';
 import { getUserParamsSchema } from './dto/get-user.dto.js';
 import { updateUserBodySchema } from './dto/update-user.dto.js';
+import { deactivateUserBodySchema, deactivateUserParamsSchema } from './dto/deactivate-user.dto.js';
 
 export const usersRouter = Router();
 const requireAccountAdmin: RequestHandler = (req, _res, next) => {
@@ -25,7 +28,7 @@ const requireAccountAdmin: RequestHandler = (req, _res, next) => {
     throw new AppError(
       403,
       'ADMIN_REQUIRED',
-      'Only administrators can lock or unlock user accounts',
+      'Only administrators can manage user account access',
     );
   next();
 };
@@ -73,4 +76,20 @@ usersRouter.post(
   authorize('users.unlock'),
   validate({ params: accountLockParamsSchema, body: accountLockBodySchema }),
   asyncHandler(unlockAccount),
+);
+usersRouter.post(
+  '/:userId/deactivate',
+  authenticate,
+  requireAccountAdmin,
+  authorize('users.deactivate'),
+  validate({ params: deactivateUserParamsSchema, body: deactivateUserBodySchema }),
+  asyncHandler(deactivateAccount),
+);
+usersRouter.delete(
+  '/:userId',
+  authenticate,
+  requireAccountAdmin,
+  authorize('users.remove'),
+  validate({ params: deactivateUserParamsSchema, body: deactivateUserBodySchema }),
+  asyncHandler(removeAccount),
 );

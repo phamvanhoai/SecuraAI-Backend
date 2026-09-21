@@ -19,7 +19,7 @@ Current stack:
 Current database baseline:
 
 - Online database: Supabase-managed PostgreSQL 17 in the Singapore region.
-- The application schema contains 78 business tables, 141 foreign keys and 91 enforced business `CHECK` constraints, including the approved training extension documented in `prisma/TRAINING-SCHEMA.md`.
+- The application schema contains 78 business tables, 142 foreign keys and 91 enforced business `CHECK` constraints, including the approved training extension documented in `prisma/TRAINING-SCHEMA.md` and the treatment-plan cancellation foreign key.
 - `prisma/migrations/20260830055000_full_database_schema/migration.sql` installs the complete V3 schema.
 - `prisma/migrations/20260830060000_enforce_business_checks/migration.sql` materializes the checks that the dbdiagram export stored as comments.
 - `npm run db:verify` compares the live `public` schema with the approved database design.
@@ -144,7 +144,7 @@ Do not weaken existing authentication, CORS, Helmet, rate limiting, request-size
 - Do not run destructive resets, drops or production migrations without explicit user authorization.
 - The Supabase `public` schema must contain exactly the 78 approved business tables plus Prisma's `_prisma_migrations` table. Do not modify Supabase-managed schemas such as `auth`, `storage`, `realtime`, `extensions` or `vault`.
 - Prisma does not fully represent PostgreSQL comments, deferred foreign keys or all check-constraint metadata. Preserve these in SQL migrations; do not assume `prisma db pull` captures every database feature.
-- Run `npm run db:verify` after schema changes. It must report 78 tables, 141 foreign keys, 91 checks, and empty `missing`/`unexpected` lists. The original V3 design is supplemented by `prisma/schema-extensions.json`.
+- Run `npm run db:verify` after schema changes. It must report 78 tables, 142 foreign keys, 91 checks, and empty `missing`/`unexpected` lists. The original V3 design is supplemented by `prisma/schema-extensions.json`.
 
 Repository example:
 
