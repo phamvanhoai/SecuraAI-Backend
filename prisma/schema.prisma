@@ -922,12 +922,17 @@ model risk_treatment_plans {
   created_by_user_id                                   String?                  @db.Uuid
   created_at                                           DateTime                 @default(now()) @db.Timestamptz(6)
   updated_at                                           DateTime                 @default(now()) @db.Timestamptz(6)
+  cancelled_at                                         DateTime?                @db.Timestamptz(6)
+  cancelled_by_user_id                                 String?                  @db.Uuid
+  cancellation_reason                                  String?
   risk_treatment_actions                               risk_treatment_actions[]
   users_risk_treatment_plans_created_by_user_idTousers users?                   @relation("risk_treatment_plans_created_by_user_idTousers", fields: [created_by_user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
   users_risk_treatment_plans_owner_user_idTousers      users?                   @relation("risk_treatment_plans_owner_user_idTousers", fields: [owner_user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+  users_risk_treatment_plans_cancelled_by_user_idTousers users?                  @relation("risk_treatment_plans_cancelled_by_user_idTousers", fields: [cancelled_by_user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
   risk_assessments                                     risk_assessments         @relation(fields: [risk_assessment_id], references: [risk_assessment_id], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([risk_assessment_id])
+  @@index([cancelled_by_user_id])
 }
 
 /// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
@@ -1233,6 +1238,7 @@ model users {
   risk_treatment_actions                                               risk_treatment_actions[]
   risk_treatment_plans_risk_treatment_plans_created_by_user_idTousers  risk_treatment_plans[]      @relation("risk_treatment_plans_created_by_user_idTousers")
   risk_treatment_plans_risk_treatment_plans_owner_user_idTousers       risk_treatment_plans[]      @relation("risk_treatment_plans_owner_user_idTousers")
+  risk_treatment_plans_risk_treatment_plans_cancelled_by_user_idTousers risk_treatment_plans[]      @relation("risk_treatment_plans_cancelled_by_user_idTousers")
   scheduled_reports                                                    scheduled_reports[]
   system_settings                                                      system_settings[]
   team_members                                                         team_members[]

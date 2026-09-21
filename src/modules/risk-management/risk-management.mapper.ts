@@ -42,6 +42,13 @@ export const toTreatmentPlanDetail = (plan: TreatmentPlanDetailRecord) => {
     targetDate: plan.target_date,
     submittedAt: plan.submitted_at,
     completedAt: plan.completed_at,
+    cancellation: plan.cancelled_at
+      ? {
+          cancelledAt: plan.cancelled_at,
+          reason: plan.cancellation_reason ?? '',
+          cancelledBy: person(plan.users_risk_treatment_plans_cancelled_by_user_idTousers),
+        }
+      : null,
     createdAt: plan.created_at,
     updatedAt: plan.updated_at,
     progressPercent,
