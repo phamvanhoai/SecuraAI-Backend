@@ -1,5 +1,14 @@
 # Users module
 
+## Edit user accounts
+
+Administrators with `users.update` can update profile, department, and role
+assignments through `PATCH /api/v1/users/{userId}` (also available below
+`/api/v1/admin/users`). Email, credentials, MFA, and account lock state are not
+editable through this use case. Profile and role changes are atomic, duplicate
+employee codes return a conflict, self-removal of the ADMIN role is rejected,
+and every successful change writes before/after audit data.
+
 ## Add user accounts
 
 Administrators with `users.create` can load active departments and assignable

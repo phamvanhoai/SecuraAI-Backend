@@ -140,6 +140,7 @@ describe('user account initialization HTTP API', () => {
       .send({
         email: 'YenNhiDoan08042004@GMAIL.COM',
         fullName: 'Yen Nhi Doan',
+        phone: '0901234567',
         roleCodes: ['EMPLOYEE'],
       });
 
@@ -151,7 +152,7 @@ describe('user account initialization HTTP API', () => {
     expect(mocks.createInitializedUser).toHaveBeenCalledWith(
       expect.objectContaining({
         actorUserId: '00000000-0000-4000-8000-000000000001',
-        body: expect.objectContaining({ roleCodes: ['EMPLOYEE'] }),
+        body: expect.objectContaining({ phone: '0901234567', roleCodes: ['EMPLOYEE'] }),
         passwordHash: expect.any(String),
       }),
     );

@@ -6,6 +6,7 @@ import { AppError } from '../../common/errors/app-error.js';
 import { authEmailService } from '../auth/auth.email.service.js';
 import type { CreateUserBody } from './dto/create-user.dto.js';
 import type { ListUsersQuery } from './dto/list-users-query.dto.js';
+import type { UpdateUserBody } from './dto/update-user.dto.js';
 import { usersRepository } from './users.repository.js';
 
 type UserActor = { userId: string; permissions: readonly string[] };
@@ -46,6 +47,38 @@ const publicUserSelect = {
   },
 } as const;
 
+const mapUserDetail = (user: NonNullable<Awaited<ReturnType<typeof usersRepository.findById>>>) => ({
+  id: user.user_id,
+  email: user.email,
+  fullName: user.full_name,
+  phone: user.phone,
+  employeeCode: user.employee_code,
+  avatarUrl: user.avatar_url,
+  status: user.status,
+  mustChangePassword: user.must_change_password,
+  emailVerifiedAt: user.email_verified_at,
+  lastLoginAt: user.last_login_at,
+  lastLockedAt: user.locked_at,
+  disabledAt: user.disabled_at,
+  mfaEnabled: user.mfa_methods.length > 0,
+  department: user.departments
+    ? {
+        id: user.departments.department_id,
+        code: user.departments.code,
+        name: user.departments.name,
+      }
+    : null,
+  roles: user.user_roles_user_roles_user_idTousers.map(({ assigned_at, roles }) => ({
+    id: roles.role_id,
+    code: roles.code,
+    name: roles.name,
+    description: roles.description,
+    assignedAt: assigned_at,
+  })),
+  createdAt: user.created_at,
+  updatedAt: user.updated_at,
+});
+
 export const usersService = {
   async listCreateOptions(actor: UserActor) {
     requirePermission(actor, 'users.create');
@@ -70,37 +103,37 @@ export const usersService = {
     const user = await usersRepository.findById(userId);
     if (!user) throw new AppError(404, 'USER_NOT_FOUND', 'User was not found');
 
-    return {
-      id: user.user_id,
-      email: user.email,
-      fullName: user.full_name,
-      phone: user.phone,
-      employeeCode: user.employee_code,
-      avatarUrl: user.avatar_url,
-      status: user.status,
-      mustChangePassword: user.must_change_password,
-      emailVerifiedAt: user.email_verified_at,
-      lastLoginAt: user.last_login_at,
-      lastLockedAt: user.locked_at,
-      disabledAt: user.disabled_at,
-      mfaEnabled: user.mfa_methods.length > 0,
-      department: user.departments
-        ? {
-            id: user.departments.department_id,
-            code: user.departments.code,
-            name: user.departments.name,
-          }
-        : null,
-      roles: user.user_roles_user_roles_user_idTousers.map(({ assigned_at, roles }) => ({
-        id: roles.role_id,
-        code: roles.code,
-        name: roles.name,
-        description: roles.description,
-        assignedAt: assigned_at,
-      })),
-      createdAt: user.created_at,
-      updatedAt: user.updated_at,
-    };
+    return mapUserDetail(user);
+  },
+
+  async update(userId: string, body: UpdateUserBody, actor: UserActor) {
+    requirePermission(actor, 'users.update');
+    try {
+      const result = await usersRepository.updateUser({
+        userId,
+        body,
+        actorUserId: actor.userId,
+      });
+      if (result.kind === 'not_found') {
+        throw new AppError(404, 'USER_NOT_FOUND', 'User was not found');
+      }
+      if (result.kind === 'invalid_roles') {
+        throw new AppError(422, 'INVALID_ROLES', 'One or more role codes do not exist');
+      }
+      if (result.kind === 'invalid_department') {
+        throw new AppError(422, 'INVALID_DEPARTMENT', 'Department does not exist or is inactive');
+      }
+      if (result.kind === 'self_admin_removal') {
+        throw new AppError(422, 'SELF_ADMIN_REMOVAL', 'You cannot remove your own administrator role');
+      }
+      return mapUserDetail(result.user);
+    } catch (error: unknown) {
+      if (error instanceof AppError) throw error;
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        throw new AppError(409, 'EMPLOYEE_CODE_EXISTS', 'Employee code already exists');
+      }
+      throw error;
+    }
   },
 
   async list(query: ListUsersQuery) {

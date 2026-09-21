@@ -6,6 +6,7 @@ import { listUsersQuerySchema } from './dto/list-users-query.dto.js';
 import { accountLockBodySchema, accountLockParamsSchema } from './dto/account-lock.dto.js';
 import { accountLockService } from './account-lock.service.js';
 import { getUserParamsSchema } from './dto/get-user.dto.js';
+import { updateUserBodySchema } from './dto/update-user.dto.js';
 
 const changeAccountLock =
   (action: 'lock' | 'unlock'): RequestHandler =>
@@ -52,6 +53,13 @@ export const getUser: RequestHandler = async (req, res) => {
   if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
   const { userId } = getUserParamsSchema.parse(req.params);
   const data = await usersService.getById(userId);
+  res.status(200).json({ success: true, data });
+};
+
+export const updateUser: RequestHandler = async (req, res) => {
+  if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+  const { userId } = getUserParamsSchema.parse(req.params);
+  const data = await usersService.update(userId, updateUserBodySchema.parse(req.body), req.auth);
   res.status(200).json({ success: true, data });
 };
 

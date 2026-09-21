@@ -206,6 +206,18 @@ export const openApiSpec = swaggerJsdoc({
             roleCodes: { type: 'array', minItems: 1, maxItems: 10, items: { type: 'string' } },
           },
         },
+        UpdateUserRequest: {
+          type: 'object',
+          minProperties: 1,
+          additionalProperties: false,
+          properties: {
+            fullName: { type: 'string', minLength: 2, maxLength: 150 },
+            phone: { type: 'string', minLength: 3, maxLength: 30, nullable: true },
+            employeeCode: { type: 'string', minLength: 1, maxLength: 50, nullable: true },
+            departmentId: { type: 'string', format: 'uuid', nullable: true },
+            roleCodes: { type: 'array', minItems: 1, maxItems: 10, items: { type: 'string' } },
+          },
+        },
         UserCreateOptions: {
           type: 'object',
           required: ['departments', 'roles'],
@@ -2854,6 +2866,49 @@ export const openApiSpec = swaggerJsdoc({
             '403': { description: 'Missing users.read permission' },
             '404': { description: 'User was not found' },
             '422': { description: 'Invalid user identifier' },
+          },
+        },
+        patch: {
+          tags: ['Users'],
+          summary: 'Update a user account',
+          description:
+            'Updates editable profile, department, and role assignment fields. Email, credentials, MFA, and account lock status are not changed. Requires users.update.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'userId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': { schema: { $ref: '#/components/schemas/UpdateUserRequest' } },
+            },
+          },
+          responses: {
+            '200': {
+              description: 'Updated user account details',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    required: ['success', 'data'],
+                    properties: {
+                      success: { type: 'boolean', example: true },
+                      data: { $ref: '#/components/schemas/UserDetail' },
+                    },
+                  },
+                },
+              },
+            },
+            '401': { description: 'Unauthorized' },
+            '403': { description: 'Missing users.update permission' },
+            '404': { description: 'User was not found' },
+            '409': { description: 'Employee code already exists' },
+            '422': { description: 'Invalid profile, department, role, or user identifier' },
           },
         },
       },

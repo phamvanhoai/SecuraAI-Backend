@@ -12,10 +12,12 @@ import {
   me,
   lockAccount,
   unlockAccount,
+  updateUser,
 } from './users.controller.js';
 import { accountLockBodySchema, accountLockParamsSchema } from './dto/account-lock.dto.js';
 import { createUserBodySchema } from './dto/create-user.dto.js';
 import { getUserParamsSchema } from './dto/get-user.dto.js';
+import { updateUserBodySchema } from './dto/update-user.dto.js';
 
 export const usersRouter = Router();
 const requireAccountAdmin: RequestHandler = (req, _res, next) => {
@@ -41,6 +43,13 @@ usersRouter.get(
   authenticate,
   authorize('users.create'),
   asyncHandler(listUserCreateOptions),
+);
+usersRouter.patch(
+  '/:userId',
+  authenticate,
+  authorize('users.update'),
+  validate({ params: getUserParamsSchema, body: updateUserBodySchema }),
+  asyncHandler(updateUser),
 );
 usersRouter.get(
   '/:userId',
