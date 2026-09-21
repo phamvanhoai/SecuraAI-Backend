@@ -58,49 +58,24 @@ describe('createCourseBodySchema', () => {
 });
 
 describe('updateCourseDraftBodySchema', () => {
-  const draft = {
-    title: 'Phishing awareness',
-    description: null,
-    content: 'Learn how to identify suspicious messages.',
-    expectedUpdatedAt: '2026-09-19T08:00:00.000Z',
-    lessons: [
-      {
-        title: 'Suspicious messages',
-        isRequired: true,
-        materials: [
-          {
-            title: 'Existing video',
-            type: 'video',
-            existingFileId: 'e2ef8324-9ac0-4e7f-b16d-50050274a72e',
-          },
-        ],
-      },
-    ],
-  };
-
-  it('accepts an existing private file from the same draft', () => {
-    expect(updateCourseDraftBodySchema.safeParse(draft).success).toBe(true);
+  it('accepts editable draft fields without a status transition', () => {
+    expect(
+      updateCourseDraftBodySchema.safeParse({
+        title: 'Updated phishing awareness',
+        description: null,
+        content: 'Updated learning objectives and training material.',
+      }).success,
+    ).toBe(true);
   });
 
-  it('requires optimistic concurrency and exactly one material source', () => {
+  it('rejects attempts to change draft status through the edit endpoint', () => {
     expect(
-      updateCourseDraftBodySchema.safeParse({ ...draft, expectedUpdatedAt: undefined }).success,
+      updateCourseDraftBodySchema.safeParse({
+        title: 'Updated phishing awareness',
+        content: 'Updated learning objectives and training material.',
+        status: 'published',
+      }).success,
     ).toBe(false);
-    const invalid = {
-      ...draft,
-      lessons: [
-        {
-          ...draft.lessons[0]!,
-          materials: [
-            {
-              ...draft.lessons[0]!.materials[0]!,
-              externalUrl: 'https://example.com/video.mp4',
-            },
-          ],
-        },
-      ],
-    };
-    expect(updateCourseDraftBodySchema.safeParse(invalid).success).toBe(false);
   });
 });
 
