@@ -17,6 +17,7 @@ import type { ApproveTreatmentPlanBody } from './dto/approve-treatment-plan.dto.
 import type { ReturnTreatmentPlanForRevisionBody } from './dto/return-treatment-plan-for-revision.dto.js';
 import type { ListTreatmentPlansQuery } from './dto/list-treatment-plans-query.dto.js';
 import { toTreatmentPlanDetail, toTreatmentPlanListItem } from './risk-management.mapper.js';
+import type { UpdateTreatmentActionProgressBody } from './dto/update-treatment-action-progress.dto.js';
 
 const isRiskCodeConflict = (error: unknown): boolean => {
   if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2002')
@@ -51,6 +52,76 @@ export const riskManagementService = {
         totalPages: Math.ceil(result.total / query.limit),
       },
     };
+  },
+  async updateTreatmentActionProgress(
+    treatmentPlanId: string,
+    actionId: string,
+    input: UpdateTreatmentActionProgressBody,
+    actor: { userId: string; permissions: readonly string[]; roles: readonly string[] },
+    context: { ipAddress: string | null; userAgent: string | null },
+  ) {
+    if (!actor.permissions.includes('risk-treatment-actions.update-progress'))
+      throw new AppError(403, 'FORBIDDEN', 'Insufficient permissions');
+    let result: Awaited<ReturnType<typeof riskManagementRepository.updateTreatmentActionProgress>>;
+    try {
+      result = await riskManagementRepository.updateTreatmentActionProgress(
+        treatmentPlanId,
+        actionId,
+        input,
+        { actorUserId: actor.userId, actorIsAdmin: actor.roles.includes('ADMIN'), ...context },
+      );
+    } catch (error: unknown) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034')
+        throw new AppError(
+          409,
+          'TREATMENT_ACTION_CHANGED',
+          'This action changed. Reload and try again',
+        );
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2028')
+        throw new AppError(
+          503,
+          'PROGRESS_UPDATE_TEMPORARILY_UNAVAILABLE',
+          'Progress update timed out. Please try again',
+        );
+      throw error;
+    }
+    const failures = {
+      ACTION_NOT_FOUND: [404, 'TREATMENT_ACTION_NOT_FOUND', 'Treatment action was not found'],
+      ACTOR_INACTIVE: [403, 'ACTOR_INACTIVE', 'The current user cannot update action progress'],
+      FORBIDDEN: [
+        403,
+        'FORBIDDEN',
+        'Only the action assignee, plan owner, or administrator can update progress',
+      ],
+      ACTION_CHANGED: [
+        409,
+        'TREATMENT_ACTION_CHANGED',
+        'This action changed. Reload and try again',
+      ],
+      ACTION_CANCELLED: [409, 'TREATMENT_ACTION_CANCELLED', 'Cancelled actions cannot be updated'],
+      PLAN_NOT_TRACKABLE: [
+        409,
+        'TREATMENT_PLAN_NOT_TRACKABLE',
+        'Only approved or in-progress plans can be tracked',
+      ],
+      RISK_NOT_IN_TREATMENT: [
+        409,
+        'RISK_NOT_IN_TREATMENT',
+        'The risk is not in an approved treatment state',
+      ],
+      REGRESSION_NOTE_REQUIRED: [
+        422,
+        'PROGRESS_NOTE_REQUIRED',
+        'A note is required when reducing action progress',
+      ],
+    } as const;
+    if (result.failure) {
+      const [status, code, message] = failures[result.failure];
+      throw new AppError(status, code, message);
+    }
+    if (!result.result)
+      throw new AppError(500, 'PROGRESS_UPDATE_FAILED', 'Unable to update action progress');
+    return result.result;
   },
   async approveTreatmentPlan(
     treatmentPlanId: string,

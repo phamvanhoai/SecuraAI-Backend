@@ -9,6 +9,7 @@ import type { SubmitTreatmentPlanBody } from './dto/submit-treatment-plan.dto.js
 import type { ApproveTreatmentPlanBody } from './dto/approve-treatment-plan.dto.js';
 import type { ReturnTreatmentPlanForRevisionBody } from './dto/return-treatment-plan-for-revision.dto.js';
 import type { ListTreatmentPlansQuery } from './dto/list-treatment-plans-query.dto.js';
+import type { UpdateTreatmentActionProgressBody } from './dto/update-treatment-action-progress.dto.js';
 
 const treatmentPlanListSelect = {
   risk_treatment_plan_id: true,
@@ -49,6 +50,11 @@ const treatmentPlanDetailSelect = {
   status: true,
   submitted_at: true,
   completed_at: true,
+  cancelled_at: true,
+  cancellation_reason: true,
+  users_risk_treatment_plans_cancelled_by_user_idTousers: {
+    select: { user_id: true, full_name: true, status: true, deleted_at: true },
+  },
   created_at: true,
   updated_at: true,
   users_risk_treatment_plans_owner_user_idTousers: {
@@ -1235,6 +1241,201 @@ export const riskManagementRepository = {
         maxWait: 5_000,
         timeout: 15_000,
       },
+    );
+  },
+  updateTreatmentActionProgress(
+    treatmentPlanId: string,
+    actionId: string,
+    input: UpdateTreatmentActionProgressBody,
+    context: {
+      actorUserId: string;
+      actorIsAdmin: boolean;
+      ipAddress: string | null;
+      userAgent: string | null;
+    },
+  ) {
+    return prisma.$transaction(
+      async (transaction) => {
+        await transaction.$executeRaw`
+        SELECT pg_advisory_xact_lock(
+          hashtextextended(${`risk-treatment-plan:mutation:${treatmentPlanId}`}, 0)
+        )
+      `;
+        const planIdentity = await transaction.risk_treatment_plans.findUnique({
+          where: { risk_treatment_plan_id: treatmentPlanId },
+          select: { risk_assessment_id: true },
+        });
+        if (!planIdentity) return { failure: 'ACTION_NOT_FOUND' as const, result: null };
+        await transaction.$executeRaw`
+          SELECT pg_advisory_xact_lock(
+            hashtextextended(${`risk-assessment:mutation:${planIdentity.risk_assessment_id}`}, 0)
+          )
+        `;
+        // Row locks also protect against writers that do not use advisory locks.
+        await transaction.$queryRaw`
+          SELECT risk_assessment_id FROM risk_assessments
+          WHERE risk_assessment_id = ${planIdentity.risk_assessment_id}::uuid FOR UPDATE
+        `;
+        await transaction.$queryRaw`
+          SELECT risk_treatment_plan_id FROM risk_treatment_plans
+          WHERE risk_treatment_plan_id = ${treatmentPlanId}::uuid FOR UPDATE
+        `;
+        await transaction.$queryRaw`
+          SELECT risk_treatment_action_id FROM risk_treatment_actions
+          WHERE risk_treatment_action_id = ${actionId}::uuid
+            AND risk_treatment_plan_id = ${treatmentPlanId}::uuid FOR UPDATE
+        `;
+        const [actor, current] = await Promise.all([
+          transaction.users.findFirst({
+            where: { user_id: context.actorUserId, deleted_at: null, status: 'active' },
+            select: { user_id: true },
+          }),
+          transaction.risk_treatment_actions.findFirst({
+            where: { risk_treatment_action_id: actionId, risk_treatment_plan_id: treatmentPlanId },
+            select: {
+              risk_treatment_action_id: true,
+              risk_treatment_plan_id: true,
+              title: true,
+              progress_percent: true,
+              status: true,
+              completed_at: true,
+              updated_at: true,
+              assigned_to_user_id: true,
+              risk_treatment_plans: {
+                select: {
+                  risk_treatment_plan_id: true,
+                  status: true,
+                  owner_user_id: true,
+                  risk_assessment_id: true,
+                  risk_assessments: { select: { status: true } },
+                },
+              },
+            },
+          }),
+        ]);
+        if (!actor) return { failure: 'ACTOR_INACTIVE' as const, result: null };
+        if (!current) return { failure: 'ACTION_NOT_FOUND' as const, result: null };
+        if (
+          !context.actorIsAdmin &&
+          current.assigned_to_user_id !== context.actorUserId &&
+          current.risk_treatment_plans.owner_user_id !== context.actorUserId
+        )
+          return { failure: 'FORBIDDEN' as const, result: null };
+        if (current.updated_at.getTime() !== input.expectedUpdatedAt.getTime())
+          return { failure: 'ACTION_CHANGED' as const, result: null };
+        if (current.status === 'cancelled')
+          return { failure: 'ACTION_CANCELLED' as const, result: null };
+        if (!['approved', 'in_progress'].includes(current.risk_treatment_plans.status))
+          return { failure: 'PLAN_NOT_TRACKABLE' as const, result: null };
+        if (
+          !['approved', 'in_treatment'].includes(
+            current.risk_treatment_plans.risk_assessments.status,
+          )
+        )
+          return { failure: 'RISK_NOT_IN_TREATMENT' as const, result: null };
+        if (input.progressPercent < current.progress_percent && !input.progressNote)
+          return { failure: 'REGRESSION_NOTE_REQUIRED' as const, result: null };
+
+        const status =
+          input.progressPercent === 0
+            ? 'pending'
+            : input.progressPercent === 100
+              ? 'completed'
+              : 'in_progress';
+        // Keep the public millisecond version strictly increasing, even for rapid updates.
+        const now = new Date(Math.max(Date.now(), current.updated_at.getTime() + 1));
+        const completedAt = status === 'completed' ? (current.completed_at ?? now) : null;
+        const updated = await transaction.risk_treatment_actions.updateMany({
+          where: {
+            risk_treatment_action_id: actionId,
+            risk_treatment_plan_id: treatmentPlanId,
+            // The locked row was compared above. PostgreSQL timestamps may have
+            // microseconds that cannot round-trip through a JavaScript Date.
+            status: { not: 'cancelled' },
+          },
+          data: {
+            progress_percent: input.progressPercent,
+            status,
+            completed_at: completedAt,
+            updated_at: now,
+          },
+        });
+        if (updated.count !== 1) return { failure: 'ACTION_CHANGED' as const, result: null };
+
+        const planStarted =
+          current.risk_treatment_plans.status === 'approved' && input.progressPercent > 0;
+        await transaction.risk_treatment_plans.update({
+          where: { risk_treatment_plan_id: treatmentPlanId },
+          data: {
+            ...(planStarted ? { status: 'in_progress' } : {}),
+            updated_at: now,
+          },
+        });
+        const riskStarted = input.progressPercent > 0 &&
+          current.risk_treatment_plans.risk_assessments.status === 'approved';
+        if (riskStarted) {
+          await transaction.risk_assessments.updateMany({
+            where: {
+              risk_assessment_id: current.risk_treatment_plans.risk_assessment_id,
+              status: 'approved',
+            },
+            data: { status: 'in_treatment', updated_at: now },
+          });
+        }
+        const aggregate = await transaction.risk_treatment_actions.aggregate({
+          where: { risk_treatment_plan_id: treatmentPlanId, status: { not: 'cancelled' } },
+          _avg: { progress_percent: true },
+          _count: { _all: true },
+        });
+        const completed = await transaction.risk_treatment_actions.count({
+          where: { risk_treatment_plan_id: treatmentPlanId, status: 'completed' },
+        });
+        await transaction.audit_logs.create({
+          data: {
+            actor_user_id: context.actorUserId,
+            module: 'risk-management',
+            action: 'risk-treatment-action.progress-updated',
+            entity_type: 'risk_treatment_action',
+            entity_id: actionId,
+            before_data: { progressPercent: current.progress_percent, status: current.status },
+            after_data: {
+              treatmentPlanId,
+              riskAssessmentId: current.risk_treatment_plans.risk_assessment_id,
+              progressPercent: input.progressPercent,
+              status,
+              completedAt: completedAt?.toISOString() ?? null,
+              planStatus: planStarted ? 'in_progress' : current.risk_treatment_plans.status,
+              riskStatus: riskStarted ? 'in_treatment' : current.risk_treatment_plans.risk_assessments.status,
+              progressNote: input.progressNote ?? null,
+            },
+            ip_address: context.ipAddress,
+            user_agent: context.userAgent,
+          },
+        });
+        return {
+          failure: null,
+          result: {
+            actionId,
+            treatmentPlanId,
+            progressPercent: input.progressPercent,
+            status,
+            completedAt,
+            updatedAt: now,
+            planStatus: planStarted ? 'in_progress' : current.risk_treatment_plans.status,
+            riskStatus: riskStarted
+              ? 'in_treatment'
+              : current.risk_treatment_plans.risk_assessments.status,
+            progressPercentAverage:
+              aggregate._avg.progress_percent === null
+                ? null
+                : Math.round(aggregate._avg.progress_percent),
+            totalActions: aggregate._count._all,
+            completedActions: completed,
+            allActionsCompleted: aggregate._count._all > 0 && completed === aggregate._count._all,
+          },
+        };
+      },
+      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 5_000, timeout: 15_000 },
     );
   },
   returnTreatmentPlanForRevision(

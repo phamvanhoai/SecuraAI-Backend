@@ -3390,6 +3390,58 @@ export const openApiSpec = swaggerJsdoc({
           },
         },
       },
+      '/risks/treatment-plans/{treatmentPlanId}/actions/{actionId}/progress': {
+        patch: {
+          tags: ['Risk Assessments'],
+          summary: 'Update risk treatment action progress',
+          description:
+            'Requires risk-treatment-actions.update-progress. Only the assigned user, treatment plan owner, or an administrator may update an action belonging to an approved or in-progress plan, with an approved or in-treatment risk. Status is derived from progress: 0 is pending, 1-99 is in progress, and 100 is completed. A note is required when progress is reduced and is stored in the audit log. Starting an action moves the plan and risk into treatment; completing every action does not automatically complete the plan or close the risk.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'treatmentPlanId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+            {
+              name: 'actionId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  additionalProperties: false,
+                  required: ['expectedUpdatedAt', 'progressPercent'],
+                  properties: {
+                    expectedUpdatedAt: { type: 'string', format: 'date-time' },
+                    progressPercent: { type: 'integer', minimum: 0, maximum: 100 },
+                    progressNote: { type: 'string', minLength: 10, maxLength: 1000 },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '200': { description: 'Action progress and aggregate plan progress updated' },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'Missing permission or caller cannot update this action' },
+            '404': { description: 'Treatment action not found in the selected plan' },
+            '409': {
+              description:
+                'Action changed concurrently, was cancelled, or its plan/risk is not trackable',
+            },
+            '422': { description: 'Invalid progress or missing regression note' },
+            '503': { description: 'The update transaction timed out and may be retried' },
+          },
+        },
+      },
       '/risks/treatment-plans/{treatmentPlanId}/submit': {
         post: {
           tags: ['Risk Assessments'],
