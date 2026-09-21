@@ -21,7 +21,7 @@ export const trainingAwarenessModule: ModuleManifest = {
     'training_certificates',
   ],
   capabilities: [
-    'Publish completed security awareness course drafts (UC165)',
+    'Duplicate security awareness courses as independent drafts (UC166)',
     'View certificates issued to the signed-in employee (UC165)',
     'Issue and view training completion certificates for completed, passed enrollments',
     'Create and list security awareness course drafts',
