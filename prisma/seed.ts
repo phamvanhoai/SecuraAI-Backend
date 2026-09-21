@@ -702,6 +702,139 @@ async function main(): Promise<void> {
       create: { role_id: role.role_id, permission_id: policyPublishPermission.permission_id },
     }),
   ]);
+
+  const workflowPermissions = [
+    {
+      code: 'workflows.read',
+      module: 'approval-workflow',
+      action: 'read',
+      description: 'View workflow definitions and steps',
+    },
+    {
+      code: 'workflows.create',
+      module: 'approval-workflow',
+      action: 'create',
+      description: 'Create custom approval workflow definitions',
+    },
+    {
+      code: 'workflows.update',
+      module: 'approval-workflow',
+      action: 'update',
+      description: 'Update approval workflow definitions and steps',
+    },
+    {
+      code: 'workflows.delete',
+      module: 'approval-workflow',
+      action: 'delete',
+      description: 'Delete approval workflow definitions',
+    },
+  ];
+
+  for (const perm of workflowPermissions) {
+    const permission = await prisma.permissions.upsert({
+      where: { code: perm.code },
+      update: { module: perm.module, action: perm.action, description: perm.description },
+      create: perm,
+    });
+    await prisma.role_permissions.upsert({
+      where: {
+        role_id_permission_id: { role_id: role.role_id, permission_id: permission.permission_id },
+      },
+      update: {},
+      create: { role_id: role.role_id, permission_id: permission.permission_id },
+    });
+    if (perm.code === 'workflows.read' || perm.code === 'workflows.create') {
+      await prisma.role_permissions.upsert({
+        where: {
+          role_id_permission_id: {
+            role_id: securityOfficerRole.role_id,
+            permission_id: permission.permission_id,
+          },
+        },
+        update: {},
+        create: { role_id: securityOfficerRole.role_id, permission_id: permission.permission_id },
+      });
+    }
+    if (perm.code === 'workflows.read') {
+      await prisma.role_permissions.upsert({
+        where: {
+          role_id_permission_id: {
+            role_id: executiveRole.role_id,
+            permission_id: permission.permission_id,
+          },
+        },
+        update: {},
+        create: { role_id: executiveRole.role_id, permission_id: permission.permission_id },
+      });
+    }
+  }
+
+  if (process.env.SEED_SAMPLE_DATA === 'true') {
+    const sampleWorkflowId = '11111111-1111-1111-1111-111111111111';
+    const sampleWorkflow = await prisma.workflow_definitions.upsert({
+      where: { workflow_definition_id: sampleWorkflowId },
+      update: {
+        name: 'Quy trình phê duyệt Kế hoạch xử lý rủi ro',
+        entity_type: 'risk_treatment_plan',
+        description: 'Quy trình phê duyệt 2 bước cho các kế hoạch xử lý rủi ro cấp cao',
+        is_active: true,
+      },
+      create: {
+        workflow_definition_id: sampleWorkflowId,
+        name: 'Quy trình phê duyệt Kế hoạch xử lý rủi ro',
+        entity_type: 'risk_treatment_plan',
+        description: 'Quy trình phê duyệt 2 bước cho các kế hoạch xử lý rủi ro cấp cao',
+        is_active: true,
+        created_by_user_id: user.user_id,
+      },
+    });
+
+    await prisma.workflow_steps.upsert({
+      where: {
+        workflow_definition_id_step_order: {
+          workflow_definition_id: sampleWorkflow.workflow_definition_id,
+          step_order: 1,
+        },
+      },
+      update: {
+        name: 'Thẩm định an ninh',
+        approver_role_id: securityOfficerRole.role_id,
+        required_approvals: 1,
+        due_hours: 24,
+      },
+      create: {
+        workflow_definition_id: sampleWorkflow.workflow_definition_id,
+        step_order: 1,
+        name: 'Thẩm định an ninh',
+        approver_role_id: securityOfficerRole.role_id,
+        required_approvals: 1,
+        due_hours: 24,
+      },
+    });
+
+    await prisma.workflow_steps.upsert({
+      where: {
+        workflow_definition_id_step_order: {
+          workflow_definition_id: sampleWorkflow.workflow_definition_id,
+          step_order: 2,
+        },
+      },
+      update: {
+        name: 'Ban điều hành phê duyệt',
+        approver_role_id: executiveRole.role_id,
+        required_approvals: 1,
+        due_hours: 48,
+      },
+      create: {
+        workflow_definition_id: sampleWorkflow.workflow_definition_id,
+        step_order: 2,
+        name: 'Ban điều hành phê duyệt',
+        approver_role_id: executiveRole.role_id,
+        required_approvals: 1,
+        due_hours: 48,
+      },
+    });
+  }
 }
 
 main()

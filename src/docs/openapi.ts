@@ -21,6 +21,7 @@ export const openApiSpec = swaggerJsdoc({
       { name: 'Policies' },
       { name: 'Integrations' },
       { name: 'Training Awareness' },
+      { name: 'Workflow Definitions' },
     ],
     components: {
       securitySchemes: { bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' } },
@@ -42,6 +43,58 @@ export const openApiSpec = swaggerJsdoc({
             createdByUserId: { type: 'string', format: 'uuid', nullable: true },
             createdAt: { type: 'string', format: 'date-time' },
             updatedAt: { type: 'string', format: 'date-time' },
+          },
+        },
+        WorkflowDefinitionListItem: {
+          type: 'object',
+          required: ['workflowId', 'name', 'entityType', 'isActive', 'stepsCount', 'createdAt', 'updatedAt'],
+          properties: {
+            workflowId: { type: 'string', format: 'uuid' },
+            name: { type: 'string' },
+            description: { type: 'string', nullable: true },
+            entityType: { type: 'string', enum: ['risk_treatment_plan', 'policy_version', 'incident_report', 'access_request'] },
+            isActive: { type: 'boolean' },
+            stepsCount: { type: 'integer' },
+            createdBy: {
+              type: 'object',
+              nullable: true,
+              properties: {
+                userId: { type: 'string', format: 'uuid' },
+                name: { type: 'string' },
+                email: { type: 'string' },
+              },
+            },
+            createdAt: { type: 'string', format: 'date-time' },
+            updatedAt: { type: 'string', format: 'date-time' },
+          },
+        },
+        WorkflowDefinitionListResponse: {
+          type: 'object',
+          required: ['items', 'pagination', 'summary'],
+          properties: {
+            items: {
+              type: 'array',
+              items: { $ref: '#/components/schemas/WorkflowDefinitionListItem' },
+            },
+            pagination: {
+              type: 'object',
+              required: ['page', 'limit', 'total', 'totalPages'],
+              properties: {
+                page: { type: 'integer' },
+                limit: { type: 'integer' },
+                total: { type: 'integer' },
+                totalPages: { type: 'integer' },
+              },
+            },
+            summary: {
+              type: 'object',
+              required: ['total', 'active', 'inactive'],
+              properties: {
+                total: { type: 'integer' },
+                active: { type: 'integer' },
+                inactive: { type: 'integer' },
+              },
+            },
           },
         },
         LoginRequest: {
@@ -4014,6 +4067,41 @@ export const openApiSpec = swaggerJsdoc({
             '401': { description: 'Unauthorized' },
             '403': { description: 'Forbidden' },
             '404': { description: 'API key or integration not found' },
+          },
+        },
+      },
+      '/workflow-definitions': {
+        get: {
+          tags: ['Workflow Definitions'],
+          summary: 'List custom approval workflow definitions',
+          description: 'Requires workflows.read permission. Supports filtering by entityType, isActive, search, and pagination.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'page', in: 'query', schema: { type: 'integer', default: 1 } },
+            { name: 'limit', in: 'query', schema: { type: 'integer', default: 20 } },
+            { name: 'search', in: 'query', schema: { type: 'string' } },
+            { name: 'entityType', in: 'query', schema: { type: 'string', enum: ['risk_treatment_plan', 'policy_version', 'incident_report', 'access_request'] } },
+            { name: 'isActive', in: 'query', schema: { type: 'boolean' } },
+            { name: 'sortBy', in: 'query', schema: { type: 'string', enum: ['name', 'entityType', 'createdAt', 'updatedAt', 'isActive'], default: 'updatedAt' } },
+            { name: 'sortOrder', in: 'query', schema: { type: 'string', enum: ['asc', 'desc'], default: 'desc' } },
+          ],
+          responses: {
+            '200': {
+              description: 'Workflow definitions list retrieved successfully',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      success: { type: 'boolean', example: true },
+                      data: { $ref: '#/components/schemas/WorkflowDefinitionListResponse' },
+                    },
+                  },
+                },
+              },
+            },
+            '401': { description: 'Unauthorized' },
+            '403': { description: 'Forbidden' },
           },
         },
       },
