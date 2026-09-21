@@ -8,6 +8,7 @@ import {
 import { parseCourseUpload } from './course-material.upload.js';
 import { getCourseDraft, updateCourseDraft } from './course-draft.controller.js';
 import { duplicateCourse } from './course-duplicate.controller.js';
+import { archiveCourse } from './course-archive.controller.js';
 import { duplicateCourseBodySchema } from './dto/duplicate-course.dto.js';
 import { getCourseContent, downloadCourseMaterial } from './course-content.controller.js';
 import { getDepartmentReport } from './department-report.controller.js';
@@ -105,6 +106,13 @@ trainingAwarenessRouter.get(
   authenticate,
   authorize('training-assessments.take'),
   asyncHandler(getMyLessonAssessment),
+);
+trainingAwarenessRouter.post(
+  '/courses/:courseId/archive',
+  authenticate,
+  authorize('training-courses.archive'),
+  validate({ params: assignCourseParamsSchema }),
+  asyncHandler(archiveCourse),
 );
 trainingAwarenessRouter.post(
   '/learning/:enrollmentId/lessons/:lessonId/assessment/attempts',
