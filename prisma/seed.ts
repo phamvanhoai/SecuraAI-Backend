@@ -153,6 +153,35 @@ async function main(): Promise<void> {
       },
     });
   }
+  const readIssuedCertificatesPermission = await prisma.permissions.upsert({
+    where: { code: 'training-certificates.read-issued' },
+    update: {
+      module: 'training-awareness',
+      action: 'read-issued-certificates',
+      description: 'View all issued training certificates (UC164)',
+    },
+    create: {
+      code: 'training-certificates.read-issued',
+      module: 'training-awareness',
+      action: 'read-issued-certificates',
+      description: 'View all issued training certificates (UC164)',
+    },
+  });
+  for (const targetRole of [role, securityOfficerRole]) {
+    await prisma.role_permissions.upsert({
+      where: {
+        role_id_permission_id: {
+          role_id: targetRole.role_id,
+          permission_id: readIssuedCertificatesPermission.permission_id,
+        },
+      },
+      update: {},
+      create: {
+        role_id: targetRole.role_id,
+        permission_id: readIssuedCertificatesPermission.permission_id,
+      },
+    });
+  }
   await prisma.role_permissions.upsert({
     where: {
       role_id_permission_id: {

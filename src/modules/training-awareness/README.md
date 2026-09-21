@@ -21,6 +21,11 @@ certificate number, course or campaign. Certificates are metadata records;
 the endpoint does not claim a generated PDF. Grant the new permission to Admin
 and Employee with the data-only migration before testing.
 
+UC164: `GET /training/certificates?page=1&limit=10&q=` requires
+`training-certificates.read-issued` and lists all issued certificate metadata
+for Security Officers. Search matches learner identity, course, campaign or
+certificate number. The permission is granted to Security Officer and Admin.
+
 Create drafts with ordered lessons and materials, optional lesson assessments and
 an optional final assessment. Reuses `training-courses.create` for creation and
 `training-courses.read` for content inspection/private downloads. Existing role
