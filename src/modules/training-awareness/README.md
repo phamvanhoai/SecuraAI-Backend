@@ -14,6 +14,13 @@ up. No table or column changes are required.
 
 # Create structured security awareness courses (UC75)
 
+UC165 publishes a completed draft with `POST /training/courses/{courseId}/publish`.
+The operation requires `training-courses.publish`, granted to Admin and Security
+Officer. A publishable course must still be a draft, have no assignment campaign,
+contain at least one lesson, and every lesson must contain training material.
+Publishing is atomic, records an audit event, and does not add database columns
+or tables. Published courses remain immutable through the draft editor.
+
 UC165: `GET /training/my-certificates?page=1&limit=10&q=` requires
 `training-certificates.read-own` and lists only certificates whose enrollment
 belongs to the authenticated user. It supports bounded pagination and search by

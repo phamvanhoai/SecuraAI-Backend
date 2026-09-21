@@ -7,6 +7,7 @@ import {
 } from './learning.controller.js';
 import { parseCourseUpload } from './course-material.upload.js';
 import { getCourseDraft, updateCourseDraft } from './course-draft.controller.js';
+import { publishCourse } from './course-publish.controller.js';
 import { getCourseContent, downloadCourseMaterial } from './course-content.controller.js';
 import { getDepartmentReport } from './department-report.controller.js';
 import { departmentReportQuerySchema } from './dto/department-report.dto.js';
@@ -82,6 +83,13 @@ trainingAwarenessRouter.patch(
   authenticate,
   authorize('training-assessments.take'),
   asyncHandler(completeMyLesson),
+);
+trainingAwarenessRouter.post(
+  '/courses/:courseId/publish',
+  authenticate,
+  authorize('training-courses.publish'),
+  validate({ params: assignCourseParamsSchema }),
+  asyncHandler(publishCourse),
 );
 trainingAwarenessRouter.get(
   '/learning/:enrollmentId/materials/:materialId/download',

@@ -45,7 +45,7 @@ describe('createCourseBodySchema', () => {
     expect(createCourseBodySchema.safeParse(multiple).success).toBe(true);
   });
 
-  it('does not publish a course without an assessment', () => {
+  it('requires all newly created courses to start as drafts', () => {
     expect(
       createCourseBodySchema.safeParse({
         title: 'Incomplete course',
