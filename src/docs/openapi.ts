@@ -1927,6 +1927,42 @@ export const openApiSpec = swaggerJsdoc({
           },
         },
       },
+      '/training/courses/{courseId}/duplicate': {
+        post: {
+          tags: ['Training Awareness'],
+          summary: 'Duplicate a security awareness course (UC166)',
+          description:
+            'Requires training-courses.duplicate. Copies course content, lessons, materials and assessments into a new draft; assignment and learner records are excluded.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'courseId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  additionalProperties: false,
+                  required: ['title'],
+                  properties: { title: { type: 'string', minLength: 3, maxLength: 255 } },
+                },
+              },
+            },
+          },
+          responses: {
+            '201': { description: 'New draft course created' },
+            '403': { description: 'training-courses.duplicate permission required' },
+            '404': { description: 'Source course not found' },
+            '422': { description: 'Invalid course ID or title' },
+          },
+        },
+      },
       '/training/courses/{courseId}/content': {
         get: {
           tags: ['Training Awareness'],

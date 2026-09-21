@@ -7,6 +7,8 @@ import {
 } from './learning.controller.js';
 import { parseCourseUpload } from './course-material.upload.js';
 import { getCourseDraft, updateCourseDraft } from './course-draft.controller.js';
+import { duplicateCourse } from './course-duplicate.controller.js';
+import { duplicateCourseBodySchema } from './dto/duplicate-course.dto.js';
 import { getCourseContent, downloadCourseMaterial } from './course-content.controller.js';
 import { getDepartmentReport } from './department-report.controller.js';
 import { departmentReportQuerySchema } from './dto/department-report.dto.js';
@@ -115,6 +117,13 @@ trainingAwarenessRouter.get(
   authenticate,
   authorize('training-courses.read'),
   asyncHandler(getCourseContent),
+);
+trainingAwarenessRouter.post(
+  '/courses/:courseId/duplicate',
+  authenticate,
+  authorize('training-courses.duplicate'),
+  validate({ params: assignCourseParamsSchema, body: duplicateCourseBodySchema }),
+  asyncHandler(duplicateCourse),
 );
 trainingAwarenessRouter.get(
   '/materials/:materialId/download',

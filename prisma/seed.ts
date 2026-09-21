@@ -79,6 +79,12 @@ async function main(): Promise<void> {
       action: 'update-course-draft',
       description: 'Edit security awareness course drafts',
     },
+    {
+      code: 'training-courses.duplicate',
+      module: 'training-awareness',
+      action: 'duplicate-course',
+      description: 'Duplicate security awareness courses as new drafts (UC166)',
+    },
   ]) {
     const permission = await prisma.permissions.upsert({
       where: { code: permissionData.code },
