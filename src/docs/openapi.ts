@@ -1927,6 +1927,30 @@ export const openApiSpec = swaggerJsdoc({
           },
         },
       },
+      '/training/courses/{courseId}/publish': {
+        post: {
+          tags: ['Training Awareness'],
+          summary: 'Publish a security awareness course (UC165)',
+          description:
+            'Requires training-courses.publish. Atomically publishes a complete, unassigned draft and records an audit event.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'courseId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          responses: {
+            '200': { description: 'Course published' },
+            '403': { description: 'training-courses.publish permission required' },
+            '404': { description: 'Course not found' },
+            '409': { description: 'Course is not an available draft' },
+            '422': { description: 'Course content is incomplete' },
+          },
+        },
+      },
       '/training/courses/{courseId}/content': {
         get: {
           tags: ['Training Awareness'],
