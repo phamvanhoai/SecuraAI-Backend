@@ -26,6 +26,23 @@ import {
 } from './dto/create-treatment-plan.dto.js';
 import { updateTreatmentPlanBodySchema } from './dto/update-treatment-plan.dto.js';
 import { cancelTreatmentPlanBodySchema } from './dto/cancel-treatment-plan.dto.js';
+import {
+  treatmentActionProgressParamsSchema,
+  updateTreatmentActionProgressBodySchema,
+} from './dto/update-treatment-action-progress.dto.js';
+
+export const updateRiskTreatmentActionProgress: RequestHandler = async (req, res) => {
+  if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+  const { treatmentPlanId, actionId } = treatmentActionProgressParamsSchema.parse(req.params);
+  const data = await riskManagementService.updateTreatmentActionProgress(
+    treatmentPlanId,
+    actionId,
+    updateTreatmentActionProgressBodySchema.parse(req.body),
+    req.auth,
+    { ipAddress: req.ip ?? null, userAgent: req.get('user-agent')?.slice(0, 1000) ?? null },
+  );
+  res.status(200).json({ success: true, data });
+};
 
 export const cancelRiskTreatmentPlan: RequestHandler = async (req, res) => {
   if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
