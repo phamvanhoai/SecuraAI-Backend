@@ -30,6 +30,22 @@ import {
   treatmentActionProgressParamsSchema,
   updateTreatmentActionProgressBodySchema,
 } from './dto/update-treatment-action-progress.dto.js';
+import {
+  performResidualRiskAssessmentBodySchema,
+  residualRiskAssessmentParamsSchema,
+} from './dto/perform-residual-risk-assessment.dto.js';
+
+export const performResidualRiskAssessment: RequestHandler = async (req, res) => {
+  if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+  const { riskAssessmentId } = residualRiskAssessmentParamsSchema.parse(req.params);
+  const data = await riskManagementService.performResidualRiskAssessment(
+    riskAssessmentId,
+    performResidualRiskAssessmentBodySchema.parse(req.body),
+    req.auth,
+    { ipAddress: req.ip ?? null, userAgent: req.get('user-agent')?.slice(0, 1000) ?? null },
+  );
+  res.status(200).json({ success: true, data });
+};
 
 export const updateRiskTreatmentActionProgress: RequestHandler = async (req, res) => {
   if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');

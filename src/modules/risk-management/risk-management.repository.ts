@@ -15,6 +15,7 @@ import type {
 import type { UpdateTreatmentPlanBody } from './dto/update-treatment-plan.dto.js';
 import type { CancelTreatmentPlanBody } from './dto/cancel-treatment-plan.dto.js';
 import type { UpdateTreatmentActionProgressBody } from './dto/update-treatment-action-progress.dto.js';
+import type { PerformResidualRiskAssessmentBody } from './dto/perform-residual-risk-assessment.dto.js';
 import type { ReturnTreatmentPlanForRevisionBody } from './dto/return-treatment-plan-for-revision.dto.js';
 
 const treatmentPlanListSelect = {
@@ -46,6 +47,9 @@ export type TreatmentPlanListRecord = TreatmentPlanBaseRecord & {
   actionProgress: number | null;
   completedActions: number;
   totalActions: number;
+  inProgressActions: number;
+  pendingActions: number;
+  overdueActions: number;
 };
 
 const treatmentPlanDetailSelect = {
@@ -142,15 +146,33 @@ const treatmentPlanWhere = (
     });
   if (query.overdue === true)
     conditions.push({
-      target_date: { lt: today },
       status: { notIn: ['completed', 'cancelled'] },
+      OR: [
+        { target_date: { lt: today } },
+        {
+          risk_treatment_actions: {
+            some: { status: { notIn: ['completed', 'cancelled'] }, due_date: { lt: today } },
+          },
+        },
+      ],
     });
   if (query.overdue === false)
     conditions.push({
       OR: [
-        { target_date: null },
-        { target_date: { gte: today } },
         { status: { in: ['completed', 'cancelled'] } },
+        {
+          AND: [
+            { OR: [{ target_date: null }, { target_date: { gte: today } }] },
+            {
+              risk_treatment_actions: {
+                none: {
+                  status: { notIn: ['completed', 'cancelled'] },
+                  due_date: { lt: today },
+                },
+              },
+            },
+          ],
+        },
       ],
     });
   if (query.q)
@@ -1003,41 +1025,66 @@ export const riskManagementRepository = {
         }),
       ]);
       const planIds = plans.map(({ risk_treatment_plan_id }) => risk_treatment_plan_id);
-      const [progress, completed] = planIds.length
-        ? await Promise.all([
-            transaction.risk_treatment_actions.groupBy({
-              by: ['risk_treatment_plan_id'],
-              where: {
-                risk_treatment_plan_id: { in: planIds },
-                status: { not: 'cancelled' },
-              },
-              _avg: { progress_percent: true },
-              _count: { _all: true },
-            }),
-            transaction.risk_treatment_actions.groupBy({
-              by: ['risk_treatment_plan_id'],
-              where: { risk_treatment_plan_id: { in: planIds }, status: 'completed' },
-              _count: { _all: true },
-            }),
-          ])
-        : [[], []];
-      const progressByPlan = new Map(
-        progress.map((item) => [
-          item.risk_treatment_plan_id,
-          { average: item._avg.progress_percent, total: item._count._all },
-        ]),
-      );
-      const completedByPlan = new Map(
-        completed.map((item) => [item.risk_treatment_plan_id, item._count._all]),
-      );
+      const actions = planIds.length
+        ? await transaction.risk_treatment_actions.findMany({
+            where: { risk_treatment_plan_id: { in: planIds } },
+            select: {
+              risk_treatment_plan_id: true,
+              status: true,
+              progress_percent: true,
+              due_date: true,
+            },
+          })
+        : [];
+      const today = new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00.000Z');
+      const aggregates = new Map<
+        string,
+        {
+          sum: number;
+          total: number;
+          completed: number;
+          inProgress: number;
+          pending: number;
+          overdue: number;
+        }
+      >();
+      for (const action of actions) {
+        if (action.status === 'cancelled') continue;
+        const current = aggregates.get(action.risk_treatment_plan_id) ?? {
+          sum: 0,
+          total: 0,
+          completed: 0,
+          inProgress: 0,
+          pending: 0,
+          overdue: 0,
+        };
+        current.sum += action.progress_percent;
+        current.total += 1;
+        if (action.status === 'completed') current.completed += 1;
+        else if (action.status === 'in_progress') current.inProgress += 1;
+        else if (action.status === 'pending') current.pending += 1;
+        if (
+          action.due_date &&
+          action.due_date < today &&
+          !['completed', 'cancelled'].includes(action.status)
+        )
+          current.overdue += 1;
+        aggregates.set(action.risk_treatment_plan_id, current);
+      }
       return {
         total,
-        items: plans.map((plan) => ({
-          ...plan,
-          actionProgress: progressByPlan.get(plan.risk_treatment_plan_id)?.average ?? null,
-          totalActions: progressByPlan.get(plan.risk_treatment_plan_id)?.total ?? 0,
-          completedActions: completedByPlan.get(plan.risk_treatment_plan_id) ?? 0,
-        })),
+        items: plans.map((plan) => {
+          const aggregate = aggregates.get(plan.risk_treatment_plan_id);
+          return {
+            ...plan,
+            actionProgress: aggregate ? aggregate.sum / aggregate.total : null,
+            totalActions: aggregate?.total ?? 0,
+            completedActions: aggregate?.completed ?? 0,
+            inProgressActions: aggregate?.inProgress ?? 0,
+            pendingActions: aggregate?.pending ?? 0,
+            overdueActions: aggregate?.overdue ?? 0,
+          };
+        }),
       };
     });
   },
@@ -1800,9 +1847,17 @@ export const riskManagementRepository = {
                 select: {
                   risk_treatment_plan_id: true,
                   status: true,
+                  completed_at: true,
                   owner_user_id: true,
                   risk_assessment_id: true,
-                  risk_assessments: { select: { status: true } },
+                  risk_assessments: {
+                    select: {
+                      status: true,
+                      residual_likelihood: true,
+                      residual_impact: true,
+                      residual_score: true,
+                    },
+                  },
                 },
               },
             },
@@ -1857,26 +1912,6 @@ export const riskManagementRepository = {
         });
         if (updated.count !== 1) return { failure: 'ACTION_CHANGED' as const, result: null };
 
-        const planStarted =
-          current.risk_treatment_plans.status === 'approved' && input.progressPercent > 0;
-        await transaction.risk_treatment_plans.update({
-          where: { risk_treatment_plan_id: treatmentPlanId },
-          data: {
-            ...(planStarted ? { status: 'in_progress' } : {}),
-            updated_at: now,
-          },
-        });
-        const riskStarted = input.progressPercent > 0 &&
-          current.risk_treatment_plans.risk_assessments.status === 'approved';
-        if (riskStarted) {
-          await transaction.risk_assessments.updateMany({
-            where: {
-              risk_assessment_id: current.risk_treatment_plans.risk_assessment_id,
-              status: 'approved',
-            },
-            data: { status: 'in_treatment', updated_at: now },
-          });
-        }
         const aggregate = await transaction.risk_treatment_actions.aggregate({
           where: { risk_treatment_plan_id: treatmentPlanId, status: { not: 'cancelled' } },
           _avg: { progress_percent: true },
@@ -1885,6 +1920,94 @@ export const riskManagementRepository = {
         const completed = await transaction.risk_treatment_actions.count({
           where: { risk_treatment_plan_id: treatmentPlanId, status: 'completed' },
         });
+        const allActionsCompleted =
+          aggregate._count._all > 0 && completed === aggregate._count._all;
+        const planStarted =
+          current.risk_treatment_plans.status === 'approved' && input.progressPercent > 0;
+        const planStatus = allActionsCompleted
+          ? 'completed'
+          : planStarted
+            ? 'in_progress'
+            : current.risk_treatment_plans.status;
+        await transaction.risk_treatment_plans.update({
+          where: { risk_treatment_plan_id: treatmentPlanId },
+          data: {
+            status: planStatus,
+            completed_at: allActionsCompleted
+              ? (current.risk_treatment_plans.completed_at ?? now)
+              : null,
+            updated_at: now,
+          },
+        });
+        if (allActionsCompleted && current.risk_treatment_plans.status !== 'completed')
+          await transaction.audit_logs.create({
+            data: {
+              actor_user_id: context.actorUserId,
+              module: 'risk-management',
+              action: 'risk-treatment-plan.completed',
+              entity_type: 'risk_treatment_plan',
+              entity_id: treatmentPlanId,
+              before_data: {
+                status: current.risk_treatment_plans.status,
+                completedAt: current.risk_treatment_plans.completed_at,
+              },
+              after_data: {
+                status: 'completed',
+                completedAt: now,
+                reason: 'All active treatment actions reached 100 percent',
+              },
+              ip_address: context.ipAddress,
+              user_agent: context.userAgent,
+            },
+          });
+        const riskStarted =
+          input.progressPercent > 0 &&
+          current.risk_treatment_plans.risk_assessments.status === 'approved';
+        const invalidatesResidual =
+          input.progressPercent !== current.progress_percent &&
+          current.risk_treatment_plans.risk_assessments.residual_score !== null;
+        if (riskStarted || invalidatesResidual) {
+          await transaction.risk_assessments.updateMany({
+            where: {
+              risk_assessment_id: current.risk_treatment_plans.risk_assessment_id,
+              ...(riskStarted ? { status: 'approved' } : {}),
+            },
+            data: {
+              ...(riskStarted ? { status: 'in_treatment' } : {}),
+              ...(invalidatesResidual
+                ? {
+                    residual_likelihood: null,
+                    residual_impact: null,
+                    residual_score: null,
+                  }
+                : {}),
+              updated_at: now,
+            },
+          });
+        }
+        if (invalidatesResidual)
+          await transaction.audit_logs.create({
+            data: {
+              actor_user_id: context.actorUserId,
+              module: 'risk-management',
+              action: 'risk-assessment.residual-invalidated',
+              entity_type: 'risk_assessment',
+              entity_id: current.risk_treatment_plans.risk_assessment_id,
+              before_data: {
+                residualLikelihood:
+                  current.risk_treatment_plans.risk_assessments.residual_likelihood,
+                residualImpact: current.risk_treatment_plans.risk_assessments.residual_impact,
+                residualScore: current.risk_treatment_plans.risk_assessments.residual_score,
+              },
+              after_data: {
+                treatmentPlanId,
+                treatmentActionId: actionId,
+                reason: 'Treatment action progress changed after residual assessment',
+              },
+              ip_address: context.ipAddress,
+              user_agent: context.userAgent,
+            },
+          });
         await transaction.audit_logs.create({
           data: {
             actor_user_id: context.actorUserId,
@@ -1899,8 +2022,11 @@ export const riskManagementRepository = {
               progressPercent: input.progressPercent,
               status,
               completedAt: completedAt?.toISOString() ?? null,
-              planStatus: planStarted ? 'in_progress' : current.risk_treatment_plans.status,
-              riskStatus: riskStarted ? 'in_treatment' : current.risk_treatment_plans.risk_assessments.status,
+              planStatus,
+              riskStatus: riskStarted
+                ? 'in_treatment'
+                : current.risk_treatment_plans.risk_assessments.status,
+              residualAssessmentInvalidated: invalidatesResidual,
               progressNote: input.progressNote ?? null,
             },
             ip_address: context.ipAddress,
@@ -1916,7 +2042,7 @@ export const riskManagementRepository = {
             status,
             completedAt,
             updatedAt: now,
-            planStatus: planStarted ? 'in_progress' : current.risk_treatment_plans.status,
+            planStatus,
             riskStatus: riskStarted
               ? 'in_treatment'
               : current.risk_treatment_plans.risk_assessments.status,
@@ -1926,11 +2052,15 @@ export const riskManagementRepository = {
                 : Math.round(aggregate._avg.progress_percent),
             totalActions: aggregate._count._all,
             completedActions: completed,
-            allActionsCompleted: aggregate._count._all > 0 && completed === aggregate._count._all,
+            allActionsCompleted,
           },
         };
       },
-      { isolationLevel: Prisma.TransactionIsolationLevel.Serializable, maxWait: 5_000, timeout: 15_000 },
+      {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+        maxWait: 5_000,
+        timeout: 15_000,
+      },
     );
   },
   returnTreatmentPlanForRevision(
@@ -2098,7 +2228,10 @@ export const riskManagementRepository = {
             hashtextextended(${`risk-assessment:mutation:${plan.risk_assessment_id}`}, 0)
           )
         `;
-        if (plan.status !== 'pending_approval' || plan.risk_assessments.status !== 'pending_approval')
+        if (
+          plan.status !== 'pending_approval' ||
+          plan.risk_assessments.status !== 'pending_approval'
+        )
           return { failure: 'NOT_PENDING' as const, result: null };
         if (!request.entity_snapshot) return { failure: 'SNAPSHOT_MISSING' as const, result: null };
 
@@ -2126,9 +2259,10 @@ export const riskManagementRepository = {
                   code: plan.risk_assessments.business_processes?.code ?? '',
                   name: plan.risk_assessments.business_processes?.name ?? '',
                 },
-            threats: plan.risk_assessments.risk_assessment_threats.map(
-              ({ threat_id, notes }) => ({ id: threat_id, notes }),
-            ),
+            threats: plan.risk_assessments.risk_assessment_threats.map(({ threat_id, notes }) => ({
+              id: threat_id,
+              notes,
+            })),
             vulnerabilities: plan.risk_assessments.risk_assessment_vulnerabilities.map(
               ({ vulnerability_id, notes }) => ({ id: vulnerability_id, notes }),
             ),
@@ -2730,6 +2864,225 @@ export const riskManagementRepository = {
       });
       return { failure: null, duplicate: null, risk };
     });
+  },
+  performResidualRiskAssessment(
+    riskAssessmentId: string,
+    input: PerformResidualRiskAssessmentBody,
+    context: {
+      actorUserId: string;
+      actorIsAdmin: boolean;
+      ipAddress: string | null;
+      userAgent: string | null;
+    },
+  ) {
+    return prisma.$transaction(
+      async (transaction) => {
+        await transaction.$executeRaw`
+          SELECT pg_advisory_xact_lock(
+            hashtextextended(${`risk-assessment:mutation:${riskAssessmentId}`}, 0)
+          )
+        `;
+        await transaction.$queryRaw`
+          SELECT risk_assessment_id FROM risk_assessments
+          WHERE risk_assessment_id = ${riskAssessmentId}::uuid FOR UPDATE
+        `;
+        const [actor, risk] = await Promise.all([
+          transaction.users.findFirst({
+            where: { user_id: context.actorUserId, deleted_at: null, status: 'active' },
+            select: { user_id: true },
+          }),
+          transaction.risk_assessments.findUnique({
+            where: { risk_assessment_id: riskAssessmentId },
+            select: {
+              risk_assessment_id: true,
+              risk_code: true,
+              title: true,
+              likelihood: true,
+              impact: true,
+              risk_score: true,
+              residual_likelihood: true,
+              residual_impact: true,
+              residual_score: true,
+              status: true,
+              updated_at: true,
+              assessed_by_user_id: true,
+              risk_treatment_plans: {
+                where: { status: { not: 'cancelled' } },
+                orderBy: [{ created_at: 'desc' }, { risk_treatment_plan_id: 'asc' }],
+                take: 1,
+                select: {
+                  risk_treatment_plan_id: true,
+                  strategy: true,
+                  status: true,
+                  completed_at: true,
+                  owner_user_id: true,
+                  risk_treatment_actions: {
+                    where: { status: { not: 'cancelled' } },
+                    select: { status: true, progress_percent: true },
+                  },
+                },
+              },
+            },
+          }),
+        ]);
+        if (!actor) return { failure: 'ACTOR_INACTIVE' as const, result: null };
+        if (!risk) return { failure: 'RISK_NOT_FOUND' as const, result: null };
+        const plan = risk.risk_treatment_plans[0];
+        if (!plan) return { failure: 'PLAN_NOT_FOUND' as const, result: null };
+        if (
+          !context.actorIsAdmin &&
+          risk.assessed_by_user_id !== context.actorUserId &&
+          plan.owner_user_id !== context.actorUserId
+        )
+          return { failure: 'FORBIDDEN' as const, result: null };
+        if (risk.updated_at.getTime() !== input.expectedUpdatedAt.getTime())
+          return { failure: 'RISK_CHANGED' as const, result: null };
+        if (!['approved', 'in_treatment'].includes(risk.status))
+          return { failure: 'RISK_NOT_READY' as const, result: null };
+        if (!['approved', 'in_progress', 'completed'].includes(plan.status))
+          return { failure: 'PLAN_NOT_READY' as const, result: null };
+        const hasIncompleteActions = plan.risk_treatment_actions.some(
+          (action) => action.status !== 'completed' || action.progress_percent !== 100,
+        );
+        if (
+          (plan.strategy !== 'accept' && plan.risk_treatment_actions.length === 0) ||
+          hasIncompleteActions
+        )
+          return { failure: 'ACTIONS_INCOMPLETE' as const, result: null };
+
+        const residualScore = input.residualLikelihood * input.residualImpact;
+        if (residualScore > risk.risk_score)
+          return { failure: 'RESIDUAL_EXCEEDS_INHERENT' as const, result: null };
+        if (
+          plan.strategy === 'accept' &&
+          plan.risk_treatment_actions.length === 0 &&
+          (input.residualLikelihood !== risk.likelihood || input.residualImpact !== risk.impact)
+        )
+          return {
+            failure: 'ACCEPT_WITHOUT_ACTIONS_MUST_MATCH_INHERENT' as const,
+            result: null,
+          };
+        const now = new Date(Math.max(Date.now(), risk.updated_at.getTime() + 1));
+        const updated = await transaction.risk_assessments.updateMany({
+          where: { risk_assessment_id: riskAssessmentId, updated_at: risk.updated_at },
+          data: {
+            residual_likelihood: input.residualLikelihood,
+            residual_impact: input.residualImpact,
+            residual_score: residualScore,
+            updated_at: now,
+          },
+        });
+        if (updated.count !== 1) return { failure: 'RISK_CHANGED' as const, result: null };
+        if (plan.status !== 'completed')
+          await transaction.risk_treatment_plans.update({
+            where: { risk_treatment_plan_id: plan.risk_treatment_plan_id },
+            data: {
+              status: 'completed',
+              completed_at: plan.completed_at ?? now,
+              updated_at: now,
+            },
+          });
+        const residualLevel =
+          residualScore <= 4
+            ? 'low'
+            : residualScore <= 9
+              ? 'medium'
+              : residualScore <= 16
+                ? 'high'
+                : 'critical';
+        await transaction.audit_logs.create({
+          data: {
+            actor_user_id: context.actorUserId,
+            module: 'risk-management',
+            action: 'risk-assessment.residual-assessed',
+            entity_type: 'risk_assessment',
+            entity_id: riskAssessmentId,
+            before_data: {
+              residualLikelihood: risk.residual_likelihood,
+              residualImpact: risk.residual_impact,
+              residualScore: risk.residual_score,
+            },
+            after_data: {
+              riskCode: risk.risk_code,
+              treatmentPlanId: plan.risk_treatment_plan_id,
+              residualLikelihood: input.residualLikelihood,
+              residualImpact: input.residualImpact,
+              residualScore,
+              residualLevel,
+              assessmentNote: input.assessmentNote,
+            },
+            ip_address: context.ipAddress,
+            user_agent: context.userAgent,
+          },
+        });
+        if (plan.status !== 'completed')
+          await transaction.audit_logs.create({
+            data: {
+              actor_user_id: context.actorUserId,
+              module: 'risk-management',
+              action: 'risk-treatment-plan.completed',
+              entity_type: 'risk_treatment_plan',
+              entity_id: plan.risk_treatment_plan_id,
+              before_data: { status: plan.status, completedAt: plan.completed_at },
+              after_data: {
+                status: 'completed',
+                completedAt: plan.completed_at ?? now,
+                reason: 'Residual risk assessment completed',
+              },
+              ip_address: context.ipAddress,
+              user_agent: context.userAgent,
+            },
+          });
+        const notificationRecipients = [
+          ...new Set(
+            [risk.assessed_by_user_id, plan.owner_user_id].filter((userId): userId is string =>
+              Boolean(userId),
+            ),
+          ),
+        ].filter((userId) => userId !== context.actorUserId);
+        if (notificationRecipients.length)
+          await transaction.notifications.createMany({
+            data: notificationRecipients.map((user_id) => ({
+              user_id,
+              type: 'residual_risk_assessed',
+              title: 'Residual risk assessed',
+              message: `${risk.risk_code} residual risk is ${residualScore} (${residualLevel})`,
+              entity_type: 'risk_assessment',
+              entity_id: riskAssessmentId,
+            })),
+          });
+        return {
+          failure: null,
+          result: {
+            riskAssessmentId,
+            treatmentPlanId: plan.risk_treatment_plan_id,
+            riskCode: risk.risk_code,
+            title: risk.title,
+            status: risk.status,
+            assessedByUserId: context.actorUserId,
+            assessedAt: now,
+            inherentRisk: {
+              likelihood: risk.likelihood,
+              impact: risk.impact,
+              score: risk.risk_score,
+            },
+            residualRisk: {
+              likelihood: input.residualLikelihood,
+              impact: input.residualImpact,
+              score: residualScore,
+              level: residualLevel,
+              reduction: risk.risk_score - residualScore,
+            },
+            updatedAt: now,
+          },
+        };
+      },
+      {
+        isolationLevel: Prisma.TransactionIsolationLevel.Serializable,
+        maxWait: 5_000,
+        timeout: 15_000,
+      },
+    );
   },
   async list(
     query: ListRiskAssessmentsQuery,

@@ -114,6 +114,9 @@ export const toTreatmentPlanListItem = (plan: TreatmentPlanListRecord) => ({
   progressPercent: plan.actionProgress === null ? null : Math.round(plan.actionProgress),
   completedActions: plan.completedActions,
   totalActions: plan.totalActions,
+  inProgressActions: plan.inProgressActions,
+  pendingActions: plan.pendingActions,
+  overdueActions: plan.overdueActions,
   isOverdue:
     plan.target_date !== null &&
     plan.target_date < new Date(new Date().toISOString().slice(0, 10) + 'T00:00:00.000Z') &&

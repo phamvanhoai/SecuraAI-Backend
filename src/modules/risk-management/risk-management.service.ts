@@ -23,6 +23,7 @@ import type {
 import type { UpdateTreatmentPlanBody } from './dto/update-treatment-plan.dto.js';
 import type { CancelTreatmentPlanBody } from './dto/cancel-treatment-plan.dto.js';
 import type { UpdateTreatmentActionProgressBody } from './dto/update-treatment-action-progress.dto.js';
+import type { PerformResidualRiskAssessmentBody } from './dto/perform-residual-risk-assessment.dto.js';
 
 const isRiskCodeConflict = (error: unknown): boolean => {
   if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2002')
@@ -33,16 +34,92 @@ const isRiskCodeConflict = (error: unknown): boolean => {
 };
 
 export const riskManagementService = {
-  async returnTreatmentPlanForRevision(
+  async performResidualRiskAssessment(
+    riskAssessmentId: string,
+    input: PerformResidualRiskAssessmentBody,
+    actor: { userId: string; permissions: readonly string[]; roles: readonly string[] },
+    context: { ipAddress: string | null; userAgent: string | null },
+  ) {
+    if (!actor.permissions.includes('risk-assessments.assess-residual'))
+      throw new AppError(403, 'FORBIDDEN', 'Insufficient permissions');
+    let result: Awaited<ReturnType<typeof riskManagementRepository.performResidualRiskAssessment>>;
+    try {
+      result = await riskManagementRepository.performResidualRiskAssessment(
+        riskAssessmentId,
+        input,
+        { actorUserId: actor.userId, actorIsAdmin: actor.roles.includes('ADMIN'), ...context },
+      );
+    } catch (error: unknown) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034')
+        throw new AppError(
+          409,
+          'RISK_ASSESSMENT_CHANGED',
+          'The risk changed. Reload and try again',
+        );
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2028')
+        throw new AppError(
+          503,
+          'RESIDUAL_ASSESSMENT_TEMPORARILY_UNAVAILABLE',
+          'Residual assessment timed out. Please try again',
+        );
+      throw error;
+    }
+    const failures = {
+      ACTOR_INACTIVE: [403, 'ACTOR_INACTIVE', 'The current user cannot assess residual risk'],
+      RISK_NOT_FOUND: [404, 'RISK_ASSESSMENT_NOT_FOUND', 'Risk assessment was not found'],
+      PLAN_NOT_FOUND: [409, 'TREATMENT_PLAN_REQUIRED', 'An active treatment plan is required'],
+      FORBIDDEN: [
+        403,
+        'FORBIDDEN',
+        'Only the assessor, plan owner, or administrator can assess residual risk',
+      ],
+      RISK_CHANGED: [409, 'RISK_ASSESSMENT_CHANGED', 'The risk changed. Reload and try again'],
+      RISK_NOT_READY: [
+        409,
+        'RISK_NOT_READY_FOR_RESIDUAL_ASSESSMENT',
+        'The risk is not ready for residual assessment',
+      ],
+      PLAN_NOT_READY: [
+        409,
+        'TREATMENT_PLAN_NOT_READY',
+        'The treatment plan is not ready for residual assessment',
+      ],
+      ACTIONS_INCOMPLETE: [
+        409,
+        'TREATMENT_ACTIONS_INCOMPLETE',
+        'All active treatment actions must be completed first',
+      ],
+      RESIDUAL_EXCEEDS_INHERENT: [
+        422,
+        'RESIDUAL_EXCEEDS_INHERENT',
+        'Residual risk cannot exceed inherent risk',
+      ],
+      ACCEPT_WITHOUT_ACTIONS_MUST_MATCH_INHERENT: [
+        422,
+        'ACCEPT_WITHOUT_ACTIONS_MUST_MATCH_INHERENT',
+        'An accept plan without treatment actions cannot reduce residual risk',
+      ],
+    } as const;
+    if (result.failure) {
+      const [status, code, message] = failures[result.failure];
+      throw new AppError(status, code, message);
+    }
+    if (!result.result)
+      throw new AppError(500, 'RESIDUAL_ASSESSMENT_FAILED', 'Unable to assess residual risk');
+    return result.result;
+  },
+  returnTreatmentPlanForRevision(
     _treatmentPlanId: string,
     _input: unknown,
     _actor: { userId: string; permissions: readonly string[] },
     _context: { ipAddress: string | null; userAgent: string | null },
   ) {
-    throw new AppError(
-      501,
-      'REVISION_NOT_AVAILABLE',
-      'Treatment plan revision is temporarily unavailable',
+    return Promise.reject(
+      new AppError(
+        501,
+        'REVISION_NOT_AVAILABLE',
+        'Treatment plan revision is temporarily unavailable',
+      ),
     );
   },
   async cancelTreatmentPlan(
