@@ -9,6 +9,8 @@ import { getUserParamsSchema } from './dto/get-user.dto.js';
 import { accountDeactivationService } from './account-deactivation.service.js';
 import { deactivateUserBodySchema, deactivateUserParamsSchema } from './dto/deactivate-user.dto.js';
 import { updateUserBodySchema } from './dto/update-user.dto.js';
+import { assignUserRolesBodySchema } from './dto/assign-user-roles.dto.js';
+import { userRoleService } from './user-role.service.js';
 
 const changeAccountLock =
   (action: 'lock' | 'unlock'): RequestHandler =>
@@ -79,6 +81,18 @@ export const updateUser: RequestHandler = async (req, res) => {
   if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
   const { userId } = getUserParamsSchema.parse(req.params);
   const data = await usersService.update(userId, updateUserBodySchema.parse(req.body), req.auth);
+  res.status(200).json({ success: true, data });
+};
+
+export const listAssignableRoles: RequestHandler = async (req, res) => {
+  if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+  res.status(200).json({ success: true, data: await userRoleService.listAssignable(req.auth) });
+};
+
+export const assignUserRoles: RequestHandler = async (req, res) => {
+  if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+  const { userId } = getUserParamsSchema.parse(req.params);
+  const data = await userRoleService.assign(userId, assignUserRolesBodySchema.parse(req.body), req.auth);
   res.status(200).json({ success: true, data });
 };
 

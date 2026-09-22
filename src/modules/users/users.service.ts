@@ -9,7 +9,7 @@ import type { ListUsersQuery } from './dto/list-users-query.dto.js';
 import type { UpdateUserBody } from './dto/update-user.dto.js';
 import { usersRepository } from './users.repository.js';
 
-type UserActor = { userId: string; permissions: readonly string[] };
+type UserActor = { userId: string; permissions: readonly string[]; roles?: readonly string[] };
 
 const requirePermission = (actor: UserActor, permission: string): void => {
   if (!actor.permissions.includes(permission)) {
@@ -117,14 +117,8 @@ export const usersService = {
       if (result.kind === 'not_found') {
         throw new AppError(404, 'USER_NOT_FOUND', 'User was not found');
       }
-      if (result.kind === 'invalid_roles') {
-        throw new AppError(422, 'INVALID_ROLES', 'One or more role codes do not exist');
-      }
       if (result.kind === 'invalid_department') {
         throw new AppError(422, 'INVALID_DEPARTMENT', 'Department does not exist or is inactive');
-      }
-      if (result.kind === 'self_admin_removal') {
-        throw new AppError(422, 'SELF_ADMIN_REMOVAL', 'You cannot remove your own administrator role');
       }
       return mapUserDetail(result.user);
     } catch (error: unknown) {
@@ -170,6 +164,8 @@ export const usersService = {
 
   async initializeAccount(input: CreateUserBody, actor: UserActor) {
     requirePermission(actor, 'users.create');
+    requirePermission(actor, 'users.assign-role');
+    if (!actor.roles?.includes('ADMIN')) throw new AppError(403, 'ADMIN_REQUIRED', 'Only administrators can create user accounts');
     const temporaryPassword = String(randomInt(10_000_000, 100_000_000));
     const temporaryPasswordHash = await argon2.hash(temporaryPassword, {
       type: argon2.argon2id,
