@@ -3162,6 +3162,63 @@ export const openApiSpec = swaggerJsdoc({
           },
         },
       },
+      '/risks/{riskAssessmentId}/residual-assessment': {
+        patch: {
+          tags: ['Risk Assessments'],
+          summary: 'Perform a residual risk assessment',
+          description:
+            'Requires risk-assessments.assess-residual. The assessor, active treatment-plan owner, or an administrator may assess an approved or in-treatment risk. For avoid, mitigate, and transfer strategies, every non-cancelled treatment action must be completed at 100%; an accept plan may have no actions, but then likelihood and impact must remain equal to the inherent assessment. Any declared accept-plan actions must also be completed. The server calculates residual score and level, rejects residual risk above inherent risk, preserves the inherent assessment, completes the treatment plan when appropriate, uses expectedUpdatedAt for optimistic concurrency, records the assessment note in the audit log, and notifies the assessor and plan owner. The operation does not accept or close the risk.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'riskAssessmentId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  additionalProperties: false,
+                  required: [
+                    'residualLikelihood',
+                    'residualImpact',
+                    'assessmentNote',
+                    'expectedUpdatedAt',
+                  ],
+                  properties: {
+                    residualLikelihood: { type: 'integer', minimum: 1, maximum: 5 },
+                    residualImpact: { type: 'integer', minimum: 1, maximum: 5 },
+                    assessmentNote: { type: 'string', minLength: 10, maxLength: 2000 },
+                    expectedUpdatedAt: { type: 'string', format: 'date-time' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '200': { description: 'Residual risk assessed and audit record created' },
+            '401': { description: 'Authentication required' },
+            '403': {
+              description:
+                'Missing permission, inactive actor, or caller is not an allowed assessor',
+            },
+            '404': { description: 'Risk assessment not found' },
+            '409': {
+              description:
+                'Risk changed, treatment plan is unavailable, or active treatment actions are incomplete',
+            },
+            '422': {
+              description: 'Invalid input or residual score exceeds the inherent risk score',
+            },
+            '503': { description: 'The assessment transaction timed out and may be retried' },
+          },
+        },
+      },
       '/risks/treatment-plans': {
         post: {
           tags: ['Risk Assessments'],
@@ -3220,7 +3277,9 @@ export const openApiSpec = swaggerJsdoc({
             '401': { description: 'Authentication required' },
             '403': { description: 'Missing permission or caller is not the assessor/admin' },
             '404': { description: 'Risk assessment not found' },
-            '409': { description: 'Assessment changed, has an invalid status, or already has a plan' },
+            '409': {
+              description: 'Assessment changed, has an invalid status, or already has a plan',
+            },
             '422': { description: 'Invalid or incomplete plan data' },
           },
         },
@@ -3317,26 +3376,64 @@ export const openApiSpec = swaggerJsdoc({
           description:
             'Requires risk-treatment-plans.update. Only the creator, owner, or administrator may update a draft or rejected plan whose linked assessment and target remain editable. Owner and assignees must be active, action dates must not exceed the plan target date, and expectedUpdatedAt prevents concurrent overwrites. Actions that have started or completed cannot be changed or removed.',
           security: [{ bearerAuth: [] }],
-          parameters: [{ name: 'treatmentPlanId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
-          requestBody: { required: true, content: { 'application/json': { schema: {
-            type: 'object', additionalProperties: false,
-            required: ['expectedUpdatedAt', 'strategy', 'description', 'ownerUserId', 'targetDate', 'actions'],
-            properties: {
-              expectedUpdatedAt: { type: 'string', format: 'date-time' },
-              strategy: { type: 'string', enum: ['avoid', 'mitigate', 'transfer', 'accept'] },
-              description: { type: 'string', minLength: 10, maxLength: 5000 },
-              ownerUserId: { type: 'string', format: 'uuid' },
-              targetDate: { type: 'string', format: 'date' },
-              actions: { type: 'array', maxItems: 100, items: { type: 'object', additionalProperties: false, required: ['title', 'assignedToUserId', 'dueDate'], properties: {
-                id: { type: 'string', format: 'uuid' }, title: { type: 'string', minLength: 3, maxLength: 255 }, description: { type: 'string', maxLength: 2000 }, assignedToUserId: { type: 'string', format: 'uuid' }, dueDate: { type: 'string', format: 'date' },
-              } } },
+          parameters: [
+            {
+              name: 'treatmentPlanId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
             },
-          } } } },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  additionalProperties: false,
+                  required: [
+                    'expectedUpdatedAt',
+                    'strategy',
+                    'description',
+                    'ownerUserId',
+                    'targetDate',
+                    'actions',
+                  ],
+                  properties: {
+                    expectedUpdatedAt: { type: 'string', format: 'date-time' },
+                    strategy: { type: 'string', enum: ['avoid', 'mitigate', 'transfer', 'accept'] },
+                    description: { type: 'string', minLength: 10, maxLength: 5000 },
+                    ownerUserId: { type: 'string', format: 'uuid' },
+                    targetDate: { type: 'string', format: 'date' },
+                    actions: {
+                      type: 'array',
+                      maxItems: 100,
+                      items: {
+                        type: 'object',
+                        additionalProperties: false,
+                        required: ['title', 'assignedToUserId', 'dueDate'],
+                        properties: {
+                          id: { type: 'string', format: 'uuid' },
+                          title: { type: 'string', minLength: 3, maxLength: 255 },
+                          description: { type: 'string', maxLength: 2000 },
+                          assignedToUserId: { type: 'string', format: 'uuid' },
+                          dueDate: { type: 'string', format: 'date' },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
           responses: {
             '200': { description: 'Updated treatment plan detail' },
             '403': { description: 'Missing permission or caller cannot manage the plan' },
             '404': { description: 'Treatment plan not found' },
-            '409': { description: 'Plan or risk changed, is not editable, or a started action would be changed or removed' },
+            '409': {
+              description:
+                'Plan or risk changed, is not editable, or a started action would be changed or removed',
+            },
             '422': { description: 'Invalid target, user, action, or date' },
             '503': { description: 'The update transaction timed out and may be retried' },
           },
@@ -3371,20 +3468,37 @@ export const openApiSpec = swaggerJsdoc({
           description:
             'Requires risk-treatment-plans.cancel. Only the creator, owner, or administrator may cancel a draft or rejected plan. All actions must be unstarted. The plan, cancellation actor, timestamp, reason, and pending actions are retained for audit. Any anomalous pending approval request is cancelled atomically, and expectedUpdatedAt prevents concurrent changes.',
           security: [{ bearerAuth: [] }],
-          parameters: [{ name: 'treatmentPlanId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
-          requestBody: { required: true, content: { 'application/json': { schema: {
-            type: 'object', additionalProperties: false,
-            required: ['expectedUpdatedAt', 'reason'],
-            properties: {
-              expectedUpdatedAt: { type: 'string', format: 'date-time' },
-              reason: { type: 'string', minLength: 10, maxLength: 1000 },
+          parameters: [
+            {
+              name: 'treatmentPlanId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
             },
-          } } } },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  additionalProperties: false,
+                  required: ['expectedUpdatedAt', 'reason'],
+                  properties: {
+                    expectedUpdatedAt: { type: 'string', format: 'date-time' },
+                    reason: { type: 'string', minLength: 10, maxLength: 1000 },
+                  },
+                },
+              },
+            },
+          },
           responses: {
             '200': { description: 'Cancelled treatment plan detail' },
             '403': { description: 'Missing permission or caller cannot manage the plan' },
             '404': { description: 'Treatment plan not found' },
-            '409': { description: 'Plan or risk changed, is not cancellable, or an action has started' },
+            '409': {
+              description: 'Plan or risk changed, is not cancellable, or an action has started',
+            },
             '422': { description: 'Invalid identifier, timestamp, or reason' },
             '503': { description: 'The cancellation transaction timed out and may be retried' },
           },
