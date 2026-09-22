@@ -7,7 +7,154 @@ const activeEnrollment = (userId: string): Prisma.training_enrollmentsWhereInput
   status: { not: 'withdrawn' },
 });
 
+async function syncEnrollmentProgress(userId: string, enrollmentId?: string) {
+  const enrollments = await prisma.training_enrollments.findMany({
+    where: {
+      ...activeEnrollment(userId),
+      ...(enrollmentId ? { training_enrollment_id: enrollmentId } : {}),
+    },
+    select: {
+      training_enrollment_id: true,
+      training_campaigns: {
+        select: {
+          training_course_id: true,
+          training_courses: {
+            select: {
+              training_lessons: {
+                select: {
+                  training_materials: {
+                    select: { training_material_id: true },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+  await Promise.all(
+    enrollments.map(async (enrollment) => {
+      const materialIds = enrollment.training_campaigns.training_courses.training_lessons.flatMap(
+        (lesson) => lesson.training_materials.map((material) => material.training_material_id),
+      );
+      if (materialIds.length === 0) return;
+      const completed = await prisma.training_material_progress.count({
+        where: {
+          training_enrollment_id: enrollment.training_enrollment_id,
+          training_material_id: { in: materialIds },
+          status: 'completed',
+        },
+      });
+      await prisma.training_enrollments.update({
+        where: { training_enrollment_id: enrollment.training_enrollment_id },
+        data: { progress_percent: Math.min(90, Math.floor((completed / materialIds.length) * 90)) },
+      });
+    }),
+  );
+}
+
 export const learningRepository = {
+  async updateMaterialProgress(
+    enrollmentId: string,
+    materialId: string,
+    userId: string,
+    status: 'in_progress' | 'completed',
+  ) {
+    return prisma.$transaction(async (tx) => {
+      const enrollment = await tx.training_enrollments.findFirst({
+        where: {
+          training_enrollment_id: enrollmentId,
+          user_id: userId,
+          status: { not: 'withdrawn' },
+        },
+        select: {
+          training_enrollment_id: true,
+          training_campaigns: { select: { training_course_id: true } },
+        },
+      });
+      if (!enrollment) return null;
+      const material = await tx.training_materials.findFirst({
+        where: {
+          training_material_id: materialId,
+          training_lessons: {
+            training_courses: {
+              training_campaigns: {
+                some: { training_enrollments: { some: { training_enrollment_id: enrollmentId } } },
+              },
+            },
+          },
+        },
+        select: { training_material_id: true, training_lesson_id: true, display_order: true },
+      });
+      if (!material) return null;
+      if (status === 'completed') {
+        const previous = await tx.training_materials.findMany({
+          where: {
+            training_lesson_id: material.training_lesson_id,
+            display_order: { lt: material.display_order },
+          },
+          select: {
+            training_material_id: true,
+            training_material_progress: {
+              where: { training_enrollment_id: enrollmentId, status: 'completed' },
+              select: { training_material_progress_id: true },
+            },
+          },
+        });
+        if (previous.some((item) => item.training_material_progress.length === 0))
+          return { kind: 'previous_incomplete' as const };
+      }
+      const now = new Date();
+      const progress = await tx.training_material_progress.upsert({
+        where: {
+          training_enrollment_id_training_material_id: {
+            training_enrollment_id: enrollmentId,
+            training_material_id: materialId,
+          },
+        },
+        create: {
+          training_enrollment_id: enrollmentId,
+          training_material_id: materialId,
+          status,
+          started_at: now,
+          last_accessed_at: now,
+          ...(status === 'completed' ? { completed_at: now } : {}),
+        },
+        update: {
+          status,
+          last_accessed_at: now,
+          ...(status === 'completed' ? { completed_at: now } : {}),
+        },
+        select: { training_material_id: true, status: true, completed_at: true },
+      });
+      const totalMaterials = await tx.training_materials.count({
+        where: {
+          training_lesson_id: {
+            in: (
+              await tx.training_lessons.findMany({
+                where: { training_course_id: enrollment.training_campaigns.training_course_id },
+                select: { training_lesson_id: true },
+              })
+            ).map((lesson) => lesson.training_lesson_id),
+          },
+        },
+      });
+      const completedMaterials = await tx.training_material_progress.count({
+        where: { training_enrollment_id: enrollmentId, status: 'completed' },
+      });
+      if (totalMaterials > 0) {
+        await tx.training_enrollments.update({
+          where: { training_enrollment_id: enrollmentId },
+          data: {
+            progress_percent: Math.min(90, Math.floor((completedMaterials / totalMaterials) * 90)),
+            last_accessed_at: now,
+          },
+        });
+      }
+      return progress;
+    });
+  },
   findMaterial(enrollmentId: string, materialId: string, userId: string) {
     return prisma.training_materials.findFirst({
       where: {
@@ -32,6 +179,7 @@ export const learningRepository = {
     });
   },
   async list(userId: string, query: LearningListQuery) {
+    await syncEnrollmentProgress(userId);
     const where = activeEnrollment(userId);
     const [total, items] = await prisma.$transaction([
       prisma.training_enrollments.count({ where }),
@@ -59,7 +207,8 @@ export const learningRepository = {
     ]);
     return { total, items };
   },
-  find(enrollmentId: string, userId: string) {
+  async find(enrollmentId: string, userId: string) {
+    await syncEnrollmentProgress(userId, enrollmentId);
     return prisma.training_enrollments.findFirst({
       where: { training_enrollment_id: enrollmentId, ...activeEnrollment(userId) },
       select: {
@@ -101,6 +250,10 @@ export const learningRepository = {
                         external_url: true,
                         files: {
                           select: { original_name: true, mime_type: true, size_bytes: true },
+                        },
+                        training_material_progress: {
+                          where: { training_enrollment_id: enrollmentId },
+                          select: { status: true, completed_at: true },
                         },
                       },
                     },

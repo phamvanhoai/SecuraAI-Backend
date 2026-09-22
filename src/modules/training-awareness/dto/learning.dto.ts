@@ -7,6 +7,9 @@ export const learningLessonParamsSchema = learningParamsSchema.extend({
 export const learningMaterialParamsSchema = learningParamsSchema.extend({
   materialId: z.string().uuid(),
 });
+export const learningMaterialProgressSchema = z.object({
+  status: z.enum(['in_progress', 'completed']),
+});
 export const learningListQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(50).default(10),

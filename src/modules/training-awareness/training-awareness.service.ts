@@ -244,12 +244,13 @@ export const trainingAwarenessService = {
       },
     };
   },
-  async getMyAssessment(enrollmentId: string, actor: Actor) {
+  async getMyAssessment(enrollmentId: string, actor: Actor, lessonId: string | null = null) {
     if (!actor.permissions.includes('training-assessments.take'))
       throw new AppError(403, 'FORBIDDEN', 'Insufficient permissions');
     const enrollment = await trainingAwarenessRepository.getMyAssessment(
       enrollmentId,
       actor.userId,
+      lessonId,
     );
     const quiz = enrollment?.training_campaigns.training_courses.quizzes[0];
     if (!enrollment || !quiz)
@@ -296,13 +297,14 @@ export const trainingAwarenessService = {
     input: SubmitAssessmentBody,
     actor: Actor,
     context: RequestContext,
+    lessonId: string | null = null,
   ) {
     if (!actor.permissions.includes('training-assessments.take'))
       throw new AppError(403, 'FORBIDDEN', 'Insufficient permissions');
     const result = await trainingAwarenessRepository.submitAssessment(enrollmentId, input, {
       actorUserId: actor.userId,
       ...context,
-    });
+    }, lessonId);
     if (result.kind === 'not_found')
       throw new AppError(404, 'ASSESSMENT_NOT_FOUND', 'Assessment not found');
     if (result.kind === 'attempt_limit')

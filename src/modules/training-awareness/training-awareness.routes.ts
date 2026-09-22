@@ -4,6 +4,7 @@ import {
   downloadMyMaterial,
   getMyLearning,
   listMyLearning,
+  updateMyMaterialProgress,
 } from './learning.controller.js';
 import { parseCourseUpload } from './course-material.upload.js';
 import { getCourseDraft, updateCourseDraft } from './course-draft.controller.js';
@@ -100,6 +101,12 @@ trainingAwarenessRouter.get(
   authenticate,
   authorize('training-assessments.take'),
   asyncHandler(downloadMyMaterial),
+);
+trainingAwarenessRouter.patch(
+  '/learning/:enrollmentId/materials/:materialId/progress',
+  authenticate,
+  authorize('training-assessments.take'),
+  asyncHandler(updateMyMaterialProgress),
 );
 trainingAwarenessRouter.get(
   '/learning/:enrollmentId/lessons/:lessonId/assessment',

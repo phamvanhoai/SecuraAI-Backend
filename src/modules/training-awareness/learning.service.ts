@@ -11,6 +11,22 @@ const requireLearner = (actor: Actor) => {
     throw new AppError(403, 'FORBIDDEN', 'Insufficient permissions');
 };
 export const learningService = {
+  async updateMaterialProgress(enrollmentId: string, materialId: string, status: 'in_progress' | 'completed', actor: Actor) {
+    requireLearner(actor);
+    const result = await learningRepository.updateMaterialProgress(
+      enrollmentId,
+      materialId,
+      actor.userId,
+      status,
+    );
+    if (result && 'kind' in result && result.kind === 'previous_incomplete')
+      throw new AppError(
+        409,
+        'PREVIOUS_TRAINING_MATERIAL_INCOMPLETE',
+        'Complete the previous section first',
+      );
+    return result;
+  },
   async getMaterial(enrollmentId: string, materialId: string, actor: Actor) {
     requireLearner(actor);
     const material = await learningRepository.findMaterial(enrollmentId, materialId, actor.userId);
@@ -99,6 +115,12 @@ export const learningService = {
                   name: m.files.original_name,
                   mimeType: m.files.mime_type,
                   sizeBytes: Number(m.files.size_bytes),
+                }
+              : null,
+            progress: m.training_material_progress[0]
+              ? {
+                  status: m.training_material_progress[0].status,
+                  completedAt: m.training_material_progress[0].completed_at,
                 }
               : null,
           })),

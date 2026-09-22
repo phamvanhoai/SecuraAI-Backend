@@ -135,6 +135,17 @@ describe('trainingAwarenessService draft course editing', () => {
           title: 'Updated awareness course',
           description: null,
           content: 'Updated training material for employees.',
+          lessons: [
+            {
+              title: 'Updated lesson',
+              description: 'Updated lesson description',
+              isRequired: true,
+              materials: [
+                { title: 'Updated reading', type: 'text', content: 'Updated content' },
+              ],
+            },
+          ],
+          expectedUpdatedAt: '2026-09-18T00:00:00.000Z',
         },
         actor,
         context,

@@ -1156,6 +1156,7 @@ model training_enrollments {
   training_campaigns       training_campaigns         @relation(fields: [training_campaign_id], references: [training_campaign_id], onDelete: NoAction, onUpdate: NoAction)
   users                    users                      @relation(fields: [user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
   training_lesson_progress training_lesson_progress[]
+  training_material_progress training_material_progress[]
 
   @@unique([training_campaign_id, user_id], map: "training_enrollments_training_campaign_id_user_id_idx")
 }
@@ -1351,7 +1352,22 @@ model training_materials {
   updated_at           DateTime         @default(now()) @db.Timestamptz(6)
   files                files?           @relation(fields: [file_id], references: [file_id], onDelete: NoAction, onUpdate: NoAction)
   training_lessons     training_lessons @relation(fields: [training_lesson_id], references: [training_lesson_id], onDelete: NoAction, onUpdate: NoAction)
+  training_material_progress training_material_progress[]
 
   @@unique([training_lesson_id, display_order])
   @@index([file_id])
+}
+
+model training_material_progress {
+  training_material_progress_id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  training_enrollment_id String @db.Uuid
+  training_material_id String @db.Uuid
+  status String @default("not_started") @db.VarChar(20)
+  started_at DateTime? @db.Timestamptz(6)
+  completed_at DateTime? @db.Timestamptz(6)
+  last_accessed_at DateTime? @db.Timestamptz(6)
+  training_enrollments training_enrollments @relation(fields: [training_enrollment_id], references: [training_enrollment_id], onDelete: NoAction, onUpdate: NoAction)
+  training_materials training_materials @relation(fields: [training_material_id], references: [training_material_id], onDelete: NoAction, onUpdate: NoAction)
+  @@unique([training_enrollment_id, training_material_id])
+  @@index([training_material_id], map: "training_material_progress_material_id_idx")
 }

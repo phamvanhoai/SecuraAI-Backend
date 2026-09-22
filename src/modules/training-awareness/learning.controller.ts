@@ -5,6 +5,7 @@ import {
   learningParamsSchema,
   learningLessonParamsSchema,
   learningMaterialParamsSchema,
+  learningMaterialProgressSchema,
 } from './dto/learning.dto.js';
 import { learningService } from './learning.service.js';
 export const listMyLearning: RequestHandler = async (req, res) => {
@@ -37,4 +38,12 @@ export const downloadMyMaterial: RequestHandler = async (req, res, next) => {
     if (error && !res.headersSent)
       next(new AppError(404, 'TRAINING_MATERIAL_NOT_FOUND', 'Training material not found'));
   });
+};
+export const updateMyMaterialProgress: RequestHandler = async (req, res) => {
+  if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+  const { enrollmentId, materialId } = learningMaterialParamsSchema.parse(req.params);
+  const { status } = learningMaterialProgressSchema.parse(req.body);
+  const data = await learningService.updateMaterialProgress(enrollmentId, materialId, status, req.auth);
+  if (!data) throw new AppError(404, 'TRAINING_MATERIAL_NOT_FOUND', 'Training material not found');
+  res.json({ success: true, data });
 };
