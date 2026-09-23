@@ -34,7 +34,6 @@ export const updateRoleBodySchema = z
     code: roleCodeSchema.optional(),
     name: z.string().trim().min(2).max(100).optional(),
     description: z.string().trim().max(1000).nullable().optional(),
-    permissionIds: permissionIdsSchema.optional(),
   })
   .strict()
   .refine((value) => Object.keys(value).length > 0, 'At least one field is required');
@@ -42,3 +41,11 @@ export const updateRoleBodySchema = z
 export type ListRolesQuery = z.infer<typeof listRolesQuerySchema>;
 export type CreateRoleBody = z.infer<typeof createRoleBodySchema>;
 export type UpdateRoleBody = z.infer<typeof updateRoleBodySchema>;
+export const configureRolePermissionsBodySchema = z
+  .object({
+    permissionIds: permissionIdsSchema,
+    expectedUpdatedAt: z.iso.datetime({ offset: true }),
+    reason: z.string().trim().min(10).max(1000),
+  })
+  .strict();
+export type ConfigureRolePermissionsBody = z.infer<typeof configureRolePermissionsBodySchema>;

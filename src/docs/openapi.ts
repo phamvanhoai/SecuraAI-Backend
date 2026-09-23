@@ -218,8 +218,18 @@ export const openApiSpec = swaggerJsdoc({
           },
         },
         AssignUserRolesRequest: {
-          type: 'object', required: ['roleCodes'], additionalProperties: false,
-          properties: { roleCodes: { type: 'array', minItems: 1, maxItems: 10, uniqueItems: true, items: { type: 'string', minLength: 1, maxLength: 50 } } },
+          type: 'object',
+          required: ['roleCodes'],
+          additionalProperties: false,
+          properties: {
+            roleCodes: {
+              type: 'array',
+              minItems: 1,
+              maxItems: 10,
+              uniqueItems: true,
+              items: { type: 'string', minLength: 1, maxLength: 50 },
+            },
+          },
         },
         AccountRemovalRequest: {
           type: 'object',
@@ -849,6 +859,21 @@ export const openApiSpec = swaggerJsdoc({
               uniqueItems: true,
               items: { type: 'string', format: 'uuid' },
             },
+          },
+        },
+        ConfigureRolePermissionsInput: {
+          type: 'object',
+          required: ['permissionIds', 'expectedUpdatedAt', 'reason'],
+          additionalProperties: false,
+          properties: {
+            permissionIds: {
+              type: 'array',
+              maxItems: 200,
+              uniqueItems: true,
+              items: { type: 'string', format: 'uuid' },
+            },
+            expectedUpdatedAt: { type: 'string', format: 'date-time' },
+            reason: { type: 'string', minLength: 10, maxLength: 1000 },
           },
         },
         CustomRole: {
@@ -2316,9 +2341,46 @@ export const openApiSpec = swaggerJsdoc({
           responses: {
             '201': { description: 'Custom role created' },
             '401': { description: 'Unauthorized' },
-            '403': { description: 'Missing roles.create permission' },
+            '403': {
+              description:
+                'Missing roles.create, or not an active ADMIN with roles.update when assigning permissions',
+            },
             '409': { description: 'Role code already exists' },
             '422': { description: 'Invalid input or permissions' },
+          },
+        },
+      },
+      '/access-control/roles/{roleId}/permissions': {
+        parameters: [
+          {
+            name: 'roleId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        put: {
+          tags: ['Role Management'],
+          summary: 'Replace detailed permissions on a role',
+          description:
+            'Requires an active ADMIN with roles.update. ADMIN role is immutable. Changes are audited; affected users must sign in again because refresh sessions are revoked.',
+          security: [{ bearerAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/ConfigureRolePermissionsInput' },
+              },
+            },
+          },
+          responses: {
+            '200': { description: 'Role, changed flag, and affected user count' },
+            '400': { description: 'Invalid request' },
+            '401': { description: 'Unauthorized' },
+            '403': { description: 'Not an ADMIN or missing permission' },
+            '404': { description: 'Role not found' },
+            '409': { description: 'Role changed since it was loaded' },
+            '422': { description: 'ADMIN role is immutable or unknown permission IDs' },
           },
         },
       },
@@ -2351,7 +2413,13 @@ export const openApiSpec = swaggerJsdoc({
             content: {
               'application/json': {
                 schema: {
-                  allOf: [{ $ref: '#/components/schemas/CustomRoleInput' }],
+                  type: 'object',
+                  additionalProperties: false,
+                  properties: {
+                    code: { type: 'string', pattern: '^[A-Z][A-Z0-9_]*$' },
+                    name: { type: 'string', minLength: 2, maxLength: 100 },
+                    description: { type: 'string', nullable: true, maxLength: 1000 },
+                  },
                   minProperties: 1,
                 },
               },
@@ -2935,12 +3003,40 @@ export const openApiSpec = swaggerJsdoc({
         delete: {
           tags: ['Users'],
           summary: 'Remove a user account (soft delete)',
-          description: 'Requires ADMIN and users.remove. Revokes sessions, cancels pending MFA login challenges, and preserves referenced records. Requires an audit reason.',
+          description:
+            'Requires ADMIN and users.remove. Revokes sessions, cancels pending MFA login challenges, and preserves referenced records. Requires an audit reason.',
           security: [{ bearerAuth: [] }],
-          parameters: [{ name: 'userId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
-          requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/AccountRemovalRequest' } } } },
+          parameters: [
+            {
+              name: 'userId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/AccountRemovalRequest' },
+              },
+            },
+          },
           responses: {
-            '200': { description: 'Account removed', content: { 'application/json': { schema: { type: 'object', properties: { success: { type: 'boolean' }, data: { $ref: '#/components/schemas/AccountRemovalResult' } } } } } },
+            '200': {
+              description: 'Account removed',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      success: { type: 'boolean' },
+                      data: { $ref: '#/components/schemas/AccountRemovalResult' },
+                    },
+                  },
+                },
+              },
+            },
             '401': { description: 'Unauthorized' },
             '403': { description: 'Requires ADMIN and users.remove; self-removal is forbidden' },
             '404': { description: 'User not found or already removed' },
@@ -2953,14 +3049,44 @@ export const openApiSpec = swaggerJsdoc({
         post: {
           tags: ['Users'],
           summary: 'Deactivate a user account',
-          description: 'Requires ADMIN and users.deactivate. Sets status to disabled, revokes sessions and pending MFA login challenges, and records the reason. Repeated deactivation reports changed=false.',
+          description:
+            'Requires ADMIN and users.deactivate. Sets status to disabled, revokes sessions and pending MFA login challenges, and records the reason. Repeated deactivation reports changed=false.',
           security: [{ bearerAuth: [] }],
-          parameters: [{ name: 'userId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
-          requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/AccountRemovalRequest' } } } },
+          parameters: [
+            {
+              name: 'userId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/AccountRemovalRequest' },
+              },
+            },
+          },
           responses: {
-            '200': { description: 'Account deactivated', content: { 'application/json': { schema: { type: 'object', properties: { success: { type: 'boolean' }, data: { $ref: '#/components/schemas/AccountRemovalResult' } } } } } },
+            '200': {
+              description: 'Account deactivated',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    properties: {
+                      success: { type: 'boolean' },
+                      data: { $ref: '#/components/schemas/AccountRemovalResult' },
+                    },
+                  },
+                },
+              },
+            },
             '401': { description: 'Unauthorized' },
-            '403': { description: 'Requires ADMIN and users.deactivate; self-deactivation is forbidden' },
+            '403': {
+              description: 'Requires ADMIN and users.deactivate; self-deactivation is forbidden',
+            },
             '404': { description: 'User not found or removed' },
             '409': { description: 'Last active administrator or concurrent account change' },
             '422': { description: 'Invalid user ID or reason' },
@@ -2969,11 +3095,27 @@ export const openApiSpec = swaggerJsdoc({
       },
       '/users/{userId}/roles': {
         post: {
-          tags: ['Users'], summary: 'Assign one or more roles to a user',
-          description: 'ADMIN and users.assign-role required. Adds roles without removing existing roles. Already-assigned roles are unchanged. Refresh sessions are revoked on change; target must sign in again for new permissions. Existing access tokens retain old claims until expiry.',
+          tags: ['Users'],
+          summary: 'Assign one or more roles to a user',
+          description:
+            'ADMIN and users.assign-role required. Adds roles without removing existing roles. Already-assigned roles are unchanged. Refresh sessions are revoked on change; target must sign in again for new permissions. Existing access tokens retain old claims until expiry.',
           security: [{ bearerAuth: [] }],
-          parameters: [{ name: 'userId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
-          requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/AssignUserRolesRequest' } } } },
+          parameters: [
+            {
+              name: 'userId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: { $ref: '#/components/schemas/AssignUserRolesRequest' },
+              },
+            },
+          },
           responses: {
             '200': { description: 'Assigned role codes and changed flag' },
             '401': { description: 'Unauthorized' },
@@ -2986,10 +3128,13 @@ export const openApiSpec = swaggerJsdoc({
       },
       '/users/assignable-roles': {
         get: {
-          tags: ['Users'], summary: 'List roles available for assignment',
+          tags: ['Users'],
+          summary: 'List roles available for assignment',
           security: [{ bearerAuth: [] }],
           responses: {
-            '200': { description: 'Up to 100 role codes, names, descriptions, and system statuses' },
+            '200': {
+              description: 'Up to 100 role codes, names, descriptions, and system statuses',
+            },
             '401': { description: 'Unauthorized' },
             '403': { description: 'Requires ADMIN and users.assign-role' },
           },

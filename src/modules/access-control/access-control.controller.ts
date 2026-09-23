@@ -4,6 +4,7 @@ import { accessControlService } from './access-control.service.js';
 import { listPermissionsQuerySchema } from './dto/permission.dto.js';
 import {
   createRoleBodySchema,
+  configureRolePermissionsBodySchema,
   listRolesQuerySchema,
   roleParamsSchema,
   updateRoleBodySchema,
@@ -48,6 +49,15 @@ export const updateRole: RequestHandler = async (req, res) => {
   );
   res.status(200).json({ success: true, data });
 };
+export const configureRolePermissions: RequestHandler = async (req, res) => {
+  const { roleId } = roleParamsSchema.parse(req.params);
+  const data = await accessControlService.configureRolePermissions(
+    roleId,
+    configureRolePermissionsBodySchema.parse(req.body),
+    actor(req),
+  );
+  res.status(200).json({ success: true, data });
+};
 export const deleteRole: RequestHandler = async (req, res) => {
   const { roleId } = roleParamsSchema.parse(req.params);
   await accessControlService.deleteRole(roleId, actor(req));
@@ -59,5 +69,6 @@ export const accessControlController = {
   getRole,
   createRole,
   updateRole,
+  configureRolePermissions,
   deleteRole,
 } as const;

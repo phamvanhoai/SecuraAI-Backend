@@ -117,8 +117,6 @@ export const accessControlRepository = {
     });
   },
   async update(database: DatabaseClient, roleId: string, input: UpdateRoleBody) {
-    if (input.permissionIds !== undefined)
-      await database.role_permissions.deleteMany({ where: { role_id: roleId } });
     return database.roles.update({
       where: { role_id: roleId },
       data: {
@@ -126,18 +124,61 @@ export const accessControlRepository = {
         ...(input.name !== undefined ? { name: input.name } : {}),
         ...(input.description !== undefined ? { description: input.description } : {}),
         updated_at: new Date(),
-        ...(input.permissionIds !== undefined
-          ? {
-              role_permissions: {
-                create: input.permissionIds.map((permissionId) => ({
-                  permission_id: permissionId,
-                })),
-              },
-            }
-          : {}),
       },
       select: roleSelect,
     });
+  },
+  async lockRole(database: Prisma.TransactionClient, roleId: string): Promise<void> {
+    await database.$queryRaw`SELECT role_id FROM roles WHERE role_id = ${roleId}::uuid FOR UPDATE`;
+  },
+  async isCurrentAdmin(userId: string, database: DatabaseClient): Promise<boolean> {
+    const count = await database.users.count({
+      where: {
+        user_id: userId,
+        status: 'active',
+        deleted_at: null,
+        user_roles_user_roles_user_idTousers: {
+          some: {
+            roles: {
+              code: 'ADMIN',
+              role_permissions: { some: { permissions: { code: 'roles.update' } } },
+            },
+          },
+        },
+      },
+    });
+    return count > 0;
+  },
+  async replacePermissions(
+    database: Prisma.TransactionClient,
+    roleId: string,
+    permissionIds: string[],
+  ) {
+    await database.role_permissions.deleteMany({ where: { role_id: roleId } });
+    if (permissionIds.length > 0)
+      await database.role_permissions.createMany({
+        data: permissionIds.map((permissionId) => ({
+          role_id: roleId,
+          permission_id: permissionId,
+        })),
+      });
+    return database.roles.update({
+      where: { role_id: roleId },
+      data: { updated_at: new Date() },
+      select: roleSelect,
+    });
+  },
+  async invalidateAssignedUsers(
+    database: Prisma.TransactionClient,
+    roleId: string,
+  ): Promise<number> {
+    const userFilter = { user_roles_user_roles_user_idTousers: { some: { role_id: roleId } } };
+    const affectedUserCount = await database.users.count({ where: userFilter });
+    await database.auth_sessions.updateMany({
+      where: { revoked_at: null, users: { is: userFilter } },
+      data: { revoked_at: new Date() },
+    });
+    return affectedUserCount;
   },
   async delete(database: DatabaseClient, roleId: string) {
     await database.role_permissions.deleteMany({ where: { role_id: roleId } });

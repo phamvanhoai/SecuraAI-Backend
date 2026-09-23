@@ -11,6 +11,7 @@ export const accessControlModule: ModuleManifest = {
     'View system and custom roles',
     'List permissions',
     'Update custom role',
+    'Configure detailed permissions for non-ADMIN roles',
     'Delete custom role',
   ],
   router: accessControlRouter,

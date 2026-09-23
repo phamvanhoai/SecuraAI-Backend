@@ -4,6 +4,7 @@ import { validate } from '../../common/middleware/validate.js';
 import { asyncHandler } from '../../common/utils/async-handler.js';
 import {
   createRole,
+  configureRolePermissions,
   deleteRole,
   getRole,
   listPermissions,
@@ -13,6 +14,7 @@ import {
 import { listPermissionsQuerySchema } from './dto/permission.dto.js';
 import {
   createRoleBodySchema,
+  configureRolePermissionsBodySchema,
   listRolesQuerySchema,
   roleParamsSchema,
   updateRoleBodySchema,
@@ -53,6 +55,13 @@ accessControlRouter.patch(
   authorize('roles.update'),
   validate({ params: roleParamsSchema, body: updateRoleBodySchema }),
   asyncHandler(updateRole),
+);
+accessControlRouter.put(
+  '/roles/:roleId/permissions',
+  authenticate,
+  authorize('roles.update'),
+  validate({ params: roleParamsSchema, body: configureRolePermissionsBodySchema }),
+  asyncHandler(configureRolePermissions),
 );
 accessControlRouter.delete(
   '/roles/:roleId',

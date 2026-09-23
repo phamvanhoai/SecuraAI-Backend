@@ -13,6 +13,10 @@ const mocks = vi.hoisted(() => ({
   delete: vi.fn(),
   audit: vi.fn(),
   transaction: vi.fn(),
+  lockRole: vi.fn(),
+  isCurrentAdmin: vi.fn(),
+  replacePermissions: vi.fn(),
+  invalidateAssignedUsers: vi.fn(),
 }));
 vi.mock('../src/modules/access-control/access-control.repository.js', () => ({
   accessControlRepository: mocks,
@@ -66,6 +70,8 @@ describe('custom role HTTP API', () => {
     mocks.countPermissions.mockResolvedValue(0);
     mocks.create.mockResolvedValue(record);
     mocks.audit.mockResolvedValue({ audit_log_id: 'audit-1' });
+    mocks.findById.mockResolvedValue(record);
+    mocks.isCurrentAdmin.mockResolvedValue(true);
   });
   it('protects and returns the paginated permission catalog', async () => {
     expect((await request(createApp()).get('/api/v1/access-control/permissions')).status).toBe(401);
@@ -108,5 +114,33 @@ describe('custom role HTTP API', () => {
       .send({ code: 'bad role', name: 'Bad Role' });
     expect(created.status).toBe(201);
     expect(invalid.status).toBe(422);
+  });
+  it('protects the dedicated role permission endpoint and rejects generic permission updates', async () => {
+    const path = `/api/v1/access-control/roles/${record.role_id}/permissions`;
+    const body = {
+      permissionIds: [],
+      expectedUpdatedAt: record.updated_at.toISOString(),
+      reason: 'Quarterly access review',
+    };
+    expect((await request(createApp()).put(path).send(body)).status).toBe(401);
+    expect(
+      (
+        await request(createApp())
+          .put(path)
+          .set('authorization', `Bearer ${token(['roles.read'])}`)
+          .send(body)
+      ).status,
+    ).toBe(403);
+    const configured = await request(createApp())
+      .put(path)
+      .set('authorization', `Bearer ${token(['roles.update'])}`)
+      .send(body);
+    expect(configured.status).toBe(200);
+    expect(configured.body.data).toMatchObject({ changed: false });
+    const bypass = await request(createApp())
+      .patch(`/api/v1/access-control/roles/${record.role_id}`)
+      .set('authorization', `Bearer ${token(['roles.update'])}`)
+      .send({ permissionIds: [] });
+    expect(bypass.status).toBe(422);
   });
 });

@@ -11,6 +11,10 @@ const mocks = vi.hoisted(() => ({
   delete: vi.fn(),
   audit: vi.fn(),
   transaction: vi.fn(),
+  lockRole: vi.fn(),
+  isCurrentAdmin: vi.fn(),
+  replacePermissions: vi.fn(),
+  invalidateAssignedUsers: vi.fn(),
 }));
 vi.mock('../src/modules/access-control/access-control.repository.js', () => ({
   accessControlRepository: mocks,
@@ -43,6 +47,7 @@ describe('accessControlService', () => {
     mocks.countPermissions.mockResolvedValue(0);
     mocks.findByCode.mockResolvedValue(null);
     mocks.audit.mockResolvedValue({ audit_log_id: 'audit-1' });
+    mocks.isCurrentAdmin.mockResolvedValue(true);
   });
   it('lists the permission catalog with stable API fields', async () => {
     mocks.listPermissions.mockResolvedValue({
@@ -113,5 +118,104 @@ describe('accessControlService', () => {
         { userId: actor.userId, permissions: [] },
       ),
     ).rejects.toMatchObject({ statusCode: 403 });
+  });
+  it('requires configure permission when creating a pre-granted role', async () => {
+    await expect(
+      accessControlService.createRole(
+        {
+          code: 'NEW_ROLE',
+          name: 'New Role',
+          permissionIds: ['00000000-0000-4000-8000-000000000020'],
+        },
+        { ...actor, permissions: ['roles.create'] },
+      ),
+    ).rejects.toMatchObject({ statusCode: 403 });
+  });
+  it('requires a current ADMIN for creating a pre-granted role', async () => {
+    mocks.isCurrentAdmin.mockResolvedValue(false);
+    mocks.countPermissions.mockResolvedValue(1);
+    await expect(
+      accessControlService.createRole(
+        {
+          code: 'NEW_ROLE',
+          name: 'New Role',
+          permissionIds: ['00000000-0000-4000-8000-000000000020'],
+        },
+        actor,
+      ),
+    ).rejects.toMatchObject({ statusCode: 403 });
+    expect(mocks.create).not.toHaveBeenCalled();
+  });
+  it('does not change immutable ADMIN permissions', async () => {
+    mocks.findById.mockResolvedValue(role({ code: 'ADMIN', is_system: true }));
+    await expect(
+      accessControlService.configureRolePermissions(
+        role().role_id,
+        {
+          permissionIds: [],
+          expectedUpdatedAt: role().updated_at.toISOString(),
+          reason: 'Periodic role review',
+        },
+        { ...actor, permissions: ['roles.update'] },
+      ),
+    ).rejects.toMatchObject({ code: 'ADMIN_ROLE_IMMUTABLE' });
+    expect(mocks.replacePermissions).not.toHaveBeenCalled();
+  });
+  it('rejects stale edits and accounts that lost ADMIN access', async () => {
+    mocks.findById.mockResolvedValue(role());
+    const input = {
+      permissionIds: [],
+      expectedUpdatedAt: '2026-09-08T00:00:00.000Z',
+      reason: 'Quarterly access review',
+    };
+    const configuringActor = { ...actor, permissions: ['roles.update'] };
+    await expect(
+      accessControlService.configureRolePermissions(role().role_id, input, configuringActor),
+    ).rejects.toMatchObject({ code: 'ROLE_CHANGED' });
+    mocks.isCurrentAdmin.mockResolvedValue(false);
+    await expect(
+      accessControlService.configureRolePermissions(
+        role().role_id,
+        { ...input, expectedUpdatedAt: role().updated_at.toISOString() },
+        configuringActor,
+      ),
+    ).rejects.toMatchObject({ statusCode: 403 });
+    expect(mocks.replacePermissions).not.toHaveBeenCalled();
+  });
+  it('replaces permissions, invalidates sessions and audits in one transaction', async () => {
+    const permissionId = '00000000-0000-4000-8000-000000000020';
+    mocks.findById.mockResolvedValue(role());
+    mocks.countPermissions.mockResolvedValue(1);
+    mocks.replacePermissions.mockResolvedValue(
+      role({
+        role_permissions: [
+          {
+            permissions: {
+              permission_id: permissionId,
+              code: 'roles.read',
+              module: 'roles',
+              action: 'read',
+              description: null,
+            },
+          },
+        ],
+      }),
+    );
+    mocks.invalidateAssignedUsers.mockResolvedValue(2);
+    const result = await accessControlService.configureRolePermissions(
+      role().role_id,
+      {
+        permissionIds: [permissionId],
+        expectedUpdatedAt: role().updated_at.toISOString(),
+        reason: 'Approved security review',
+      },
+      { ...actor, permissions: ['roles.update'] },
+    );
+    expect(result).toMatchObject({ changed: true, affectedUserCount: 2 });
+    expect(mocks.invalidateAssignedUsers).toHaveBeenCalledWith({}, role().role_id);
+    expect(mocks.audit).toHaveBeenCalledWith(
+      {},
+      expect.objectContaining({ action: 'role.permissions.configured' }),
+    );
   });
 });

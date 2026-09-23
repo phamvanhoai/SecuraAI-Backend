@@ -3,7 +3,12 @@ import { AppError } from '../../common/errors/app-error.js';
 import { toPermissionResponse, toRoleResponse } from './access-control.mapper.js';
 import { accessControlRepository } from './access-control.repository.js';
 import type { ListPermissionsQuery } from './dto/permission.dto.js';
-import type { CreateRoleBody, ListRolesQuery, UpdateRoleBody } from './dto/role.dto.js';
+import type {
+  ConfigureRolePermissionsBody,
+  CreateRoleBody,
+  ListRolesQuery,
+  UpdateRoleBody,
+} from './dto/role.dto.js';
 
 type RoleActor = { userId: string; permissions: readonly string[] };
 const requirePermission = (actor: RoleActor, permission: string): void => {
@@ -60,11 +65,17 @@ export const accessControlService = {
   },
   async createRole(input: CreateRoleBody, actor: RoleActor) {
     requirePermission(actor, 'roles.create');
+    if (input.permissionIds.length > 0) requirePermission(actor, 'roles.update');
     if (await accessControlRepository.findByCode(input.code))
       throw new AppError(409, 'ROLE_CODE_EXISTS', 'Role code already exists');
     await ensurePermissionsExist(input.permissionIds);
     try {
       return await accessControlRepository.transaction(async (database) => {
+        if (
+          input.permissionIds.length > 0 &&
+          !(await accessControlRepository.isCurrentAdmin(actor.userId, database))
+        )
+          throw new AppError(403, 'FORBIDDEN', 'An active ADMIN account is required');
         const role = await accessControlRepository.create(database, input);
         const response = toRoleResponse(role);
         await accessControlRepository.audit(database, {
@@ -94,7 +105,6 @@ export const accessControlService = {
     ) {
       throw new AppError(409, 'ROLE_CODE_EXISTS', 'Role code already exists');
     }
-    if (input.permissionIds !== undefined) await ensurePermissionsExist(input.permissionIds);
     try {
       return await accessControlRepository.transaction(async (database) => {
         const updated = await accessControlRepository.update(database, roleId, input);
@@ -113,6 +123,56 @@ export const accessControlService = {
         throw new AppError(409, 'ROLE_CODE_EXISTS', 'Role code already exists');
       throw error;
     }
+  },
+  async configureRolePermissions(
+    roleId: string,
+    input: ConfigureRolePermissionsBody,
+    actor: RoleActor,
+  ) {
+    requirePermission(actor, 'roles.update');
+    return accessControlRepository.transaction(async (database) => {
+      await accessControlRepository.lockRole(database, roleId);
+      const current = await accessControlRepository.findById(roleId, database);
+      if (!current) throw new AppError(404, 'ROLE_NOT_FOUND', 'Role was not found');
+      if (current.code === 'ADMIN')
+        throw new AppError(422, 'ADMIN_ROLE_IMMUTABLE', 'ADMIN permissions cannot be changed');
+      if (current.updated_at.toISOString() !== input.expectedUpdatedAt)
+        throw new AppError(409, 'ROLE_CHANGED', 'Role changed; reload before saving permissions');
+      if (!(await accessControlRepository.isCurrentAdmin(actor.userId, database)))
+        throw new AppError(403, 'FORBIDDEN', 'An active ADMIN account is required');
+      if (
+        (await accessControlRepository.countPermissions(input.permissionIds, database)) !==
+        input.permissionIds.length
+      )
+        throw new AppError(422, 'INVALID_PERMISSIONS', 'One or more permissions do not exist');
+      const previous = current.role_permissions.map(({ permissions }) => permissions.permission_id);
+      if (
+        previous.length === input.permissionIds.length &&
+        previous.every((id) => input.permissionIds.includes(id))
+      )
+        return { role: toRoleResponse(current), changed: false, affectedUserCount: 0 };
+      const role = await accessControlRepository.replacePermissions(
+        database,
+        roleId,
+        input.permissionIds,
+      );
+      const affectedUserCount = await accessControlRepository.invalidateAssignedUsers(
+        database,
+        roleId,
+      );
+      await accessControlRepository.audit(database, {
+        actorUserId: actor.userId,
+        action: 'role.permissions.configured',
+        roleId,
+        beforeData: auditSnapshot(toRoleResponse(current)),
+        afterData: {
+          ...auditSnapshot(toRoleResponse(role)),
+          reason: input.reason,
+          affectedUserCount,
+        },
+      });
+      return { role: toRoleResponse(role), changed: true, affectedUserCount };
+    });
   },
   async deleteRole(roleId: string, actor: RoleActor): Promise<void> {
     requirePermission(actor, 'roles.delete');

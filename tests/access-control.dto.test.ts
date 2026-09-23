@@ -3,6 +3,7 @@ import {
   createRoleBodySchema,
   listRolesQuerySchema,
   updateRoleBodySchema,
+  configureRolePermissionsBodySchema,
 } from '../src/modules/access-control/dto/role.dto.js';
 import { listPermissionsQuerySchema } from '../src/modules/access-control/dto/permission.dto.js';
 
@@ -45,5 +46,18 @@ describe('role DTOs', () => {
       }).success,
     ).toBe(false);
     expect(updateRoleBodySchema.safeParse({}).success).toBe(false);
+    expect(updateRoleBodySchema.safeParse({ permissionIds: [id] }).success).toBe(false);
+    const valid = {
+      permissionIds: [id],
+      expectedUpdatedAt: '2026-09-22T00:00:00.000Z',
+      reason: 'Quarterly access review',
+    };
+    expect(configureRolePermissionsBodySchema.safeParse(valid).success).toBe(true);
+    expect(
+      configureRolePermissionsBodySchema.safeParse({ ...valid, permissionIds: [id, id] }).success,
+    ).toBe(false);
+    expect(
+      configureRolePermissionsBodySchema.safeParse({ ...valid, reason: 'short' }).success,
+    ).toBe(false);
   });
 });
