@@ -11,7 +11,7 @@ import {
 import {
   startComplianceReminderScheduler,
   stopComplianceReminderScheduler,
-} from './modules/notifications/compliance-reminders.scheduler.js';
+} from './modules/notification-system-logs/compliance-reminders.scheduler.js';
 
 const server = createServer(createApp());
 

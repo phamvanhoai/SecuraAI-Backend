@@ -2,7 +2,7 @@ import type { ModuleManifest } from '../module.types.js';
 import { policyComplianceRouter } from './policy-compliance.routes.js';
 
 export const policyComplianceModule: ModuleManifest = {
-  name: 'policy-compliance',
+  name: 'policy-compliance-control',
   routePrefix: '/compliance',
   description: 'Policies, standards, controls and compliance evidence',
   tables: [

@@ -4,7 +4,7 @@ This file is the authoritative implementation guide for AI coding agents and con
 
 ## 1. Project context
 
-SecuraAI is an enterprise Information Security Risk Management platform combining GRC/ISMS functions with AI-based anomaly detection. The approved scope and database references are stored in `project-docs/`.
+SecuraAI is an enterprise Information Security Risk Management platform combining GRC/ISMS functions with AI-based anomaly detection. The approved scope and database references are stored in `project-docs/new/`.
 
 Current stack:
 
@@ -19,9 +19,9 @@ Current stack:
 Current database baseline:
 
 - Online database: Supabase-managed PostgreSQL 17 in the Singapore region.
-- The application schema contains 78 business tables, 142 foreign keys and 91 enforced business `CHECK` constraints, including the approved training extension documented in `prisma/TRAINING-SCHEMA.md` and the treatment-plan cancellation foreign key.
-- `prisma/migrations/20260830055000_full_database_schema/migration.sql` installs the complete V3 schema.
-- `prisma/migrations/20260830060000_enforce_business_checks/migration.sql` materializes the checks that the dbdiagram export stored as comments.
+- The V2 baseline contains 56 tables, 36 enum types and 120 active foreign-key constraints defined by `project-docs/new/database.sql`.
+- `prisma/migrations/00000000000000_baseline_v2/migration.sql` is the deployable V2 baseline.
+- Legacy migrations are retained under `prisma/migrations-legacy/` for reference only.
 - `npm run db:verify` compares the live `public` schema with the approved database design.
 
 Do not migrate the project to NestJS, another web framework, another ORM, or another database unless the user explicitly requests it.
@@ -35,14 +35,16 @@ Use these sources in this order:
 3. `src/modules/README.md` for domain ownership and module boundaries.
 4. Applied files under `prisma/migrations/` for the exact deployable PostgreSQL schema, including features Prisma cannot represent.
 5. `prisma/schema.prisma` for the introspected Prisma Client model currently implemented by the application.
-6. `project-docs/database.txt` and `project-docs/Database.sql` for the approved V3 database design.
-7. `project-docs/De xuat de tai khoa luan WebApp.pdf` for roles and the 101 use cases.
+6. `project-docs/new/database.sql` and `project-docs/new/Enterprise_ISMS_Data_Dictionary.xlsx` for the V2 schema and field definitions.
+7. `project-docs/new/Report3_Project Tracking.xlsx` for current feature/module ownership and status.
 
-The files in `project-docs/` are design references, not files to execute directly. Their approved schema has already been converted into versioned migrations. Never run a reference SQL file against an environment automatically. When the design changes, create a new explicit migration; do not rerun or modify an applied migration.
+The files in `project-docs/new/` define the current V2 baseline. Apply the baseline only for an explicitly authorized database replacement; subsequent changes require new migrations. Do not edit an applied migration.
 
 ## 3. Architecture
 
 Organize business code by domain under `src/modules/`, not in global controller/service folders.
+
+Current Project Tracking module directories use these names: `authentication-account`, `user-management-authorization`, `it-asset-management`, `risk-assessment`, `ai-anomaly-detection-alerts`, `policy-compliance-control`, `information-security-incident-management`, `notification-system-logs`, `audit-security-reporting` and `event-ingestion`. Keep new module folders aligned with the feature names in `project-docs/new/Report3_Project Tracking.xlsx`.
 
 The required dependency flow is:
 
@@ -142,9 +144,9 @@ Do not weaken existing authentication, CORS, Helmet, rate limiting, request-size
 - Add indexes for foreign keys and common filters after considering actual query patterns.
 - Do not edit an already deployed migration. Add a new migration.
 - Do not run destructive resets, drops or production migrations without explicit user authorization.
-- The Supabase `public` schema must contain exactly the 78 approved business tables plus Prisma's `_prisma_migrations` table. Do not modify Supabase-managed schemas such as `auth`, `storage`, `realtime`, `extensions` or `vault`.
+- The Supabase `public` schema must match the V2 baseline in `project-docs/new/database.sql` plus Prisma's `_prisma_migrations` table. Do not modify Supabase-managed schemas such as `auth`, `storage`, `realtime`, `extensions` or `vault`.
 - Prisma does not fully represent PostgreSQL comments, deferred foreign keys or all check-constraint metadata. Preserve these in SQL migrations; do not assume `prisma db pull` captures every database feature.
-- Run `npm run db:verify` after schema changes. It must report 78 tables, 142 foreign keys, 91 checks, and empty `missing`/`unexpected` lists. The original V3 design is supplemented by `prisma/schema-extensions.json`.
+- Run `npm run db:verify` after schema changes. It must report 56 tables, 120 foreign keys, 160 checks, and empty `missing`/`unexpected` lists.
 
 Repository example:
 

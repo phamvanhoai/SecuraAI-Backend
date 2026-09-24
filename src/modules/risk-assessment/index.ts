@@ -2,7 +2,7 @@ import type { ModuleManifest } from '../module.types.js';
 import { riskManagementRouter } from './risk-management.routes.js';
 
 export const riskManagementModule: ModuleManifest = {
-  name: 'risk-management',
+  name: 'risk-assessment',
   routePrefix: '/risks',
   description: 'Risk assessment, threats, vulnerabilities and treatment',
   tables: [

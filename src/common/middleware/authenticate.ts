@@ -2,7 +2,7 @@ import type { RequestHandler } from 'express';
 import jwt from 'jsonwebtoken';
 import { env } from '../../config/env.js';
 import { AppError } from '../errors/app-error.js';
-import { accountAccessService } from '../../modules/auth/index.js';
+import { accountAccessService } from '../../modules/authentication-account/index.js';
 import { z } from 'zod';
 
 const accessClaimsSchema = z.object({

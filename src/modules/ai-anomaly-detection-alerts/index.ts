@@ -4,7 +4,7 @@ import { aiAlertsRouter } from './ai-alerts.routes.js';
 export { aiAlertsService } from './ai-alerts.service.js';
 
 export const aiAlertsModule: ModuleManifest = {
-  name: 'ai-alerts',
+  name: 'ai-anomaly-detection-alerts',
   routePrefix: '/ai-alerts',
   description: 'Pre-trained anomaly models, explainable alerts and feedback',
   tables: [

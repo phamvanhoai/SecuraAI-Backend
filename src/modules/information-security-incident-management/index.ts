@@ -2,7 +2,7 @@ import type { ModuleManifest } from '../module.types.js';
 import { incidentManagementRouter } from './incident-management.routes.js';
 
 export const incidentManagementModule: ModuleManifest = {
-  name: 'incident-management',
+  name: 'information-security-incident-management',
   routePrefix: '/incidents',
   description: 'Security incident lifecycle and evidence',
   tables: [
