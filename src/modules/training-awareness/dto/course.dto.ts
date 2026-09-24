@@ -140,7 +140,7 @@ export const createCourseBodySchema = z
     title: z.string().trim().min(3).max(255),
     description: z.string().trim().max(2000).nullable().optional(),
     content: z.string().trim().min(10).max(50000),
-    status: z.enum(['draft', 'published']).default('draft'),
+    status: z.literal('draft').default('draft'),
     lessons: z.array(courseLessonSchema).min(1).max(50).optional(),
     assessment: z
       .object({
@@ -153,13 +153,6 @@ export const createCourseBodySchema = z
   })
   .strict()
   .superRefine((value, context) => {
-    if (value.lessons && value.status !== 'draft') {
-      context.addIssue({
-        code: 'custom',
-        path: ['status'],
-        message: 'Create structured courses as drafts; publication is a separate operation',
-      });
-    }
     const keys =
       value.lessons?.flatMap((lesson) =>
         lesson.materials.flatMap((material) => (material.uploadKey ? [material.uploadKey] : [])),
@@ -183,13 +176,6 @@ export const createCourseBodySchema = z
         code: 'custom',
         path: ['lessons'],
         message: 'Use unique upload keys and at most 10 uploaded files',
-      });
-    }
-    if (value.status === 'published' && !value.assessment) {
-      context.addIssue({
-        code: 'custom',
-        path: ['assessment'],
-        message: 'A published course requires a post-training assessment',
       });
     }
   });

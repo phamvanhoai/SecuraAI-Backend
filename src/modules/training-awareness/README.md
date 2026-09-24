@@ -14,12 +14,25 @@ up. No table or column changes are required.
 
 # Create structured security awareness courses (UC75)
 
+UC166 duplicates any existing course with
+`POST /training/courses/{courseId}/duplicate`. It requires
+`training-courses.duplicate`, granted to Admin and Security Officer. The caller
+provides the new title. Course information, lessons, materials and assessments
+are copied atomically into a new draft. Existing uploaded files are referenced,
+not copied. Campaigns, targets, enrollments, attempts, progress and certificates
+are intentionally excluded. An audit event links the new record to its source.
+
 UC165: `GET /training/my-certificates?page=1&limit=10&q=` requires
 `training-certificates.read-own` and lists only certificates whose enrollment
 belongs to the authenticated user. It supports bounded pagination and search by
 certificate number, course or campaign. Certificates are metadata records;
 the endpoint does not claim a generated PDF. Grant the new permission to Admin
 and Employee with the data-only migration before testing.
+
+UC164: `GET /training/certificates?page=1&limit=10&q=` requires
+`training-certificates.read-issued` and lists all issued certificate metadata
+for Security Officers. Search matches learner identity, course, campaign or
+certificate number. The permission is granted to Security Officer and Admin.
 
 Create drafts with ordered lessons and materials, optional lesson assessments and
 an optional final assessment. Reuses `training-courses.create` for creation and

@@ -14,6 +14,7 @@ const optionalSubmissionNote = z.preprocess(
 
 export const submitTreatmentPlanBodySchema = z.strictObject({
   expectedUpdatedAt: z.iso.datetime({ offset: true }),
+  expectedRiskUpdatedAt: z.iso.datetime({ offset: true }),
   submissionNote: optionalSubmissionNote,
 });
 

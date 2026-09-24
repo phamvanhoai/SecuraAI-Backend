@@ -1656,6 +1656,39 @@ export const openApiSpec = swaggerJsdoc({
           },
         },
       },
+      '/training/certificates': {
+        get: {
+          tags: ['Training Awareness'],
+          summary: 'List issued training certificates (UC164)',
+          description:
+            'Requires training-certificates.read-issued. Returns paginated certificate metadata for Security Officers; no generated PDF is implied.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'page',
+              in: 'query',
+              schema: { type: 'integer', minimum: 1, maximum: 100000, default: 1 },
+            },
+            {
+              name: 'limit',
+              in: 'query',
+              schema: { type: 'integer', minimum: 1, maximum: 50, default: 10 },
+            },
+            {
+              name: 'q',
+              in: 'query',
+              description: 'Employee, email, employee code, course, campaign or certificate number',
+              schema: { type: 'string', maxLength: 100 },
+            },
+          ],
+          responses: {
+            '200': { description: 'Paginated issued certificate metadata' },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'Insufficient permissions' },
+            '422': { description: 'Invalid query' },
+          },
+        },
+      },
       '/training/enrollments/{enrollmentId}/certificate': {
         get: {
           tags: ['Training Awareness'],
@@ -1924,6 +1957,42 @@ export const openApiSpec = swaggerJsdoc({
             '401': { description: 'Authentication required' },
             '403': { description: 'training-courses.create permission required' },
             '422': { description: 'Invalid course data' },
+          },
+        },
+      },
+      '/training/courses/{courseId}/duplicate': {
+        post: {
+          tags: ['Training Awareness'],
+          summary: 'Duplicate a security awareness course (UC166)',
+          description:
+            'Requires training-courses.duplicate. Copies course content, lessons, materials and assessments into a new draft; assignment and learner records are excluded.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'courseId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  additionalProperties: false,
+                  required: ['title'],
+                  properties: { title: { type: 'string', minLength: 3, maxLength: 255 } },
+                },
+              },
+            },
+          },
+          responses: {
+            '201': { description: 'New draft course created' },
+            '403': { description: 'training-courses.duplicate permission required' },
+            '404': { description: 'Source course not found' },
+            '422': { description: 'Invalid course ID or title' },
           },
         },
       },
@@ -3231,7 +3300,127 @@ export const openApiSpec = swaggerJsdoc({
           },
         },
       },
+      '/risks/{riskAssessmentId}/residual-assessment': {
+        patch: {
+          tags: ['Risk Assessments'],
+          summary: 'Perform a residual risk assessment',
+          description:
+            'Requires risk-assessments.assess-residual. The assessor, active treatment-plan owner, or an administrator may assess an approved or in-treatment risk. For avoid, mitigate, and transfer strategies, every non-cancelled treatment action must be completed at 100%; an accept plan may have no actions, but then likelihood and impact must remain equal to the inherent assessment. Any declared accept-plan actions must also be completed. The server calculates residual score and level, rejects residual risk above inherent risk, preserves the inherent assessment, completes the treatment plan when appropriate, uses expectedUpdatedAt for optimistic concurrency, records the assessment note in the audit log, and notifies the assessor and plan owner. The operation does not accept or close the risk.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'riskAssessmentId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  additionalProperties: false,
+                  required: [
+                    'residualLikelihood',
+                    'residualImpact',
+                    'assessmentNote',
+                    'expectedUpdatedAt',
+                  ],
+                  properties: {
+                    residualLikelihood: { type: 'integer', minimum: 1, maximum: 5 },
+                    residualImpact: { type: 'integer', minimum: 1, maximum: 5 },
+                    assessmentNote: { type: 'string', minLength: 10, maxLength: 2000 },
+                    expectedUpdatedAt: { type: 'string', format: 'date-time' },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '200': { description: 'Residual risk assessed and audit record created' },
+            '401': { description: 'Authentication required' },
+            '403': {
+              description:
+                'Missing permission, inactive actor, or caller is not an allowed assessor',
+            },
+            '404': { description: 'Risk assessment not found' },
+            '409': {
+              description:
+                'Risk changed, treatment plan is unavailable, or active treatment actions are incomplete',
+            },
+            '422': {
+              description: 'Invalid input or residual score exceeds the inherent risk score',
+            },
+            '503': { description: 'The assessment transaction timed out and may be retried' },
+          },
+        },
+      },
       '/risks/treatment-plans': {
+        post: {
+          tags: ['Risk Assessments'],
+          summary: 'Create a draft risk treatment plan',
+          description:
+            'Requires risk-treatment-plans.create. The caller must be the assessment assessor or an administrator. The assessment must be draft or rejected, have threats and vulnerabilities, and must not already have an active treatment plan. The plan and its initial actions are created atomically.',
+          security: [{ bearerAuth: [] }],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  additionalProperties: false,
+                  required: [
+                    'riskAssessmentId',
+                    'expectedRiskUpdatedAt',
+                    'strategy',
+                    'description',
+                    'ownerUserId',
+                    'targetDate',
+                    'actions',
+                  ],
+                  properties: {
+                    riskAssessmentId: { type: 'string', format: 'uuid' },
+                    expectedRiskUpdatedAt: { type: 'string', format: 'date-time' },
+                    strategy: {
+                      type: 'string',
+                      enum: ['avoid', 'mitigate', 'transfer', 'accept'],
+                    },
+                    description: { type: 'string', minLength: 10, maxLength: 5000 },
+                    ownerUserId: { type: 'string', format: 'uuid' },
+                    targetDate: { type: 'string', format: 'date' },
+                    actions: {
+                      type: 'array',
+                      maxItems: 100,
+                      items: {
+                        type: 'object',
+                        additionalProperties: false,
+                        required: ['title', 'assigneeUserId', 'dueDate'],
+                        properties: {
+                          title: { type: 'string', minLength: 3, maxLength: 255 },
+                          description: { type: 'string', maxLength: 2000 },
+                          assigneeUserId: { type: 'string', format: 'uuid' },
+                          dueDate: { type: 'string', format: 'date' },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '201': { description: 'Created treatment plan detail' },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'Missing permission or caller is not the assessor/admin' },
+            '404': { description: 'Risk assessment not found' },
+            '409': {
+              description: 'Assessment changed, has an invalid status, or already has a plan',
+            },
+            '422': { description: 'Invalid or incomplete plan data' },
+          },
+        },
         get: {
           tags: ['Risk Assessments'],
           summary: 'List risk treatment plans',
@@ -3294,7 +3483,99 @@ export const openApiSpec = swaggerJsdoc({
           },
         },
       },
+      '/risks/treatment-plans/create-options': {
+        get: {
+          tags: ['Risk Assessments'],
+          summary: 'List active users for treatment plan ownership and assignment',
+          description:
+            'Requires risk-treatment-plans.create. Returns a server-paginated, searchable list of active users that may own a plan or be assigned an action.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            { name: 'q', in: 'query', schema: { type: 'string', maxLength: 100 } },
+            { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
+            {
+              name: 'limit',
+              in: 'query',
+              schema: { type: 'integer', minimum: 1, maximum: 50, default: 20 },
+            },
+          ],
+          responses: {
+            '200': { description: 'Paginated active-user options' },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'The risk-treatment-plans.create permission is required' },
+            '422': { description: 'Invalid query parameters' },
+          },
+        },
+      },
       '/risks/treatment-plans/{treatmentPlanId}': {
+        patch: {
+          tags: ['Risk Assessments'],
+          summary: 'Update a draft or rejected risk treatment plan',
+          description:
+            'Requires risk-treatment-plans.update. Only the creator, owner, or administrator may update a draft or rejected plan whose linked assessment and target remain editable. Owner and assignees must be active, action dates must not exceed the plan target date, and expectedUpdatedAt prevents concurrent overwrites. Actions that have started or completed cannot be changed or removed.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'treatmentPlanId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  additionalProperties: false,
+                  required: [
+                    'expectedUpdatedAt',
+                    'strategy',
+                    'description',
+                    'ownerUserId',
+                    'targetDate',
+                    'actions',
+                  ],
+                  properties: {
+                    expectedUpdatedAt: { type: 'string', format: 'date-time' },
+                    strategy: { type: 'string', enum: ['avoid', 'mitigate', 'transfer', 'accept'] },
+                    description: { type: 'string', minLength: 10, maxLength: 5000 },
+                    ownerUserId: { type: 'string', format: 'uuid' },
+                    targetDate: { type: 'string', format: 'date' },
+                    actions: {
+                      type: 'array',
+                      maxItems: 100,
+                      items: {
+                        type: 'object',
+                        additionalProperties: false,
+                        required: ['title', 'assignedToUserId', 'dueDate'],
+                        properties: {
+                          id: { type: 'string', format: 'uuid' },
+                          title: { type: 'string', minLength: 3, maxLength: 255 },
+                          description: { type: 'string', maxLength: 2000 },
+                          assignedToUserId: { type: 'string', format: 'uuid' },
+                          dueDate: { type: 'string', format: 'date' },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '200': { description: 'Updated treatment plan detail' },
+            '403': { description: 'Missing permission or caller cannot manage the plan' },
+            '404': { description: 'Treatment plan not found' },
+            '409': {
+              description:
+                'Plan or risk changed, is not editable, or a started action would be changed or removed',
+            },
+            '422': { description: 'Invalid target, user, action, or date' },
+            '503': { description: 'The update transaction timed out and may be retried' },
+          },
+        },
         get: {
           tags: ['Risk Assessments'],
           summary: 'View risk treatment plan detail',
@@ -3318,12 +3599,107 @@ export const openApiSpec = swaggerJsdoc({
           },
         },
       },
+      '/risks/treatment-plans/{treatmentPlanId}/cancel': {
+        post: {
+          tags: ['Risk Assessments'],
+          summary: 'Cancel a draft or rejected risk treatment plan',
+          description:
+            'Requires risk-treatment-plans.cancel. Only the creator, owner, or administrator may cancel a draft or rejected plan. All actions must be unstarted. The plan, cancellation actor, timestamp, reason, and pending actions are retained for audit. Any anomalous pending approval request is cancelled atomically, and expectedUpdatedAt prevents concurrent changes.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'treatmentPlanId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  additionalProperties: false,
+                  required: ['expectedUpdatedAt', 'reason'],
+                  properties: {
+                    expectedUpdatedAt: { type: 'string', format: 'date-time' },
+                    reason: { type: 'string', minLength: 10, maxLength: 1000 },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '200': { description: 'Cancelled treatment plan detail' },
+            '403': { description: 'Missing permission or caller cannot manage the plan' },
+            '404': { description: 'Treatment plan not found' },
+            '409': {
+              description: 'Plan or risk changed, is not cancellable, or an action has started',
+            },
+            '422': { description: 'Invalid identifier, timestamp, or reason' },
+            '503': { description: 'The cancellation transaction timed out and may be retried' },
+          },
+        },
+      },
+      '/risks/treatment-plans/{treatmentPlanId}/actions/{actionId}/progress': {
+        patch: {
+          tags: ['Risk Assessments'],
+          summary: 'Update risk treatment action progress',
+          description:
+            'Requires risk-treatment-actions.update-progress. Only the assigned user, treatment plan owner, or an administrator may update an action belonging to an approved or in-progress plan, with an approved or in-treatment risk. Status is derived from progress: 0 is pending, 1-99 is in progress, and 100 is completed. A note is required when progress is reduced and is stored in the audit log. Starting an action moves the plan and risk into treatment; completing every action does not automatically complete the plan or close the risk.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'treatmentPlanId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+            {
+              name: 'actionId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  additionalProperties: false,
+                  required: ['expectedUpdatedAt', 'progressPercent'],
+                  properties: {
+                    expectedUpdatedAt: { type: 'string', format: 'date-time' },
+                    progressPercent: { type: 'integer', minimum: 0, maximum: 100 },
+                    progressNote: { type: 'string', minLength: 10, maxLength: 1000 },
+                  },
+                },
+              },
+            },
+          },
+          responses: {
+            '200': { description: 'Action progress and aggregate plan progress updated' },
+            '401': { description: 'Authentication required' },
+            '403': { description: 'Missing permission or caller cannot update this action' },
+            '404': { description: 'Treatment action not found in the selected plan' },
+            '409': {
+              description:
+                'Action changed concurrently, was cancelled, or its plan/risk is not trackable',
+            },
+            '422': { description: 'Invalid progress or missing regression note' },
+            '503': { description: 'The update transaction timed out and may be retried' },
+          },
+        },
+      },
       '/risks/treatment-plans/{treatmentPlanId}/submit': {
         post: {
           tags: ['Risk Assessments'],
           summary: 'Submit a risk treatment plan for approval',
           description:
-            'Requires risk-treatment-plans.submit. The plan must be a complete draft or rejected plan owned or created by the caller (unless administrator), its risk must be approved, and exactly one active approval workflow with enough direct or delegated independent approvers must exist. Submission stores an immutable review snapshot and note; the approval request, notifications, and audit data are created atomically.',
+            'Requires risk-treatment-plans.submit. The plan and its risk assessment must be draft or rejected. They are submitted together into one approval workflow and become pending approval atomically. The plan must be owned or created by the caller (unless administrator), and exactly one active workflow with enough direct or delegated independent approvers must exist.',
           security: [{ bearerAuth: [] }],
           parameters: [
             {
@@ -3357,7 +3733,7 @@ export const openApiSpec = swaggerJsdoc({
             '409': { description: 'Plan already submitted, started, or changed concurrently' },
             '422': {
               description:
-                'Plan is incomplete, risk is not approved, or approval workflow is unavailable',
+                'Plan is incomplete, risk is not submittable, or approval workflow is unavailable',
             },
           },
         },
@@ -3367,7 +3743,7 @@ export const openApiSpec = swaggerJsdoc({
           tags: ['Risk Assessments'],
           summary: 'Approve the current step of a risk treatment plan',
           description:
-            'Requires risk-treatment-plans.approve. The caller must be an active direct or delegated approver for the current workflow step and cannot approve their own submission. The submitted snapshot is checked before recording one approval per actor and step. Completing the final step approves the treatment plan atomically.',
+            'Requires risk-treatment-plans.approve. The caller must be an active direct or delegated approver for the current workflow step and cannot approve their own submission. The submitted snapshot is checked before recording one approval per actor and step. Completing the final step approves both the risk assessment and its treatment plan atomically.',
           security: [{ bearerAuth: [] }],
           parameters: [
             {
