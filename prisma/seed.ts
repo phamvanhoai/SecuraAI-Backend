@@ -7,8 +7,8 @@ const prisma = new PrismaClient();
 async function main(): Promise<void> {
   const email = process.env.ADMIN_EMAIL?.toLowerCase();
   const password = process.env.ADMIN_PASSWORD;
-  if (!email || !password || password.length < 12) {
-    throw new Error('ADMIN_EMAIL and ADMIN_PASSWORD (minimum 12 characters) are required');
+  if (!email) {
+    throw new Error('ADMIN_EMAIL is required');
   }
 
   await prisma.departments.upsert({
@@ -78,6 +78,18 @@ async function main(): Promise<void> {
       module: 'training-awareness',
       action: 'update-course-draft',
       description: 'Edit security awareness course drafts',
+    },
+    {
+      code: 'training-courses.duplicate',
+      module: 'training-awareness',
+      action: 'duplicate-course',
+      description: 'Duplicate security awareness courses as new drafts (UC166)',
+    },
+    {
+      code: 'training-courses.archive',
+      module: 'training-awareness',
+      action: 'archive-course',
+      description: 'Archive published security awareness courses (UC167)',
     },
   ]) {
     const permission = await prisma.permissions.upsert({
@@ -150,6 +162,35 @@ async function main(): Promise<void> {
       create: {
         role_id: targetRole.role_id,
         permission_id: readOwnCertificatesPermission.permission_id,
+      },
+    });
+  }
+  const readIssuedCertificatesPermission = await prisma.permissions.upsert({
+    where: { code: 'training-certificates.read-issued' },
+    update: {
+      module: 'training-awareness',
+      action: 'read-issued-certificates',
+      description: 'View all issued training certificates (UC164)',
+    },
+    create: {
+      code: 'training-certificates.read-issued',
+      module: 'training-awareness',
+      action: 'read-issued-certificates',
+      description: 'View all issued training certificates (UC164)',
+    },
+  });
+  for (const targetRole of [role, securityOfficerRole]) {
+    await prisma.role_permissions.upsert({
+      where: {
+        role_id_permission_id: {
+          role_id: targetRole.role_id,
+          permission_id: readIssuedCertificatesPermission.permission_id,
+        },
+      },
+      update: {},
+      create: {
+        role_id: targetRole.role_id,
+        permission_id: readIssuedCertificatesPermission.permission_id,
       },
     });
   }
@@ -651,6 +692,20 @@ async function main(): Promise<void> {
       description: 'Cancel draft or rejected risk assessments',
     },
   });
+  const residualRiskAssessmentPermission = await prisma.permissions.upsert({
+    where: { code: 'risk-assessments.assess-residual' },
+    update: {
+      module: 'risk-management',
+      action: 'assess-residual',
+      description: 'Perform residual risk assessments after treatment',
+    },
+    create: {
+      code: 'risk-assessments.assess-residual',
+      module: 'risk-management',
+      action: 'assess-residual',
+      description: 'Perform residual risk assessments after treatment',
+    },
+  });
   const assetCreatePermission = await prisma.permissions.upsert({
     where: { code: 'assets.create' },
     update: {
@@ -959,20 +1014,29 @@ async function main(): Promise<void> {
       }),
     ),
   );
-  const passwordHash = await argon2.hash(password, { type: argon2.argon2id });
-  const user = await prisma.users.upsert({
-    where: { email },
-    update: {
-      password_hash: passwordHash,
-      status: 'active',
-    },
-    create: {
-      email,
-      password_hash: passwordHash,
-      full_name: 'SecuraAI Administrator',
-      status: 'active',
-    },
-  });
+  const existingUser = await prisma.users.findUnique({ where: { email } });
+  if (!existingUser && (!password || password.length < 12)) {
+    throw new Error(
+      'ADMIN_PASSWORD (minimum 12 characters) is required when creating the admin user',
+    );
+  }
+  const passwordHash =
+    password && password.length >= 12
+      ? await argon2.hash(password, { type: argon2.argon2id })
+      : undefined;
+  const user = existingUser
+    ? await prisma.users.update({
+        where: { user_id: existingUser.user_id },
+        data: { status: 'active', ...(passwordHash ? { password_hash: passwordHash } : {}) },
+      })
+    : await prisma.users.create({
+        data: {
+          email,
+          password_hash: passwordHash!,
+          full_name: 'SecuraAI Administrator',
+          status: 'active',
+        },
+      });
   const integrationPermissions = [
     {
       code: 'integrations.create',
@@ -1176,6 +1240,23 @@ async function main(): Promise<void> {
         where: {
           role_id_permission_id: {
             role_id: targetRole.role_id,
+            permission_id: residualRiskAssessmentPermission.permission_id,
+          },
+        },
+        update: {},
+        create: {
+          role_id: targetRole.role_id,
+          permission_id: residualRiskAssessmentPermission.permission_id,
+        },
+      }),
+    ),
+  );
+  await prisma.$transaction(
+    [role, securityOfficerRole].map((targetRole) =>
+      prisma.role_permissions.upsert({
+        where: {
+          role_id_permission_id: {
+            role_id: targetRole.role_id,
             permission_id: riskCancelPermission.permission_id,
           },
         },
@@ -1253,6 +1334,30 @@ async function main(): Promise<void> {
       update: {},
       create: {
         role_id: role.role_id,
+        permission_id: permission.permission_id,
+      },
+    });
+  }
+  // Security Officers operate the monitoring and integration areas listed in
+  // the project tracking sheet; keep these permissions aligned with the
+  // shared non-admin dashboard navigation.
+  for (const permission of [
+    logSourceReadPermission,
+    logSourceManagePermission,
+    securityEventIngestPermission,
+    aiModelReadPermission,
+    aiModelManagePermission,
+  ].flat()) {
+    await prisma.role_permissions.upsert({
+      where: {
+        role_id_permission_id: {
+          role_id: securityOfficerRole.role_id,
+          permission_id: permission.permission_id,
+        },
+      },
+      update: {},
+      create: {
+        role_id: securityOfficerRole.role_id,
         permission_id: permission.permission_id,
       },
     });

@@ -12,6 +12,10 @@ import {
   approveTreatmentPlanBodySchema,
   approveTreatmentPlanParamsSchema,
 } from '../src/modules/risk-management/dto/approve-treatment-plan.dto.js';
+import {
+  returnTreatmentPlanForRevisionBodySchema,
+  returnTreatmentPlanForRevisionParamsSchema,
+} from '../src/modules/risk-management/dto/return-treatment-plan-for-revision.dto.js';
 
 describe('listRiskAssessmentsQuerySchema', () => {
   it('applies bounded pagination and stable sort defaults', () => {
@@ -178,7 +182,7 @@ describe('cancelRiskAssessmentBodySchema', () => {
 });
 
 describe('submitTreatmentPlan schemas', () => {
-  it('accepts a plan id, concurrency timestamp, and normalized optional note', () => {
+  it('accepts plan and risk concurrency timestamps with a normalized optional note', () => {
     expect(
       treatmentPlanParamsSchema.parse({
         treatmentPlanId: '4e3bf41b-32fb-4461-9740-9c2e68a6ff84',
@@ -187,6 +191,7 @@ describe('submitTreatmentPlan schemas', () => {
     expect(
       submitTreatmentPlanBodySchema.parse({
         expectedUpdatedAt: '2026-09-16T10:00:00.000Z',
+        expectedRiskUpdatedAt: '2026-09-16T10:00:00.000Z',
         submissionNote: '  Ready\n for executive review. ',
       }).submissionNote,
     ).toBe('Ready for executive review.');
@@ -199,6 +204,11 @@ describe('submitTreatmentPlan schemas', () => {
       submitTreatmentPlanBodySchema.parse({
         expectedUpdatedAt: '2026-09-16T10:00:00.000Z',
         status: 'approved',
+      }),
+    ).toThrow();
+    expect(() =>
+      submitTreatmentPlanBodySchema.parse({
+        expectedUpdatedAt: '2026-09-16T10:00:00.000Z',
       }),
     ).toThrow();
   });
@@ -231,6 +241,50 @@ describe('approveTreatmentPlan schemas', () => {
       approveTreatmentPlanBodySchema.parse({
         approvalRequestId: '11111111-1111-4111-8111-111111111111',
         status: 'approved',
+      }),
+    ).toThrow();
+  });
+});
+
+describe('returnTreatmentPlanForRevision schemas', () => {
+  const approvalRequestId = '11111111-1111-4111-8111-111111111111';
+
+  it('requires a valid request, explicit scope, and normalized reason', () => {
+    expect(
+      returnTreatmentPlanForRevisionParamsSchema.parse({
+        treatmentPlanId: '4e3bf41b-32fb-4461-9740-9c2e68a6ff84',
+      }),
+    ).toBeTruthy();
+    expect(
+      returnTreatmentPlanForRevisionBodySchema.parse({
+        approvalRequestId,
+        revisionScope: 'both',
+        reason: '  Clarify the risk score\n and treatment deadlines.  ',
+      }).reason,
+    ).toBe('Clarify the risk score and treatment deadlines.');
+  });
+
+  it('rejects a short reason, unsupported scope, and server-owned fields', () => {
+    expect(() =>
+      returnTreatmentPlanForRevisionBodySchema.parse({
+        approvalRequestId,
+        revisionScope: 'both',
+        reason: 'Too short',
+      }),
+    ).toThrow();
+    expect(() =>
+      returnTreatmentPlanForRevisionBodySchema.parse({
+        approvalRequestId,
+        revisionScope: 'actions_only',
+        reason: 'Provide a sufficiently detailed revision reason.',
+      }),
+    ).toThrow();
+    expect(() =>
+      returnTreatmentPlanForRevisionBodySchema.parse({
+        approvalRequestId,
+        revisionScope: 'both',
+        reason: 'Provide a sufficiently detailed revision reason.',
+        status: 'rejected',
       }),
     ).toThrow();
   });

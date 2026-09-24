@@ -11,8 +11,15 @@ import {
   cancelRiskAssessment,
   submitRiskTreatmentPlan,
   approveRiskTreatmentPlan,
+  returnRiskTreatmentPlanForRevision,
   listRiskTreatmentPlans,
   getRiskTreatmentPlanDetail,
+  listRiskTreatmentPlanCreateOptions,
+  createRiskTreatmentPlan,
+  updateRiskTreatmentPlan,
+  cancelRiskTreatmentPlan,
+  updateRiskTreatmentActionProgress,
+  performResidualRiskAssessment,
 } from './risk-management.controller.js';
 import { listRiskAssessmentsQuerySchema } from './dto/list-risk-assessments-query.dto.js';
 import { riskAssessmentParamsSchema } from './dto/risk-assessment-params.dto.js';
@@ -28,7 +35,25 @@ import {
   approveTreatmentPlanBodySchema,
   approveTreatmentPlanParamsSchema,
 } from './dto/approve-treatment-plan.dto.js';
+import {
+  returnTreatmentPlanForRevisionBodySchema,
+  returnTreatmentPlanForRevisionParamsSchema,
+} from './dto/return-treatment-plan-for-revision.dto.js';
 import { listTreatmentPlansQuerySchema } from './dto/list-treatment-plans-query.dto.js';
+import {
+  createTreatmentPlanBodySchema,
+  treatmentPlanCreateOptionsQuerySchema,
+} from './dto/create-treatment-plan.dto.js';
+import { updateTreatmentPlanBodySchema } from './dto/update-treatment-plan.dto.js';
+import { cancelTreatmentPlanBodySchema } from './dto/cancel-treatment-plan.dto.js';
+import {
+  treatmentActionProgressParamsSchema,
+  updateTreatmentActionProgressBodySchema,
+} from './dto/update-treatment-action-progress.dto.js';
+import {
+  performResidualRiskAssessmentBodySchema,
+  residualRiskAssessmentParamsSchema,
+} from './dto/perform-residual-risk-assessment.dto.js';
 
 export const riskManagementRouter = Router();
 
@@ -41,11 +66,65 @@ riskManagementRouter.get(
 );
 
 riskManagementRouter.get(
+  '/treatment-plans/create-options',
+  authenticate,
+  authorize('risk-treatment-plans.create'),
+  validate({ query: treatmentPlanCreateOptionsQuerySchema }),
+  asyncHandler(listRiskTreatmentPlanCreateOptions),
+);
+
+riskManagementRouter.post(
+  '/treatment-plans',
+  authenticate,
+  authorize('risk-treatment-plans.create'),
+  validate({ body: createTreatmentPlanBodySchema }),
+  asyncHandler(createRiskTreatmentPlan),
+);
+
+riskManagementRouter.get(
   '/treatment-plans/:treatmentPlanId',
   authenticate,
   authorize('risk-treatment-plans.read'),
   validate({ params: treatmentPlanParamsSchema }),
   asyncHandler(getRiskTreatmentPlanDetail),
+);
+
+riskManagementRouter.patch(
+  '/treatment-plans/:treatmentPlanId',
+  authenticate,
+  authorize('risk-treatment-plans.update'),
+  validate({ params: treatmentPlanParamsSchema, body: updateTreatmentPlanBodySchema }),
+  asyncHandler(updateRiskTreatmentPlan),
+);
+
+riskManagementRouter.patch(
+  '/treatment-plans/:treatmentPlanId/actions/:actionId/progress',
+  authenticate,
+  authorize('risk-treatment-actions.update-progress'),
+  validate({
+    params: treatmentActionProgressParamsSchema,
+    body: updateTreatmentActionProgressBodySchema,
+  }),
+  asyncHandler(updateRiskTreatmentActionProgress),
+);
+
+riskManagementRouter.patch(
+  '/:riskAssessmentId/residual-assessment',
+  authenticate,
+  authorize('risk-assessments.assess-residual'),
+  validate({
+    params: residualRiskAssessmentParamsSchema,
+    body: performResidualRiskAssessmentBodySchema,
+  }),
+  asyncHandler(performResidualRiskAssessment),
+);
+
+riskManagementRouter.post(
+  '/treatment-plans/:treatmentPlanId/cancel',
+  authenticate,
+  authorize('risk-treatment-plans.cancel'),
+  validate({ params: treatmentPlanParamsSchema, body: cancelTreatmentPlanBodySchema }),
+  asyncHandler(cancelRiskTreatmentPlan),
 );
 
 riskManagementRouter.post(
@@ -54,6 +133,17 @@ riskManagementRouter.post(
   authorize('risk-treatment-plans.approve'),
   validate({ params: approveTreatmentPlanParamsSchema, body: approveTreatmentPlanBodySchema }),
   asyncHandler(approveRiskTreatmentPlan),
+);
+
+riskManagementRouter.post(
+  '/treatment-plans/:treatmentPlanId/return-for-revision',
+  authenticate,
+  authorize('risk-treatment-plans.approve'),
+  validate({
+    params: returnTreatmentPlanForRevisionParamsSchema,
+    body: returnTreatmentPlanForRevisionBodySchema,
+  }),
+  asyncHandler(returnRiskTreatmentPlanForRevision),
 );
 
 riskManagementRouter.post(
