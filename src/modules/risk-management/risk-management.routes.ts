@@ -19,6 +19,7 @@ import {
   updateRiskTreatmentPlan,
   cancelRiskTreatmentPlan,
   updateRiskTreatmentActionProgress,
+  performResidualRiskAssessment,
 } from './risk-management.controller.js';
 import { listRiskAssessmentsQuerySchema } from './dto/list-risk-assessments-query.dto.js';
 import { riskAssessmentParamsSchema } from './dto/risk-assessment-params.dto.js';
@@ -49,6 +50,10 @@ import {
   treatmentActionProgressParamsSchema,
   updateTreatmentActionProgressBodySchema,
 } from './dto/update-treatment-action-progress.dto.js';
+import {
+  performResidualRiskAssessmentBodySchema,
+  residualRiskAssessmentParamsSchema,
+} from './dto/perform-residual-risk-assessment.dto.js';
 
 export const riskManagementRouter = Router();
 
@@ -101,6 +106,17 @@ riskManagementRouter.patch(
     body: updateTreatmentActionProgressBodySchema,
   }),
   asyncHandler(updateRiskTreatmentActionProgress),
+);
+
+riskManagementRouter.patch(
+  '/:riskAssessmentId/residual-assessment',
+  authenticate,
+  authorize('risk-assessments.assess-residual'),
+  validate({
+    params: residualRiskAssessmentParamsSchema,
+    body: performResidualRiskAssessmentBodySchema,
+  }),
+  asyncHandler(performResidualRiskAssessment),
 );
 
 riskManagementRouter.post(

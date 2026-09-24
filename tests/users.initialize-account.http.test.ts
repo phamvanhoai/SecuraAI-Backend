@@ -60,7 +60,7 @@ describe('user account initialization HTTP API', () => {
     mocks.sendInitializedAccountEmail.mockResolvedValue(undefined);
   });
 
-  it('requires the users.create permission', async () => {
+  it('requires both users.create and users.assign-role permissions', async () => {
     const path = '/api/v1/users';
     expect((await request(createApp()).post(path).send({})).status).toBe(401);
     expect(
@@ -71,6 +71,9 @@ describe('user account initialization HTTP API', () => {
           .send({})
       ).status,
     ).toBe(403);
+    expect((await request(createApp()).post(path)
+      .set('authorization', `Bearer ${token(['users.create'])}`)
+      .send({ email: 'new@example.com', fullName: 'New User', roleCodes: ['EMPLOYEE'] })).status).toBe(403);
   });
 
   it('returns active departments and roles for the create form', async () => {
@@ -136,10 +139,11 @@ describe('user account initialization HTTP API', () => {
   it('creates the account and sends its initialization email', async () => {
     const response = await request(createApp())
       .post('/api/v1/users')
-      .set('authorization', `Bearer ${token(['users.create'])}`)
+      .set('authorization', `Bearer ${token(['users.create', 'users.assign-role'])}`)
       .send({
         email: 'YenNhiDoan08042004@GMAIL.COM',
         fullName: 'Yen Nhi Doan',
+        phone: '0901234567',
         roleCodes: ['EMPLOYEE'],
       });
 
@@ -151,7 +155,7 @@ describe('user account initialization HTTP API', () => {
     expect(mocks.createInitializedUser).toHaveBeenCalledWith(
       expect.objectContaining({
         actorUserId: '00000000-0000-4000-8000-000000000001',
-        body: expect.objectContaining({ roleCodes: ['EMPLOYEE'] }),
+        body: expect.objectContaining({ phone: '0901234567', roleCodes: ['EMPLOYEE'] }),
         passwordHash: expect.any(String),
       }),
     );
@@ -167,7 +171,7 @@ describe('user account initialization HTTP API', () => {
   it('supports the admin users endpoint alias', async () => {
     const response = await request(createApp())
       .post('/api/v1/admin/users')
-      .set('authorization', `Bearer ${token(['users.create'])}`)
+      .set('authorization', `Bearer ${token(['users.create', 'users.assign-role'])}`)
       .send({
         email: 'new-user@example.com',
         fullName: 'New User',
@@ -181,7 +185,7 @@ describe('user account initialization HTTP API', () => {
   it('rejects invalid initialization input before the repository', async () => {
     const response = await request(createApp())
       .post('/api/v1/users')
-      .set('authorization', `Bearer ${token(['users.create'])}`)
+      .set('authorization', `Bearer ${token(['users.create', 'users.assign-role'])}`)
       .send({ email: 'invalid', fullName: 'A', roleCodes: [] });
 
     expect(response.status).toBe(422);

@@ -13,7 +13,8 @@ import { usersService } from '../src/modules/users/users.service.js';
 
 const actor = {
   userId: '00000000-0000-4000-8000-000000000001',
-  permissions: ['users.create'],
+  permissions: ['users.create', 'users.assign-role'],
+  roles: ['ADMIN'],
 };
 
 describe('add user service', () => {

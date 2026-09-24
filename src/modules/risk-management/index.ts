@@ -14,6 +14,13 @@ export const riskManagementModule: ModuleManifest = {
     'risk_treatment_plans',
     'risk_treatment_actions',
   ],
-  capabilities: ['Risk assessment', 'Risk matrix/history', 'Treatment plans', 'Treatment progress', 'Update treatment action progress'],
+  capabilities: [
+    'Risk assessment',
+    'Risk matrix/history',
+    'Treatment plans',
+    'Treatment progress',
+    'Update treatment action progress',
+    'Perform residual risk assessment',
+  ],
   router: riskManagementRouter,
 };

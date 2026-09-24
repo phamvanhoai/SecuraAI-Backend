@@ -692,6 +692,20 @@ async function main(): Promise<void> {
       description: 'Cancel draft or rejected risk assessments',
     },
   });
+  const residualRiskAssessmentPermission = await prisma.permissions.upsert({
+    where: { code: 'risk-assessments.assess-residual' },
+    update: {
+      module: 'risk-management',
+      action: 'assess-residual',
+      description: 'Perform residual risk assessments after treatment',
+    },
+    create: {
+      code: 'risk-assessments.assess-residual',
+      module: 'risk-management',
+      action: 'assess-residual',
+      description: 'Perform residual risk assessments after treatment',
+    },
+  });
   const assetCreatePermission = await prisma.permissions.upsert({
     where: { code: 'assets.create' },
     update: {
@@ -1002,11 +1016,14 @@ async function main(): Promise<void> {
   );
   const existingUser = await prisma.users.findUnique({ where: { email } });
   if (!existingUser && (!password || password.length < 12)) {
-    throw new Error('ADMIN_PASSWORD (minimum 12 characters) is required when creating the admin user');
+    throw new Error(
+      'ADMIN_PASSWORD (minimum 12 characters) is required when creating the admin user',
+    );
   }
-  const passwordHash = password && password.length >= 12
-    ? await argon2.hash(password, { type: argon2.argon2id })
-    : undefined;
+  const passwordHash =
+    password && password.length >= 12
+      ? await argon2.hash(password, { type: argon2.argon2id })
+      : undefined;
   const user = existingUser
     ? await prisma.users.update({
         where: { user_id: existingUser.user_id },
@@ -1214,6 +1231,23 @@ async function main(): Promise<void> {
         },
         update: {},
         create: { role_id: targetRole.role_id, permission_id: riskCreatePermission.permission_id },
+      }),
+    ),
+  );
+  await prisma.$transaction(
+    [role, securityOfficerRole].map((targetRole) =>
+      prisma.role_permissions.upsert({
+        where: {
+          role_id_permission_id: {
+            role_id: targetRole.role_id,
+            permission_id: residualRiskAssessmentPermission.permission_id,
+          },
+        },
+        update: {},
+        create: {
+          role_id: targetRole.role_id,
+          permission_id: residualRiskAssessmentPermission.permission_id,
+        },
       }),
     ),
   );
