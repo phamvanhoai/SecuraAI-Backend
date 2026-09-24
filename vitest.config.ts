@@ -5,7 +5,6 @@ export default defineConfig({
   resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
   test: {
     environment: 'node',
-    setupFiles: ['./tests/setup.ts'],
     testTimeout: 30_000,
     env: {
       NODE_ENV: 'test',

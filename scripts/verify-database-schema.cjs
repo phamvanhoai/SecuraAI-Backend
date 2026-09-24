@@ -5,17 +5,12 @@ const { PrismaClient } = require('@prisma/client');
 const prisma = new PrismaClient();
 
 async function verifyDatabaseSchema() {
-  const sql = fs.readFileSync('project-docs/Database.sql', 'utf8');
-  const extension = JSON.parse(fs.readFileSync('prisma/schema-extensions.json', 'utf8'));
-  const expected = [...sql.matchAll(/^CREATE TABLE "([^"]+)"/gm)]
+  const sql = fs.readFileSync('project-docs/new/database.sql', 'utf8');
+  const expected = [...sql.matchAll(/^CREATE TABLE\s+([a-z_][a-z0-9_]*)\s*\(/gim)]
     .map((match) => match[1])
-    .concat(extension.tables)
     .sort();
-  const expectedForeignKeys =
-    (sql.match(/ADD FOREIGN KEY/g) || []).length +
-    extension.foreignKeys +
-    extension.treatmentPlanCancellationForeignKeys;
-  const expectedChecks = (sql.match(/\bCHECK\s*\(/g) || []).length + extension.checks;
+  const expectedForeignKeys = [...sql.matchAll(/^ALTER TABLE .* FOREIGN KEY /gm)].length;
+  const expectedChecks = [...sql.matchAll(/\bCHECK\s*\(/g)].length;
   const rows = await prisma.$queryRaw`
     SELECT table_name
     FROM information_schema.tables
