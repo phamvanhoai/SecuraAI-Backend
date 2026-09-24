@@ -1,14 +1,16 @@
 import { env } from '../config/env.js';
+import { pendingV2Paths } from './pending-v2.openapi.js';
 
 export const openApiSpec = {
   openapi: '3.0.3',
   info: {
     title: 'SecuraAI API',
     version: '2.0.0',
-    description: 'V2 database baseline. Business routes are added as V2 use cases are implemented.',
+    description: 'V2 database baseline. Migrated endpoints are active; historical V1 URLs pending migration return HTTP 501.',
   },
   servers: [{ url: env.API_PREFIX, description: 'Current server' }],
   paths: {
+    ...pendingV2Paths,
     '/auth/login': {
       post: {
         tags: ['Authentication'],
