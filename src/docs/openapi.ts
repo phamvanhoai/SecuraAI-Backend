@@ -9,6 +9,11 @@ export const openApiSpec = {
     description: 'V2 database baseline. Migrated endpoints are active; historical V1 URLs pending migration return HTTP 501.',
   },
   servers: [{ url: env.API_PREFIX, description: 'Current server' }],
+  components: {
+    securitySchemes: {
+      bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' },
+    },
+  },
   paths: {
     ...pendingV2Paths,
     '/auth/login': {
@@ -87,6 +92,52 @@ export const openApiSpec = {
         responses: {
           '204': { description: 'Refresh session revoked or already absent' },
           '422': { description: 'Invalid request body' },
+        },
+      },
+    },
+    '/users/me': {
+      get: {
+        tags: ['Users'],
+        summary: 'Get the current active V2 user session profile',
+        description: 'Requires a valid access token. V2 has no permission or MFA models yet, so permissions is empty and MFA is disabled.',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          '200': {
+            description: 'Current user profile',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['success', 'data'],
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    data: {
+                      type: 'object',
+                      required: ['id', 'email', 'fullName', 'status', 'mustChangePassword', 'mfaEnabled', 'roles', 'permissions'],
+                      properties: {
+                        id: { type: 'string', format: 'uuid' },
+                        email: { type: 'string', format: 'email' },
+                        fullName: { type: 'string' },
+                        status: { type: 'string', enum: ['ACTIVE'] },
+                        mustChangePassword: { type: 'boolean', example: false },
+                        mfaEnabled: { type: 'boolean', example: false },
+                        roles: {
+                          type: 'array',
+                          items: {
+                            type: 'object',
+                            required: ['code', 'name'],
+                            properties: { code: { type: 'string' }, name: { type: 'string' } },
+                          },
+                        },
+                        permissions: { type: 'array', items: { type: 'string' }, example: [] },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          '401': { description: 'Missing, invalid or expired token, or inactive account' },
         },
       },
     },

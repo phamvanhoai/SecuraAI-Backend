@@ -24,7 +24,7 @@ Current database baseline:
 - Legacy migrations are retained under `prisma/migrations-legacy/` for reference only.
 - `npm run db:verify` compares the live `public` schema with the approved database design.
 
-Health routes and V2-backed authentication login, refresh and logout are currently implemented. Another 143 historical V1 method/URL contracts are registered in `src/routes/legacy-v1-route-contracts.ts` and return HTTP 501 until ported. Their V3 handlers and tests are in `reference/legacy-v3/` as non-running porting reference. Training remains removed. Do not describe any pending business endpoint as implemented until its full route-to-repository path and tests exist.
+Health routes, V2-backed authentication login, refresh and logout, and protected `GET /users/me` are currently implemented. Another 142 historical V1 method/URL contracts are registered in `src/routes/legacy-v1-route-contracts.ts` and return HTTP 501 until ported. Their V3 handlers and tests are in `reference/legacy-v3/` as non-running porting reference. Training remains removed. Do not describe any pending business endpoint as implemented until its full route-to-repository path and tests exist.
 
 Do not migrate the project to NestJS, another web framework, another ORM, or another database unless the user explicitly requests it.
 
