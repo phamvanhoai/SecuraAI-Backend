@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 import { prisma } from '../../database/prisma.js';
 import type { CreateUserBody } from './dto/create-user.dto.js';
 import type { ListUsersQuery } from './dto/list-users-query.dto.js';
+import type { UpdateUserBody } from './dto/update-user.dto.js';
 
 const userListSelect = {
   user_id: true,
@@ -18,6 +19,7 @@ const userListSelect = {
 
 const userDetailSelect = {
   user_id: true,
+  department_id: true,
   email: true,
   full_name: true,
   phone: true,
@@ -167,5 +169,65 @@ export const usersRepository = {
       },
       { isolationLevel: Prisma.TransactionIsolationLevel.Serializable },
     );
+  },
+
+  async updateUser(input: { userId: string; body: UpdateUserBody; actorUserId: string }) {
+    return prisma.$transaction(async (database) => {
+      const current = await database.users.findFirst({
+        where: { user_id: input.userId, deleted_at: null },
+        select: userDetailSelect,
+      });
+      if (!current) return { kind: 'not_found' as const };
+
+      if (input.body.departmentId) {
+        const department = await database.departments.findFirst({
+          where: { department_id: input.body.departmentId, status: 'active' },
+          select: { department_id: true },
+        });
+        if (!department) return { kind: 'invalid_department' as const };
+      }
+
+
+      const updated = await database.users.update({
+        where: { user_id: input.userId },
+        data: {
+          ...(input.body.fullName !== undefined ? { full_name: input.body.fullName } : {}),
+          ...(input.body.phone !== undefined ? { phone: input.body.phone } : {}),
+          ...(input.body.employeeCode !== undefined
+            ? { employee_code: input.body.employeeCode }
+            : {}),
+          ...(input.body.departmentId !== undefined
+            ? { department_id: input.body.departmentId }
+            : {}),
+          updated_at: new Date(),
+        },
+        select: userDetailSelect,
+      });
+      await database.audit_logs.create({
+        data: {
+          actor_user_id: input.actorUserId,
+          module: 'users',
+          action: 'user.updated',
+          entity_type: 'user',
+          entity_id: input.userId,
+          before_data: {
+            fullName: current.full_name,
+            phone: current.phone,
+            employeeCode: current.employee_code,
+            departmentId: current.department_id,
+            roleCodes: current.user_roles_user_roles_user_idTousers.map(({ roles: role }) => role.code),
+          },
+          after_data: {
+            fullName: updated.full_name,
+            phone: updated.phone,
+            employeeCode: updated.employee_code,
+            departmentId: updated.department_id,
+            roleCodes: updated.user_roles_user_roles_user_idTousers.map(({ roles: role }) => role.code),
+          },
+        },
+        select: { audit_log_id: true },
+      });
+      return { kind: 'updated' as const, user: updated };
+    });
   },
 } as const;

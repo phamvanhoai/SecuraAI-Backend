@@ -11,7 +11,10 @@ async function verifyDatabaseSchema() {
     .map((match) => match[1])
     .concat(extension.tables)
     .sort();
-  const expectedForeignKeys = (sql.match(/ADD FOREIGN KEY/g) || []).length + extension.foreignKeys;
+  const expectedForeignKeys =
+    (sql.match(/ADD FOREIGN KEY/g) || []).length +
+    extension.foreignKeys +
+    extension.treatmentPlanCancellationForeignKeys;
   const expectedChecks = (sql.match(/\bCHECK\s*\(/g) || []).length + extension.checks;
   const rows = await prisma.$queryRaw`
     SELECT table_name

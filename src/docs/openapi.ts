@@ -206,6 +206,39 @@ export const openApiSpec = swaggerJsdoc({
             roleCodes: { type: 'array', minItems: 1, maxItems: 10, items: { type: 'string' } },
           },
         },
+        UpdateUserRequest: {
+          type: 'object',
+          minProperties: 1,
+          additionalProperties: false,
+          properties: {
+            fullName: { type: 'string', minLength: 2, maxLength: 150 },
+            phone: { type: 'string', minLength: 3, maxLength: 30, nullable: true },
+            employeeCode: { type: 'string', minLength: 1, maxLength: 50, nullable: true },
+            departmentId: { type: 'string', format: 'uuid', nullable: true },
+          },
+        },
+        AssignUserRolesRequest: {
+          type: 'object', required: ['roleCodes'], additionalProperties: false,
+          properties: { roleCodes: { type: 'array', minItems: 1, maxItems: 10, uniqueItems: true, items: { type: 'string', minLength: 1, maxLength: 50 } } },
+        },
+        AccountRemovalRequest: {
+          type: 'object',
+          required: ['reason'],
+          additionalProperties: false,
+          properties: { reason: { type: 'string', minLength: 10, maxLength: 1000 } },
+        },
+        AccountRemovalResult: {
+          type: 'object',
+          required: ['id', 'status', 'changed', 'updatedAt'],
+          properties: {
+            id: { type: 'string', format: 'uuid' },
+            status: { type: 'string', enum: ['active', 'inactive', 'locked', 'disabled'] },
+            disabledAt: { type: 'string', format: 'date-time', nullable: true },
+            deletedAt: { type: 'string', format: 'date-time', nullable: true },
+            updatedAt: { type: 'string', format: 'date-time' },
+            changed: { type: 'boolean' },
+          },
+        },
         UserCreateOptions: {
           type: 'object',
           required: ['departments', 'roles'],
@@ -2881,7 +2914,7 @@ export const openApiSpec = swaggerJsdoc({
           responses: {
             '201': { description: 'User account created and temporary password email sent' },
             '401': { description: 'Unauthorized' },
-            '403': { description: 'Missing users.create permission' },
+            '403': { description: 'Missing users.create or users.assign-role permission' },
             '409': { description: 'Email or employee code already exists' },
             '422': { description: 'Invalid role, department, or request body' },
             '503': { description: 'Email service is not configured or unavailable' },
@@ -2923,6 +2956,111 @@ export const openApiSpec = swaggerJsdoc({
             '403': { description: 'Missing users.read permission' },
             '404': { description: 'User was not found' },
             '422': { description: 'Invalid user identifier' },
+          },
+        },
+        patch: {
+          tags: ['Users'],
+          summary: 'Update a user account',
+          description:
+            'Updates editable profile and department fields only. Role changes require users.assign-role. Email, credentials, MFA, and account lock status are not changed. Requires users.update.',
+          security: [{ bearerAuth: [] }],
+          parameters: [
+            {
+              name: 'userId',
+              in: 'path',
+              required: true,
+              schema: { type: 'string', format: 'uuid' },
+            },
+          ],
+          requestBody: {
+            required: true,
+            content: {
+              'application/json': { schema: { $ref: '#/components/schemas/UpdateUserRequest' } },
+            },
+          },
+          responses: {
+            '200': {
+              description: 'Updated user account details',
+              content: {
+                'application/json': {
+                  schema: {
+                    type: 'object',
+                    required: ['success', 'data'],
+                    properties: {
+                      success: { type: 'boolean', example: true },
+                      data: { $ref: '#/components/schemas/UserDetail' },
+                    },
+                  },
+                },
+              },
+            },
+            '401': { description: 'Unauthorized' },
+            '403': { description: 'Missing users.update permission' },
+            '404': { description: 'User was not found' },
+            '409': { description: 'Employee code already exists' },
+            '422': { description: 'Invalid profile, department, or user identifier' },
+          },
+        },
+        delete: {
+          tags: ['Users'],
+          summary: 'Remove a user account (soft delete)',
+          description: 'Requires ADMIN and users.remove. Revokes sessions, cancels pending MFA login challenges, and preserves referenced records. Requires an audit reason.',
+          security: [{ bearerAuth: [] }],
+          parameters: [{ name: 'userId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+          requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/AccountRemovalRequest' } } } },
+          responses: {
+            '200': { description: 'Account removed', content: { 'application/json': { schema: { type: 'object', properties: { success: { type: 'boolean' }, data: { $ref: '#/components/schemas/AccountRemovalResult' } } } } } },
+            '401': { description: 'Unauthorized' },
+            '403': { description: 'Requires ADMIN and users.remove; self-removal is forbidden' },
+            '404': { description: 'User not found or already removed' },
+            '409': { description: 'Last active administrator or concurrent account change' },
+            '422': { description: 'Invalid user ID or reason' },
+          },
+        },
+      },
+      '/users/{userId}/deactivate': {
+        post: {
+          tags: ['Users'],
+          summary: 'Deactivate a user account',
+          description: 'Requires ADMIN and users.deactivate. Sets status to disabled, revokes sessions and pending MFA login challenges, and records the reason. Repeated deactivation reports changed=false.',
+          security: [{ bearerAuth: [] }],
+          parameters: [{ name: 'userId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+          requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/AccountRemovalRequest' } } } },
+          responses: {
+            '200': { description: 'Account deactivated', content: { 'application/json': { schema: { type: 'object', properties: { success: { type: 'boolean' }, data: { $ref: '#/components/schemas/AccountRemovalResult' } } } } } },
+            '401': { description: 'Unauthorized' },
+            '403': { description: 'Requires ADMIN and users.deactivate; self-deactivation is forbidden' },
+            '404': { description: 'User not found or removed' },
+            '409': { description: 'Last active administrator or concurrent account change' },
+            '422': { description: 'Invalid user ID or reason' },
+          },
+        },
+      },
+      '/users/{userId}/roles': {
+        post: {
+          tags: ['Users'], summary: 'Assign one or more roles to a user',
+          description: 'ADMIN and users.assign-role required. Adds roles without removing existing roles. Already-assigned roles are unchanged. Refresh sessions are revoked on change; target must sign in again for new permissions. Existing access tokens retain old claims until expiry.',
+          security: [{ bearerAuth: [] }],
+          parameters: [{ name: 'userId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+          requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/AssignUserRolesRequest' } } } },
+          responses: {
+            '200': { description: 'Assigned role codes and changed flag' },
+            '401': { description: 'Unauthorized' },
+            '403': { description: 'Requires ADMIN and users.assign-role' },
+            '404': { description: 'User not found' },
+            '409': { description: 'User is disabled' },
+            '422': { description: 'Invalid role codes or user ID' },
+          },
+        },
+      },
+      '/users/assignable-roles': {
+        get: {
+          tags: ['Users'], summary: 'List roles available for assignment',
+          security: [{ bearerAuth: [] }],
+          responses: {
+            '200': { description: 'Up to 100 role codes, names, descriptions, and system statuses' },
+            '401': { description: 'Unauthorized' },
+            '403': { description: 'Requires ADMIN and users.assign-role' },
           },
         },
       },
