@@ -1,2 +1,1 @@
-// V2 authentication routes are not implemented yet.
-export {};
+export { authRouter } from './auth.routes.js';

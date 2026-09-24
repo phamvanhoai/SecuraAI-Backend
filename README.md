@@ -2,7 +2,7 @@
 
 This repository now targets the approved 56-table PostgreSQL V2 schema in `project-docs/new/database.sql`. `prisma/schema.prisma` was introspected from the matching database; `prisma/migrations/00000000000000_baseline_v2/migration.sql` is the fresh-install baseline. The previous migrations are retained under `prisma/migrations-legacy/` and must not be deployed.
 
-Only `GET /api/v1/health/live` and `GET /api/v1/health/ready` are implemented. Authentication and business endpoints from the V3 application were removed because their models do not exist in V2. The V2 domain directories in `src/modules/` are intentionally unimplemented; contributors add routes, DTOs, services, repositories, OpenAPI entries, and tests per use case. The old source remains recoverable in Git history, not in the active application.
+The active API currently implements health checks and V2-backed `POST /api/v1/auth/login`, `POST /api/v1/auth/refresh`, and `POST /api/v1/auth/logout`. Other V3 handlers are not active because their models do not exist in V2. The old source and tests are preserved under `reference/legacy-v3/` for porting reference; they are excluded from build, lint and tests. Contributors add remaining routes, DTOs, services, repositories, OpenAPI entries, and tests per V2 use case.
 
 ## Setup
 

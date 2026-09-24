@@ -1,0 +1,78 @@
+import { z } from 'zod';
+export const reportIncidentBodySchema = z
+  .object({
+    title: z.string().trim().min(5).max(255),
+    description: z.string().trim().min(20).max(10_000),
+    category: z.enum([
+      'phishing',
+      'malware',
+      'account_compromise',
+      'data_exposure',
+      'network',
+      'physical',
+      'other',
+    ]),
+    occurredAt: z.iso.datetime().optional(),
+  })
+  .strict()
+  .refine((value) => !value.occurredAt || new Date(value.occurredAt) <= new Date(), {
+    path: ['occurredAt'],
+    message: 'Occurrence time cannot be in the future',
+  });
+export const myIncidentsQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(50).default(10),
+});
+export const incidentParamsSchema = z.object({ incidentId: z.uuid() });
+export const incidentSeveritySchema = z.enum(['low', 'medium', 'high', 'critical']);
+export const classifyIncidentBodySchema = z
+  .object({
+    severity: incidentSeveritySchema,
+    rationale: z.string().trim().min(10).max(2000),
+  })
+  .strict();
+export const assignIncidentBodySchema = z
+  .object({
+    assigneeUserId: z.uuid(),
+    note: z.string().trim().min(10).max(2000),
+  })
+  .strict();
+export const updateIncidentProgressBodySchema = z
+  .object({
+    status: z.enum(['in_progress', 'escalated', 'resolved', 'closed']),
+    note: z.string().trim().min(10).max(5000),
+  })
+  .strict();
+export const uploadIncidentEvidenceBodySchema = z.object({
+  description: z.preprocess(
+    (value) => (typeof value === 'string' && value.trim() ? value.trim() : null),
+    z.string().max(2000).nullable(),
+  ),
+});
+export const incidentEvidenceParamsSchema = z.object({ evidenceId: z.uuid() });
+export const removeIncidentEvidenceBodySchema = z
+  .object({ reason: z.string().trim().min(10).max(2000) })
+  .strict();
+export const incidentEvidenceQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(50).default(10),
+});
+export const classificationQueueQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(50).default(10),
+  search: z.string().trim().max(100).optional(),
+  severity: incidentSeveritySchema.optional(),
+  status: z
+    .enum(['reported', 'assigned', 'in_progress', 'escalated', 'resolved', 'closed'])
+    .optional(),
+  classification: z.enum(['unclassified', 'classified']).optional(),
+});
+export type ReportIncidentInput = z.infer<typeof reportIncidentBodySchema>;
+export type MyIncidentsQuery = z.infer<typeof myIncidentsQuerySchema>;
+export type ClassifyIncidentInput = z.infer<typeof classifyIncidentBodySchema>;
+export type AssignIncidentInput = z.infer<typeof assignIncidentBodySchema>;
+export type UpdateIncidentProgressInput = z.infer<typeof updateIncidentProgressBodySchema>;
+export type UploadIncidentEvidenceInput = z.infer<typeof uploadIncidentEvidenceBodySchema>;
+export type IncidentEvidenceQuery = z.infer<typeof incidentEvidenceQuerySchema>;
+export type RemoveIncidentEvidenceInput = z.infer<typeof removeIncidentEvidenceBodySchema>;
+export type ClassificationQueueQuery = z.infer<typeof classificationQueueQuerySchema>;
