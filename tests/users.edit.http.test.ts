@@ -75,7 +75,7 @@ describe('edit user HTTP API', () => {
     ).toBe(403);
   });
 
-  it('validates and updates editable profile and access fields', async () => {
+  it('validates and updates editable profile fields', async () => {
     const response = await request(createApp())
       .patch(`/api/v1/admin/users/${userId}`)
       .set('authorization', `Bearer ${token(['users.update'])}`)
@@ -84,7 +84,6 @@ describe('edit user HTTP API', () => {
         phone: '0901234567',
         employeeCode: 'SEC-010',
         departmentId: null,
-        roleCodes: ['EMPLOYEE'],
       });
 
     expect(response.status).toBe(200);
@@ -101,7 +100,6 @@ describe('edit user HTTP API', () => {
         phone: '0901234567',
         employeeCode: 'SEC-010',
         departmentId: null,
-        roleCodes: ['EMPLOYEE'],
       },
     });
   });
@@ -112,6 +110,15 @@ describe('edit user HTTP API', () => {
       .set('authorization', `Bearer ${token(['users.update'])}`)
       .send({});
 
+    expect(response.status).toBe(422);
+    expect(mocks.updateUser).not.toHaveBeenCalled();
+  });
+
+  it('rejects role changes through the profile endpoint', async () => {
+    const response = await request(createApp())
+      .patch(`/api/v1/users/${userId}`)
+      .set('authorization', `Bearer ${token(['users.update'])}`)
+      .send({ roleCodes: ['ADMIN'] });
     expect(response.status).toBe(422);
     expect(mocks.updateUser).not.toHaveBeenCalled();
   });

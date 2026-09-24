@@ -215,8 +215,11 @@ export const openApiSpec = swaggerJsdoc({
             phone: { type: 'string', minLength: 3, maxLength: 30, nullable: true },
             employeeCode: { type: 'string', minLength: 1, maxLength: 50, nullable: true },
             departmentId: { type: 'string', format: 'uuid', nullable: true },
-            roleCodes: { type: 'array', minItems: 1, maxItems: 10, items: { type: 'string' } },
           },
+        },
+        AssignUserRolesRequest: {
+          type: 'object', required: ['roleCodes'], additionalProperties: false,
+          properties: { roleCodes: { type: 'array', minItems: 1, maxItems: 10, uniqueItems: true, items: { type: 'string', minLength: 1, maxLength: 50 } } },
         },
         AccountRemovalRequest: {
           type: 'object',
@@ -2911,7 +2914,7 @@ export const openApiSpec = swaggerJsdoc({
           responses: {
             '201': { description: 'User account created and temporary password email sent' },
             '401': { description: 'Unauthorized' },
-            '403': { description: 'Missing users.create permission' },
+            '403': { description: 'Missing users.create or users.assign-role permission' },
             '409': { description: 'Email or employee code already exists' },
             '422': { description: 'Invalid role, department, or request body' },
             '503': { description: 'Email service is not configured or unavailable' },
@@ -2959,7 +2962,7 @@ export const openApiSpec = swaggerJsdoc({
           tags: ['Users'],
           summary: 'Update a user account',
           description:
-            'Updates editable profile, department, and role assignment fields. Email, credentials, MFA, and account lock status are not changed. Requires users.update.',
+            'Updates editable profile and department fields only. Role changes require users.assign-role. Email, credentials, MFA, and account lock status are not changed. Requires users.update.',
           security: [{ bearerAuth: [] }],
           parameters: [
             {
@@ -2995,7 +2998,7 @@ export const openApiSpec = swaggerJsdoc({
             '403': { description: 'Missing users.update permission' },
             '404': { description: 'User was not found' },
             '409': { description: 'Employee code already exists' },
-            '422': { description: 'Invalid profile, department, role, or user identifier' },
+            '422': { description: 'Invalid profile, department, or user identifier' },
           },
         },
         delete: {
@@ -3030,6 +3033,34 @@ export const openApiSpec = swaggerJsdoc({
             '404': { description: 'User not found or removed' },
             '409': { description: 'Last active administrator or concurrent account change' },
             '422': { description: 'Invalid user ID or reason' },
+          },
+        },
+      },
+      '/users/{userId}/roles': {
+        post: {
+          tags: ['Users'], summary: 'Assign one or more roles to a user',
+          description: 'ADMIN and users.assign-role required. Adds roles without removing existing roles. Already-assigned roles are unchanged. Refresh sessions are revoked on change; target must sign in again for new permissions. Existing access tokens retain old claims until expiry.',
+          security: [{ bearerAuth: [] }],
+          parameters: [{ name: 'userId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+          requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/AssignUserRolesRequest' } } } },
+          responses: {
+            '200': { description: 'Assigned role codes and changed flag' },
+            '401': { description: 'Unauthorized' },
+            '403': { description: 'Requires ADMIN and users.assign-role' },
+            '404': { description: 'User not found' },
+            '409': { description: 'User is disabled' },
+            '422': { description: 'Invalid role codes or user ID' },
+          },
+        },
+      },
+      '/users/assignable-roles': {
+        get: {
+          tags: ['Users'], summary: 'List roles available for assignment',
+          security: [{ bearerAuth: [] }],
+          responses: {
+            '200': { description: 'Up to 100 role codes, names, descriptions, and system statuses' },
+            '401': { description: 'Unauthorized' },
+            '403': { description: 'Requires ADMIN and users.assign-role' },
           },
         },
       },

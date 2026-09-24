@@ -179,26 +179,6 @@ export const usersRepository = {
       });
       if (!current) return { kind: 'not_found' as const };
 
-      let roles: { role_id: string; code: string }[] | undefined;
-      if (input.body.roleCodes) {
-        const currentRoleCodes = current.user_roles_user_roles_user_idTousers.map(
-          ({ roles: role }) => role.code,
-        );
-        if (
-          input.userId === input.actorUserId &&
-          currentRoleCodes.includes('ADMIN') &&
-          !input.body.roleCodes.includes('ADMIN')
-        ) {
-          return { kind: 'self_admin_removal' as const };
-        }
-        roles = await database.roles.findMany({
-          where: { code: { in: input.body.roleCodes } },
-          select: { role_id: true, code: true },
-        });
-        if (roles.length !== input.body.roleCodes.length) {
-          return { kind: 'invalid_roles' as const };
-        }
-      }
       if (input.body.departmentId) {
         const department = await database.departments.findFirst({
           where: { department_id: input.body.departmentId, status: 'active' },
@@ -207,25 +187,6 @@ export const usersRepository = {
         if (!department) return { kind: 'invalid_department' as const };
       }
 
-      if (roles) {
-        const roleIds = roles.map((role) => role.role_id);
-        await database.user_roles.deleteMany({
-          where: { user_id: input.userId, role_id: { notIn: roleIds } },
-        });
-        const assignedRoleIds = new Set(
-          current.user_roles_user_roles_user_idTousers.map(({ roles: role }) => role.role_id),
-        );
-        const additions = roles.filter((role) => !assignedRoleIds.has(role.role_id));
-        if (additions.length > 0) {
-          await database.user_roles.createMany({
-            data: additions.map((role) => ({
-              user_id: input.userId,
-              role_id: role.role_id,
-              assigned_by_user_id: input.actorUserId,
-            })),
-          });
-        }
-      }
 
       const updated = await database.users.update({
         where: { user_id: input.userId },

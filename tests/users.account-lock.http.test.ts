@@ -203,7 +203,7 @@ describe('UC7 account lock/unlock validation and real service HTTP pipeline', ()
         .send(reason);
       expect(response.status).toBe(403);
       expect(response.body.error.message).toBe(
-        'Only administrators can lock or unlock user accounts',
+        'Only administrators can manage user account access',
       );
       await expect(
         accountLockService.change(

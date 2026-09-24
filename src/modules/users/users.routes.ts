@@ -15,12 +15,15 @@ import {
   updateUser,
   deactivateAccount,
   removeAccount,
+  assignUserRoles,
+  listAssignableRoles,
 } from './users.controller.js';
 import { accountLockBodySchema, accountLockParamsSchema } from './dto/account-lock.dto.js';
 import { createUserBodySchema } from './dto/create-user.dto.js';
 import { getUserParamsSchema } from './dto/get-user.dto.js';
 import { updateUserBodySchema } from './dto/update-user.dto.js';
 import { deactivateUserBodySchema, deactivateUserParamsSchema } from './dto/deactivate-user.dto.js';
+import { assignUserRolesBodySchema } from './dto/assign-user-roles.dto.js';
 
 export const usersRouter = Router();
 const requireAccountAdmin: RequestHandler = (req, _res, next) => {
@@ -36,7 +39,9 @@ usersRouter.get('/', authenticate, authorize('users.read'), asyncHandler(listUse
 usersRouter.post(
   '/',
   authenticate,
+  requireAccountAdmin,
   authorize('users.create'),
+  authorize('users.assign-role'),
   validate({ body: createUserBodySchema }),
   asyncHandler(initializeAccount),
 );
@@ -46,6 +51,12 @@ usersRouter.get(
   authenticate,
   authorize('users.create'),
   asyncHandler(listUserCreateOptions),
+);
+usersRouter.get('/assignable-roles', authenticate, requireAccountAdmin, authorize('users.assign-role'), asyncHandler(listAssignableRoles));
+usersRouter.post(
+  '/:userId/roles', authenticate, requireAccountAdmin, authorize('users.assign-role'),
+  validate({ params: getUserParamsSchema, body: assignUserRolesBodySchema }),
+  asyncHandler(assignUserRoles),
 );
 usersRouter.patch(
   '/:userId',
