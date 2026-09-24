@@ -1,1 +1,2 @@
-export { accountAccessService } from './account-access.service.js';
+// V2 authentication routes are not implemented yet.
+export {};

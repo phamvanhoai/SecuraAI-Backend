@@ -1,7 +1,0 @@
-# View Login History
-
-GET /api/v1/login-history (also /api/v1/administration/login-history) requires an authenticated active account, ADMIN or SECURITY_OFFICER role, and login-history.read permission. Seed grants this permission only to these two roles; run the normal approved seed process (or the narrowly scoped `npx tsx scripts/seed-login-history-permission.ts`, which grants only this permission and never creates users) and obtain a new access token before use.
-
-Search by attempted email or user name. Filter by status (success/failed), userId, exact IPv4/IPv6 ipAddress, inclusive from/to ISO timestamps with timezone. page defaults to 1, limit to 20 (max 100); sortBy=loginTime, sortOrder=desc. Equal timestamps are ordered by ID. Responses expose only the documented camelCase fields and pagination; userName/userId can be null for unknown accounts.
-
-Authentication sessions and successful history records commit together. MFA challenge issuance is not successful login; successful TOTP/recovery-code verification is recorded when the session is created. Bad credentials, inactive accounts and invalid codes for a known MFA challenge record failed attempts using fixed reason codes. Refresh, logout, malformed/rate-limited requests and unidentifiable expired MFA challenges are not login events. Historical attempts before implementation are not backfilled from sessions. No schema change or live migration is needed.

@@ -24,6 +24,8 @@ Current database baseline:
 - Legacy migrations are retained under `prisma/migrations-legacy/` for reference only.
 - `npm run db:verify` compares the live `public` schema with the approved database design.
 
+Only the health routes are currently implemented. The V3 application routes and training module were removed from active source because they rely on tables absent from V2. Do not describe a V2 business endpoint as implemented until its full route-to-repository path and tests exist.
+
 Do not migrate the project to NestJS, another web framework, another ORM, or another database unless the user explicitly requests it.
 
 ## 2. Sources of truth
@@ -92,7 +94,7 @@ src/modules/<domain>/
   index.ts
 ```
 
-The domain folders already contain empty layer scaffolds so team members can start consistently. Replace those exports with real implementations as use cases are assigned. Never add fake responses or placeholder behavior that appears functional. Keep the module manifest's tables and capabilities synchronized with implementation scope.
+The domain folders contain only explicit unimplemented markers so team members can add layers as use cases are assigned. Never add fake responses or placeholder behavior that appears functional. Keep module documentation synchronized with implementation scope.
 
 ## 5. TypeScript rules
 
