@@ -40,7 +40,6 @@ export const legacyV1RouteContracts = [
   { method: 'post', path: '/admin/mfa-recovery-requests/{requestId}/approve', tag: 'MFA Recovery Administration' },
   { method: 'post', path: '/admin/mfa-recovery-requests/{requestId}/reject', tag: 'MFA Recovery Administration' },
   { method: 'post', path: '/auth/password-reset/confirm', tag: 'Authentication' },
-  { method: 'get', path: '/users/me', tag: 'Users' },
   { method: 'get', path: '/users', tag: 'Users' },
   { method: 'post', path: '/users', tag: 'Users' },
   { method: 'get', path: '/users/{userId}', tag: 'Users' },
