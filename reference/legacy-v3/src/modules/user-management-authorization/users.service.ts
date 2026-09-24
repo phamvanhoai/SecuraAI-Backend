@@ -1,0 +1,243 @@
+import argon2 from 'argon2';
+import { randomInt } from 'node:crypto';
+import { Prisma } from '@prisma/client';
+import { prisma } from '../../database/prisma.js';
+import { AppError } from '../../common/errors/app-error.js';
+import { authEmailService } from '../auth/auth.email.service.js';
+import type { CreateUserBody } from './dto/create-user.dto.js';
+import type { ListUsersQuery } from './dto/list-users-query.dto.js';
+import type { UpdateUserBody } from './dto/update-user.dto.js';
+import { usersRepository } from './users.repository.js';
+
+type UserActor = { userId: string; permissions: readonly string[]; roles?: readonly string[] };
+
+const requirePermission = (actor: UserActor, permission: string): void => {
+  if (!actor.permissions.includes(permission)) {
+    throw new AppError(403, 'FORBIDDEN', 'Insufficient permissions');
+  }
+};
+
+const publicUserSelect = {
+  user_id: true,
+  email: true,
+  full_name: true,
+  phone: true,
+  employee_code: true,
+  status: true,
+  must_change_password: true,
+  email_verified_at: true,
+  last_login_at: true,
+  created_at: true,
+  departments: { select: { department_id: true, code: true, name: true } },
+  mfa_methods: {
+    where: { method_type: 'totp', is_enabled: true },
+    select: { mfa_method_id: true },
+    take: 1,
+  },
+  user_roles_user_roles_user_idTousers: {
+    select: {
+      roles: {
+        select: {
+          code: true,
+          name: true,
+          role_permissions: { select: { permissions: { select: { code: true } } } },
+        },
+      },
+    },
+  },
+} as const;
+
+const mapUserDetail = (user: NonNullable<Awaited<ReturnType<typeof usersRepository.findById>>>) => ({
+  id: user.user_id,
+  email: user.email,
+  fullName: user.full_name,
+  phone: user.phone,
+  employeeCode: user.employee_code,
+  avatarUrl: user.avatar_url,
+  status: user.status,
+  mustChangePassword: user.must_change_password,
+  emailVerifiedAt: user.email_verified_at,
+  lastLoginAt: user.last_login_at,
+  lastLockedAt: user.locked_at,
+  disabledAt: user.disabled_at,
+  mfaEnabled: user.mfa_methods.length > 0,
+  department: user.departments
+    ? {
+        id: user.departments.department_id,
+        code: user.departments.code,
+        name: user.departments.name,
+      }
+    : null,
+  roles: user.user_roles_user_roles_user_idTousers.map(({ assigned_at, roles }) => ({
+    id: roles.role_id,
+    code: roles.code,
+    name: roles.name,
+    description: roles.description,
+    assignedAt: assigned_at,
+  })),
+  createdAt: user.created_at,
+  updatedAt: user.updated_at,
+});
+
+export const usersService = {
+  async listCreateOptions(actor: UserActor) {
+    requirePermission(actor, 'users.create');
+    const options = await usersRepository.listCreateOptions();
+    return {
+      departments: options.departments.map((department) => ({
+        id: department.department_id,
+        code: department.code,
+        name: department.name,
+      })),
+      roles: options.roles.map((role) => ({
+        id: role.role_id,
+        code: role.code,
+        name: role.name,
+        description: role.description,
+        isSystem: role.is_system,
+      })),
+    };
+  },
+
+  async getById(userId: string) {
+    const user = await usersRepository.findById(userId);
+    if (!user) throw new AppError(404, 'USER_NOT_FOUND', 'User was not found');
+
+    return mapUserDetail(user);
+  },
+
+  async update(userId: string, body: UpdateUserBody, actor: UserActor) {
+    requirePermission(actor, 'users.update');
+    try {
+      const result = await usersRepository.updateUser({
+        userId,
+        body,
+        actorUserId: actor.userId,
+      });
+      if (result.kind === 'not_found') {
+        throw new AppError(404, 'USER_NOT_FOUND', 'User was not found');
+      }
+      if (result.kind === 'invalid_department') {
+        throw new AppError(422, 'INVALID_DEPARTMENT', 'Department does not exist or is inactive');
+      }
+      return mapUserDetail(result.user);
+    } catch (error: unknown) {
+      if (error instanceof AppError) throw error;
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        throw new AppError(409, 'EMPLOYEE_CODE_EXISTS', 'Employee code already exists');
+      }
+      throw error;
+    }
+  },
+
+  async list(query: ListUsersQuery) {
+    const result = await usersRepository.list(query);
+    return {
+      items: result.items.map((user) => ({
+        id: user.user_id,
+        email: user.email,
+        fullName: user.full_name,
+        employeeCode: user.employee_code,
+        status: user.status,
+        createdAt: user.created_at,
+        department: user.departments
+          ? {
+              id: user.departments.department_id,
+              code: user.departments.code,
+              name: user.departments.name,
+            }
+          : null,
+        roles: user.user_roles_user_roles_user_idTousers.map(({ roles }) => ({
+          code: roles.code,
+          name: roles.name,
+        })),
+      })),
+      pagination: {
+        page: query.page,
+        limit: query.limit,
+        total: result.total,
+        totalPages: Math.ceil(result.total / query.limit),
+      },
+      summary: result.summary,
+    };
+  },
+
+  async initializeAccount(input: CreateUserBody, actor: UserActor) {
+    requirePermission(actor, 'users.create');
+    requirePermission(actor, 'users.assign-role');
+    if (!actor.roles?.includes('ADMIN')) throw new AppError(403, 'ADMIN_REQUIRED', 'Only administrators can create user accounts');
+    const temporaryPassword = String(randomInt(10_000_000, 100_000_000));
+    const temporaryPasswordHash = await argon2.hash(temporaryPassword, {
+      type: argon2.argon2id,
+    });
+    try {
+      const result = await usersRepository.createInitializedUser({
+        body: input,
+        passwordHash: temporaryPasswordHash,
+        actorUserId: actor.userId,
+      });
+      if (result.kind === 'invalid_roles') {
+        throw new AppError(422, 'INVALID_ROLES', 'One or more role codes do not exist');
+      }
+      if (result.kind === 'invalid_department') {
+        throw new AppError(422, 'INVALID_DEPARTMENT', 'Department does not exist or is inactive');
+      }
+      await authEmailService.sendInitializedAccountEmail({
+        to: result.user.email,
+        email: result.user.email,
+        temporaryPassword,
+      });
+      return {
+        id: result.user.user_id,
+        email: result.user.email,
+        fullName: result.user.full_name,
+        message: 'User account created. A temporary password was sent by email.',
+      };
+    } catch (error: unknown) {
+      if (error instanceof AppError) throw error;
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        throw new AppError(409, 'USER_ALREADY_EXISTS', 'Email or employee code already exists');
+      }
+      throw error;
+    }
+  },
+
+  async findMe(userId: string) {
+    const user = await prisma.users.findFirst({
+      where: { user_id: userId, deleted_at: null },
+      select: publicUserSelect,
+    });
+    if (!user) throw new AppError(404, 'USER_NOT_FOUND', 'User was not found');
+    return {
+      id: user.user_id,
+      email: user.email,
+      fullName: user.full_name,
+      phone: user.phone,
+      employeeCode: user.employee_code,
+      status: user.status,
+      mustChangePassword: user.must_change_password,
+      emailVerifiedAt: user.email_verified_at,
+      lastLoginAt: user.last_login_at,
+      createdAt: user.created_at,
+      department: user.departments
+        ? {
+            id: user.departments.department_id,
+            code: user.departments.code,
+            name: user.departments.name,
+          }
+        : null,
+      mfaEnabled: user.mfa_methods.length > 0,
+      roles: user.user_roles_user_roles_user_idTousers.map(({ roles }) => ({
+        code: roles.code,
+        name: roles.name,
+      })),
+      permissions: [
+        ...new Set(
+          user.user_roles_user_roles_user_idTousers.flatMap(({ roles }) =>
+            roles.role_permissions.map(({ permissions }) => permissions.code),
+          ),
+        ),
+      ].sort(),
+    };
+  },
+};

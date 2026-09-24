@@ -1,0 +1,405 @@
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+const mocks = vi.hoisted(() => ({
+  create: vi.fn(),
+  list: vi.fn(),
+  find: vi.fn(),
+  queue: vi.fn(),
+  classify: vi.fn(),
+  options: vi.fn(),
+  assign: vi.fn(),
+  progress: vi.fn(),
+  findIncident: vi.fn(),
+  listEvidence: vi.fn(),
+  findEvidence: vi.fn(),
+  createEvidence: vi.fn(),
+  recordEvidenceDownload: vi.fn(),
+  removeEvidence: vi.fn(),
+}));
+const fsMocks = vi.hoisted(() => ({
+  mkdir: vi.fn(),
+  rename: vi.fn(),
+  rm: vi.fn(),
+  writeFile: vi.fn(),
+}));
+vi.mock('node:fs/promises', () => fsMocks);
+vi.mock('./incident-management.repository.js', () => ({
+  incidentManagementRepository: {
+    createReport: mocks.create,
+    listOwnReports: mocks.list,
+    findOwnReport: mocks.find,
+    listClassificationQueue: mocks.queue,
+    classifySeverity: mocks.classify,
+    listAssignmentOptions: mocks.options,
+    assignHandler: mocks.assign,
+    updateProgress: mocks.progress,
+    findIncident: mocks.findIncident,
+    listEvidence: mocks.listEvidence,
+    findEvidence: mocks.findEvidence,
+    createEvidence: mocks.createEvidence,
+    recordEvidenceDownload: mocks.recordEvidenceDownload,
+    removeEvidence: mocks.removeEvidence,
+  },
+}));
+import { incidentManagementService } from './incident-management.service.js';
+const input = {
+  title: 'Suspicious email',
+  description: 'The sender requested credentials through an unknown link.',
+  category: 'phishing' as const,
+};
+describe('incident reporting service', () => {
+  beforeEach(() => vi.clearAllMocks());
+  it('rejects callers without incidents.report', async () =>
+    await expect(
+      incidentManagementService.report(
+        input,
+        { userId: 'user-1', permissions: [] },
+        { ipAddress: null, userAgent: null },
+      ),
+    ).rejects.toMatchObject({ statusCode: 403 }));
+  it('creates a reported incident for the authenticated reporter', async () => {
+    mocks.create.mockResolvedValue({
+      incident_id: '11111111-1111-4111-8111-111111111111',
+      incident_code: 'INC-20260917-ABC',
+      title: input.title,
+      description: input.description,
+      category: input.category,
+      severity: 'medium',
+      status: 'reported',
+      occurred_at: null,
+      detected_at: new Date('2026-09-17T00:00:00Z'),
+      created_at: new Date('2026-09-17T00:00:00Z'),
+    });
+    const result = await incidentManagementService.report(
+      input,
+      { userId: 'user-1', permissions: ['incidents.report'] },
+      { ipAddress: null, userAgent: null },
+    );
+    expect(result.status).toBe('reported');
+    expect(mocks.create).toHaveBeenCalledWith(
+      input,
+      'user-1',
+      expect.stringMatching(/^INC-\d{8}-[A-F0-9]{8}$/),
+      expect.any(Object),
+    );
+  });
+  it('does not disclose another reporter incident', async () => {
+    mocks.find.mockResolvedValue(null);
+    await expect(
+      incidentManagementService.getMine('11111111-1111-4111-8111-111111111111', {
+        userId: 'user-1',
+        permissions: ['incidents.report'],
+      }),
+    ).rejects.toMatchObject({ statusCode: 404, code: 'INCIDENT_NOT_FOUND' });
+  });
+  it('requires incidents.classify to classify severity', async () => {
+    await expect(
+      incidentManagementService.classify(
+        '11111111-1111-4111-8111-111111111111',
+        { severity: 'high', rationale: 'Confirmed impact to a production service.' },
+        { userId: 'user-1', permissions: ['incidents.report'] },
+        { ipAddress: null, userAgent: null },
+      ),
+    ).rejects.toMatchObject({ statusCode: 403 });
+  });
+  it('returns a classified incident', async () => {
+    mocks.classify.mockResolvedValue({
+      outcome: 'updated',
+      incident: {
+        incident_id: '11111111-1111-4111-8111-111111111111',
+        incident_code: 'INC-001',
+        title: 'Suspicious activity',
+        description: 'A sufficiently detailed incident description.',
+        category: 'other',
+        severity: 'high',
+        status: 'reported',
+        occurred_at: null,
+        detected_at: new Date('2026-09-17T00:00:00Z'),
+        created_at: new Date('2026-09-17T00:00:00Z'),
+      },
+    });
+    const result = await incidentManagementService.classify(
+      '11111111-1111-4111-8111-111111111111',
+      { severity: 'high', rationale: 'Confirmed impact to a production service.' },
+      { userId: 'officer-1', permissions: ['incidents.classify'] },
+      { ipAddress: null, userAgent: null },
+    );
+    expect(result.severity).toBe('high');
+  });
+  it('distinguishes a database default from a formal classification', async () => {
+    mocks.queue.mockResolvedValue({
+      items: [
+        {
+          incident_id: '11111111-1111-4111-8111-111111111111',
+          incident_code: 'INC-001',
+          title: 'Suspicious activity',
+          description: 'A sufficiently detailed incident description.',
+          category: 'other',
+          severity: 'medium',
+          status: 'reported',
+          occurred_at: null,
+          detected_at: new Date('2026-09-17T00:00:00Z'),
+          created_at: new Date('2026-09-17T00:00:00Z'),
+        },
+      ],
+      total: 1,
+      classificationAudits: [],
+      assignments: [],
+    });
+    const result = await incidentManagementService.listForClassification(
+      { page: 1, limit: 10 },
+      { userId: 'officer-1', permissions: ['incidents.classify'] },
+    );
+    expect(result.items[0]).toMatchObject({
+      severity: 'medium',
+      classified: false,
+      classificationCount: 0,
+      lastClassification: null,
+    });
+  });
+  it('requires incidents.assign to assign a handler', async () => {
+    await expect(
+      incidentManagementService.assign(
+        '11111111-1111-4111-8111-111111111111',
+        {
+          assigneeUserId: '22222222-2222-4222-8222-222222222222',
+          note: 'Assign to the officer responsible for endpoint response.',
+        },
+        { userId: 'officer-1', permissions: ['incidents.classify'] },
+        { ipAddress: null, userAgent: null },
+      ),
+    ).rejects.toMatchObject({ statusCode: 403 });
+  });
+  it('returns the active handler after assignment', async () => {
+    mocks.assign.mockResolvedValue({
+      outcome: 'assigned',
+      incident: {
+        incident_id: '11111111-1111-4111-8111-111111111111',
+        incident_code: 'INC-001',
+        title: 'Suspicious activity',
+        description: 'A sufficiently detailed incident description.',
+        category: 'other',
+        severity: 'high',
+        status: 'assigned',
+        occurred_at: null,
+        detected_at: new Date('2026-09-17T00:00:00Z'),
+        created_at: new Date('2026-09-17T00:00:00Z'),
+      },
+      assignee: {
+        user_id: '22222222-2222-4222-8222-222222222222',
+        full_name: 'Security Officer',
+        email: 'officer@example.com',
+      },
+      assignedAt: new Date('2026-09-17T01:00:00Z'),
+    });
+    const result = await incidentManagementService.assign(
+      '11111111-1111-4111-8111-111111111111',
+      {
+        assigneeUserId: '22222222-2222-4222-8222-222222222222',
+        note: 'Assign to the officer responsible for endpoint response.',
+      },
+      { userId: 'officer-1', permissions: ['incidents.assign'] },
+      { ipAddress: null, userAgent: null },
+    );
+    expect(result).toMatchObject({
+      status: 'assigned',
+      currentAssignment: { assignee: { name: 'Security Officer' } },
+    });
+  });
+  it('requires incidents.update-progress to update handling status', async () => {
+    await expect(
+      incidentManagementService.updateProgress(
+        '11111111-1111-4111-8111-111111111111',
+        { status: 'in_progress', note: 'Investigation has started with endpoint log collection.' },
+        { userId: 'officer-1', permissions: ['incidents.assign'] },
+        { ipAddress: null, userAgent: null },
+      ),
+    ).rejects.toMatchObject({ statusCode: 403 });
+  });
+  it('returns the updated handling status', async () => {
+    mocks.progress.mockResolvedValue({
+      outcome: 'updated',
+      incident: {
+        incident_id: '11111111-1111-4111-8111-111111111111',
+        incident_code: 'INC-001',
+        title: 'Suspicious activity',
+        description: 'A sufficiently detailed incident description.',
+        category: 'other',
+        severity: 'high',
+        status: 'in_progress',
+        occurred_at: null,
+        detected_at: new Date('2026-09-17T00:00:00Z'),
+        created_at: new Date('2026-09-17T00:00:00Z'),
+      },
+    });
+    const result = await incidentManagementService.updateProgress(
+      '11111111-1111-4111-8111-111111111111',
+      { status: 'in_progress', note: 'Investigation has started with endpoint log collection.' },
+      { userId: 'officer-1', permissions: ['incidents.update-progress'] },
+      { ipAddress: null, userAgent: null },
+    );
+    expect(result.status).toBe('in_progress');
+    expect(mocks.progress).toHaveBeenCalledWith(
+      '11111111-1111-4111-8111-111111111111',
+      expect.any(Object),
+      'officer-1',
+      false,
+      expect.any(Object),
+    );
+  });
+  it('allows an incident coordinator override and rejects an unrelated officer', async () => {
+    mocks.progress.mockResolvedValueOnce({ outcome: 'not_handler' });
+    await expect(
+      incidentManagementService.updateProgress(
+        '11111111-1111-4111-8111-111111111111',
+        { status: 'escalated', note: 'Escalating because the incident affects multiple services.' },
+        { userId: 'officer-2', permissions: ['incidents.update-progress'] },
+        { ipAddress: null, userAgent: null },
+      ),
+    ).rejects.toMatchObject({ statusCode: 403, code: 'NOT_INCIDENT_HANDLER' });
+    mocks.progress.mockResolvedValueOnce({ outcome: 'invalid_transition' });
+    await expect(
+      incidentManagementService.updateProgress(
+        '11111111-1111-4111-8111-111111111111',
+        { status: 'escalated', note: 'Escalating because the incident affects multiple services.' },
+        {
+          userId: 'coordinator-1',
+          permissions: ['incidents.update-progress', 'incidents.assign'],
+        },
+        { ipAddress: null, userAgent: null },
+      ),
+    ).rejects.toMatchObject({ statusCode: 409, code: 'INVALID_STATUS_TRANSITION' });
+    expect(mocks.progress).toHaveBeenLastCalledWith(
+      '11111111-1111-4111-8111-111111111111',
+      expect.any(Object),
+      'coordinator-1',
+      true,
+      expect.any(Object),
+    );
+  });
+  it('requires incidents.evidence.manage to view incident evidence', async () => {
+    await expect(
+      incidentManagementService.listEvidence(
+        '11111111-1111-4111-8111-111111111111',
+        { page: 1, limit: 10 },
+        { userId: 'officer-1', permissions: ['incidents.update-progress'] },
+      ),
+    ).rejects.toMatchObject({ statusCode: 403 });
+  });
+  it('returns a bounded evidence list for an existing incident', async () => {
+    mocks.findIncident.mockResolvedValue({
+      incident_id: 'incident-1',
+      status: 'in_progress',
+      incident_assignments: [],
+    });
+    mocks.listEvidence.mockResolvedValue({ items: [], total: 0 });
+    await expect(
+      incidentManagementService.listEvidence(
+        '11111111-1111-4111-8111-111111111111',
+        { page: 1, limit: 10 },
+        { userId: 'officer-1', permissions: ['incidents.evidence.manage'] },
+      ),
+    ).resolves.toEqual({
+      items: [],
+      pagination: { page: 1, limit: 10, total: 0, totalPages: 1 },
+    });
+  });
+  it('only allows the active handler or a coordinator to attach evidence', async () => {
+    mocks.findIncident.mockResolvedValue({
+      incident_id: 'incident-1',
+      status: 'in_progress',
+      incident_assignments: [{ assignee_user_id: 'handler-1' }],
+    });
+    await expect(
+      incidentManagementService.uploadEvidence(
+        '11111111-1111-4111-8111-111111111111',
+        { description: null },
+        { originalName: 'access.log', mimeType: 'text/plain', buffer: Buffer.from('entry') },
+        { userId: 'officer-2', permissions: ['incidents.evidence.manage'] },
+        { ipAddress: null, userAgent: null },
+      ),
+    ).rejects.toMatchObject({ statusCode: 403, code: 'NOT_INCIDENT_HANDLER' });
+    expect(mocks.createEvidence).not.toHaveBeenCalled();
+  });
+  it('rejects evidence removal by an unrelated officer before touching storage', async () => {
+    mocks.findEvidence.mockResolvedValue({
+      incident_evidence_id: '11111111-1111-4111-8111-111111111111',
+      incident_id: '22222222-2222-4222-8222-222222222222',
+      incidents: {
+        status: 'in_progress',
+        incident_assignments: [{ assignee_user_id: 'handler-1' }],
+      },
+      files: { storage_key: 'incident-evidence/file', file_id: 'file-1' },
+    });
+    await expect(
+      incidentManagementService.removeEvidence(
+        '11111111-1111-4111-8111-111111111111',
+        { reason: 'This file was attached to the wrong incident.' },
+        { userId: 'officer-2', permissions: ['incidents.evidence.manage'] },
+        { ipAddress: null, userAgent: null },
+      ),
+    ).rejects.toMatchObject({ statusCode: 403, code: 'NOT_INCIDENT_HANDLER' });
+    expect(mocks.removeEvidence).not.toHaveBeenCalled();
+  });
+  it('prevents removing evidence from a closed incident', async () => {
+    mocks.findEvidence.mockResolvedValue({
+      incident_evidence_id: '11111111-1111-4111-8111-111111111111',
+      incident_id: '22222222-2222-4222-8222-222222222222',
+      incidents: { status: 'closed', incident_assignments: [] },
+      files: { storage_key: 'incident-evidence/file', file_id: 'file-1' },
+    });
+    await expect(
+      incidentManagementService.removeEvidence(
+        '11111111-1111-4111-8111-111111111111',
+        { reason: 'This file was attached to the wrong incident.' },
+        {
+          userId: 'coordinator-1',
+          permissions: ['incidents.evidence.manage', 'incidents.assign'],
+        },
+        { ipAddress: null, userAgent: null },
+      ),
+    ).rejects.toMatchObject({ statusCode: 409, code: 'INCIDENT_CLOSED' });
+  });
+  it('stages and removes evidence for the active handler', async () => {
+    mocks.findEvidence.mockResolvedValue({
+      incident_evidence_id: '11111111-1111-4111-8111-111111111111',
+      incident_id: '22222222-2222-4222-8222-222222222222',
+      description: 'Web server access log',
+      created_at: new Date('2026-09-17T00:00:00Z'),
+      uploaded_by_user_id: 'handler-1',
+      incidents: {
+        status: 'in_progress',
+        incident_assignments: [{ assignee_user_id: 'handler-1' }],
+      },
+      files: {
+        storage_key: 'incident-evidence/file',
+        file_id: '33333333-3333-4333-8333-333333333333',
+        original_name: 'access.log',
+        mime_type: 'text/plain',
+        size_bytes: BigInt(42),
+        checksum: 'checksum',
+      },
+    });
+    fsMocks.rename.mockResolvedValue(undefined);
+    fsMocks.rm.mockResolvedValue(undefined);
+    mocks.removeEvidence.mockResolvedValue({ outcome: 'removed' });
+    await expect(
+      incidentManagementService.removeEvidence(
+        '11111111-1111-4111-8111-111111111111',
+        { reason: 'This file was attached to the wrong incident.' },
+        { userId: 'handler-1', permissions: ['incidents.evidence.manage'] },
+        { ipAddress: null, userAgent: null },
+      ),
+    ).resolves.toEqual({ id: '11111111-1111-4111-8111-111111111111', removed: true });
+    expect(fsMocks.rename).toHaveBeenCalledTimes(1);
+    expect(mocks.removeEvidence).toHaveBeenCalledWith(
+      expect.objectContaining({ incident_evidence_id: '11111111-1111-4111-8111-111111111111' }),
+      { reason: 'This file was attached to the wrong incident.' },
+      'handler-1',
+      false,
+      { ipAddress: null, userAgent: null },
+    );
+    expect(fsMocks.rm).toHaveBeenCalledWith(expect.stringContaining('.deleting-'), {
+      force: true,
+    });
+  });
+});

@@ -1,0 +1,440 @@
+import { createHash, randomUUID } from 'node:crypto';
+import { mkdir, rename, rm, writeFile } from 'node:fs/promises';
+import path from 'node:path';
+import { AppError } from '../../common/errors/app-error.js';
+import { env } from '../../config/env.js';
+import { logger } from '../../config/logger.js';
+import type {
+  ClassificationQueueQuery,
+  AssignIncidentInput,
+  UpdateIncidentProgressInput,
+  UploadIncidentEvidenceInput,
+  IncidentEvidenceQuery,
+  RemoveIncidentEvidenceInput,
+  ClassifyIncidentInput,
+  MyIncidentsQuery,
+  ReportIncidentInput,
+} from './dto/report-incident.dto.js';
+import { incidentManagementRepository } from './incident-management.repository.js';
+type Actor = { userId: string; permissions: readonly string[] };
+const requireReportPermission = (actor: Actor) => {
+  if (!actor.permissions.includes('incidents.report'))
+    throw new AppError(403, 'FORBIDDEN', 'Incident reporting permission required');
+};
+const requireClassifyPermission = (actor: Actor) => {
+  if (!actor.permissions.includes('incidents.classify'))
+    throw new AppError(403, 'FORBIDDEN', 'Incident classification permission required');
+};
+const requireAssignPermission = (actor: Actor) => {
+  if (!actor.permissions.includes('incidents.assign'))
+    throw new AppError(403, 'FORBIDDEN', 'Incident assignment permission required');
+};
+const requireProgressPermission = (actor: Actor) => {
+  if (!actor.permissions.includes('incidents.update-progress'))
+    throw new AppError(403, 'FORBIDDEN', 'Incident progress permission required');
+};
+const requireEvidencePermission = (actor: Actor) => {
+  if (!actor.permissions.includes('incidents.evidence.manage'))
+    throw new AppError(403, 'FORBIDDEN', 'Incident evidence permission required');
+};
+const evidencePath = (storageKey: string) => {
+  const root = path.resolve(env.FILE_STORAGE_DIR);
+  const absolute = path.resolve(root, ...storageKey.split('/'));
+  if (!absolute.startsWith(`${root}${path.sep}`))
+    throw new AppError(500, 'FILE_STORAGE_ERROR', 'Could not resolve incident evidence');
+  return absolute;
+};
+const mapEvidence = (
+  item: Awaited<ReturnType<typeof incidentManagementRepository.listEvidence>>['items'][number],
+) => ({
+  id: item.incident_evidence_id,
+  description: item.description,
+  createdAt: item.created_at.toISOString(),
+  uploadedBy: item.users ? { id: item.users.user_id, name: item.users.full_name } : null,
+  file: {
+    id: item.files.file_id,
+    name: item.files.original_name,
+    mimeType: item.files.mime_type,
+    sizeBytes: item.files.size_bytes === null ? null : Number(item.files.size_bytes),
+    checksum: item.files.checksum,
+  },
+});
+type ClassificationSummary = {
+  count: number;
+  classifiedAt: string;
+  classifiedBy: { id: string; name: string } | null;
+  rationale: string | null;
+};
+const jsonString = (value: unknown, key: string): string | null => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
+  const candidate = (value as Record<string, unknown>)[key];
+  return typeof candidate === 'string' ? candidate : null;
+};
+const mapIncident = (
+  item: {
+    incident_id: string;
+    incident_code: string;
+    title: string;
+    category: string | null;
+    severity: string;
+    status: string;
+    occurred_at: Date | null;
+    detected_at: Date;
+    created_at: Date;
+    description?: string;
+  },
+  classification?: ClassificationSummary,
+  assignment?: { assigned_at: Date; user: { user_id: string; full_name: string; email: string } },
+) => ({
+  id: item.incident_id,
+  incidentCode: item.incident_code,
+  title: item.title,
+  ...(item.description !== undefined ? { description: item.description } : {}),
+  category: item.category,
+  severity: item.severity,
+  status: item.status,
+  occurredAt: item.occurred_at?.toISOString() ?? null,
+  detectedAt: item.detected_at.toISOString(),
+  createdAt: item.created_at.toISOString(),
+  classified: Boolean(classification),
+  classificationCount: classification?.count ?? 0,
+  lastClassification: classification
+    ? {
+        classifiedAt: classification.classifiedAt,
+        classifiedBy: classification.classifiedBy,
+        rationale: classification.rationale,
+      }
+    : null,
+  currentAssignment: assignment
+    ? {
+        assignedAt: assignment.assigned_at.toISOString(),
+        assignee: {
+          id: assignment.user.user_id,
+          name: assignment.user.full_name,
+          email: assignment.user.email,
+        },
+      }
+    : null,
+});
+export const incidentManagementService = {
+  async listEvidence(incidentId: string, query: IncidentEvidenceQuery, actor: Actor) {
+    requireEvidencePermission(actor);
+    if (!(await incidentManagementRepository.findIncident(incidentId)))
+      throw new AppError(404, 'INCIDENT_NOT_FOUND', 'Incident not found');
+    const result = await incidentManagementRepository.listEvidence(incidentId, query);
+    return {
+      items: result.items.map(mapEvidence),
+      pagination: {
+        page: query.page,
+        limit: query.limit,
+        total: result.total,
+        totalPages: Math.max(1, Math.ceil(result.total / query.limit)),
+      },
+    };
+  },
+  async uploadEvidence(
+    incidentId: string,
+    input: UploadIncidentEvidenceInput,
+    file: { originalName: string; mimeType: string; buffer: Buffer },
+    actor: Actor,
+    context: { ipAddress: string | null; userAgent: string | null },
+  ) {
+    requireEvidencePermission(actor);
+    if (!file.buffer.byteLength)
+      throw new AppError(422, 'EMPTY_EVIDENCE_FILE', 'Evidence files cannot be empty');
+    if (file.originalName.length > 255)
+      throw new AppError(
+        422,
+        'EVIDENCE_NAME_TOO_LONG',
+        'Evidence file names may not exceed 255 characters',
+      );
+    const incident = await incidentManagementRepository.findIncident(incidentId);
+    if (!incident) throw new AppError(404, 'INCIDENT_NOT_FOUND', 'Incident not found');
+    if (incident.status === 'closed')
+      throw new AppError(
+        409,
+        'INCIDENT_CLOSED',
+        'Evidence cannot be attached to a closed incident',
+      );
+    const activeHandlerId = incident.incident_assignments[0]?.assignee_user_id;
+    const isCoordinator = actor.permissions.includes('incidents.assign');
+    if (!isCoordinator && activeHandlerId !== actor.userId)
+      throw new AppError(
+        403,
+        'NOT_INCIDENT_HANDLER',
+        'Only the active handler or an incident coordinator can attach evidence',
+      );
+    const storageKey = path.posix.join('incident-evidence', randomUUID());
+    const absolute = evidencePath(storageKey);
+    await mkdir(path.dirname(absolute), { recursive: true });
+    await writeFile(absolute, file.buffer, { flag: 'wx' });
+    try {
+      return mapEvidence(
+        await incidentManagementRepository.createEvidence({
+          ...input,
+          incidentId,
+          actorUserId: actor.userId,
+          originalName: file.originalName,
+          storageKey,
+          mimeType: file.mimeType,
+          sizeBytes: file.buffer.byteLength,
+          checksum: createHash('sha256').update(file.buffer).digest('hex'),
+          ...context,
+        }),
+      );
+    } catch (error: unknown) {
+      await rm(absolute, { force: true });
+      throw error;
+    }
+  },
+  async downloadEvidence(
+    evidenceId: string,
+    actor: Actor,
+    context: { ipAddress: string | null; userAgent: string | null },
+  ) {
+    requireEvidencePermission(actor);
+    const evidence = await incidentManagementRepository.findEvidence(evidenceId);
+    if (!evidence) throw new AppError(404, 'EVIDENCE_NOT_FOUND', 'Incident evidence was not found');
+    await incidentManagementRepository.recordEvidenceDownload(
+      evidenceId,
+      actor.userId,
+      evidence.files.file_id,
+      context,
+    );
+    return {
+      absolutePath: evidencePath(evidence.files.storage_key),
+      name: evidence.files.original_name,
+      mimeType: evidence.files.mime_type ?? 'application/octet-stream',
+    };
+  },
+  async removeEvidence(
+    evidenceId: string,
+    input: RemoveIncidentEvidenceInput,
+    actor: Actor,
+    context: { ipAddress: string | null; userAgent: string | null },
+  ) {
+    requireEvidencePermission(actor);
+    const evidence = await incidentManagementRepository.findEvidence(evidenceId);
+    if (!evidence) throw new AppError(404, 'EVIDENCE_NOT_FOUND', 'Incident evidence was not found');
+    if (evidence.incidents.status === 'closed')
+      throw new AppError(
+        409,
+        'INCIDENT_CLOSED',
+        'Evidence cannot be removed from a closed incident',
+      );
+    const activeHandlerId = evidence.incidents.incident_assignments[0]?.assignee_user_id;
+    const isCoordinator = actor.permissions.includes('incidents.assign');
+    if (!isCoordinator && activeHandlerId !== actor.userId)
+      throw new AppError(
+        403,
+        'NOT_INCIDENT_HANDLER',
+        'Only the active handler or an incident coordinator can remove evidence',
+      );
+    const absolute = evidencePath(evidence.files.storage_key);
+    const staged = `${absolute}.deleting-${randomUUID()}`;
+    try {
+      await rename(absolute, staged);
+    } catch {
+      throw new AppError(
+        409,
+        'EVIDENCE_FILE_MISSING',
+        'The evidence file is unavailable and was not removed',
+      );
+    }
+    try {
+      const result = await incidentManagementRepository.removeEvidence(
+        evidence,
+        input,
+        actor.userId,
+        isCoordinator,
+        context,
+      );
+      if (result.outcome === 'not_found')
+        throw new AppError(404, 'EVIDENCE_NOT_FOUND', 'Incident evidence was not found');
+      if (result.outcome === 'closed')
+        throw new AppError(
+          409,
+          'INCIDENT_CLOSED',
+          'Evidence cannot be removed from a closed incident',
+        );
+      if (result.outcome === 'not_handler')
+        throw new AppError(
+          403,
+          'NOT_INCIDENT_HANDLER',
+          'Only the active handler or an incident coordinator can remove evidence',
+        );
+    } catch (error: unknown) {
+      await rename(staged, absolute).catch(() => undefined);
+      throw error;
+    }
+    await rm(staged, { force: true }).catch((error: unknown) => {
+      logger.error(
+        { err: error, evidenceId },
+        'Removed evidence metadata but failed to purge the staged storage file',
+      );
+    });
+    return { id: evidenceId, removed: true as const };
+  },
+  async report(
+    input: ReportIncidentInput,
+    actor: Actor,
+    context: { ipAddress: string | null; userAgent: string | null },
+  ) {
+    requireReportPermission(actor);
+    const date = new Date().toISOString().slice(0, 10).replaceAll('-', '');
+    return mapIncident(
+      await incidentManagementRepository.createReport(
+        input,
+        actor.userId,
+        `INC-${date}-${randomUUID().slice(0, 8).toUpperCase()}`,
+        context,
+      ),
+    );
+  },
+  async listMine(query: MyIncidentsQuery, actor: Actor) {
+    requireReportPermission(actor);
+    const result = await incidentManagementRepository.listOwnReports(actor.userId, query);
+    return {
+      items: result.items.map((item) => mapIncident(item)),
+      pagination: {
+        page: query.page,
+        limit: query.limit,
+        total: result.total,
+        totalPages: Math.max(1, Math.ceil(result.total / query.limit)),
+      },
+    };
+  },
+  async getMine(incidentId: string, actor: Actor) {
+    requireReportPermission(actor);
+    const incident = await incidentManagementRepository.findOwnReport(incidentId, actor.userId);
+    if (!incident) throw new AppError(404, 'INCIDENT_NOT_FOUND', 'Incident report not found');
+    return mapIncident(incident);
+  },
+  async listForClassification(query: ClassificationQueueQuery, actor: Actor) {
+    requireClassifyPermission(actor);
+    const result = await incidentManagementRepository.listClassificationQueue(query);
+    const summaries = new Map<string, ClassificationSummary>();
+    const assignments = new Map<
+      string,
+      { assigned_at: Date; user: { user_id: string; full_name: string; email: string } }
+    >();
+    for (const assignment of result.assignments) {
+      const user = assignment.users_incident_assignments_assignee_user_idTousers;
+      if (user && !assignments.has(assignment.incident_id))
+        assignments.set(assignment.incident_id, { assigned_at: assignment.assigned_at, user });
+    }
+    for (const audit of result.classificationAudits) {
+      if (!audit.entity_id) continue;
+      const existing = summaries.get(audit.entity_id);
+      if (existing) {
+        existing.count += 1;
+        continue;
+      }
+      summaries.set(audit.entity_id, {
+        count: 1,
+        classifiedAt: audit.created_at.toISOString(),
+        classifiedBy: audit.users ? { id: audit.users.user_id, name: audit.users.full_name } : null,
+        rationale: jsonString(audit.after_data, 'rationale'),
+      });
+    }
+    return {
+      items: result.items.map((item) =>
+        mapIncident(item, summaries.get(item.incident_id), assignments.get(item.incident_id)),
+      ),
+      pagination: {
+        page: query.page,
+        limit: query.limit,
+        total: result.total,
+        totalPages: Math.max(1, Math.ceil(result.total / query.limit)),
+      },
+    };
+  },
+  async assignmentOptions(actor: Actor) {
+    requireAssignPermission(actor);
+    const users = await incidentManagementRepository.listAssignmentOptions();
+    return {
+      users: users.map((user) => ({ id: user.user_id, name: user.full_name, email: user.email })),
+    };
+  },
+  async assign(
+    incidentId: string,
+    input: AssignIncidentInput,
+    actor: Actor,
+    context: { ipAddress: string | null; userAgent: string | null },
+  ) {
+    requireAssignPermission(actor);
+    const result = await incidentManagementRepository.assignHandler(
+      incidentId,
+      input,
+      actor.userId,
+      context,
+    );
+    if (result.outcome === 'not_found')
+      throw new AppError(404, 'INCIDENT_NOT_FOUND', 'Incident not found');
+    if (result.outcome === 'terminal')
+      throw new AppError(
+        409,
+        'INCIDENT_TERMINAL',
+        'Resolved or closed incidents cannot be assigned',
+      );
+    if (result.outcome === 'invalid_assignee')
+      throw new AppError(422, 'INVALID_ASSIGNEE', 'Select an active security officer');
+    return mapIncident(result.incident, undefined, {
+      assigned_at: result.assignedAt,
+      user: result.assignee,
+    });
+  },
+  async updateProgress(
+    incidentId: string,
+    input: UpdateIncidentProgressInput,
+    actor: Actor,
+    context: { ipAddress: string | null; userAgent: string | null },
+  ) {
+    requireProgressPermission(actor);
+    const result = await incidentManagementRepository.updateProgress(
+      incidentId,
+      input,
+      actor.userId,
+      actor.permissions.includes('incidents.assign'),
+      context,
+    );
+    if (result.outcome === 'not_found')
+      throw new AppError(404, 'INCIDENT_NOT_FOUND', 'Incident not found');
+    if (result.outcome === 'unchanged')
+      throw new AppError(409, 'STATUS_UNCHANGED', 'Select a different progress status');
+    if (result.outcome === 'unassigned')
+      throw new AppError(409, 'INCIDENT_UNASSIGNED', 'Assign a handler before updating progress');
+    if (result.outcome === 'not_handler')
+      throw new AppError(
+        403,
+        'NOT_INCIDENT_HANDLER',
+        'Only the active handler or an incident coordinator can update progress',
+      );
+    if (result.outcome === 'invalid_transition')
+      throw new AppError(
+        409,
+        'INVALID_STATUS_TRANSITION',
+        'This incident status transition is not allowed',
+      );
+    return mapIncident(result.incident);
+  },
+  async classify(
+    incidentId: string,
+    input: ClassifyIncidentInput,
+    actor: Actor,
+    context: { ipAddress: string | null; userAgent: string | null },
+  ) {
+    requireClassifyPermission(actor);
+    const result = await incidentManagementRepository.classifySeverity(
+      incidentId,
+      input,
+      actor.userId,
+      context,
+    );
+    if (result.outcome === 'not_found')
+      throw new AppError(404, 'INCIDENT_NOT_FOUND', 'Incident not found');
+    if (result.outcome === 'closed')
+      throw new AppError(409, 'INCIDENT_CLOSED', 'Closed incidents cannot be reclassified');
+    return mapIncident(result.incident);
+  },
+} as const;
