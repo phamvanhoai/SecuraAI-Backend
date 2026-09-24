@@ -9,6 +9,85 @@ export const openApiSpec = {
   },
   servers: [{ url: env.API_PREFIX, description: 'Current server' }],
   paths: {
+    '/auth/login': {
+      post: {
+        tags: ['Authentication'],
+        summary: 'Authenticate a V2 account and create a refresh session',
+        security: [],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['email', 'password'],
+                additionalProperties: false,
+                properties: {
+                  email: { type: 'string', format: 'email' },
+                  password: { type: 'string', minLength: 1, maxLength: 128 },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'Access and refresh token pair' },
+          '401': { description: 'Invalid credentials or inactive account' },
+          '422': { description: 'Invalid request body' },
+          '429': { description: 'Too many attempts' },
+        },
+      },
+    },
+    '/auth/refresh': {
+      post: {
+        tags: ['Authentication'],
+        summary: 'Rotate a valid refresh session',
+        security: [],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['refreshToken'],
+                additionalProperties: false,
+                properties: { refreshToken: { type: 'string', minLength: 32, maxLength: 256 } },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'Rotated access and refresh token pair' },
+          '401': { description: 'Invalid or expired refresh token' },
+          '422': { description: 'Invalid request body' },
+          '429': { description: 'Too many attempts' },
+        },
+      },
+    },
+    '/auth/logout': {
+      post: {
+        tags: ['Authentication'],
+        summary: 'Revoke a refresh session',
+        security: [],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['refreshToken'],
+                additionalProperties: false,
+                properties: { refreshToken: { type: 'string', minLength: 32, maxLength: 256 } },
+              },
+            },
+          },
+        },
+        responses: {
+          '204': { description: 'Refresh session revoked or already absent' },
+          '422': { description: 'Invalid request body' },
+        },
+      },
+    },
     '/health/live': {
       get: {
         tags: ['Health'],
