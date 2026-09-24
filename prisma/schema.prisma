@@ -537,45 +537,6 @@ model log_sources {
   security_events    security_events[]
 }
 
-/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
-model login_history {
-  login_history_id String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  user_id          String?  @db.Uuid
-  email_attempted  String   @db.VarChar(255)
-  ip_address       String?  @db.Inet
-  user_agent       String?
-  success          Boolean
-  failure_reason   String?  @db.VarChar(255)
-  logged_in_at     DateTime @default(now()) @db.Timestamptz(6)
-  users            users?   @relation(fields: [user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
-
-  @@index([user_id, logged_in_at])
-}
-
-/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
-/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
-model mfa_methods {
-  mfa_method_id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  user_id                    String    @db.Uuid
-  method_type                String    @db.VarChar(20)
-  secret_encrypted           String?
-  is_enabled                 Boolean   @default(false)
-  verified_at                DateTime? @db.Timestamptz(6)
-  created_at                 DateTime  @default(now()) @db.Timestamptz(6)
-  updated_at                 DateTime  @default(now()) @db.Timestamptz(6)
-  login_challenge_token_hash String?   @unique @db.VarChar(64)
-  login_challenge_expires_at DateTime? @db.Timestamptz(6)
-  login_challenge_attempts   Int       @default(0) @db.SmallInt
-  login_challenge_ip         String?   @db.Inet
-  last_used_totp_step        BigInt?
-  recovery_code_hashes       Json?
-  users                      users     @relation(fields: [user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
-
-  @@index([login_challenge_expires_at])
-}
-
-/// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
-/// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
 model notification_deliveries {
   notification_delivery_id String        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   notification_id          String        @db.Uuid
@@ -910,26 +871,26 @@ model risk_treatment_actions {
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 /// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
 model risk_treatment_plans {
-  risk_treatment_plan_id                               String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  risk_assessment_id                                   String                   @db.Uuid
-  strategy                                             String                   @db.VarChar(30)
-  description                                          String
-  owner_user_id                                        String?                  @db.Uuid
-  target_date                                          DateTime?                @db.Date
-  status                                               String                   @default("draft") @db.VarChar(30)
-  submitted_at                                         DateTime?                @db.Timestamptz(6)
-  completed_at                                         DateTime?                @db.Timestamptz(6)
-  created_by_user_id                                   String?                  @db.Uuid
-  created_at                                           DateTime                 @default(now()) @db.Timestamptz(6)
-  updated_at                                           DateTime                 @default(now()) @db.Timestamptz(6)
-  cancelled_at                                         DateTime?                @db.Timestamptz(6)
-  cancelled_by_user_id                                 String?                  @db.Uuid
-  cancellation_reason                                  String?
-  risk_treatment_actions                               risk_treatment_actions[]
-  users_risk_treatment_plans_created_by_user_idTousers users?                   @relation("risk_treatment_plans_created_by_user_idTousers", fields: [created_by_user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
-  users_risk_treatment_plans_owner_user_idTousers      users?                   @relation("risk_treatment_plans_owner_user_idTousers", fields: [owner_user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
-  users_risk_treatment_plans_cancelled_by_user_idTousers users?                  @relation("risk_treatment_plans_cancelled_by_user_idTousers", fields: [cancelled_by_user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
-  risk_assessments                                     risk_assessments         @relation(fields: [risk_assessment_id], references: [risk_assessment_id], onDelete: NoAction, onUpdate: NoAction)
+  risk_treatment_plan_id                                 String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  risk_assessment_id                                     String                   @db.Uuid
+  strategy                                               String                   @db.VarChar(30)
+  description                                            String
+  owner_user_id                                          String?                  @db.Uuid
+  target_date                                            DateTime?                @db.Date
+  status                                                 String                   @default("draft") @db.VarChar(30)
+  submitted_at                                           DateTime?                @db.Timestamptz(6)
+  completed_at                                           DateTime?                @db.Timestamptz(6)
+  created_by_user_id                                     String?                  @db.Uuid
+  created_at                                             DateTime                 @default(now()) @db.Timestamptz(6)
+  updated_at                                             DateTime                 @default(now()) @db.Timestamptz(6)
+  cancelled_at                                           DateTime?                @db.Timestamptz(6)
+  cancelled_by_user_id                                   String?                  @db.Uuid
+  cancellation_reason                                    String?
+  risk_treatment_actions                                 risk_treatment_actions[]
+  users_risk_treatment_plans_created_by_user_idTousers   users?                   @relation("risk_treatment_plans_created_by_user_idTousers", fields: [created_by_user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+  users_risk_treatment_plans_owner_user_idTousers        users?                   @relation("risk_treatment_plans_owner_user_idTousers", fields: [owner_user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+  users_risk_treatment_plans_cancelled_by_user_idTousers users?                   @relation("risk_treatment_plans_cancelled_by_user_idTousers", fields: [cancelled_by_user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+  risk_assessments                                       risk_assessments         @relation(fields: [risk_assessment_id], references: [risk_assessment_id], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([risk_assessment_id])
   @@index([cancelled_by_user_id])
@@ -1176,84 +1137,81 @@ model user_roles {
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 /// This model has constraints using non-default deferring rules and requires additional setup for migrations. Visit https://pris.ly/d/constraint-deferring for more info.
 model users {
-  user_id                                                              String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  department_id                                                        String?                     @db.Uuid
-  email                                                                String                      @unique @db.VarChar(255)
-  password_hash                                                        String                      @db.VarChar(255)
-  full_name                                                            String                      @db.VarChar(150)
-  phone                                                                String?                     @db.VarChar(30)
-  employee_code                                                        String?                     @unique @db.VarChar(50)
-  avatar_url                                                           String?
-  status                                                               String                      @default("active") @db.VarChar(20)
-  must_change_password                                                 Boolean                     @default(false)
-  email_verified_at                                                    DateTime?                   @db.Timestamptz(6)
-  last_login_at                                                        DateTime?                   @db.Timestamptz(6)
-  locked_at                                                            DateTime?                   @db.Timestamptz(6)
-  disabled_at                                                          DateTime?                   @db.Timestamptz(6)
-  created_by_user_id                                                   String?                     @db.Uuid
-  created_at                                                           DateTime                    @default(now()) @db.Timestamptz(6)
-  updated_at                                                           DateTime                    @default(now()) @db.Timestamptz(6)
-  deleted_at                                                           DateTime?                   @db.Timestamptz(6)
-  ai_alerts                                                            ai_alerts[]
-  ai_feedback                                                          ai_feedback[]
-  approval_actions                                                     approval_actions[]
-  approval_delegations_approval_delegations_delegate_user_idTousers    approval_delegations[]      @relation("approval_delegations_delegate_user_idTousers")
-  approval_delegations_approval_delegations_delegator_user_idTousers   approval_delegations[]      @relation("approval_delegations_delegator_user_idTousers")
-  approval_requests                                                    approval_requests[]
-  asset_alert_thresholds                                               asset_alert_thresholds[]
-  asset_change_history                                                 asset_change_history[]
-  assets_assets_created_by_user_idTousers                              assets[]                    @relation("assets_created_by_user_idTousers")
-  assets_assets_owner_user_idTousers                                   assets[]                    @relation("assets_owner_user_idTousers")
-  audit_logs                                                           audit_logs[]
-  auth_sessions                                                        auth_sessions[]
-  business_processes                                                   business_processes[]
-  compliance_evidence                                                  compliance_evidence[]
-  control_assessments                                                  control_assessments[]
-  dashboard_preferences                                                dashboard_preferences?
-  files                                                                files[]
-  import_jobs                                                          import_jobs[]
-  incident_alert_links                                                 incident_alert_links[]
-  incident_assignments_incident_assignments_assigned_by_user_idTousers incident_assignments[]      @relation("incident_assignments_assigned_by_user_idTousers")
-  incident_assignments_incident_assignments_assignee_user_idTousers    incident_assignments[]      @relation("incident_assignments_assignee_user_idTousers")
-  incident_evidence                                                    incident_evidence[]
-  incident_risk_links                                                  incident_risk_links[]
-  incident_updates                                                     incident_updates[]
-  incidents                                                            incidents[]
-  integrations                                                         integrations[]
-  log_sources                                                          log_sources[]
-  login_history                                                        login_history[]
-  mfa_methods                                                          mfa_methods[]
-  notification_preferences                                             notification_preferences[]
-  notifications                                                        notifications[]
-  password_reset_tokens                                                password_reset_tokens[]
-  policies                                                             policies[]
-  policy_acknowledgements                                              policy_acknowledgements[]
-  policy_departments                                                   policy_departments[]
-  policy_versions_policy_versions_created_by_user_idTousers            policy_versions[]           @relation("policy_versions_created_by_user_idTousers")
-  policy_versions_policy_versions_published_by_user_idTousers          policy_versions[]           @relation("policy_versions_published_by_user_idTousers")
-  post_incident_reports                                                post_incident_reports[]
-  quiz_attempts                                                        quiz_attempts[]
-  report_runs                                                          report_runs[]
-  risk_assessments                                                     risk_assessments[]
-  risk_treatment_actions                                               risk_treatment_actions[]
-  risk_treatment_plans_risk_treatment_plans_created_by_user_idTousers  risk_treatment_plans[]      @relation("risk_treatment_plans_created_by_user_idTousers")
-  risk_treatment_plans_risk_treatment_plans_owner_user_idTousers       risk_treatment_plans[]      @relation("risk_treatment_plans_owner_user_idTousers")
+  user_id                                                               String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  department_id                                                         String?                     @db.Uuid
+  email                                                                 String                      @unique @db.VarChar(255)
+  password_hash                                                         String                      @db.VarChar(255)
+  full_name                                                             String                      @db.VarChar(150)
+  phone                                                                 String?                     @db.VarChar(30)
+  employee_code                                                         String?                     @unique @db.VarChar(50)
+  avatar_url                                                            String?
+  status                                                                String                      @default("active") @db.VarChar(20)
+  must_change_password                                                  Boolean                     @default(false)
+  email_verified_at                                                     DateTime?                   @db.Timestamptz(6)
+  last_login_at                                                         DateTime?                   @db.Timestamptz(6)
+  disabled_at                                                           DateTime?                   @db.Timestamptz(6)
+  created_by_user_id                                                    String?                     @db.Uuid
+  created_at                                                            DateTime                    @default(now()) @db.Timestamptz(6)
+  updated_at                                                            DateTime                    @default(now()) @db.Timestamptz(6)
+  deleted_at                                                            DateTime?                   @db.Timestamptz(6)
+  ai_alerts                                                             ai_alerts[]
+  ai_feedback                                                           ai_feedback[]
+  approval_actions                                                      approval_actions[]
+  approval_delegations_approval_delegations_delegate_user_idTousers     approval_delegations[]      @relation("approval_delegations_delegate_user_idTousers")
+  approval_delegations_approval_delegations_delegator_user_idTousers    approval_delegations[]      @relation("approval_delegations_delegator_user_idTousers")
+  approval_requests                                                     approval_requests[]
+  asset_alert_thresholds                                                asset_alert_thresholds[]
+  asset_change_history                                                  asset_change_history[]
+  assets_assets_created_by_user_idTousers                               assets[]                    @relation("assets_created_by_user_idTousers")
+  assets_assets_owner_user_idTousers                                    assets[]                    @relation("assets_owner_user_idTousers")
+  audit_logs                                                            audit_logs[]
+  auth_sessions                                                         auth_sessions[]
+  business_processes                                                    business_processes[]
+  compliance_evidence                                                   compliance_evidence[]
+  control_assessments                                                   control_assessments[]
+  dashboard_preferences                                                 dashboard_preferences?
+  files                                                                 files[]
+  import_jobs                                                           import_jobs[]
+  incident_alert_links                                                  incident_alert_links[]
+  incident_assignments_incident_assignments_assigned_by_user_idTousers  incident_assignments[]      @relation("incident_assignments_assigned_by_user_idTousers")
+  incident_assignments_incident_assignments_assignee_user_idTousers     incident_assignments[]      @relation("incident_assignments_assignee_user_idTousers")
+  incident_evidence                                                     incident_evidence[]
+  incident_risk_links                                                   incident_risk_links[]
+  incident_updates                                                      incident_updates[]
+  incidents                                                             incidents[]
+  integrations                                                          integrations[]
+  log_sources                                                           log_sources[]
+  notification_preferences                                              notification_preferences[]
+  notifications                                                         notifications[]
+  password_reset_tokens                                                 password_reset_tokens[]
+  policies                                                              policies[]
+  policy_acknowledgements                                               policy_acknowledgements[]
+  policy_departments                                                    policy_departments[]
+  policy_versions_policy_versions_created_by_user_idTousers             policy_versions[]           @relation("policy_versions_created_by_user_idTousers")
+  policy_versions_policy_versions_published_by_user_idTousers           policy_versions[]           @relation("policy_versions_published_by_user_idTousers")
+  post_incident_reports                                                 post_incident_reports[]
+  quiz_attempts                                                         quiz_attempts[]
+  report_runs                                                           report_runs[]
+  risk_assessments                                                      risk_assessments[]
+  risk_treatment_actions                                                risk_treatment_actions[]
+  risk_treatment_plans_risk_treatment_plans_created_by_user_idTousers   risk_treatment_plans[]      @relation("risk_treatment_plans_created_by_user_idTousers")
+  risk_treatment_plans_risk_treatment_plans_owner_user_idTousers        risk_treatment_plans[]      @relation("risk_treatment_plans_owner_user_idTousers")
   risk_treatment_plans_risk_treatment_plans_cancelled_by_user_idTousers risk_treatment_plans[]      @relation("risk_treatment_plans_cancelled_by_user_idTousers")
-  scheduled_reports                                                    scheduled_reports[]
-  system_settings                                                      system_settings[]
-  team_members                                                         team_members[]
-  teams                                                                teams[]
-  training_campaign_targets                                            training_campaign_targets[]
-  training_campaigns                                                   training_campaigns[]
-  training_certificates                                                training_certificates[]
-  training_courses                                                     training_courses[]
-  training_enrollments                                                 training_enrollments[]
-  user_roles_user_roles_assigned_by_user_idTousers                     user_roles[]                @relation("user_roles_assigned_by_user_idTousers")
-  user_roles_user_roles_user_idTousers                                 user_roles[]                @relation("user_roles_user_idTousers")
-  users                                                                users?                      @relation("usersTousers", fields: [created_by_user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
-  other_users                                                          users[]                     @relation("usersTousers")
-  departments                                                          departments?                @relation(fields: [department_id], references: [department_id], onDelete: NoAction, onUpdate: NoAction)
-  workflow_definitions                                                 workflow_definitions[]
+  scheduled_reports                                                     scheduled_reports[]
+  system_settings                                                       system_settings[]
+  team_members                                                          team_members[]
+  teams                                                                 teams[]
+  training_campaign_targets                                             training_campaign_targets[]
+  training_campaigns                                                    training_campaigns[]
+  training_certificates                                                 training_certificates[]
+  training_courses                                                      training_courses[]
+  training_enrollments                                                  training_enrollments[]
+  user_roles_user_roles_assigned_by_user_idTousers                      user_roles[]                @relation("user_roles_assigned_by_user_idTousers")
+  user_roles_user_roles_user_idTousers                                  user_roles[]                @relation("user_roles_user_idTousers")
+  users                                                                 users?                      @relation("usersTousers", fields: [created_by_user_id], references: [user_id], onDelete: NoAction, onUpdate: NoAction)
+  other_users                                                           users[]                     @relation("usersTousers")
+  departments                                                           departments?                @relation(fields: [department_id], references: [department_id], onDelete: NoAction, onUpdate: NoAction)
+  workflow_definitions                                                  workflow_definitions[]
 
   @@index([department_id])
 }

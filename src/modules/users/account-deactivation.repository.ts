@@ -23,7 +23,7 @@ export const accountDeactivationRepository = {
   transaction<T>(userId: string, operation: (database: Prisma.TransactionClient) => Promise<T>) {
     return prisma.$transaction(async (database) => {
       // Share the lock namespace with lock/unlock to protect the last active admin.
-      await database.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended('users:account-lock', 0))::text`;
+      await database.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended('users:account-availability', 0))::text`;
       await database.$queryRaw`SELECT user_id FROM users WHERE user_id = ${userId}::uuid FOR UPDATE`;
       return operation(database);
     }, { isolationLevel: Prisma.TransactionIsolationLevel.Serializable });
@@ -66,16 +66,6 @@ export const accountDeactivationRepository = {
     await database.auth_sessions.updateMany({
       where: { user_id: input.userId, revoked_at: null },
       data: { revoked_at: now },
-    });
-    await database.mfa_methods.updateMany({
-      where: { user_id: input.userId },
-      data: {
-        login_challenge_token_hash: null,
-        login_challenge_expires_at: null,
-        login_challenge_attempts: 0,
-        login_challenge_ip: null,
-        updated_at: now,
-      },
     });
     await database.audit_logs.create({
       data: {

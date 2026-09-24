@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-export const userStatuses = ['active', 'inactive', 'locked', 'disabled'] as const;
+export const userStatuses = ['active', 'inactive', 'disabled'] as const;
 
 export const listUsersQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),

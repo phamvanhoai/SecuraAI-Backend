@@ -4,6 +4,6 @@ import { vi } from 'vitest';
 // keeping middleware and account-access business rules real.
 vi.mock('../src/modules/auth/account-access.repository.js', () => ({
   accountAccessRepository: {
-    findById: vi.fn(async () => ({ status: 'active', deleted_at: null, locked_at: null })),
+    findById: vi.fn(async () => ({ status: 'active', deleted_at: null })),
   },
 }));

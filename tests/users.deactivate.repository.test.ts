@@ -5,7 +5,6 @@ const mocks = vi.hoisted(() => ({
   queryRaw: vi.fn(),
   userUpdate: vi.fn(),
   sessionsUpdate: vi.fn(),
-  mfaUpdate: vi.fn(),
   auditCreate: vi.fn(),
 }));
 vi.mock('../src/database/prisma.js', () => ({ prisma: { $transaction: mocks.transaction } }));
@@ -16,7 +15,6 @@ const database = {
   $queryRaw: mocks.queryRaw,
   users: { update: mocks.userUpdate },
   auth_sessions: { updateMany: mocks.sessionsUpdate },
-  mfa_methods: { updateMany: mocks.mfaUpdate },
   audit_logs: { create: mocks.auditCreate },
 };
 
@@ -47,7 +45,6 @@ describe('account deactivation transaction', () => {
     expect(mocks.sessionsUpdate).toHaveBeenCalledWith(expect.objectContaining({
       where: { user_id: 'target-id', revoked_at: null },
     }));
-    expect(mocks.mfaUpdate).toHaveBeenCalledOnce();
     expect(mocks.auditCreate).toHaveBeenCalledWith(expect.objectContaining({
       data: expect.objectContaining({ action: action === 'deactivate' ? 'user.deactivated' : 'user.removed' }),
     }));

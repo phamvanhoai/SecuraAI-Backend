@@ -30,24 +30,6 @@ const getTransporter = (): Transporter => {
 };
 
 export const authEmailService = {
-  async sendMfaRecoveryDecisionEmail(input: {
-    to: string;
-    fullName: string;
-    decision: 'approved' | 'rejected';
-  }): Promise<void> {
-    const approved = input.decision === 'approved';
-    const outcome = approved ? 'approved' : 'rejected';
-    const nextStep = approved
-      ? 'You can now sign in with your email and password, then configure MFA again.'
-      : 'Your MFA remains enabled. Contact your administrator if you need more information.';
-    await getTransporter().sendMail({
-      from: env.SMTP_USER,
-      to: input.to,
-      subject: `${env.APP_NAME} MFA recovery request ${outcome}`,
-      text: `Hello ${input.fullName},\n\nYour MFA recovery request was ${outcome}. ${nextStep}`,
-    });
-  },
-
   async sendInitializedAccountEmail(input: InitializedAccountEmail): Promise<void> {
     await getTransporter().sendMail({
       from: env.SMTP_USER,

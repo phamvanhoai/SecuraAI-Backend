@@ -29,7 +29,7 @@ describe('department report repository', () => {
 
     const query = (mocks.query.mock.calls[0]?.[0] as TemplateStringsArray).join('?');
     expect(query).toContain('active_users');
-    expect(query).toContain("u.status IN ('active', 'locked')");
+    expect(query).toContain("u.status = 'active'");
     expect(query).toContain('u.disabled_at IS NULL');
     expect(query).toContain('u.deleted_at IS NULL');
     expect(query).toContain('"assignedEmployees"');

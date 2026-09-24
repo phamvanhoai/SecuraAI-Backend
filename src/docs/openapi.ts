@@ -1,11 +1,9 @@
 import swaggerJsdoc from 'swagger-jsdoc';
-import { loginHistoryPaths } from './login-history.openapi.js';
 import { departmentTrainingReportPaths } from './department-training-report.openapi.js';
 import { env } from '../config/env.js';
 import { trainingReminderPaths } from './training-reminders.openapi.js';
 import { complianceReminderPaths } from './compliance-reminders.openapi.js';
 import { incidentPaths } from './incidents.openapi.js';
-import { accountLockPaths } from './account-lock.openapi.js';
 
 export const openApiSpec = swaggerJsdoc({
   definition: {
@@ -232,7 +230,7 @@ export const openApiSpec = swaggerJsdoc({
           required: ['id', 'status', 'changed', 'updatedAt'],
           properties: {
             id: { type: 'string', format: 'uuid' },
-            status: { type: 'string', enum: ['active', 'inactive', 'locked', 'disabled'] },
+            status: { type: 'string', enum: ['active', 'inactive', 'disabled'] },
             disabledAt: { type: 'string', format: 'date-time', nullable: true },
             deletedAt: { type: 'string', format: 'date-time', nullable: true },
             updatedAt: { type: 'string', format: 'date-time' },
@@ -320,65 +318,6 @@ export const openApiSpec = swaggerJsdoc({
                 'At least 8 characters, one uppercase letter, and one special character.',
             },
             confirmPassword: { type: 'string', format: 'password', minLength: 8, maxLength: 128 },
-          },
-        },
-        SetupMfaRequest: {
-          type: 'object',
-          required: ['currentPassword'],
-          additionalProperties: false,
-          properties: {
-            currentPassword: { type: 'string', format: 'password', minLength: 1 },
-          },
-        },
-        VerifyMfaRequest: {
-          type: 'object',
-          required: ['code'],
-          additionalProperties: false,
-          properties: {
-            code: { type: 'string', pattern: '^\\d{6}$', example: '123456' },
-          },
-        },
-        VerifyMfaChallengeRequest: {
-          type: 'object',
-          required: ['challengeToken', 'code'],
-          additionalProperties: false,
-          properties: {
-            challengeToken: { type: 'string', minLength: 32, maxLength: 256 },
-            code: {
-              type: 'string',
-              pattern: '^(?:\\d{6}|[A-Za-z0-9]{4}(?:-[A-Za-z0-9]{4}){2})$',
-              description: 'A current authenticator code or one unused recovery code.',
-            },
-          },
-        },
-        DisableMfaRequest: {
-          type: 'object',
-          required: ['currentPassword', 'code'],
-          additionalProperties: false,
-          properties: {
-            currentPassword: { type: 'string', format: 'password' },
-            code: { type: 'string', pattern: '^\\d{6}$' },
-          },
-        },
-        CreateMfaRecoveryRequest: {
-          type: 'object',
-          required: ['challengeToken'],
-          additionalProperties: false,
-          properties: { challengeToken: { type: 'string', minLength: 32, maxLength: 256 } },
-        },
-        DecideMfaRecoveryRequest: {
-          type: 'object',
-          required: ['reason'],
-          additionalProperties: false,
-          properties: { reason: { type: 'string', minLength: 10, maxLength: 2000 } },
-        },
-        MfaChallenge: {
-          type: 'object',
-          required: ['mfaRequired', 'challengeToken', 'expiresIn'],
-          properties: {
-            mfaRequired: { type: 'boolean', enum: [true] },
-            challengeToken: { type: 'string' },
-            expiresIn: { type: 'integer', example: 300, description: 'Lifetime in seconds' },
           },
         },
         TokenPair: {
@@ -752,7 +691,6 @@ export const openApiSpec = swaggerJsdoc({
             'fullName',
             'status',
             'mustChangePassword',
-            'mfaEnabled',
             'roles',
             'createdAt',
             'updatedAt',
@@ -766,14 +704,12 @@ export const openApiSpec = swaggerJsdoc({
             avatarUrl: { type: 'string', nullable: true },
             status: {
               type: 'string',
-              enum: ['active', 'inactive', 'locked', 'disabled'],
+              enum: ['active', 'inactive', 'disabled'],
             },
             mustChangePassword: { type: 'boolean' },
             emailVerifiedAt: { type: 'string', format: 'date-time', nullable: true },
             lastLoginAt: { type: 'string', format: 'date-time', nullable: true },
-            lastLockedAt: { type: 'string', format: 'date-time', nullable: true },
             disabledAt: { type: 'string', format: 'date-time', nullable: true },
-            mfaEnabled: { type: 'boolean' },
             department: {
               type: 'object',
               nullable: true,
@@ -810,7 +746,6 @@ export const openApiSpec = swaggerJsdoc({
             'fullName',
             'status',
             'mustChangePassword',
-            'mfaEnabled',
             'roles',
             'permissions',
           ],
@@ -820,7 +755,6 @@ export const openApiSpec = swaggerJsdoc({
             fullName: { type: 'string' },
             status: { type: 'string' },
             mustChangePassword: { type: 'boolean' },
-            mfaEnabled: { type: 'boolean' },
             roles: {
               type: 'array',
               items: {
@@ -1583,12 +1517,10 @@ export const openApiSpec = swaggerJsdoc({
       },
     },
     paths: {
-      ...loginHistoryPaths,
       ...trainingReminderPaths,
       ...departmentTrainingReportPaths,
       ...complianceReminderPaths,
       ...incidentPaths,
-      ...accountLockPaths,
       '/training/enrollments/{enrollmentId}/withdraw': {
         post: {
           tags: ['Training Awareness'],
@@ -2478,19 +2410,14 @@ export const openApiSpec = swaggerJsdoc({
           },
           responses: {
             '200': {
-              description: 'Authenticated, or MFA challenge required before tokens are issued',
+              description: 'Authenticated and access/refresh tokens issued',
               content: {
                 'application/json': {
                   schema: {
                     type: 'object',
                     properties: {
                       success: { type: 'boolean' },
-                      data: {
-                        oneOf: [
-                          { $ref: '#/components/schemas/TokenPair' },
-                          { $ref: '#/components/schemas/MfaChallenge' },
-                        ],
-                      },
+                      data: { $ref: '#/components/schemas/TokenPair' },
                     },
                   },
                 },
@@ -2558,216 +2485,6 @@ export const openApiSpec = swaggerJsdoc({
             '401': { description: 'Unauthorized' },
             '403': { description: 'Account is inactive' },
             '422': { description: 'Invalid password policy or confirmation' },
-          },
-        },
-      },
-      '/auth/mfa/setup': {
-        post: {
-          tags: ['Authentication'],
-          summary: 'Start authenticator-app MFA setup',
-          security: [{ bearerAuth: [] }],
-          requestBody: {
-            required: true,
-            content: {
-              'application/json': { schema: { $ref: '#/components/schemas/SetupMfaRequest' } },
-            },
-          },
-          responses: {
-            '200': {
-              description:
-                'Authenticator URI, manual key, one-time QR code, and safety warning returned',
-            },
-            '400': { description: 'Current password is incorrect' },
-            '401': { description: 'Unauthorized' },
-            '409': { description: 'MFA is already enabled' },
-          },
-        },
-      },
-      '/auth/mfa/verify': {
-        post: {
-          tags: ['Authentication'],
-          summary: 'Verify an authenticator code and enable MFA',
-          security: [{ bearerAuth: [] }],
-          requestBody: {
-            required: true,
-            content: {
-              'application/json': { schema: { $ref: '#/components/schemas/VerifyMfaRequest' } },
-            },
-          },
-          responses: {
-            '200': { description: 'MFA enabled and recovery codes returned once' },
-            '400': { description: 'MFA code is invalid or expired' },
-            '401': { description: 'Unauthorized' },
-            '404': { description: 'MFA setup is required' },
-            '429': { description: 'Too many attempts' },
-          },
-        },
-      },
-      '/auth/mfa/challenge/verify': {
-        post: {
-          tags: ['Authentication'],
-          summary: 'Complete sign-in using an MFA login challenge',
-          requestBody: {
-            required: true,
-            content: {
-              'application/json': {
-                schema: { $ref: '#/components/schemas/VerifyMfaChallengeRequest' },
-              },
-            },
-          },
-          responses: {
-            '200': {
-              description: 'Challenge consumed and access/refresh tokens issued',
-              content: {
-                'application/json': {
-                  schema: {
-                    type: 'object',
-                    properties: {
-                      success: { type: 'boolean' },
-                      data: { $ref: '#/components/schemas/TokenPair' },
-                    },
-                  },
-                },
-              },
-            },
-            '401': { description: 'Invalid, expired, used, or exhausted challenge/code' },
-            '403': { description: 'Account is inactive' },
-            '422': { description: 'Invalid challenge or code format' },
-            '429': { description: 'Too many attempts from this IP' },
-          },
-        },
-      },
-      '/auth/mfa/disable': {
-        post: {
-          tags: ['Authentication'],
-          summary: 'Disable authenticator MFA and revoke existing sessions',
-          security: [{ bearerAuth: [] }],
-          requestBody: {
-            required: true,
-            content: {
-              'application/json': { schema: { $ref: '#/components/schemas/DisableMfaRequest' } },
-            },
-          },
-          responses: {
-            '200': { description: 'MFA disabled and existing sessions revoked' },
-            '400': { description: 'Current password or authenticator code is invalid' },
-            '401': { description: 'Unauthorized' },
-            '403': { description: 'Account is inactive' },
-            '409': { description: 'MFA is not enabled' },
-            '422': { description: 'Invalid request body' },
-            '429': { description: 'Too many attempts' },
-          },
-        },
-      },
-      '/auth/mfa/recovery-requests': {
-        post: {
-          tags: ['Authentication'],
-          summary: 'Request administrator-assisted MFA recovery from a current login challenge',
-          requestBody: {
-            required: true,
-            content: {
-              'application/json': {
-                schema: { $ref: '#/components/schemas/CreateMfaRecoveryRequest' },
-              },
-            },
-          },
-          responses: {
-            '202': { description: 'Recovery request created or existing pending request returned' },
-            '401': { description: 'Challenge is invalid or expired' },
-            '422': { description: 'Invalid request body' },
-            '429': { description: 'Too many requests from this IP' },
-            '503': { description: 'Recovery workflow is unavailable' },
-          },
-        },
-      },
-      '/admin/mfa-recovery-requests': {
-        get: {
-          tags: ['MFA Recovery Administration'],
-          summary: 'List MFA recovery requests',
-          security: [{ bearerAuth: [] }],
-          parameters: [
-            { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
-            {
-              name: 'limit',
-              in: 'query',
-              schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
-            },
-            {
-              name: 'status',
-              in: 'query',
-              schema: { type: 'string', enum: ['pending', 'approved', 'rejected'] },
-            },
-          ],
-          responses: {
-            '200': {
-              description: 'Paginated recovery requests with user and latest decision details',
-            },
-            '401': { description: 'Unauthorized' },
-            '403': { description: 'Missing mfa-recovery.manage permission' },
-          },
-        },
-      },
-      '/admin/mfa-recovery-requests/{requestId}/approve': {
-        post: {
-          tags: ['MFA Recovery Administration'],
-          summary: 'Approve an MFA recovery request',
-          security: [{ bearerAuth: [] }],
-          parameters: [
-            {
-              name: 'requestId',
-              in: 'path',
-              required: true,
-              schema: { type: 'string', format: 'uuid' },
-            },
-          ],
-          requestBody: {
-            required: true,
-            content: {
-              'application/json': {
-                schema: { $ref: '#/components/schemas/DecideMfaRecoveryRequest' },
-              },
-            },
-          },
-          responses: {
-            '200': {
-              description: 'MFA cleared, sessions revoked, action audited, and user notified',
-            },
-            '401': { description: 'Unauthorized' },
-            '403': { description: 'Missing mfa-recovery.manage permission' },
-            '404': { description: 'Request not found' },
-            '409': { description: 'Request was already decided' },
-            '422': { description: 'Invalid request ID or reason' },
-          },
-        },
-      },
-      '/admin/mfa-recovery-requests/{requestId}/reject': {
-        post: {
-          tags: ['MFA Recovery Administration'],
-          summary: 'Reject an MFA recovery request',
-          security: [{ bearerAuth: [] }],
-          parameters: [
-            {
-              name: 'requestId',
-              in: 'path',
-              required: true,
-              schema: { type: 'string', format: 'uuid' },
-            },
-          ],
-          requestBody: {
-            required: true,
-            content: {
-              'application/json': {
-                schema: { $ref: '#/components/schemas/DecideMfaRecoveryRequest' },
-              },
-            },
-          },
-          responses: {
-            '200': { description: 'Request rejected, action audited, and user notified' },
-            '401': { description: 'Unauthorized' },
-            '403': { description: 'Missing mfa-recovery.manage permission' },
-            '404': { description: 'Request not found' },
-            '409': { description: 'Request was already decided' },
-            '422': { description: 'Invalid request ID or reason' },
           },
         },
       },
@@ -2888,7 +2605,7 @@ export const openApiSpec = swaggerJsdoc({
             {
               name: 'status',
               in: 'query',
-              schema: { type: 'string', enum: ['active', 'inactive', 'locked', 'disabled'] },
+              schema: { type: 'string', enum: ['active', 'inactive', 'disabled'] },
             },
           ],
           responses: {
@@ -2926,7 +2643,7 @@ export const openApiSpec = swaggerJsdoc({
           tags: ['Users'],
           summary: 'View a user account',
           description:
-            'Returns safe account, department, role, MFA, and activity metadata. Requires users.read.',
+            'Returns safe account, department, role, and activity metadata. Requires users.read.',
           security: [{ bearerAuth: [] }],
           parameters: [
             {
@@ -2962,7 +2679,7 @@ export const openApiSpec = swaggerJsdoc({
           tags: ['Users'],
           summary: 'Update a user account',
           description:
-            'Updates editable profile and department fields only. Role changes require users.assign-role. Email, credentials, MFA, and account lock status are not changed. Requires users.update.',
+            'Updates editable profile and department fields only. Role changes require users.assign-role. Email, credentials, and account lock status are not changed. Requires users.update.',
           security: [{ bearerAuth: [] }],
           parameters: [
             {
@@ -3004,7 +2721,7 @@ export const openApiSpec = swaggerJsdoc({
         delete: {
           tags: ['Users'],
           summary: 'Remove a user account (soft delete)',
-          description: 'Requires ADMIN and users.remove. Revokes sessions, cancels pending MFA login challenges, and preserves referenced records. Requires an audit reason.',
+          description: 'Requires ADMIN and users.remove. Revokes sessions and preserves referenced records. Requires an audit reason.',
           security: [{ bearerAuth: [] }],
           parameters: [{ name: 'userId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
           requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/AccountRemovalRequest' } } } },
@@ -3022,7 +2739,7 @@ export const openApiSpec = swaggerJsdoc({
         post: {
           tags: ['Users'],
           summary: 'Deactivate a user account',
-          description: 'Requires ADMIN and users.deactivate. Sets status to disabled, revokes sessions and pending MFA login challenges, and records the reason. Repeated deactivation reports changed=false.',
+          description: 'Requires ADMIN and users.deactivate. Sets status to disabled, revokes sessions, and records the reason. Repeated deactivation reports changed=false.',
           security: [{ bearerAuth: [] }],
           parameters: [{ name: 'userId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
           requestBody: { required: true, content: { 'application/json': { schema: { $ref: '#/components/schemas/AccountRemovalRequest' } } } },

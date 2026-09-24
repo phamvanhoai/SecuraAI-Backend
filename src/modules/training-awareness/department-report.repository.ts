@@ -19,7 +19,7 @@ export const departmentReportRepository = {
       WITH active_users AS (
         SELECT u.user_id, u.department_id
         FROM users u
-        WHERE u.status IN ('active', 'locked')
+        WHERE u.status = 'active'
           AND u.disabled_at IS NULL
           AND u.deleted_at IS NULL
       ), enrollments AS (

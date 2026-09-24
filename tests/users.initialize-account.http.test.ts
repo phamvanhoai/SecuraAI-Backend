@@ -41,7 +41,7 @@ describe('user account initialization HTTP API', () => {
     mocks.list.mockResolvedValue({
       items: [],
       total: 0,
-      summary: { active: 0, inactive: 0, locked: 0, disabled: 0 },
+      summary: { active: 0, inactive: 0, disabled: 0 },
     });
     mocks.listCreateOptions.mockResolvedValue({
       departments: [
@@ -115,7 +115,7 @@ describe('user account initialization HTTP API', () => {
         },
       ],
       total: 1,
-      summary: { active: 1, inactive: 0, locked: 0, disabled: 0 },
+      summary: { active: 1, inactive: 0, disabled: 0 },
     });
 
     const response = await request(createApp())

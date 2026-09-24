@@ -39,12 +39,10 @@ describe('view user HTTP API', () => {
       must_change_password: false,
       email_verified_at: null,
       last_login_at: null,
-      locked_at: null,
       disabled_at: null,
       created_at: new Date('2026-08-01T00:00:00.000Z'),
       updated_at: new Date('2026-09-19T01:00:00.000Z'),
       departments: null,
-      mfa_methods: [],
       user_roles_user_roles_user_idTousers: [],
     });
   });
@@ -73,7 +71,7 @@ describe('view user HTTP API', () => {
     expect(response.status).toBe(200);
     expect(response.body).toMatchObject({
       success: true,
-      data: { id: userId, email: 'analyst@example.com', mfaEnabled: false },
+      data: { id: userId, email: 'analyst@example.com' },
     });
   });
 

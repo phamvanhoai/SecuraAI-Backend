@@ -993,21 +993,18 @@ async function main(): Promise<void> {
         ['roles.delete', 'delete', 'Delete custom roles'],
         ['users.create', 'create', 'Initialize user accounts'],
         ['users.read', 'read', 'View user accounts'],
-        ['users.lock', 'lock', 'Lock active user accounts'],
-        ['users.unlock', 'unlock', 'Unlock locked user accounts'],
-        ['mfa-recovery.manage', 'manage-mfa-recovery', 'Review and decide MFA recovery requests'],
       ] as const
     ).map(([code, action, description]) =>
       prisma.permissions.upsert({
         where: { code },
         update: {
-          module: code === 'users.lock' || code === 'users.unlock' ? 'users' : 'access-control',
+          module: 'access-control',
           action,
           description,
         },
         create: {
           code,
-          module: code === 'users.lock' || code === 'users.unlock' ? 'users' : 'access-control',
+          module: 'access-control',
           action,
           description,
         },
@@ -1084,28 +1081,6 @@ async function main(): Promise<void> {
     update: {},
     create: { user_id: user.user_id, role_id: role.role_id },
   });
-  const loginHistoryPermission = await prisma.permissions.upsert({
-    where: { code: 'login-history.read' },
-    update: { module: 'audit-settings', action: 'read', description: 'View login history' },
-    create: {
-      code: 'login-history.read',
-      module: 'audit-settings',
-      action: 'read',
-      description: 'View login history',
-    },
-  });
-  for (const historyRole of [role, securityOfficerRole]) {
-    await prisma.role_permissions.upsert({
-      where: {
-        role_id_permission_id: {
-          role_id: historyRole.role_id,
-          permission_id: loginHistoryPermission.permission_id,
-        },
-      },
-      update: {},
-      create: { role_id: historyRole.role_id, permission_id: loginHistoryPermission.permission_id },
-    });
-  }
   await prisma.$transaction([
     prisma.role_permissions.deleteMany({
       where: {

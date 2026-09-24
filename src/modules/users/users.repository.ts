@@ -29,7 +29,6 @@ const userDetailSelect = {
   must_change_password: true,
   email_verified_at: true,
   last_login_at: true,
-  locked_at: true,
   disabled_at: true,
   created_at: true,
   updated_at: true,
@@ -39,11 +38,6 @@ const userDetailSelect = {
       assigned_at: true,
       roles: { select: { role_id: true, code: true, name: true, description: true } },
     },
-  },
-  mfa_methods: {
-    where: { method_type: 'totp', is_enabled: true },
-    select: { mfa_method_id: true },
-    take: 1,
   },
 } as const;
 
@@ -89,7 +83,7 @@ export const usersRepository = {
         : {}),
     };
     const skip = (query.page - 1) * query.limit;
-    const [items, total, active, inactive, locked, disabled] = await prisma.$transaction([
+    const [items, total, active, inactive, disabled] = await prisma.$transaction([
       prisma.users.findMany({
         where,
         select: userListSelect,
@@ -100,10 +94,9 @@ export const usersRepository = {
       prisma.users.count({ where }),
       prisma.users.count({ where: { ...where, status: 'active' } }),
       prisma.users.count({ where: { ...where, status: 'inactive' } }),
-      prisma.users.count({ where: { ...where, status: 'locked' } }),
       prisma.users.count({ where: { ...where, status: 'disabled' } }),
     ]);
-    return { items, total, summary: { active, inactive, locked, disabled } };
+    return { items, total, summary: { active, inactive, disabled } };
   },
 
   async createInitializedUser(input: {

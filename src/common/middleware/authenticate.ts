@@ -10,7 +10,6 @@ const accessClaimsSchema = z.object({
   type: z.literal('access'),
   roles: z.array(z.string()),
   permissions: z.array(z.string()),
-  accountLockVersion: z.string().optional(),
 });
 
 export const authenticate: RequestHandler = async (req, _res, next) => {
@@ -29,7 +28,7 @@ export const authenticate: RequestHandler = async (req, _res, next) => {
   } catch {
     throw new AppError(401, 'INVALID_TOKEN', 'Access token is invalid or expired');
   }
-  await accountAccessService.verify(claims.sub, claims.accountLockVersion);
+  await accountAccessService.verify(claims.sub);
   req.auth = { userId: claims.sub, roles: claims.roles, permissions: claims.permissions };
   next();
 };

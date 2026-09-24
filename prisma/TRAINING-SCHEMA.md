@@ -1,12 +1,14 @@
 # Training schema extension
 
-The approved training extension brought the V3 baseline to 78 business tables,
-141 foreign keys and 91 CHECK constraints. The later treatment-plan cancellation
-migration adds one more foreign key, bringing the current total to 142.
+The approved training extension originally brought the V3 baseline to 78 business tables.
+After removing the retired MFA and Login History capabilities and their tables, and
+including material-level training progress, the current baseline has 77 business
+tables, 142 foreign keys and 91 CHECK constraints.
 `schema-extensions.json` supplements the original design for `db:verify`;
 original applied migrations and V3 reference SQL remain unchanged.
 
-The migration adds lessons, materials and enrollment-scoped lesson progress.
+The training migrations add lessons, materials, enrollment-scoped lesson progress,
+and material-level progress.
 All identifiers use UUID and `gen_random_uuid()`, timestamps use TIMESTAMPTZ(6),
 statuses use VARCHAR with SQL CHECK constraints, and foreign keys use NO ACTION.
 Uploaded content reuses `files`; binaries belong in object storage, not PostgreSQL.

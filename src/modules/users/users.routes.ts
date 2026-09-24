@@ -10,15 +10,12 @@ import {
   listUserCreateOptions,
   listUsers,
   me,
-  lockAccount,
-  unlockAccount,
   updateUser,
   deactivateAccount,
   removeAccount,
   assignUserRoles,
   listAssignableRoles,
 } from './users.controller.js';
-import { accountLockBodySchema, accountLockParamsSchema } from './dto/account-lock.dto.js';
 import { createUserBodySchema } from './dto/create-user.dto.js';
 import { getUserParamsSchema } from './dto/get-user.dto.js';
 import { updateUserBodySchema } from './dto/update-user.dto.js';
@@ -71,22 +68,6 @@ usersRouter.get(
   authorize('users.read'),
   validate({ params: getUserParamsSchema }),
   asyncHandler(getUser),
-);
-usersRouter.post(
-  '/:userId/lock',
-  authenticate,
-  requireAccountAdmin,
-  authorize('users.lock'),
-  validate({ params: accountLockParamsSchema, body: accountLockBodySchema }),
-  asyncHandler(lockAccount),
-);
-usersRouter.post(
-  '/:userId/unlock',
-  authenticate,
-  requireAccountAdmin,
-  authorize('users.unlock'),
-  validate({ params: accountLockParamsSchema, body: accountLockBodySchema }),
-  asyncHandler(unlockAccount),
 );
 usersRouter.post(
   '/:userId/deactivate',

@@ -7,14 +7,16 @@ const prisma = new PrismaClient();
 async function verifyDatabaseSchema() {
   const sql = fs.readFileSync('project-docs/Database.sql', 'utf8');
   const extension = JSON.parse(fs.readFileSync('prisma/schema-extensions.json', 'utf8'));
+  const excludedTables = new Set(extension.excludedTables ?? []);
   const expected = [...sql.matchAll(/^CREATE TABLE "([^"]+)"/gm)]
     .map((match) => match[1])
+    .filter((table) => !excludedTables.has(table))
     .concat(extension.tables)
     .sort();
   const expectedForeignKeys =
     (sql.match(/ADD FOREIGN KEY/g) || []).length +
     extension.foreignKeys +
-    extension.treatmentPlanCancellationForeignKeys;
+    (extension.treatmentPlanCancellationForeignKeys ?? 0);
   const expectedChecks = (sql.match(/\bCHECK\s*\(/g) || []).length + extension.checks;
   const rows = await prisma.$queryRaw`
     SELECT table_name

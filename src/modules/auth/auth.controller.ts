@@ -6,12 +6,6 @@ import {
   requestPasswordResetBodySchema,
 } from './dto/password-reset.dto.js';
 import { changePasswordBodySchema } from './dto/change-password.dto.js';
-import {
-  setupMfaBodySchema,
-  disableMfaBodySchema,
-  verifyMfaBodySchema,
-  verifyMfaChallengeBodySchema,
-} from './dto/mfa.dto.js';
 import type { LoginInput } from './auth.schema.js';
 
 export const requestPasswordReset: RequestHandler = async (req, res) => {
@@ -43,40 +37,6 @@ export const changePassword: RequestHandler = async (req, res) => {
     success: true,
     data: { message: 'Password changed successfully. Please log in again.' },
   });
-};
-export const setupMfa: RequestHandler = async (req, res) => {
-  if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
-  const data = await authService.setupMfa(req.auth.userId, setupMfaBodySchema.parse(req.body));
-  res.status(200).json({ success: true, data });
-};
-export const verifyMfa: RequestHandler = async (req, res) => {
-  if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
-  const data = await authService.verifyMfa(
-    req.auth.userId,
-    verifyMfaBodySchema.parse(req.body),
-  );
-  res.status(200).json({
-    success: true,
-    data: {
-      message: 'MFA enabled successfully. Future logins require an authenticator code.',
-      ...data,
-    },
-  });
-};
-export const disableMfa: RequestHandler = async (req, res) => {
-  if (!req.auth) throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
-  await authService.disableMfa(req.auth.userId, disableMfaBodySchema.parse(req.body));
-  res.status(200).json({
-    success: true,
-    data: { message: 'MFA disabled successfully. Existing sessions have been revoked.' },
-  });
-};
-export const verifyMfaChallenge: RequestHandler = async (req, res) => {
-  const data = await authService.verifyMfaChallenge(
-    verifyMfaChallengeBodySchema.parse(req.body),
-    req,
-  );
-  res.status(200).json({ success: true, data });
 };
 export const refresh: RequestHandler = async (req, res) => {
   const data = await authService.refresh((req.body as { refreshToken: string }).refreshToken, req);

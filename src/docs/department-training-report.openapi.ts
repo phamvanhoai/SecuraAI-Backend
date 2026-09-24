@@ -4,7 +4,7 @@ export const departmentTrainingReportPaths = {
       tags: ['Training Awareness'],
       summary: 'View department training completion report (UC81)',
       description:
-        'Requires training-department-reports.read (Executive/Admin by default). Groups active and locked workforce accounts by their current department, including No department; deleted, disabled, and inactive accounts are excluded. Employees is workforce headcount, assignedEmployees is unique employees with at least one non-withdrawn assignment, and assigned counts assignments across campaigns. Coverage is assignedEmployees/employees. Completion means enrollment status completed; overdue means incomplete with due date before today UTC. Includes departments with zero assignments. Summary is organization-wide and independent of search/pagination.',
+        'Requires training-department-reports.read (Executive/Admin by default). Groups active workforce accounts by their current department, including No department; deleted, disabled, and inactive accounts are excluded. Employees is workforce headcount, assignedEmployees is unique employees with at least one non-withdrawn assignment, and assigned counts assignments across campaigns. Coverage is assignedEmployees/employees. Completion means enrollment status completed; overdue means incomplete with due date before today UTC. Includes departments with zero assignments. Summary is organization-wide and independent of search/pagination.',
       security: [{ bearerAuth: [] }],
       parameters: [
         {

@@ -26,12 +26,10 @@ describe('usersService.getById', () => {
       must_change_password: false,
       email_verified_at: new Date('2026-09-01T00:00:00.000Z'),
       last_login_at: new Date('2026-09-19T01:00:00.000Z'),
-      locked_at: null,
       disabled_at: null,
       created_at: new Date('2026-08-01T00:00:00.000Z'),
       updated_at: new Date('2026-09-19T01:00:00.000Z'),
       departments: { department_id: 'department-1', code: 'SEC', name: 'Security' },
-      mfa_methods: [{ mfa_method_id: 'mfa-1' }],
       user_roles_user_roles_user_idTousers: [
         {
           assigned_at: new Date('2026-08-01T00:00:00.000Z'),
@@ -52,7 +50,6 @@ describe('usersService.getById', () => {
     expect(result).toMatchObject({
       id: userId,
       fullName: 'Security Analyst',
-      mfaEnabled: true,
       department: { id: 'department-1', code: 'SEC', name: 'Security' },
       roles: [{ id: 'role-1', code: 'SECURITY_OFFICER', name: 'Security Officer' }],
     });
