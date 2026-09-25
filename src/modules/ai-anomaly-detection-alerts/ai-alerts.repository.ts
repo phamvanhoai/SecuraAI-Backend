@@ -1,6 +1,7 @@
-import type { Prisma, alert_status } from '@prisma/client';
+import type { Prisma, alert_status, triage_decision } from '@prisma/client';
 import { prisma } from '../../database/prisma.js';
 import type { ListAiAlertsQuery } from './dto/list-ai-alerts.dto.js';
+import type { ListAiAlertFeedbackQuery } from './dto/ai-alert-feedback.dto.js';
 
 const alertSelect = {
   id: true,
@@ -86,6 +87,63 @@ export const aiAlertsRepository = {
         orderBy: [{ generated_at: query.sortOrder }, { id: query.sortOrder }],
         skip: (query.page - 1) * query.limit,
         take: query.limit,
+      }),
+    ]);
+  },
+  findForFeedback(alertId: string) {
+    return prisma.anomaly_alerts.findUnique({
+      where: { id: alertId },
+      select: {
+        id: true,
+        anomaly_detections: { select: { model_version_id: true } },
+      },
+    });
+  },
+  createFeedback(input: {
+    alertId: string;
+    analystUserId: string;
+    decision: triage_decision;
+    reason: string;
+    modelVersionId: string;
+  }) {
+    const now = new Date();
+    return prisma.alert_triage_records.create({
+      data: {
+        alert_id: input.alertId,
+        analyst_user_id: input.analystUserId,
+        decision: input.decision,
+        reason: input.reason,
+        model_version_id: input.modelVersionId,
+        started_at: now,
+        completed_at: now,
+      },
+      select: {
+        id: true,
+        alert_id: true,
+        analyst_user_id: true,
+        decision: true,
+        reason: true,
+        created_at: true,
+      },
+    });
+  },
+  listFeedback(alertId: string, query: ListAiAlertFeedbackQuery) {
+    const where = { alert_id: alertId };
+    return prisma.$transaction([
+      prisma.alert_triage_records.count({ where }),
+      prisma.alert_triage_records.findMany({
+        where,
+        orderBy: [{ created_at: query.sortOrder }, { id: query.sortOrder }],
+        skip: (query.page - 1) * query.limit,
+        take: query.limit,
+        select: {
+          id: true,
+          alert_id: true,
+          analyst_user_id: true,
+          decision: true,
+          reason: true,
+          created_at: true,
+        },
       }),
     ]);
   },

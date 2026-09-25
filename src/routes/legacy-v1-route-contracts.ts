@@ -102,8 +102,6 @@ export const legacyV1RouteContracts = [
   { method: 'post', path: '/ai-alerts/models', tag: 'AI Alerts' },
   { method: 'get', path: '/ai-alerts/{alertId}/explanation', tag: 'AI Alerts' },
   { method: 'post', path: '/ai-alerts/models/{modelVersionId}/activate', tag: 'AI Alerts' },
-  { method: 'get', path: '/ai-alerts/{alertId}/feedback', tag: 'AI Alerts' },
-  { method: 'post', path: '/ai-alerts/{alertId}/feedback', tag: 'AI Alerts' },
   { method: 'post', path: '/ai-alerts/{alertId}/confirm-incident', tag: 'AI Alerts' },
   { method: 'post', path: '/compliance/policies/{policyId}/versions/{versionId}/publish', tag: 'Policies' },
   { method: 'get', path: '/compliance/policies/version-history', tag: 'Policies' },
