@@ -21,8 +21,7 @@ export const openApiSpec = {
       post: {
         tags: ['Policies'],
         summary: 'Submit an owned policy draft for Admin review',
-        description:
-          'Moves an owned V2 policy version from DRAFT to IN_REVIEW. Requires an active Security Officer account. Concurrent or repeated submissions are rejected.',
+        description: 'Moves an owned V2 policy version from DRAFT to IN_REVIEW. Requires an active Security Officer account. Concurrent or repeated submissions are rejected.',
         security: [{ bearerAuth: [] }],
         parameters: [
           { name: 'policyId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
@@ -35,6 +34,68 @@ export const openApiSpec = {
           '404': { description: 'Policy draft not found' },
           '409': { description: 'Policy version is not a current draft or changed concurrently' },
           '422': { description: 'Invalid policy or version identifier' },
+        },
+      },
+    },
+    '/compliance/policies/drafts/mine': {
+      get: {
+        tags: ['Policies'],
+        summary: 'List policy drafts owned by the current Security Officer',
+        description: 'Returns a bounded, searchable page of V2 draft policy versions owned and authored by the active Security Officer.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 } },
+          { name: 'q', in: 'query', schema: { type: 'string', minLength: 1, maxLength: 100 } },
+          { name: 'sortOrder', in: 'query', schema: { type: 'string', enum: ['asc', 'desc'], default: 'desc' } },
+        ],
+        responses: {
+          '200': { description: 'Paginated policy draft list' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer role required' },
+          '422': { description: 'Invalid query parameters' },
+        },
+      },
+    },
+    '/compliance/policies/drafts/reviewable': {
+      get: {
+        tags: ['Policy Management'],
+        summary: 'List submitted policy drafts available to Admin reviewers',
+        description:
+          'Returns bounded V2 policies whose latest matching version is in review or waiting approval. Requires an active Admin account.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 } },
+          { name: 'q', in: 'query', schema: { type: 'string', maxLength: 100 } },
+          { name: 'sortBy', in: 'query', schema: { type: 'string', enum: ['policyCode', 'title', 'updatedAt'], default: 'updatedAt' } },
+          { name: 'sortOrder', in: 'query', schema: { type: 'string', enum: ['asc', 'desc'], default: 'desc' } },
+        ],
+        responses: {
+          '200': { description: 'Paginated submitted policy draft list' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Admin role required' },
+          '422': { description: 'Invalid query parameters' },
+        },
+      },
+    },
+    '/compliance/policies/{policyId}/versions/{versionId}/review': {
+      get: {
+        tags: ['Policy Management'],
+        summary: 'View a submitted policy draft',
+        description:
+          'Returns the content and details of a V2 policy version submitted for review. Requires an active Admin account.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'policyId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+          { name: 'versionId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+        ],
+        responses: {
+          '200': { description: 'Submitted policy draft details and content' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Admin role required' },
+          '404': { description: 'Submitted policy draft not found' },
+          '422': { description: 'Invalid policy or version ID' },
         },
       },
     },
