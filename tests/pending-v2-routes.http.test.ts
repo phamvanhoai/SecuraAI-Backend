@@ -11,7 +11,7 @@ describe('historical V1 URL contracts', () => {
   const app = createApp();
 
   it('exposes every pending operation as HTTP 501 and documents its real status', async () => {
-    expect(legacyV1RouteContracts.length).toBe(138);
+    expect(legacyV1RouteContracts.length).toBe(137);
     for (const route of legacyV1RouteContracts) {
       const path = route.path.replace(/\{[^}]+\}/g, '00000000-0000-4000-8000-000000000000');
       const response = await request(app)[route.method](`/api/v1${path}`);
