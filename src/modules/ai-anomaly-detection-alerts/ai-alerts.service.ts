@@ -7,6 +7,7 @@ import type {
   ListAiAlertFeedbackQuery,
 } from './dto/ai-alert-feedback.dto.js';
 import type { triage_decision } from '@prisma/client';
+import type { ConfirmAiAlert } from './dto/confirm-ai-alert.dto.js';
 
 function responseStatus(status: AiAlertRecord['status']) {
   if (status === 'NEW') return 'new' as const;
@@ -96,6 +97,29 @@ export const aiAlertsService = {
         limit: query.limit,
         total,
         totalPages: Math.ceil(total / query.limit),
+      },
+    };
+  },
+  async confirmAsIncident(userId: string, alertId: string, input: ConfirmAiAlert) {
+    await requireSecurityOfficer(userId);
+    const result = await aiAlertsRepository.confirmAsIncident({
+      alertId,
+      userId,
+      ...(input.comment ? { comment: input.comment } : {}),
+    });
+    if (!result) throw new AppError(404, 'AI_ALERT_NOT_FOUND', 'AI alert not found');
+    return {
+      id: result.alert.id,
+      alertCode: `ALT-${result.alert.id.slice(0, 8).toUpperCase()}`,
+      status: 'confirmed' as const,
+      reviewedByUserId: userId,
+      reviewedAt: result.incident.confirmed_at,
+      changed: result.changed,
+      incident: {
+        id: result.incident.id,
+        code: result.incident.incident_code,
+        status: result.incident.status,
+        created: result.changed,
       },
     };
   },

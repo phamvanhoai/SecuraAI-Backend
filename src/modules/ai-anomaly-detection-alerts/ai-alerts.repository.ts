@@ -147,4 +147,82 @@ export const aiAlertsRepository = {
       }),
     ]);
   },
+  confirmAsIncident(input: { alertId: string; userId: string; comment?: string }) {
+    return prisma.$transaction(async (transaction) => {
+      const alert = await transaction.anomaly_alerts.findUnique({
+        where: { id: input.alertId },
+        select: {
+          id: true,
+          severity: true,
+          status: true,
+          anomaly_detections: {
+            select: {
+              model_version_id: true,
+              detected_at: true,
+              normalized_events: { select: { event_type: true } },
+            },
+          },
+          security_findings: {
+            select: {
+              incidents: {
+                select: { id: true, incident_code: true, status: true, confirmed_at: true },
+              },
+            },
+          },
+        },
+      });
+      if (!alert) return null;
+      const existingIncident = alert.security_findings?.incidents;
+      if (existingIncident) return { alert, incident: existingIncident, changed: false };
+
+      const now = new Date();
+      const eventTitle = alert.anomaly_detections.normalized_events.event_type
+        .replaceAll('_', ' ')
+        .replace(/^./, (value) => value.toUpperCase());
+      const triage = await transaction.alert_triage_records.create({
+        data: {
+          alert_id: alert.id,
+          analyst_user_id: input.userId,
+          decision: 'VALID_ANOMALY',
+          reason: input.comment || 'Confirmed as a security incident',
+          model_version_id: alert.anomaly_detections.model_version_id,
+          started_at: now,
+          completed_at: now,
+        },
+        select: { id: true },
+      });
+      const finding = await transaction.security_findings.create({
+        data: {
+          alert_id: alert.id,
+          triage_record_id: triage.id,
+          title: eventTitle,
+          description: input.comment || `${eventTitle} confirmed from an AI-generated alert.`,
+          severity: alert.severity,
+          status: 'OPEN',
+          identified_by: input.userId,
+          identified_at: now,
+        },
+        select: { id: true },
+      });
+      const incident = await transaction.incidents.create({
+        data: {
+          incident_code: `INC-${alert.id.replaceAll('-', '').slice(0, 16).toUpperCase()}`,
+          finding_id: finding.id,
+          title: eventTitle,
+          description: input.comment || `${eventTitle} confirmed from an AI-generated alert.`,
+          severity: alert.severity || 'MEDIUM',
+          status: 'OPEN',
+          detected_at: alert.anomaly_detections.detected_at,
+          confirmed_at: now,
+          created_by: input.userId,
+        },
+        select: { id: true, incident_code: true, status: true, confirmed_at: true },
+      });
+      await transaction.anomaly_alerts.update({
+        where: { id: alert.id },
+        data: { status: 'CONFIRMED', assigned_to: input.userId },
+      });
+      return { alert, incident, changed: true };
+    });
+  },
 };

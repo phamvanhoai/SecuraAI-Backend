@@ -134,6 +134,26 @@ export const openApiSpec = {
         },
       },
     },
+    '/ai-alerts/{alertId}/confirm-incident': {
+      post: {
+        tags: ['AI Anomaly Detection & Alerts'],
+        summary: 'Confirm an AI alert as a security incident',
+        description: 'Atomically records triage, creates a linked finding and incident, and marks the alert confirmed. Repeated calls return the existing incident. Requires an active Security Officer account.',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'alertId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+        requestBody: { required: true, content: { 'application/json': { schema: {
+          type: 'object', additionalProperties: false,
+          properties: { comment: { type: 'string', maxLength: 2000 } },
+        } } } },
+        responses: {
+          '200': { description: 'Alert confirmed and linked incident returned' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer role required' },
+          '404': { description: 'AI alert not found' },
+          '422': { description: 'Invalid request body or alert ID' },
+        },
+      },
+    },
     '/auth/login': {
       post: {
         tags: ['Authentication'],
