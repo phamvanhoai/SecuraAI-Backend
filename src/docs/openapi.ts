@@ -17,6 +17,27 @@ export const openApiSpec = {
   },
   paths: {
     ...pendingV2Paths,
+    '/compliance/policies/{policyId}/versions/{versionId}/submit': {
+      post: {
+        tags: ['Policies'],
+        summary: 'Submit an owned policy draft for Admin review',
+        description:
+          'Moves an owned V2 policy version from DRAFT to IN_REVIEW. Requires an active Security Officer account. Concurrent or repeated submissions are rejected.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'policyId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+          { name: 'versionId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+        ],
+        responses: {
+          '200': { description: 'Policy draft submitted for review' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer role or draft ownership required' },
+          '404': { description: 'Policy draft not found' },
+          '409': { description: 'Policy version is not a current draft or changed concurrently' },
+          '422': { description: 'Invalid policy or version identifier' },
+        },
+      },
+    },
     '/anomaly-detections/runs': {
       post: {
         tags: ['AI Anomaly Detection & Alerts'],

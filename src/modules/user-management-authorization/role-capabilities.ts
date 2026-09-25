@@ -39,6 +39,7 @@ const capabilitiesByRole = {
     'ai-models.read',
     'policies.create',
     'policies.update',
+    'policies.submit',
     'incidents.read',
     'incidents.report',
     'incidents.classify',

@@ -4,6 +4,8 @@ This repository now targets the approved 56-table PostgreSQL V2 schema in `proje
 
 The active API currently implements health checks, V2-backed authentication, protected `GET /api/v1/users/me`, `POST /api/v1/anomaly-detections/runs`, the near-real-time `GET /api/v1/ai-alerts` feed, `GET`/`POST /api/v1/ai-alerts/:alertId/feedback`, and `POST /api/v1/ai-alerts/:alertId/confirm-incident` for Security Officers. The V2 schema has four fixed roles but no detailed permission or MFA models. `/users/me` returns a conservative set of frontend capability names derived from the Project Tracking WBS actor column for the user's database role; these are not per-user grants or backend authorization. MFA remains disabled. Another 138 historical V1 method/URL contracts remain registered and visible in OpenAPI, but return `501 ENDPOINT_NOT_IMPLEMENTED` until each handler is ported to V2. They do not execute V3 database code. Training endpoints, handlers, tests and porting-reference files have been removed. Other old source and tests remain under `reference/legacy-v3/` for porting reference; they are excluded from build, lint and tests. Immutable historical database snapshots may still contain the former schema. Contributors replace each pending contract with its V2 route, DTO, service, repository, OpenAPI entry and tests.
 
+Policy Management also implements `POST /api/v1/compliance/policies/:policyId/versions/:versionId/submit` for an active Security Officer to submit an owned V2 draft for Admin review.
+
 ## Setup
 
 Use Node.js 22+ and npm. Copy `.env.example` to `.env`, set a real `DATABASE_URL`, and install dependencies:

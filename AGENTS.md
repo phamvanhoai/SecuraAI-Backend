@@ -30,6 +30,8 @@ Health routes, V2-backed authentication login, refresh and logout, protected `GE
 
 Do not migrate the project to NestJS, another web framework, another ORM, or another database unless the user explicitly requests it.
 
+Policy draft submission for Admin review is implemented through `POST /api/v1/compliance/policies/:policyId/versions/:versionId/submit`.
+
 ## 2. Sources of truth
 
 Use these sources in this order:
