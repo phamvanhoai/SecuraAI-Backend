@@ -4,6 +4,7 @@ import { validate } from '../../common/middleware/validate.js';
 import { asyncHandler } from '../../common/utils/async-handler.js';
 import {
   createAiAlertFeedback,
+  confirmAiAlertAsIncident,
   listAiAlertFeedback,
   listAiAlerts,
 } from './ai-alerts.controller.js';
@@ -13,6 +14,7 @@ import {
   createAiAlertFeedbackSchema,
   listAiAlertFeedbackQuerySchema,
 } from './dto/ai-alert-feedback.dto.js';
+import { confirmAiAlertSchema } from './dto/confirm-ai-alert.dto.js';
 
 export const aiAlertsRouter = Router();
 aiAlertsRouter.get(
@@ -32,4 +34,10 @@ aiAlertsRouter.post(
   authenticate,
   validate({ params: aiAlertIdParamsSchema, body: createAiAlertFeedbackSchema }),
   asyncHandler(createAiAlertFeedback),
+);
+aiAlertsRouter.post(
+  '/:alertId/confirm-incident',
+  authenticate,
+  validate({ params: aiAlertIdParamsSchema, body: confirmAiAlertSchema }),
+  asyncHandler(confirmAiAlertAsIncident),
 );
