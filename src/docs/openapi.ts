@@ -16,6 +16,38 @@ export const openApiSpec = {
   },
   paths: {
     ...pendingV2Paths,
+    '/anomaly-detections/runs': {
+      post: {
+        tags: ['AI Anomaly Detection & Alerts'],
+        summary: 'Run anomaly detection over unprocessed normalized events',
+        description:
+          'Requires an active Security Officer account and a deployed model version. Each event is evaluated once per model version; anomalous detections create alerts atomically.',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                additionalProperties: false,
+                properties: {
+                  lookbackHours: { type: 'integer', minimum: 1, maximum: 720, default: 24 },
+                  maxEvents: { type: 'integer', minimum: 1, maximum: 500, default: 100 },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'Detection batch completed and persisted' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer role required' },
+          '409': { description: 'No deployed anomaly detection model is available' },
+          '422': { description: 'Invalid run options' },
+          '429': { description: 'Too many detection run requests' },
+        },
+      },
+    },
     '/auth/login': {
       post: {
         tags: ['Authentication'],

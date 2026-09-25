@@ -35,6 +35,7 @@ const capabilitiesByRole = {
     'ai-alerts.feedback',
     'ai-alerts.mark-false-positive',
     'ai-alerts.thresholds.manage',
+    'anomaly-detection.run',
     'ai-models.read',
     'policies.create',
     'policies.update',
