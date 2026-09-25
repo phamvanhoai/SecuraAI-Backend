@@ -32,7 +32,7 @@ function accessToken(overrides: { type?: string; audience?: string; secret?: str
 describe('GET /api/v1/users/me', () => {
   beforeEach(() => vi.clearAllMocks());
 
-  it('returns the active V2 user without inventing permissions or exposing password data', async () => {
+  it('returns WBS-derived Admin capabilities without exposing password data', async () => {
     vi.mocked(usersRepository.findCurrentUser).mockResolvedValue({
       id: userId,
       email: 'admin@example.test',
@@ -55,7 +55,19 @@ describe('GET /api/v1/users/me', () => {
         mustChangePassword: false,
         mfaEnabled: false,
         roles: [{ code: 'ADMIN', name: 'ADMIN' }],
-        permissions: [],
+        permissions: [
+          'users.read',
+          'users.create',
+          'users.update',
+          'users.assign-role',
+          'assets.classify',
+          'policies.publish',
+          'login-history.read',
+          'log-sources.read',
+          'integrations.read',
+          'audit.read',
+          'system-settings.read',
+        ],
       },
     });
     expect(usersRepository.findCurrentUser).toHaveBeenCalledWith(userId);

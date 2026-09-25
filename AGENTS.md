@@ -26,6 +26,8 @@ Current database baseline:
 
 Health routes, V2-backed authentication login, refresh and logout, and protected `GET /users/me` are currently implemented. Another 142 historical V1 method/URL contracts are registered in `src/routes/legacy-v1-route-contracts.ts` and return HTTP 501 until ported. Their V3 handlers and tests are in `reference/legacy-v3/` as non-running porting reference. Training remains removed. Do not describe any pending business endpoint as implemented until its full route-to-repository path and tests exist.
 
+`GET /users/me` returns role-derived frontend capability names from `src/modules/user-management-authorization/role-capabilities.ts`, based on the WBS actor column. These are not stored grants and must never be used as a substitute for server-side role, scope, ownership and status checks on future handlers.
+
 Do not migrate the project to NestJS, another web framework, another ORM, or another database unless the user explicitly requests it.
 
 ## 2. Sources of truth
