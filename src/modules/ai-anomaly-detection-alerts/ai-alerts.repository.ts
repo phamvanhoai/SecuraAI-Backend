@@ -225,4 +225,48 @@ export const aiAlertsRepository = {
       return { alert, incident, changed: true };
     });
   },
+  markFalsePositive(input: { alertId: string; userId: string; comment?: string }) {
+    return prisma.$transaction(async (transaction) => {
+      const alert = await transaction.anomaly_alerts.findUnique({
+        where: { id: input.alertId },
+        select: {
+          id: true,
+          status: true,
+          security_findings: { select: { id: true } },
+          anomaly_detections: { select: { model_version_id: true } },
+          alert_triage_records: {
+            where: { decision: 'FALSE_POSITIVE' },
+            orderBy: { created_at: 'desc' },
+            take: 1,
+            select: { analyst_user_id: true, completed_at: true, created_at: true },
+          },
+        },
+      });
+      if (!alert) return { outcome: 'not_found' as const };
+      if (alert.status === 'CONFIRMED' || alert.security_findings)
+        return { outcome: 'confirmed' as const };
+      const existing = alert.alert_triage_records[0];
+      if (alert.status === 'DISMISSED' && existing) {
+        return { outcome: 'unchanged' as const, alert, triage: existing };
+      }
+      const now = new Date();
+      const triage = await transaction.alert_triage_records.create({
+        data: {
+          alert_id: alert.id,
+          analyst_user_id: input.userId,
+          decision: 'FALSE_POSITIVE',
+          reason: input.comment || 'Marked as false positive',
+          model_version_id: alert.anomaly_detections.model_version_id,
+          started_at: now,
+          completed_at: now,
+        },
+        select: { analyst_user_id: true, completed_at: true, created_at: true },
+      });
+      await transaction.anomaly_alerts.update({
+        where: { id: alert.id },
+        data: { status: 'DISMISSED', assigned_to: input.userId },
+      });
+      return { outcome: 'changed' as const, alert, triage };
+    });
+  },
 };
