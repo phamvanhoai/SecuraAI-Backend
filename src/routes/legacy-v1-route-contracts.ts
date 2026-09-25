@@ -22,7 +22,6 @@ export const legacyV1RouteContracts = [
   { method: 'post', path: '/users/{userId}/unlock', tag: 'Users' },
   { method: 'post', path: '/admin/users/{userId}/lock', tag: 'Users' },
   { method: 'post', path: '/admin/users/{userId}/unlock', tag: 'Users' },
-  { method: 'post', path: '/ai-alerts/{alertId}/false-positive', tag: 'AI Alerts' },
   { method: 'get', path: '/access-control/permissions', tag: 'Role Management' },
   { method: 'get', path: '/access-control/roles', tag: 'Role Management' },
   { method: 'post', path: '/access-control/roles', tag: 'Role Management' },

@@ -7,6 +7,7 @@ import {
   confirmAiAlertAsIncident,
   listAiAlertFeedback,
   listAiAlerts,
+  markAiAlertFalsePositive,
 } from './ai-alerts.controller.js';
 import { listAiAlertsQuerySchema } from './dto/list-ai-alerts.dto.js';
 import {
@@ -15,6 +16,7 @@ import {
   listAiAlertFeedbackQuerySchema,
 } from './dto/ai-alert-feedback.dto.js';
 import { confirmAiAlertSchema } from './dto/confirm-ai-alert.dto.js';
+import { markAiAlertFalsePositiveSchema } from './dto/mark-ai-alert-false-positive.dto.js';
 
 export const aiAlertsRouter = Router();
 aiAlertsRouter.get(
@@ -40,4 +42,10 @@ aiAlertsRouter.post(
   authenticate,
   validate({ params: aiAlertIdParamsSchema, body: confirmAiAlertSchema }),
   asyncHandler(confirmAiAlertAsIncident),
+);
+aiAlertsRouter.post(
+  '/:alertId/false-positive',
+  authenticate,
+  validate({ params: aiAlertIdParamsSchema, body: markAiAlertFalsePositiveSchema }),
+  asyncHandler(markAiAlertFalsePositive),
 );

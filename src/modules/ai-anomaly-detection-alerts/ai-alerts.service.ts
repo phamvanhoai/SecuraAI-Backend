@@ -8,6 +8,7 @@ import type {
 } from './dto/ai-alert-feedback.dto.js';
 import type { triage_decision } from '@prisma/client';
 import type { ConfirmAiAlert } from './dto/confirm-ai-alert.dto.js';
+import type { MarkAiAlertFalsePositive } from './dto/mark-ai-alert-false-positive.dto.js';
 
 function responseStatus(status: AiAlertRecord['status']) {
   if (status === 'NEW') return 'new' as const;
@@ -121,6 +122,30 @@ export const aiAlertsService = {
         status: result.incident.status,
         created: result.changed,
       },
+    };
+  },
+  async markFalsePositive(userId: string, alertId: string, input: MarkAiAlertFalsePositive) {
+    await requireSecurityOfficer(userId);
+    const result = await aiAlertsRepository.markFalsePositive({
+      alertId,
+      userId,
+      ...(input.comment ? { comment: input.comment } : {}),
+    });
+    if (result.outcome === 'not_found')
+      throw new AppError(404, 'AI_ALERT_NOT_FOUND', 'AI alert not found');
+    if (result.outcome === 'confirmed')
+      throw new AppError(
+        409,
+        'AI_ALERT_ALREADY_CONFIRMED',
+        'A confirmed security incident cannot be marked as a false positive',
+      );
+    return {
+      id: result.alert.id,
+      alertCode: `ALT-${result.alert.id.slice(0, 8).toUpperCase()}`,
+      status: 'false_positive' as const,
+      reviewedByUserId: result.triage.analyst_user_id,
+      reviewedAt: result.triage.completed_at ?? result.triage.created_at,
+      changed: result.outcome === 'changed',
     };
   },
 };

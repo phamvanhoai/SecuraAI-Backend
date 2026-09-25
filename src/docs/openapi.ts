@@ -236,6 +236,27 @@ export const openApiSpec = {
         },
       },
     },
+    '/ai-alerts/{alertId}/false-positive': {
+      post: {
+        tags: ['AI Anomaly Detection & Alerts'],
+        summary: 'Mark an AI alert as a false positive',
+        description: 'Atomically records FALSE_POSITIVE triage feedback and dismisses the alert for model improvement. Repeated calls are idempotent; confirmed incidents are rejected. Requires an active Security Officer account.',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'alertId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+        requestBody: { required: true, content: { 'application/json': { schema: {
+          type: 'object', additionalProperties: false,
+          properties: { comment: { type: 'string', maxLength: 2000 } },
+        } } } },
+        responses: {
+          '200': { description: 'Alert marked as false positive or already dismissed' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer role required' },
+          '404': { description: 'AI alert not found' },
+          '409': { description: 'Alert is already linked to a confirmed security incident' },
+          '422': { description: 'Invalid request body or alert ID' },
+        },
+      },
+    },
     '/auth/login': {
       post: {
         tags: ['Authentication'],
