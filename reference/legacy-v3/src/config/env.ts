@@ -27,7 +27,6 @@ const envSchema = z.object({
   ALLOW_PRIVATE_NETWORK_INTEGRATIONS: booleanString.default(false),
   SSRF_ALLOWED_CIDRS: z.string().default(''),
   CRON_SECRET: z.string().min(32).optional(),
-  TRAINING_REMINDERS_ENABLED: booleanString.default(true),
   COMPLIANCE_REMINDERS_ENABLED: booleanString.default(true),
 });
 

@@ -12,7 +12,6 @@ import { policyComplianceModule } from './policy-compliance-control/index.js';
 import { reportingModule } from './reporting/index.js';
 import { riskManagementModule } from './risk-assessment/index.js';
 import { securityMonitoringModule } from './event-ingestion/index.js';
-import { trainingAwarenessModule } from './training-awareness/index.js';
 
 export const businessModules = [
   accessControlModule,
@@ -25,7 +24,6 @@ export const businessModules = [
   integrationsModule,
   securityMonitoringModule,
   aiAlertsModule,
-  trainingAwarenessModule,
   reportingModule,
   notificationsModule,
   auditSettingsModule,

@@ -11,10 +11,10 @@ const reminderSelect = {
   read_at: true,
   created_at: true,
 } satisfies Prisma.notificationsSelect;
-export type TrainingReminderRecord = Prisma.notificationsGetPayload<{
+export type ReminderRecord = Prisma.notificationsGetPayload<{
   select: typeof reminderSelect;
 }>;
-export type ComplianceReminderRecord = TrainingReminderRecord & {
+export type ComplianceReminderRecord = ReminderRecord & {
   type: string;
   entity_type: string | null;
 };
@@ -143,67 +143,5 @@ export const notificationsRepository = {
       });
       return true;
     });
-  },
-  listTrainingReminders(
-    userId: string,
-    query: { page: number; limit: number; status: 'all' | 'unread'; search?: string | undefined },
-  ) {
-    const search = query.search?.replace(/[\\%_]/g, '\\$&');
-    const summaryWhere: Prisma.notificationsWhereInput = {
-      user_id: userId,
-      type: { in: ['training_deadline_3d', 'training_deadline_1d'] },
-    };
-    const where: Prisma.notificationsWhereInput = {
-      ...summaryWhere,
-      ...(query.status === 'unread' ? { is_read: false } : {}),
-      ...(search
-        ? {
-            OR: [
-              { title: { contains: search, mode: 'insensitive' } },
-              { message: { contains: search, mode: 'insensitive' } },
-            ],
-          }
-        : {}),
-    };
-    return prisma.$transaction([
-      prisma.notifications.findMany({
-        where,
-        select: reminderSelect,
-        orderBy: [{ created_at: 'desc' }, { notification_id: 'desc' }],
-        skip: (query.page - 1) * query.limit,
-        take: query.limit,
-      }),
-      prisma.notifications.count({ where }),
-      prisma.notifications.count({ where: summaryWhere }),
-      prisma.notifications.count({ where: { ...summaryWhere, is_read: false } }),
-    ]);
-  },
-  async markTrainingReminderRead(userId: string, notificationId: string, now: Date) {
-    const where = {
-      user_id: userId,
-      notification_id: notificationId,
-      type: { in: ['training_deadline_3d', 'training_deadline_1d'] },
-    };
-    await prisma.notifications.updateMany({
-      where: { ...where, is_read: false },
-      data: { is_read: true, read_at: now },
-    });
-    return prisma.notifications.findFirst({ where, select: reminderSelect });
-  },
-  async createTrainingReminder(
-    tx: Prisma.TransactionClient,
-    data: Prisma.notificationsCreateManyInput & { notification_id: string; created_at: Date },
-  ) {
-    const created = await tx.notifications.createMany({ data: [data], skipDuplicates: true });
-    if (!created.count) return false;
-    await tx.notification_deliveries.create({
-      data: {
-        notification_id: data.notification_id,
-        channel: 'in_app',
-        status: 'delivered',
-        sent_at: data.created_at,
-      },
-    });
-    return true;
   },
 };
