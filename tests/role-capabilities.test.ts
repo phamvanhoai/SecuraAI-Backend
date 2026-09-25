@@ -36,6 +36,14 @@ describe('WBS role capability compatibility', () => {
     }
   });
 
+  it('allows only Security Officer to submit policy drafts for review', () => {
+    for (const role of Object.values(user_role)) {
+      expect(capabilitiesForRole(role).includes('policies.submit')).toBe(
+        role === user_role.SECURITY_OFFICER,
+      );
+    }
+  });
+
   it('limits Executive and Employee to functions explicitly listed for them', () => {
     expect(capabilitiesForRole(user_role.EXECUTIVE)).toEqual([
       'ai-alerts.thresholds.manage',

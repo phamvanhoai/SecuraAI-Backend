@@ -5,6 +5,7 @@ import { asyncHandler } from '../../common/utils/async-handler.js';
 import {
   getPolicyDraftReview,
   listOwnPolicyDrafts,
+  submitPolicyForReview,
   listReviewablePolicyDrafts,
 } from './policy-compliance.controller.js';
 import {
@@ -12,8 +13,15 @@ import {
   reviewablePolicyDraftQuerySchema,
 } from './dto/view-policy-draft.dto.js';
 import { listPolicyDraftsQuerySchema } from './dto/list-policy-drafts.dto.js';
+import { submitPolicyForReviewParamsSchema } from './dto/submit-policy-for-review.dto.js';
 
 export const policyComplianceRouter = Router();
+policyComplianceRouter.post(
+  '/policies/:policyId/versions/:versionId/submit',
+  authenticate,
+  validate({ params: submitPolicyForReviewParamsSchema }),
+  asyncHandler(submitPolicyForReview),
+);
 policyComplianceRouter.get(
   '/policies/drafts/mine',
   authenticate,
