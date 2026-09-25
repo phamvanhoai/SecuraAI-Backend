@@ -99,7 +99,7 @@ export const openApiSpec = {
       get: {
         tags: ['Users'],
         summary: 'Get the current active V2 user session profile',
-        description: 'Requires a valid access token. V2 has no permission or MFA models yet, so permissions is empty and MFA is disabled.',
+        description: 'Requires a valid access token. The permissions field contains conservative role-derived frontend capability names from the Project Tracking WBS, not stored per-user grants. V2 has no detailed permission or MFA models yet.',
         security: [{ bearerAuth: [] }],
         responses: {
           '200': {
@@ -129,7 +129,7 @@ export const openApiSpec = {
                             properties: { code: { type: 'string' }, name: { type: 'string' } },
                           },
                         },
-                        permissions: { type: 'array', items: { type: 'string' }, example: [] },
+                        permissions: { type: 'array', items: { type: 'string' }, description: 'Role-derived UI capability names; backend handlers must enforce their own authorization.' },
                       },
                     },
                   },

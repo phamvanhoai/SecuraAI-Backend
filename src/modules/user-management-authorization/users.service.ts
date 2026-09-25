@@ -1,5 +1,6 @@
 import { AppError } from '../../common/errors/app-error.js';
 import { usersRepository } from './users.repository.js';
+import { capabilitiesForRole } from './role-capabilities.js';
 
 export const usersService = {
   async getCurrentUser(userId: string) {
@@ -15,7 +16,7 @@ export const usersService = {
       mustChangePassword: false,
       mfaEnabled: false,
       roles: [{ code: user.role, name: user.role }],
-      permissions: [],
+      permissions: capabilitiesForRole(user.role),
     };
   },
 };
