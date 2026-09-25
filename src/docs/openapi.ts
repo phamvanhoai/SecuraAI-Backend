@@ -257,6 +257,35 @@ export const openApiSpec = {
         },
       },
     },
+    '/ai-alerts/{alertId}/explanation': {
+      get: {
+        tags: ['AI Anomaly Detection & Alerts'],
+        summary: 'View the XAI explanation and AI-suggested risk level',
+        description: 'Explains a V2 anomaly detection using its score, model threshold, suggested alert severity and ranked feature contributions. Requires an active Security Officer account.',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'alertId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+        responses: {
+          '200': { description: 'AI explanation, feature contributions and suggested risk level' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer role required' },
+          '404': { description: 'AI alert not found' },
+          '422': { description: 'Invalid alert ID' },
+        },
+      },
+    },
+    '/ai-alerts/metrics': {
+      get: {
+        tags: ['AI Anomaly Detection & Alerts'],
+        summary: 'Get 24-hour AI alert metrics',
+        description: 'Returns all dashboard alert counters in one aggregate query. Requires an active Security Officer account.',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          '200': { description: 'Aggregated total, new, reviewing and confirmed alert counts' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer role required' },
+        },
+      },
+    },
     '/auth/login': {
       post: {
         tags: ['Authentication'],

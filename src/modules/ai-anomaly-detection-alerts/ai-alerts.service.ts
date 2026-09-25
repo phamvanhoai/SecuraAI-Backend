@@ -53,6 +53,21 @@ function toResponse(alert: AiAlertRecord) {
 }
 
 export const aiAlertsService = {
+  async metrics(userId: string) {
+    await requireSecurityOfficer(userId);
+    const detectedAfter = new Date(Date.now() - 86_400_000);
+    const groups = await aiAlertsRepository.metrics(detectedAfter);
+    const count = (statuses: AiAlertRecord['status'][]): number =>
+      groups
+        .filter((group) => statuses.includes(group.status))
+        .reduce((total, group) => total + group._count._all, 0);
+    return {
+      total: groups.reduce((total, group) => total + group._count._all, 0),
+      newAlerts: count(['NEW']),
+      reviewing: count(['IN_TRIAGE', 'NEED_INVESTIGATION']),
+      confirmed: count(['CONFIRMED']),
+    };
+  },
   async list(userId: string, query: ListAiAlertsQuery) {
     const actor = await anomalyDetectionRepository.findActor(userId);
     if (!actor || actor.status !== 'ACTIVE')
@@ -70,6 +85,39 @@ export const aiAlertsService = {
         total,
         totalPages: Math.ceil(total / query.limit),
       },
+    };
+  },
+  async getExplanation(userId: string, alertId: string) {
+    await requireSecurityOfficer(userId);
+    const alert = await aiAlertsRepository.findExplanation(alertId);
+    if (!alert) throw new AppError(404, 'AI_ALERT_NOT_FOUND', 'AI alert not found');
+    const detection = alert.anomaly_detections;
+    const score = detection.anomaly_score.toNumber();
+    const threshold = detection.threshold.toNumber();
+    const contributions = detection.anomaly_feature_contributions.map((feature) => ({
+      featureName: feature.feature_name,
+      featureValue: feature.feature_value,
+      contributionScore: feature.contribution_score?.toNumber() ?? null,
+      rank: feature.rank,
+    }));
+    const riskLevel = alert.severity?.toLowerCase() ?? null;
+    const levelText = riskLevel ? ` The suggested risk level is ${riskLevel}.` : '';
+    const factorText = contributions[0]
+      ? ` The strongest recorded factor is ${contributions[0].featureName}.`
+      : ' No individual feature contributions were recorded.';
+    return {
+      id: detection.id,
+      alertId: alert.id,
+      explanationText: `The anomaly score ${score.toFixed(4)} exceeded the model threshold ${threshold.toFixed(4)}.${levelText}${factorText}`,
+      featureContributions: contributions,
+      baselineData: {
+        anomalyScore: score,
+        threshold,
+        scoreAboveThreshold: Number((score - threshold).toFixed(8)),
+        suggestedRiskLevel: riskLevel,
+        detectedAt: detection.detected_at,
+      },
+      createdAt: alert.created_at,
     };
   },
   async createFeedback(userId: string, alertId: string, input: CreateAiAlertFeedback) {
