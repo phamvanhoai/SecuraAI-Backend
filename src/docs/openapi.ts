@@ -17,6 +17,26 @@ export const openApiSpec = {
   },
   paths: {
     ...pendingV2Paths,
+    '/compliance/policies/drafts/mine': {
+      get: {
+        tags: ['Policies'],
+        summary: 'List policy drafts owned by the current Security Officer',
+        description: 'Returns a bounded, searchable page of V2 draft policy versions owned and authored by the active Security Officer.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 } },
+          { name: 'q', in: 'query', schema: { type: 'string', minLength: 1, maxLength: 100 } },
+          { name: 'sortOrder', in: 'query', schema: { type: 'string', enum: ['asc', 'desc'], default: 'desc' } },
+        ],
+        responses: {
+          '200': { description: 'Paginated policy draft list' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer role required' },
+          '422': { description: 'Invalid query parameters' },
+        },
+      },
+    },
     '/compliance/policies/drafts/reviewable': {
       get: {
         tags: ['Policy Management'],
