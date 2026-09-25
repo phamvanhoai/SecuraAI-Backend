@@ -2,6 +2,11 @@ import { AppError } from '../../common/errors/app-error.js';
 import { anomalyDetectionRepository } from './anomaly-detection.repository.js';
 import { aiAlertsRepository, type AiAlertRecord } from './ai-alerts.repository.js';
 import type { ListAiAlertsQuery } from './dto/list-ai-alerts.dto.js';
+import type {
+  CreateAiAlertFeedback,
+  ListAiAlertFeedbackQuery,
+} from './dto/ai-alert-feedback.dto.js';
+import type { triage_decision } from '@prisma/client';
 
 function responseStatus(status: AiAlertRecord['status']) {
   if (status === 'NEW') return 'new' as const;
@@ -65,4 +70,77 @@ export const aiAlertsService = {
       },
     };
   },
+  async createFeedback(userId: string, alertId: string, input: CreateAiAlertFeedback) {
+    await requireSecurityOfficer(userId);
+    const alert = await aiAlertsRepository.findForFeedback(alertId);
+    if (!alert) throw new AppError(404, 'AI_ALERT_NOT_FOUND', 'AI alert not found');
+    const decision = feedbackDecision(input.feedbackLabel);
+    const created = await aiAlertsRepository.createFeedback({
+      alertId,
+      analystUserId: userId,
+      decision,
+      reason: input.comment?.trim() || defaultFeedbackReason(input.feedbackLabel),
+      modelVersionId: alert.anomaly_detections.model_version_id,
+    });
+    return feedbackResponse(created);
+  },
+  async listFeedback(userId: string, alertId: string, query: ListAiAlertFeedbackQuery) {
+    await requireSecurityOfficer(userId);
+    const alert = await aiAlertsRepository.findForFeedback(alertId);
+    if (!alert) throw new AppError(404, 'AI_ALERT_NOT_FOUND', 'AI alert not found');
+    const [total, records] = await aiAlertsRepository.listFeedback(alertId, query);
+    return {
+      items: records.map(feedbackResponse),
+      pagination: {
+        page: query.page,
+        limit: query.limit,
+        total,
+        totalPages: Math.ceil(total / query.limit),
+      },
+    };
+  },
 };
+
+async function requireSecurityOfficer(userId: string): Promise<void> {
+  const actor = await anomalyDetectionRepository.findActor(userId);
+  if (!actor || actor.status !== 'ACTIVE')
+    throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+  if (actor.role !== 'SECURITY_OFFICER')
+    throw new AppError(403, 'FORBIDDEN', 'Security Officer role required');
+}
+
+function feedbackDecision(label: CreateAiAlertFeedback['feedbackLabel']): triage_decision {
+  if (label === 'confirmed_incident') return 'VALID_ANOMALY';
+  if (label === 'false_positive') return 'FALSE_POSITIVE';
+  return 'NEED_INVESTIGATION';
+}
+
+function feedbackLabel(decision: triage_decision): CreateAiAlertFeedback['feedbackLabel'] {
+  if (decision === 'VALID_ANOMALY') return 'confirmed_incident';
+  if (decision === 'FALSE_POSITIVE') return 'false_positive';
+  return 'needs_review';
+}
+
+function defaultFeedbackReason(label: CreateAiAlertFeedback['feedbackLabel']): string {
+  if (label === 'confirmed_incident') return 'Confirmed incident';
+  if (label === 'false_positive') return 'False positive';
+  return 'Needs further review';
+}
+
+function feedbackResponse(record: {
+  id: string;
+  alert_id: string;
+  analyst_user_id: string;
+  decision: triage_decision;
+  reason: string;
+  created_at: Date;
+}) {
+  return {
+    id: record.id,
+    alertId: record.alert_id,
+    reviewedByUserId: record.analyst_user_id,
+    feedbackLabel: feedbackLabel(record.decision),
+    comment: record.reason,
+    createdAt: record.created_at,
+  };
+}

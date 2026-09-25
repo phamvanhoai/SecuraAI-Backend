@@ -87,6 +87,53 @@ export const openApiSpec = {
         },
       },
     },
+    '/ai-alerts/{alertId}/feedback': {
+      get: {
+        tags: ['AI Anomaly Detection & Alerts'],
+        summary: 'View reliability feedback for an AI alert',
+        description: 'Returns bounded V2 alert triage history. Requires an active Security Officer account.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'alertId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+          { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 10 } },
+          { name: 'sortOrder', in: 'query', schema: { type: 'string', enum: ['asc', 'desc'], default: 'desc' } },
+        ],
+        responses: {
+          '200': { description: 'Paginated feedback history' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer role required' },
+          '404': { description: 'AI alert not found' },
+          '422': { description: 'Invalid path or query parameters' },
+        },
+      },
+      post: {
+        tags: ['AI Anomaly Detection & Alerts'],
+        summary: 'Provide reliability feedback for an AI alert',
+        description: 'Records an analyst assessment without changing alert status. Requires an active Security Officer account.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'alertId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+        ],
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: {
+            type: 'object', required: ['feedbackLabel'], additionalProperties: false,
+            properties: {
+              feedbackLabel: { type: 'string', enum: ['confirmed_incident', 'false_positive', 'needs_review'] },
+              comment: { type: 'string', maxLength: 2000 },
+            },
+          } } },
+        },
+        responses: {
+          '201': { description: 'Reliability feedback recorded' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer role required' },
+          '404': { description: 'AI alert not found' },
+          '422': { description: 'Invalid request body or alert ID' },
+        },
+      },
+    },
     '/auth/login': {
       post: {
         tags: ['Authentication'],
