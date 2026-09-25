@@ -5,7 +5,10 @@ import { capabilitiesForRole } from '../src/modules/user-management-authorizatio
 describe('WBS role capability compatibility', () => {
   it('has exactly the four V2 database roles', () => {
     expect(Object.values(user_role).sort()).toEqual([
-      'ADMIN', 'EMPLOYEE', 'EXECUTIVE', 'SECURITY_OFFICER',
+      'ADMIN',
+      'EMPLOYEE',
+      'EXECUTIVE',
+      'SECURITY_OFFICER',
     ]);
   });
 
@@ -25,9 +28,19 @@ describe('WBS role capability compatibility', () => {
     expect(all).not.toContain('roles.update');
   });
 
+  it('allows only Security Officer to run anomaly detection', () => {
+    for (const role of Object.values(user_role)) {
+      expect(capabilitiesForRole(role).includes('anomaly-detection.run')).toBe(
+        role === user_role.SECURITY_OFFICER,
+      );
+    }
+  });
+
   it('limits Executive and Employee to functions explicitly listed for them', () => {
     expect(capabilitiesForRole(user_role.EXECUTIVE)).toEqual([
-      'ai-alerts.thresholds.manage', 'incidents.read', 'reports.read',
+      'ai-alerts.thresholds.manage',
+      'incidents.read',
+      'reports.read',
     ]);
     expect(capabilitiesForRole(user_role.EMPLOYEE)).toEqual(['policies.acknowledge']);
   });
