@@ -6,7 +6,8 @@ export const openApiSpec = {
   info: {
     title: 'SecuraAI API',
     version: '2.0.0',
-    description: 'V2 database baseline. Migrated endpoints are active; historical V1 URLs pending migration return HTTP 501.',
+    description:
+      'V2 database baseline. Migrated endpoints are active; historical V1 URLs pending migration return HTTP 501.',
   },
   servers: [{ url: env.API_PREFIX, description: 'Current server' }],
   components: {
@@ -45,6 +46,44 @@ export const openApiSpec = {
           '409': { description: 'No deployed anomaly detection model is available' },
           '422': { description: 'Invalid run options' },
           '429': { description: 'Too many detection run requests' },
+        },
+      },
+    },
+    '/ai-alerts': {
+      get: {
+        tags: ['AI Anomaly Detection & Alerts'],
+        summary: 'View AI-generated anomaly alerts in near real time',
+        description:
+          'Returns a bounded, filterable page of V2 anomaly alerts. Requires an active Security Officer account. Clients may poll using detectedAfter and the returned serverTime watermark.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
+          {
+            name: 'limit',
+            in: 'query',
+            schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
+          },
+          { name: 'q', in: 'query', schema: { type: 'string', maxLength: 100 } },
+          {
+            name: 'status',
+            in: 'query',
+            schema: {
+              type: 'string',
+              enum: ['new', 'reviewing', 'confirmed', 'false_positive', 'resolved', 'dismissed'],
+            },
+          },
+          { name: 'detectedAfter', in: 'query', schema: { type: 'string', format: 'date-time' } },
+          {
+            name: 'sortOrder',
+            in: 'query',
+            schema: { type: 'string', enum: ['asc', 'desc'], default: 'desc' },
+          },
+        ],
+        responses: {
+          '200': { description: 'Paginated AI alert feed with a serverTime polling watermark' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer role required' },
+          '422': { description: 'Invalid query parameters' },
         },
       },
     },
@@ -131,7 +170,8 @@ export const openApiSpec = {
       get: {
         tags: ['Users'],
         summary: 'Get the current active V2 user session profile',
-        description: 'Requires a valid access token. The permissions field contains conservative role-derived frontend capability names from the Project Tracking WBS, not stored per-user grants. V2 has no detailed permission or MFA models yet.',
+        description:
+          'Requires a valid access token. The permissions field contains conservative role-derived frontend capability names from the Project Tracking WBS, not stored per-user grants. V2 has no detailed permission or MFA models yet.',
         security: [{ bearerAuth: [] }],
         responses: {
           '200': {
@@ -145,7 +185,16 @@ export const openApiSpec = {
                     success: { type: 'boolean', example: true },
                     data: {
                       type: 'object',
-                      required: ['id', 'email', 'fullName', 'status', 'mustChangePassword', 'mfaEnabled', 'roles', 'permissions'],
+                      required: [
+                        'id',
+                        'email',
+                        'fullName',
+                        'status',
+                        'mustChangePassword',
+                        'mfaEnabled',
+                        'roles',
+                        'permissions',
+                      ],
                       properties: {
                         id: { type: 'string', format: 'uuid' },
                         email: { type: 'string', format: 'email' },
@@ -161,7 +210,12 @@ export const openApiSpec = {
                             properties: { code: { type: 'string' }, name: { type: 'string' } },
                           },
                         },
-                        permissions: { type: 'array', items: { type: 'string' }, description: 'Role-derived UI capability names; backend handlers must enforce their own authorization.' },
+                        permissions: {
+                          type: 'array',
+                          items: { type: 'string' },
+                          description:
+                            'Role-derived UI capability names; backend handlers must enforce their own authorization.',
+                        },
                       },
                     },
                   },

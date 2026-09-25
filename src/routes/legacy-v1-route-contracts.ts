@@ -100,7 +100,6 @@ export const legacyV1RouteContracts = [
   { method: 'put', path: '/ai-alerts/thresholds/{assetId}', tag: 'AI Alerts' },
   { method: 'get', path: '/ai-alerts/models', tag: 'AI Alerts' },
   { method: 'post', path: '/ai-alerts/models', tag: 'AI Alerts' },
-  { method: 'get', path: '/ai-alerts', tag: 'AI Alerts' },
   { method: 'get', path: '/ai-alerts/{alertId}/explanation', tag: 'AI Alerts' },
   { method: 'post', path: '/ai-alerts/models/{modelVersionId}/activate', tag: 'AI Alerts' },
   { method: 'get', path: '/ai-alerts/{alertId}/feedback', tag: 'AI Alerts' },
