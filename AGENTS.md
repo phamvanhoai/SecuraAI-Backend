@@ -24,9 +24,13 @@ Current database baseline:
 - Legacy migrations are retained under `prisma/migrations-legacy/` for reference only.
 - `npm run db:verify` compares the live `public` schema with the approved database design.
 
-Health routes, V2-backed authentication login, refresh and logout, and protected `GET /users/me` are currently implemented. Another 142 historical V1 method/URL contracts are registered in `src/routes/legacy-v1-route-contracts.ts` and return HTTP 501 until ported. Their V3 handlers and tests are in `reference/legacy-v3/` as non-running porting reference. Training remains removed. Do not describe any pending business endpoint as implemented until its full route-to-repository path and tests exist.
+Health routes, V2-backed authentication login, refresh and logout, protected `GET /users/me`, Security Officer policy draft listing and submission, Admin viewing of submitted policy drafts, anomaly detection runs, the real-time AI alert feed, AI alert reliability feedback, confirmation of alerts as incidents, and false-positive alert marking are currently implemented. Another 134 historical V1 method/URL contracts are registered in `src/routes/legacy-v1-route-contracts.ts` and return HTTP 501 until ported. Their V3 handlers and tests are in `reference/legacy-v3/` as non-running porting reference. Training is removed from both active code and the V3 porting reference; only immutable historical database snapshots may still mention it. Do not describe any pending business endpoint as implemented until its full route-to-repository path and tests exist.
+
+`GET /users/me` returns role-derived frontend capability names from `src/modules/user-management-authorization/role-capabilities.ts`, based on the WBS actor column. These are not stored grants and must never be used as a substitute for server-side role, scope, ownership and status checks on future handlers.
 
 Do not migrate the project to NestJS, another web framework, another ORM, or another database unless the user explicitly requests it.
+
+Policy draft submission for Admin review is implemented through `POST /api/v1/compliance/policies/:policyId/versions/:versionId/submit`.
 
 ## 2. Sources of truth
 

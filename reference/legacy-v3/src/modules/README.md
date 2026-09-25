@@ -8,7 +8,7 @@ This folder mirrors the domain groups defined by `project-docs/database.txt` and
 |---|---|
 | Member 1 | `auth`, `users`, `access-control`, `organization`, `notifications`, `audit-settings` |
 | Member 2 | `asset-management`, `risk-management`, `file-management` |
-| Member 3 | `policy-compliance`, `incident-management`, `training-awareness` |
+| Member 3 | `policy-compliance`, `incident-management` |
 | Member 4 | `security-monitoring`, `ai-alerts` |
 | Member 5 | `reporting`, `approval-workflow`, `integrations` |
 
