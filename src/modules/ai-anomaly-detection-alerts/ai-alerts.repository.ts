@@ -47,6 +47,13 @@ function databaseStatuses(status: ListAiAlertsQuery['status']): alert_status[] |
 }
 
 export const aiAlertsRepository = {
+  metrics(detectedAfter: Date) {
+    return prisma.anomaly_alerts.groupBy({
+      by: ['status'],
+      where: { anomaly_detections: { detected_at: { gt: detectedAfter } } },
+      _count: { _all: true },
+    });
+  },
   list(query: ListAiAlertsQuery) {
     const statuses = databaseStatuses(query.status);
     const where: Prisma.anomaly_alertsWhereInput = {
@@ -89,6 +96,33 @@ export const aiAlertsRepository = {
         take: query.limit,
       }),
     ]);
+  },
+  findExplanation(alertId: string) {
+    return prisma.anomaly_alerts.findUnique({
+      where: { id: alertId },
+      select: {
+        id: true,
+        severity: true,
+        created_at: true,
+        anomaly_detections: {
+          select: {
+            id: true,
+            anomaly_score: true,
+            threshold: true,
+            detected_at: true,
+            anomaly_feature_contributions: {
+              orderBy: [{ rank: 'asc' }, { contribution_score: 'desc' }],
+              select: {
+                feature_name: true,
+                feature_value: true,
+                contribution_score: true,
+                rank: true,
+              },
+            },
+          },
+        },
+      },
+    });
   },
   findForFeedback(alertId: string) {
     return prisma.anomaly_alerts.findUnique({

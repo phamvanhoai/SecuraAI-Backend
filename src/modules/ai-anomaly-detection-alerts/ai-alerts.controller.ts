@@ -18,6 +18,23 @@ export const listAiAlerts: RequestHandler = async (req, res) => {
   res.status(200).json({ success: true, data });
 };
 
+export const getAiAlertMetrics: RequestHandler = async (_req, res) => {
+  const userId: unknown = res.locals.authenticatedUserId;
+  if (typeof userId !== 'string')
+    throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+  const data = await aiAlertsService.metrics(userId);
+  res.status(200).json({ success: true, data });
+};
+
+export const getAiAlertExplanation: RequestHandler = async (req, res) => {
+  const userId: unknown = res.locals.authenticatedUserId;
+  if (typeof userId !== 'string')
+    throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+  const { alertId } = aiAlertIdParamsSchema.parse(req.params);
+  const data = await aiAlertsService.getExplanation(userId, alertId);
+  res.status(200).json({ success: true, data });
+};
+
 export const createAiAlertFeedback: RequestHandler = async (req, res) => {
   const userId: unknown = res.locals.authenticatedUserId;
   if (typeof userId !== 'string')
