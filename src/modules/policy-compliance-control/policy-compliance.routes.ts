@@ -12,6 +12,9 @@ import {
   requestPolicyRevision,
   rejectPolicy,
   listRejectedPolicies,
+  listOwnedPublishedPolicies,
+  listEmployeePublishedPolicies,
+  getEmployeePublishedPolicy,
 } from './policy-compliance.controller.js';
 import {
   policyDraftReviewParamsSchema,
@@ -33,8 +36,29 @@ import {
   rejectPolicyBodySchema,
   rejectPolicyParamsSchema,
 } from './dto/reject-policy.dto.js';
+import {
+  publishedPolicyListQuerySchema,
+  publishedPolicyParamsSchema,
+} from './dto/view-published-policy.dto.js';
 
 export const policyComplianceRouter = Router();
+policyComplianceRouter.get(
+  '/policies/published/mine',
+  authenticate,
+  asyncHandler(listOwnedPublishedPolicies),
+);
+policyComplianceRouter.get(
+  '/policies/acknowledgements/mine',
+  authenticate,
+  validate({ query: publishedPolicyListQuerySchema }),
+  asyncHandler(listEmployeePublishedPolicies),
+);
+policyComplianceRouter.get(
+  '/policies/:policyId/versions/:versionId/acknowledgement',
+  authenticate,
+  validate({ params: publishedPolicyParamsSchema }),
+  asyncHandler(getEmployeePublishedPolicy),
+);
 policyComplianceRouter.get(
   '/policies/rejected',
   authenticate,

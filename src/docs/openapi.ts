@@ -17,6 +17,40 @@ export const openApiSpec = {
   },
   paths: {
     ...pendingV2Paths,
+    '/compliance/policies/published/mine': {
+      get: {
+        tags: ['Policy Management'], summary: 'List owned published policies',
+        description: 'Returns current published V2 policy versions owned by the active Security Officer, including content and publication details.',
+        security: [{ bearerAuth: [] }],
+        responses: { '200': { description: 'Owned published policy versions' }, '401': { description: 'Authentication required' }, '403': { description: 'Security Officer role required' } },
+      },
+    },
+    '/compliance/policies/acknowledgements/mine': {
+      get: {
+        tags: ['Policy Management'], summary: 'List published policies for the current Employee',
+        description: 'Returns current active V2 policies and their published versions with the Employee reading status.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 } },
+          { name: 'q', in: 'query', schema: { type: 'string', minLength: 1, maxLength: 100 } },
+          { name: 'status', in: 'query', schema: { type: 'string', enum: ['all', 'pending', 'acknowledged'], default: 'all' } },
+        ],
+        responses: { '200': { description: 'Paginated published policy list' }, '401': { description: 'Authentication required' }, '403': { description: 'Employee role required' }, '422': { description: 'Invalid query parameters' } },
+      },
+    },
+    '/compliance/policies/{policyId}/versions/{versionId}/acknowledgement': {
+      get: {
+        tags: ['Policy Management'], summary: 'View a published policy version',
+        description: 'Returns the content and details of the current published V2 policy version to an active Employee.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'policyId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+          { name: 'versionId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+        ],
+        responses: { '200': { description: 'Published policy content and details' }, '401': { description: 'Authentication required' }, '403': { description: 'Employee role required' }, '404': { description: 'Published policy not found' }, '422': { description: 'Invalid identifiers' } },
+      },
+    },
     '/compliance/policies/rejected': {
       get: {
         tags: ['Policy Management'],
