@@ -17,6 +17,37 @@ export const openApiSpec = {
   },
   paths: {
     ...pendingV2Paths,
+    '/compliance/policies/{policyId}/versions/{versionId}/approve': {
+      post: {
+        tags: ['Policy Management'],
+        summary: 'Approve a reviewed policy version for publication',
+        description:
+          'Records an APPROVED policy decision and moves a submitted V2 policy version to APPROVED. Publication remains a separate workflow. Requires an active Admin account.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'policyId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+          {
+            name: 'versionId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          '200': { description: 'Policy version approved for publication' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Admin role required' },
+          '404': { description: 'Submitted policy draft not found' },
+          '409': { description: 'Policy draft changed concurrently' },
+          '422': { description: 'Invalid policy or version identifier' },
+        },
+      },
+    },
     '/compliance/policies/{policyId}/versions/{versionId}/submit': {
       post: {
         tags: ['Policies'],
