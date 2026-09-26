@@ -16,6 +16,11 @@ import {
   requestPolicyRevisionBodySchema,
   requestPolicyRevisionParamsSchema,
 } from './dto/request-policy-revision.dto.js';
+import {
+  rejectedPolicyQuerySchema,
+  rejectPolicyBodySchema,
+  rejectPolicyParamsSchema,
+} from './dto/reject-policy.dto.js';
 
 function authenticatedUserId(value: unknown): string {
   if (typeof value !== 'string') throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
@@ -84,6 +89,25 @@ export const requestPolicyRevision: RequestHandler = async (req, res) => {
     policyId,
     versionId,
     requestPolicyRevisionBodySchema.parse(req.body),
+  );
+  res.status(200).json({ success: true, data });
+};
+
+export const rejectPolicy: RequestHandler = async (req, res) => {
+  const { policyId, versionId } = rejectPolicyParamsSchema.parse(req.params);
+  const data = await policyComplianceService.rejectPolicy(
+    authenticatedUserId(res.locals.authenticatedUserId),
+    policyId,
+    versionId,
+    rejectPolicyBodySchema.parse(req.body),
+  );
+  res.status(200).json({ success: true, data });
+};
+
+export const listRejectedPolicies: RequestHandler = async (req, res) => {
+  const data = await policyComplianceService.listRejectedPolicies(
+    authenticatedUserId(res.locals.authenticatedUserId),
+    rejectedPolicyQuerySchema.parse(req.query),
   );
   res.status(200).json({ success: true, data });
 };

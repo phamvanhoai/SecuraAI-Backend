@@ -10,6 +10,8 @@ import {
   approvePolicyForPublication,
   editPolicyDraft,
   requestPolicyRevision,
+  rejectPolicy,
+  listRejectedPolicies,
 } from './policy-compliance.controller.js';
 import {
   policyDraftReviewParamsSchema,
@@ -26,8 +28,25 @@ import {
   requestPolicyRevisionBodySchema,
   requestPolicyRevisionParamsSchema,
 } from './dto/request-policy-revision.dto.js';
+import {
+  rejectedPolicyQuerySchema,
+  rejectPolicyBodySchema,
+  rejectPolicyParamsSchema,
+} from './dto/reject-policy.dto.js';
 
 export const policyComplianceRouter = Router();
+policyComplianceRouter.get(
+  '/policies/rejected',
+  authenticate,
+  validate({ query: rejectedPolicyQuerySchema }),
+  asyncHandler(listRejectedPolicies),
+);
+policyComplianceRouter.post(
+  '/policies/:policyId/versions/:versionId/reject',
+  authenticate,
+  validate({ params: rejectPolicyParamsSchema, body: rejectPolicyBodySchema }),
+  asyncHandler(rejectPolicy),
+);
 policyComplianceRouter.post(
   '/policies/:policyId/versions/:versionId/approve',
   authenticate,

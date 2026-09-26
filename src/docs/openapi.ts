@@ -17,6 +17,61 @@ export const openApiSpec = {
   },
   paths: {
     ...pendingV2Paths,
+    '/compliance/policies/rejected': {
+      get: {
+        tags: ['Policy Management'],
+        summary: 'List rejected policy versions',
+        description:
+          'Returns a searchable, paginated audit list of rejected V2 policy versions with the recorded reason and Admin decision details. Active Admins see all records; active Security Officers see only policies they own.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 } },
+          { name: 'q', in: 'query', schema: { type: 'string', minLength: 1, maxLength: 100 } },
+          { name: 'sortOrder', in: 'query', schema: { type: 'string', enum: ['asc', 'desc'], default: 'desc' } },
+        ],
+        responses: {
+          '200': { description: 'Paginated rejected policy list' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Admin or Security Officer role required' },
+          '422': { description: 'Invalid query parameters' },
+        },
+      },
+    },
+    '/compliance/policies/{policyId}/versions/{versionId}/reject': {
+      post: {
+        tags: ['Policy Management'],
+        summary: 'Reject a submitted policy draft',
+        description:
+          'Records an Admin REJECTED decision with a required reason and moves the submitted V2 policy version to REJECTED. Rejection is final for that version and does not publish it or return it to draft.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'policyId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+          { name: 'versionId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['reason'],
+                properties: { reason: { type: 'string', minLength: 3, maxLength: 5000 } },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'Policy version rejected and decision recorded' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Admin role required' },
+          '404': { description: 'Submitted policy draft not found' },
+          '409': { description: 'Policy draft changed concurrently' },
+          '422': { description: 'Invalid identifiers or rejection reason' },
+        },
+      },
+    },
     '/compliance/policies/{policyId}/drafts/{versionId}': {
       ...pendingV2Paths['/compliance/policies/{policyId}/drafts/{versionId}'],
       patch: {
