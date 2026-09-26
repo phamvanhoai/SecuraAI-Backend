@@ -17,6 +17,57 @@ export const openApiSpec = {
   },
   paths: {
     ...pendingV2Paths,
+    '/compliance/policies/{policyId}/drafts/{versionId}': {
+      ...pendingV2Paths['/compliance/policies/{policyId}/drafts/{versionId}'],
+      patch: {
+        tags: ['Policies'],
+        summary: 'Edit an owned policy draft',
+        description:
+          'Updates policy metadata and draft-version content for an active Security Officer who owns and authored the V2 draft. Only DRAFT policies and versions are editable.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'policyId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+          {
+            name: 'versionId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                additionalProperties: false,
+                minProperties: 1,
+                properties: {
+                  title: { type: 'string', minLength: 3, maxLength: 255 },
+                  description: { type: 'string', maxLength: 2000, nullable: true },
+                  versionNumber: { type: 'string', minLength: 1, maxLength: 30 },
+                  content: { type: 'string', minLength: 1, maxLength: 500000 },
+                  changeSummary: { type: 'string', maxLength: 5000, nullable: true },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'Updated policy draft' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer role and draft ownership required' },
+          '404': { description: 'Policy draft not found' },
+          '409': { description: 'Draft is no longer editable or version number conflicts' },
+          '422': { description: 'Invalid identifiers or update fields' },
+        },
+      },
+    },
     '/compliance/policies/{policyId}/versions/{versionId}/submit': {
       post: {
         tags: ['Policies'],
