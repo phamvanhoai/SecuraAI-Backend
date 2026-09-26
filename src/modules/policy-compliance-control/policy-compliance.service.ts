@@ -5,6 +5,7 @@ import type { EditPolicyDraftBody } from './dto/edit-policy-draft.dto.js';
 import { Prisma } from '@prisma/client';
 import type { RequestPolicyRevisionBody } from './dto/request-policy-revision.dto.js';
 import type { RejectPolicyBody, RejectedPolicyQuery } from './dto/reject-policy.dto.js';
+import type { PublishedPolicyListQuery } from './dto/view-published-policy.dto.js';
 import {
   policyComplianceRepository,
   type PolicyReviewRecord,
@@ -134,6 +135,96 @@ function mapPolicyReview(version: PolicyReviewRecord) {
 }
 
 export const policyComplianceService = {
+  async listOwnedPublishedPolicies(userId: string) {
+    const actor = await policyComplianceRepository.findActor(userId);
+    if (!actor || actor.status !== 'ACTIVE')
+      throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+    if (actor.role !== 'SECURITY_OFFICER')
+      throw new AppError(403, 'FORBIDDEN', 'Security Officer role required');
+    const policies = await policyComplianceRepository.listOwnedPublishedPolicies(userId);
+    return policies.map((policy) => {
+      const version = policy.policy_versions_policies_current_published_version_idTopolicy_versions;
+      if (!version) throw new Error('Published policy has no current published version');
+      return {
+        id: policy.id,
+        policyCode: policy.policy_code,
+        title: policy.title,
+        description: policy.description,
+        currentVersion: version.version_number,
+        content: version.content,
+        changeSummary: version.change_summary,
+        publishedAt: version.published_at,
+        updatedAt: policy.updated_at,
+        eligibleForNewVersion:
+          policy.policy_versions_policy_versions_policy_idTopolicies.length === 0,
+      };
+    });
+  },
+
+  async listPublishedPoliciesForEmployee(userId: string, query: PublishedPolicyListQuery) {
+    const actor = await policyComplianceRepository.findActor(userId);
+    if (!actor || actor.status !== 'ACTIVE')
+      throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+    if (actor.role !== 'EMPLOYEE')
+      throw new AppError(403, 'FORBIDDEN', 'Employee role required');
+    const [total, policies] =
+      await policyComplianceRepository.listPublishedPoliciesForEmployee(userId, query);
+    return {
+      items: policies.map((policy) => {
+        const version = policy.policy_versions_policies_current_published_version_idTopolicy_versions;
+        if (!version) throw new Error('Published policy has no current published version');
+        return {
+          policyId: policy.id,
+          policyCode: policy.policy_code,
+          title: policy.title,
+          description: policy.description,
+          versionId: version.id,
+          versionNumber: version.version_number,
+          effectiveDate: version.published_at,
+          publishedAt: version.published_at,
+          acknowledgedAt: version.policy_acknowledgements[0]?.acknowledged_at ?? null,
+        };
+      }),
+      pagination: {
+        page: query.page,
+        limit: query.limit,
+        total,
+        totalPages: Math.ceil(total / query.limit),
+      },
+    };
+  },
+
+  async getPublishedPolicyForEmployee(userId: string, policyId: string, versionId: string) {
+    const actor = await policyComplianceRepository.findActor(userId);
+    if (!actor || actor.status !== 'ACTIVE')
+      throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+    if (actor.role !== 'EMPLOYEE')
+      throw new AppError(403, 'FORBIDDEN', 'Employee role required');
+    const version = await policyComplianceRepository.findPublishedPolicyForEmployee(
+      policyId,
+      versionId,
+      userId,
+    );
+    if (!version)
+      throw new AppError(404, 'PUBLISHED_POLICY_NOT_FOUND', 'Published policy was not found');
+    const policy = version.policies_policy_versions_policy_idTopolicies;
+    return {
+      policyId: version.policy_id,
+      policyCode: policy.policy_code,
+      title: policy.title,
+      description: policy.description,
+      version: {
+        id: version.id,
+        versionNumber: version.version_number,
+        content: version.content,
+        changeSummary: version.change_summary,
+        effectiveDate: version.published_at,
+        publishedAt: version.published_at,
+      },
+      acknowledgedAt: version.policy_acknowledgements[0]?.acknowledged_at ?? null,
+    };
+  },
+
   async listRejectedPolicies(userId: string, query: RejectedPolicyQuery) {
     const actor = await policyComplianceRepository.findActor(userId);
     if (!actor || actor.status !== 'ACTIVE') {

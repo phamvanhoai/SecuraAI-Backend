@@ -110,7 +110,6 @@ export const legacyV1RouteContracts = [
   { method: 'put', path: '/assets/{assetId}/owner', tag: 'Assets' },
   { method: 'get', path: '/assets/{assetId}/history', tag: 'Assets' },
   { method: 'post', path: '/compliance/policies', tag: 'Policies' },
-  { method: 'get', path: '/compliance/policies/published/mine', tag: 'Policy Compliance' },
   { method: 'get', path: '/compliance/policy-control-mappings', tag: 'Policies' },
   { method: 'get', path: '/compliance/frameworks', tag: 'Policies' },
   { method: 'get', path: '/compliance/frameworks/{frameworkId}/controls', tag: 'Policies' },
@@ -120,12 +119,6 @@ export const legacyV1RouteContracts = [
     tag: 'Policies',
   },
   { method: 'get', path: '/compliance/policies/department-assignments', tag: 'Policies' },
-  { method: 'get', path: '/compliance/policies/acknowledgements/mine', tag: 'Policies' },
-  {
-    method: 'get',
-    path: '/compliance/policies/{policyId}/versions/{versionId}/acknowledgement',
-    tag: 'Policies',
-  },
   {
     method: 'post',
     path: '/compliance/policies/{policyId}/versions/{versionId}/acknowledgements',

@@ -21,6 +21,10 @@ import {
   rejectPolicyBodySchema,
   rejectPolicyParamsSchema,
 } from './dto/reject-policy.dto.js';
+import {
+  publishedPolicyListQuerySchema,
+  publishedPolicyParamsSchema,
+} from './dto/view-published-policy.dto.js';
 
 function authenticatedUserId(value: unknown): string {
   if (typeof value !== 'string') throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
@@ -108,6 +112,31 @@ export const listRejectedPolicies: RequestHandler = async (req, res) => {
   const data = await policyComplianceService.listRejectedPolicies(
     authenticatedUserId(res.locals.authenticatedUserId),
     rejectedPolicyQuerySchema.parse(req.query),
+  );
+  res.status(200).json({ success: true, data });
+};
+
+export const listOwnedPublishedPolicies: RequestHandler = async (_req, res) => {
+  const data = await policyComplianceService.listOwnedPublishedPolicies(
+    authenticatedUserId(res.locals.authenticatedUserId),
+  );
+  res.status(200).json({ success: true, data });
+};
+
+export const listEmployeePublishedPolicies: RequestHandler = async (req, res) => {
+  const data = await policyComplianceService.listPublishedPoliciesForEmployee(
+    authenticatedUserId(res.locals.authenticatedUserId),
+    publishedPolicyListQuerySchema.parse(req.query),
+  );
+  res.status(200).json({ success: true, data });
+};
+
+export const getEmployeePublishedPolicy: RequestHandler = async (req, res) => {
+  const { policyId, versionId } = publishedPolicyParamsSchema.parse(req.params);
+  const data = await policyComplianceService.getPublishedPolicyForEmployee(
+    authenticatedUserId(res.locals.authenticatedUserId),
+    policyId,
+    versionId,
   );
   res.status(200).json({ success: true, data });
 };
