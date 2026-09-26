@@ -37,6 +37,7 @@ describe('POST /api/v1/anomaly-detections/runs', () => {
       lookbackHours: 24,
       eventsEvaluated: 1,
       anomaliesDetected: 1,
+      customThresholdsApplied: 0,
       detectionsCreated: 1,
       alertsCreated: 1,
       threshold: 0.8,

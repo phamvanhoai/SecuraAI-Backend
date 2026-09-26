@@ -37,7 +37,10 @@ describe('run anomaly detection service', () => {
       id: 'model',
       model_name: 'detector',
       version: '2',
-      parameters: { threshold: 0.7 },
+      parameters: {
+        threshold: 0.7,
+        assetThresholds: { 'asset-1': { threshold: 0.6, enabled: true } },
+      },
     });
     vi.mocked(anomalyDetectionRepository.findPendingEvents).mockResolvedValue({
       events: [
@@ -46,6 +49,7 @@ describe('run anomaly detection service', () => {
           event_type: 'login_failure',
           severity: 'CRITICAL',
           occurred_at: new Date('2026-09-25T02:00:00Z'),
+          event_entity_mappings: [{ asset_id: 'asset-1' }],
         },
       ],
       frequencies: new Map([['login_failure', 1]]),

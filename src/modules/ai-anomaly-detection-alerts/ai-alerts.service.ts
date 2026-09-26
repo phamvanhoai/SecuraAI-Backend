@@ -1,4 +1,5 @@
 import { AppError } from '../../common/errors/app-error.js';
+import { z } from 'zod';
 import { anomalyDetectionRepository } from './anomaly-detection.repository.js';
 import { aiAlertsRepository, type AiAlertRecord } from './ai-alerts.repository.js';
 import type { ListAiAlertsQuery } from './dto/list-ai-alerts.dto.js';
@@ -6,9 +7,31 @@ import type {
   CreateAiAlertFeedback,
   ListAiAlertFeedbackQuery,
 } from './dto/ai-alert-feedback.dto.js';
-import type { triage_decision } from '@prisma/client';
+import type { Prisma, triage_decision } from '@prisma/client';
 import type { ConfirmAiAlert } from './dto/confirm-ai-alert.dto.js';
 import type { MarkAiAlertFalsePositive } from './dto/mark-ai-alert-false-positive.dto.js';
+import type { ListAlertThresholdsQuery, SetAlertThresholdBody } from './dto/alert-threshold.dto.js';
+import type { ListModelVersionsQuery } from './dto/list-model-versions.dto.js';
+
+const storedThresholdSchema = z.object({
+  threshold: z.number().min(0.01).max(1),
+  riskLevelMin: z.enum(['low', 'medium', 'high', 'critical']).nullable(),
+  enabled: z.boolean(),
+  updatedByUserId: z.uuid(),
+  updatedAt: z.iso.datetime({ offset: true }),
+});
+
+function thresholdResponse(record: {
+  asset: { id: string; asset_code: string; name: string };
+  configuration: unknown;
+}) {
+  const configuration = storedThresholdSchema.parse(record.configuration);
+  return {
+    id: record.asset.id,
+    asset: { id: record.asset.id, assetCode: record.asset.asset_code, name: record.asset.name },
+    ...configuration,
+  };
+}
 
 function responseStatus(status: AiAlertRecord['status']) {
   if (status === 'NEW') return 'new' as const;
@@ -53,6 +76,80 @@ function toResponse(alert: AiAlertRecord) {
 }
 
 export const aiAlertsService = {
+  async listModelVersions(userId: string, query: ListModelVersionsQuery) {
+    await requireSecurityOfficer(userId);
+    const [total, models] = await aiAlertsRepository.listModelVersions(query);
+    return {
+      items: models.map((model) => {
+        const evaluation = model.ai_model_evaluations[0];
+        return {
+          id: model.id,
+          modelName: model.model_name,
+          modelType: model.model_type,
+          version: model.version,
+          status: model.status.toLowerCase(),
+          featureDefinition: model.feature_definition,
+          parameters: model.parameters,
+          dataset: model.ai_datasets
+            ? {
+                id: model.ai_datasets.id,
+                name: model.ai_datasets.name,
+                version: model.ai_datasets.version,
+              }
+            : null,
+          latestEvaluation: evaluation
+            ? {
+                id: evaluation.id,
+                precision: decimalNumber(evaluation.precision),
+                recall: decimalNumber(evaluation.recall),
+                f1Score: decimalNumber(evaluation.f1_score),
+                prAuc: decimalNumber(evaluation.pr_auc),
+                falsePositiveRate: decimalNumber(evaluation.false_positive_rate),
+                alertsPerDay: decimalNumber(evaluation.alerts_per_day),
+                detectionLatencyMs: decimalNumber(evaluation.detection_latency_ms),
+                notes: evaluation.evaluation_notes,
+                evaluatedAt: evaluation.evaluated_at,
+              }
+            : null,
+          deployedAt: model.deployed_at,
+          retiredAt: model.retired_at,
+          createdAt: model.created_at,
+        };
+      }),
+      pagination: {
+        page: query.page,
+        limit: query.limit,
+        total,
+        totalPages: Math.ceil(total / query.limit),
+      },
+    };
+  },
+  async listAlertThresholds(userId: string, query: ListAlertThresholdsQuery) {
+    await requireSecurityOfficer(userId);
+    const [total, records] = await aiAlertsRepository.listAlertThresholds(query);
+    return {
+      items: records.map((record) => thresholdResponse(record)),
+      pagination: {
+        page: query.page,
+        limit: query.limit,
+        total,
+        totalPages: Math.ceil(total / query.limit),
+      },
+    };
+  },
+  async setAlertThreshold(userId: string, assetId: string, input: SetAlertThresholdBody) {
+    await requireSecurityOfficer(userId);
+    const result = await aiAlertsRepository.setAlertThreshold(assetId, userId, input);
+    if (result.outcome === 'asset_not_found')
+      throw new AppError(404, 'ASSET_NOT_FOUND', 'Active asset not found');
+    if (result.outcome === 'model_not_found')
+      throw new AppError(
+        409,
+        'NO_DEPLOYED_MODEL',
+        'Deploy an anomaly detection model before setting thresholds',
+      );
+    return thresholdResponse(result);
+  },
   async metrics(userId: string) {
     await requireSecurityOfficer(userId);
     const detectedAfter = new Date(Date.now() - 86_400_000);
@@ -197,6 +294,10 @@ export const aiAlertsService = {
     };
   },
 };
+
+function decimalNumber(value: Prisma.Decimal | null): number | null {
+  return value?.toNumber() ?? null;
+}
 
 async function requireSecurityOfficer(userId: string): Promise<void> {
   const actor = await anomalyDetectionRepository.findActor(userId);
