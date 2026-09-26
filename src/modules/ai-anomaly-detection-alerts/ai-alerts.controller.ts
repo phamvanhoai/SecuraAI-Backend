@@ -9,6 +9,18 @@ import {
 } from './dto/ai-alert-feedback.dto.js';
 import { confirmAiAlertSchema } from './dto/confirm-ai-alert.dto.js';
 import { markAiAlertFalsePositiveSchema } from './dto/mark-ai-alert-false-positive.dto.js';
+import { listModelVersionsQuerySchema } from './dto/list-model-versions.dto.js';
+
+export const listModelVersions: RequestHandler = async (req, res) => {
+  const userId: unknown = res.locals.authenticatedUserId;
+  if (typeof userId !== 'string')
+    throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+  const data = await aiAlertsService.listModelVersions(
+    userId,
+    listModelVersionsQuerySchema.parse(req.query),
+  );
+  res.status(200).json({ success: true, data });
+};
 
 export const listAiAlerts: RequestHandler = async (req, res) => {
   const userId: unknown = res.locals.authenticatedUserId;

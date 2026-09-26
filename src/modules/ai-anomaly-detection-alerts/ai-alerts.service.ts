@@ -6,9 +6,10 @@ import type {
   CreateAiAlertFeedback,
   ListAiAlertFeedbackQuery,
 } from './dto/ai-alert-feedback.dto.js';
-import type { triage_decision } from '@prisma/client';
+import type { Prisma, triage_decision } from '@prisma/client';
 import type { ConfirmAiAlert } from './dto/confirm-ai-alert.dto.js';
 import type { MarkAiAlertFalsePositive } from './dto/mark-ai-alert-false-positive.dto.js';
+import type { ListModelVersionsQuery } from './dto/list-model-versions.dto.js';
 
 function responseStatus(status: AiAlertRecord['status']) {
   if (status === 'NEW') return 'new' as const;
@@ -53,6 +54,50 @@ function toResponse(alert: AiAlertRecord) {
 }
 
 export const aiAlertsService = {
+  async listModelVersions(userId: string, query: ListModelVersionsQuery) {
+    await requireSecurityOfficer(userId);
+    const [total, models] = await aiAlertsRepository.listModelVersions(query);
+    return {
+      items: models.map((model) => {
+        const evaluation = model.ai_model_evaluations[0];
+        return {
+          id: model.id,
+          modelName: model.model_name,
+          modelType: model.model_type,
+          version: model.version,
+          status: model.status.toLowerCase(),
+          featureDefinition: model.feature_definition,
+          parameters: model.parameters,
+          dataset: model.ai_datasets
+            ? { id: model.ai_datasets.id, name: model.ai_datasets.name, version: model.ai_datasets.version }
+            : null,
+          latestEvaluation: evaluation
+            ? {
+                id: evaluation.id,
+                precision: decimalNumber(evaluation.precision),
+                recall: decimalNumber(evaluation.recall),
+                f1Score: decimalNumber(evaluation.f1_score),
+                prAuc: decimalNumber(evaluation.pr_auc),
+                falsePositiveRate: decimalNumber(evaluation.false_positive_rate),
+                alertsPerDay: decimalNumber(evaluation.alerts_per_day),
+                detectionLatencyMs: decimalNumber(evaluation.detection_latency_ms),
+                notes: evaluation.evaluation_notes,
+                evaluatedAt: evaluation.evaluated_at,
+              }
+            : null,
+          deployedAt: model.deployed_at,
+          retiredAt: model.retired_at,
+          createdAt: model.created_at,
+        };
+      }),
+      pagination: {
+        page: query.page,
+        limit: query.limit,
+        total,
+        totalPages: Math.ceil(total / query.limit),
+      },
+    };
+  },
   async metrics(userId: string) {
     await requireSecurityOfficer(userId);
     const detectedAfter = new Date(Date.now() - 86_400_000);
@@ -197,6 +242,10 @@ export const aiAlertsService = {
     };
   },
 };
+
+function decimalNumber(value: Prisma.Decimal | null): number | null {
+  return value?.toNumber() ?? null;
+}
 
 async function requireSecurityOfficer(userId: string): Promise<void> {
   const actor = await anomalyDetectionRepository.findActor(userId);

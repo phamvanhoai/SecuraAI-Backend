@@ -286,6 +286,27 @@ export const openApiSpec = {
         },
       },
     },
+    '/ai-alerts/models': {
+      ...pendingV2Paths['/ai-alerts/models'],
+      get: {
+        tags: ['AI Anomaly Detection & Alerts'],
+        summary: 'View model versions and latest evaluation metrics',
+        description: 'Returns paginated V2 anomaly model versions with dataset details and the latest recorded evaluation. Requires an active Security Officer account.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 } },
+          { name: 'modelName', in: 'query', schema: { type: 'string', maxLength: 150 } },
+          { name: 'status', in: 'query', schema: { type: 'string', enum: ['development', 'validated', 'deployed', 'retired'] } },
+        ],
+        responses: {
+          '200': { description: 'Model versions and their latest evaluation metrics' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer role required' },
+          '422': { description: 'Invalid query parameters' },
+        },
+      },
+    },
     '/auth/login': {
       post: {
         tags: ['Authentication'],

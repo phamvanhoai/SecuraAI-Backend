@@ -1,7 +1,8 @@
-import type { Prisma, alert_status, triage_decision } from '@prisma/client';
+import type { Prisma, alert_status, model_status, triage_decision } from '@prisma/client';
 import { prisma } from '../../database/prisma.js';
 import type { ListAiAlertsQuery } from './dto/list-ai-alerts.dto.js';
 import type { ListAiAlertFeedbackQuery } from './dto/ai-alert-feedback.dto.js';
+import type { ListModelVersionsQuery } from './dto/list-model-versions.dto.js';
 
 const alertSelect = {
   id: true,
@@ -47,6 +48,53 @@ function databaseStatuses(status: ListAiAlertsQuery['status']): alert_status[] |
 }
 
 export const aiAlertsRepository = {
+  listModelVersions(query: ListModelVersionsQuery) {
+    const where: Prisma.ai_model_versionsWhereInput = {
+      ...(query.modelName
+        ? { model_name: { contains: query.modelName, mode: 'insensitive' } }
+        : {}),
+      ...(query.status ? { status: query.status.toUpperCase() as model_status } : {}),
+    };
+    const select = {
+      id: true,
+      model_name: true,
+      model_type: true,
+      version: true,
+      status: true,
+      feature_definition: true,
+      parameters: true,
+      deployed_at: true,
+      retired_at: true,
+      created_at: true,
+      ai_datasets: { select: { id: true, name: true, version: true } },
+      ai_model_evaluations: {
+        orderBy: [{ evaluated_at: 'desc' as const }, { id: 'desc' as const }],
+        take: 1,
+        select: {
+          id: true,
+          precision: true,
+          recall: true,
+          f1_score: true,
+          pr_auc: true,
+          false_positive_rate: true,
+          alerts_per_day: true,
+          detection_latency_ms: true,
+          evaluation_notes: true,
+          evaluated_at: true,
+        },
+      },
+    } satisfies Prisma.ai_model_versionsSelect;
+    return prisma.$transaction([
+      prisma.ai_model_versions.count({ where }),
+      prisma.ai_model_versions.findMany({
+        where,
+        select,
+        orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+        skip: (query.page - 1) * query.limit,
+        take: query.limit,
+      }),
+    ]);
+  },
   metrics(detectedAfter: Date) {
     return prisma.anomaly_alerts.groupBy({
       by: ['status'],
