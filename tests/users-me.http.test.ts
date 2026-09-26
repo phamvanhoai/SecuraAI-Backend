@@ -15,7 +15,9 @@ import { usersRepository } from '../src/modules/user-management-authorization/us
 const userId = '9a9bf33a-02db-48e4-a8ad-90517278d7f2';
 const app = createApp();
 
-function accessToken(overrides: { type?: string; audience?: string; secret?: string } = {}): string {
+function accessToken(
+  overrides: { type?: string; audience?: string; secret?: string } = {},
+): string {
   return jwt.sign(
     { type: overrides.type ?? 'access', role: 'ADMIN' },
     overrides.secret ?? env.JWT_ACCESS_SECRET,
@@ -82,7 +84,9 @@ describe('GET /api/v1/users/me', () => {
     ];
     for (const authorization of headers) {
       const pending = request(app).get('/api/v1/users/me');
-      const response = await (authorization ? pending.set('Authorization', authorization) : pending);
+      const response = await (authorization
+        ? pending.set('Authorization', authorization)
+        : pending);
       expect(response.status).toBe(401);
       expect(response.body.error.code).toBe('UNAUTHORIZED');
     }

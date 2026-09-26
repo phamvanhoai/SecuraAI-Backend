@@ -1,6 +1,9 @@
 import { AppError } from '../../common/errors/app-error.js';
 import type { ReviewablePolicyDraftQuery } from './dto/view-policy-draft.dto.js';
 import type { ListPolicyDraftsQuery } from './dto/list-policy-drafts.dto.js';
+import type { EditPolicyDraftBody } from './dto/edit-policy-draft.dto.js';
+import { Prisma } from '@prisma/client';
+import type { RequestPolicyRevisionBody } from './dto/request-policy-revision.dto.js';
 import {
   policyComplianceRepository,
   type PolicyReviewRecord,
@@ -106,6 +109,103 @@ function mapPolicyReview(version: PolicyReviewRecord) {
 }
 
 export const policyComplianceService = {
+  async approveForPublication(userId: string, policyId: string, versionId: string) {
+    await requireActiveAdmin(userId);
+    const version = await policyComplianceRepository.findReviewableDraft(policyId, versionId);
+    if (!version) throw new AppError(404, 'POLICY_DRAFT_NOT_FOUND', 'Submitted policy draft not found');
+    const result = await policyComplianceRepository.approveDraftForPublication(policyId, versionId, userId);
+    if (!result) throw new AppError(409, 'POLICY_DRAFT_CHANGED', 'The policy draft changed before it could be approved');
+    return {
+      ...mapPolicyReview(result.version),
+      decision: { id: result.decision.id, action: result.decision.action, comment: result.decision.comment, actorUserId: result.decision.actor_user_id, decidedAt: result.decision.decided_at },
+    };
+  },
+
+  async editOwnDraft(
+    userId: string,
+    policyId: string,
+    versionId: string,
+    input: EditPolicyDraftBody,
+  ) {
+    const actor = await policyComplianceRepository.findActor(userId);
+    if (!actor || actor.status !== 'ACTIVE')
+      throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+    if (actor.role !== 'SECURITY_OFFICER')
+      throw new AppError(403, 'FORBIDDEN', 'Security Officer role required');
+
+    const draft = await policyComplianceRepository.findDraftForEdit(policyId, versionId);
+    if (!draft) throw new AppError(404, 'POLICY_DRAFT_NOT_FOUND', 'Policy draft not found');
+    const policy = draft.policies_policy_versions_policy_idTopolicies;
+    if (draft.author_user_id !== userId || policy.owner_user_id !== userId)
+      throw new AppError(403, 'FORBIDDEN', 'You can only edit policy drafts you own');
+    if (policy.status !== 'DRAFT' || draft.status !== 'DRAFT')
+      throw new AppError(
+        409,
+        'POLICY_DRAFT_NOT_EDITABLE',
+        'Only a draft policy version can be edited',
+      );
+
+    try {
+      const updated = await policyComplianceRepository.editDraft(
+        policyId,
+        versionId,
+        userId,
+        input,
+      );
+      if (!updated)
+        throw new AppError(
+          409,
+          'POLICY_DRAFT_CHANGED',
+          'The policy draft changed before it could be updated',
+        );
+      return mapOwnedPolicyDraft(updated);
+    } catch (error: unknown) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        throw new AppError(
+          409,
+          'POLICY_VERSION_CONFLICT',
+          'This policy already has the requested version number',
+        );
+      }
+      throw error;
+    }
+  },
+
+  async requestRevision(
+    userId: string,
+    policyId: string,
+    versionId: string,
+    input: RequestPolicyRevisionBody,
+  ) {
+    await requireActiveAdmin(userId);
+    const version = await policyComplianceRepository.findReviewableDraft(policyId, versionId);
+    if (!version) {
+      throw new AppError(404, 'POLICY_DRAFT_NOT_FOUND', 'Submitted policy draft not found');
+    }
+    const result = await policyComplianceRepository.requestDraftRevision(
+      policyId,
+      versionId,
+      userId,
+      input,
+    );
+    if (!result) {
+      throw new AppError(
+        409,
+        'POLICY_DRAFT_CHANGED',
+        'The policy draft changed before revision could be requested',
+      );
+    }
+    return {
+      ...mapPolicyReview(result.version),
+      decision: {
+        id: result.decision.id,
+        action: result.decision.action,
+        comment: result.decision.comment ?? input.comment,
+        actorUserId: result.decision.actor_user_id,
+        decidedAt: result.decision.decided_at,
+      },
+    };
+  },
   async submitForReview(userId: string, policyId: string, versionId: string) {
     const actor = await policyComplianceRepository.findActor(userId);
     if (!actor || actor.status !== 'ACTIVE')
@@ -118,10 +218,18 @@ export const policyComplianceService = {
     if (draft.author_user_id !== userId && policy.owner_user_id !== userId)
       throw new AppError(403, 'FORBIDDEN', 'You can only submit policy drafts you own');
     if (policy.status !== 'DRAFT' || draft.status !== 'DRAFT')
-      throw new AppError(409, 'POLICY_DRAFT_NOT_SUBMITTABLE', 'Only an active draft policy version can be submitted for review');
+      throw new AppError(
+        409,
+        'POLICY_DRAFT_NOT_SUBMITTABLE',
+        'Only an active draft policy version can be submitted for review',
+      );
     const submitted = await policyComplianceRepository.submitDraft(policyId, versionId, userId);
     if (!submitted)
-      throw new AppError(409, 'POLICY_DRAFT_CHANGED', 'The policy draft changed before it could be submitted');
+      throw new AppError(
+        409,
+        'POLICY_DRAFT_CHANGED',
+        'The policy draft changed before it could be submitted',
+      );
     return toSubmittedDraft(submitted);
   },
   async listOwnDrafts(userId: string, query: ListPolicyDraftsQuery) {
@@ -133,7 +241,12 @@ export const policyComplianceService = {
     const [total, drafts] = await policyComplianceRepository.listOwnDrafts(userId, query);
     return {
       items: drafts.map(mapOwnedPolicyDraft),
-      pagination: { page: query.page, limit: query.limit, total, totalPages: Math.ceil(total / query.limit) },
+      pagination: {
+        page: query.page,
+        limit: query.limit,
+        total,
+        totalPages: Math.ceil(total / query.limit),
+      },
     };
   },
   async listReviewableDrafts(userId: string, query: ReviewablePolicyDraftQuery) {

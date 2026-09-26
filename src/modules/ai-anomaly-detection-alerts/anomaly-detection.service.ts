@@ -15,6 +15,12 @@ const parametersSchema = z
         offHours: z.number().min(0).max(1),
       })
       .default({ severity: 0.45, rarity: 0.35, offHours: 0.2 }),
+    assetThresholds: z
+      .record(
+        z.string(),
+        z.object({ threshold: z.number().min(0.01).max(1), enabled: z.boolean() }).passthrough(),
+      )
+      .default({}),
   })
   .passthrough();
 const severityScore: Readonly<Record<string, number>> = {
@@ -76,12 +82,15 @@ export const anomalyDetectionService = {
         batch.populationSize,
         parameters.weights,
       );
+      const assetId = event.event_entity_mappings[0]?.asset_id;
+      const customThreshold = assetId ? parameters.assetThresholds[assetId] : undefined;
+      const threshold = customThreshold?.enabled ? customThreshold.threshold : parameters.threshold;
       return {
         id: randomUUID(),
         eventId: event.id,
         score,
-        threshold: parameters.threshold,
-        isAnomaly: score >= parameters.threshold,
+        threshold,
+        isAnomaly: score >= threshold,
       };
     });
     const summary = {
@@ -91,6 +100,8 @@ export const anomalyDetectionService = {
       lookbackHours: input.lookbackHours,
       eventsEvaluated: detections.length,
       anomaliesDetected: detections.filter((item) => item.isAnomaly).length,
+      customThresholdsApplied: detections.filter((item) => item.threshold !== parameters.threshold)
+        .length,
     } satisfies Prisma.InputJsonObject;
     const persisted = await anomalyDetectionRepository.persistRun({
       actorUserId: userId,

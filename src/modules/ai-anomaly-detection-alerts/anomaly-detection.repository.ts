@@ -2,7 +2,18 @@ import { createHash } from 'node:crypto';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '../../database/prisma.js';
 
-const eventSelect = { id: true, event_type: true, severity: true, occurred_at: true } as const;
+const eventSelect = {
+  id: true,
+  event_type: true,
+  severity: true,
+  occurred_at: true,
+  event_entity_mappings: {
+    where: { is_active: true, asset_id: { not: null } },
+    orderBy: { mapped_at: 'desc' as const },
+    take: 1,
+    select: { asset_id: true },
+  },
+} as const;
 export type DetectionEvent = Prisma.normalized_eventsGetPayload<{ select: typeof eventSelect }>;
 
 export const anomalyDetectionRepository = {

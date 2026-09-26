@@ -19,7 +19,9 @@ describe('mark AI alert false positive service', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(anomalyDetectionRepository.findActor).mockResolvedValue({
-      id: userId, status: 'ACTIVE', role: 'SECURITY_OFFICER',
+      id: userId,
+      status: 'ACTIVE',
+      role: 'SECURITY_OFFICER',
     });
   });
 
@@ -27,8 +29,11 @@ describe('mark AI alert false positive service', () => {
     vi.mocked(aiAlertsRepository.markFalsePositive).mockResolvedValue({
       outcome: 'changed',
       alert: {
-        id: alertId, status: 'NEW', security_findings: null,
-        anomaly_detections: { model_version_id: userId }, alert_triage_records: [],
+        id: alertId,
+        status: 'NEW',
+        security_findings: null,
+        anomaly_detections: { model_version_id: userId },
+        alert_triage_records: [],
       },
       triage: { analyst_user_id: userId, completed_at: reviewedAt, created_at: reviewedAt },
     });
