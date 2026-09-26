@@ -127,7 +127,11 @@ export const policyComplianceService = {
     if (draft.author_user_id !== userId || policy.owner_user_id !== userId)
       throw new AppError(403, 'FORBIDDEN', 'You can only edit policy drafts you own');
     if (policy.status !== 'DRAFT' || draft.status !== 'DRAFT')
-      throw new AppError(409, 'POLICY_DRAFT_NOT_EDITABLE', 'Only a draft policy version can be edited');
+      throw new AppError(
+        409,
+        'POLICY_DRAFT_NOT_EDITABLE',
+        'Only a draft policy version can be edited',
+      );
 
     try {
       const updated = await policyComplianceRepository.editDraft(
@@ -137,7 +141,11 @@ export const policyComplianceService = {
         input,
       );
       if (!updated)
-        throw new AppError(409, 'POLICY_DRAFT_CHANGED', 'The policy draft changed before it could be updated');
+        throw new AppError(
+          409,
+          'POLICY_DRAFT_CHANGED',
+          'The policy draft changed before it could be updated',
+        );
       return mapOwnedPolicyDraft(updated);
     } catch (error: unknown) {
       if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
@@ -149,6 +157,8 @@ export const policyComplianceService = {
       }
       throw error;
     }
+  },
+
   async requestRevision(
     userId: string,
     policyId: string,
@@ -196,10 +206,18 @@ export const policyComplianceService = {
     if (draft.author_user_id !== userId && policy.owner_user_id !== userId)
       throw new AppError(403, 'FORBIDDEN', 'You can only submit policy drafts you own');
     if (policy.status !== 'DRAFT' || draft.status !== 'DRAFT')
-      throw new AppError(409, 'POLICY_DRAFT_NOT_SUBMITTABLE', 'Only an active draft policy version can be submitted for review');
+      throw new AppError(
+        409,
+        'POLICY_DRAFT_NOT_SUBMITTABLE',
+        'Only an active draft policy version can be submitted for review',
+      );
     const submitted = await policyComplianceRepository.submitDraft(policyId, versionId, userId);
     if (!submitted)
-      throw new AppError(409, 'POLICY_DRAFT_CHANGED', 'The policy draft changed before it could be submitted');
+      throw new AppError(
+        409,
+        'POLICY_DRAFT_CHANGED',
+        'The policy draft changed before it could be submitted',
+      );
     return toSubmittedDraft(submitted);
   },
   async listOwnDrafts(userId: string, query: ListPolicyDraftsQuery) {
@@ -211,7 +229,12 @@ export const policyComplianceService = {
     const [total, drafts] = await policyComplianceRepository.listOwnDrafts(userId, query);
     return {
       items: drafts.map(mapOwnedPolicyDraft),
-      pagination: { page: query.page, limit: query.limit, total, totalPages: Math.ceil(total / query.limit) },
+      pagination: {
+        page: query.page,
+        limit: query.limit,
+        total,
+        totalPages: Math.ceil(total / query.limit),
+      },
     };
   },
   async listReviewableDrafts(userId: string, query: ReviewablePolicyDraftQuery) {

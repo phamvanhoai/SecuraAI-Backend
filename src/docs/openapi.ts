@@ -76,8 +76,18 @@ export const openApiSpec = {
           'Records an Admin REVISION_REQUESTED decision with a required comment and returns the submitted version to DRAFT so its Security Officer owner can revise and resubmit it.',
         security: [{ bearerAuth: [] }],
         parameters: [
-          { name: 'policyId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
-          { name: 'versionId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+          {
+            name: 'policyId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+          {
+            name: 'versionId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
         ],
         requestBody: {
           required: true,

@@ -213,10 +213,12 @@ export const policyComplianceRepository = {
         owner_user_id: userId,
         status: 'DRAFT',
         ...(query.q
-          ? { OR: [
-              { policy_code: { contains: query.q, mode: 'insensitive' as const } },
-              { title: { contains: query.q, mode: 'insensitive' as const } },
-            ] }
+          ? {
+              OR: [
+                { policy_code: { contains: query.q, mode: 'insensitive' as const } },
+                { title: { contains: query.q, mode: 'insensitive' as const } },
+              ],
+            }
           : {}),
       },
     };
@@ -249,12 +251,7 @@ export const policyComplianceRepository = {
     });
   },
 
-  editDraft(
-    policyId: string,
-    versionId: string,
-    actorUserId: string,
-    input: EditPolicyDraftBody,
-  ) {
+  editDraft(policyId: string, versionId: string, actorUserId: string, input: EditPolicyDraftBody) {
     return prisma.$transaction(async (transaction) => {
       const versionUpdate = await transaction.policy_versions.updateMany({
         where: {
@@ -306,7 +303,10 @@ export const policyComplianceRepository = {
         data: { status: 'IN_REVIEW' },
       });
       if (updated.count !== 1) return null;
-      await transaction.policies.update({ where: { id: policyId }, data: { updated_at: new Date() } });
+      await transaction.policies.update({
+        where: { id: policyId },
+        data: { updated_at: new Date() },
+      });
       return transaction.policy_versions.findUniqueOrThrow({
         where: { id: versionId },
         select: draftForSubmissionSelect,

@@ -64,6 +64,10 @@ export const editPolicyDraft: RequestHandler = async (req, res) => {
     policyId,
     versionId,
     editPolicyDraftBodySchema.parse(req.body),
+  );
+  res.status(200).json({ success: true, data });
+};
+
 export const requestPolicyRevision: RequestHandler = async (req, res) => {
   const { policyId, versionId } = requestPolicyRevisionParamsSchema.parse(req.params);
   const data = await policyComplianceService.requestRevision(
