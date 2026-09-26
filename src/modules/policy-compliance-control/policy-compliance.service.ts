@@ -4,13 +4,38 @@ import type { ListPolicyDraftsQuery } from './dto/list-policy-drafts.dto.js';
 import type { EditPolicyDraftBody } from './dto/edit-policy-draft.dto.js';
 import { Prisma } from '@prisma/client';
 import type { RequestPolicyRevisionBody } from './dto/request-policy-revision.dto.js';
+import type { RejectPolicyBody, RejectedPolicyQuery } from './dto/reject-policy.dto.js';
 import {
   policyComplianceRepository,
   type PolicyReviewRecord,
   type ReviewablePolicyRecord,
   type OwnedPolicyDraftRecord,
   type PolicyDraftForSubmission,
+  type RejectedPolicyDecisionRecord,
 } from './policy-compliance.repository.js';
+
+function mapRejectedPolicy(decision: RejectedPolicyDecisionRecord) {
+  const version = decision.policy_versions;
+  const policy = version.policies_policy_versions_policy_idTopolicies;
+  return {
+    policyId: version.policy_id,
+    policyCode: policy.policy_code,
+    title: policy.title,
+    ownerUserId: policy.owner_user_id,
+    version: {
+      id: version.id,
+      versionNumber: version.version_number,
+      status: version.status.toLowerCase(),
+    },
+    rejection: {
+      id: decision.id,
+      reason: decision.comment ?? '',
+      rejectedByUserId: decision.actor_user_id,
+      rejectedByName: decision.users.full_name,
+      rejectedAt: decision.decided_at,
+    },
+  };
+}
 
 function toSubmittedDraft(version: PolicyDraftForSubmission) {
   const policy = version.policies_policy_versions_policy_idTopolicies;
@@ -109,6 +134,65 @@ function mapPolicyReview(version: PolicyReviewRecord) {
 }
 
 export const policyComplianceService = {
+  async listRejectedPolicies(userId: string, query: RejectedPolicyQuery) {
+    const actor = await policyComplianceRepository.findActor(userId);
+    if (!actor || actor.status !== 'ACTIVE') {
+      throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+    }
+    if (actor.role !== 'ADMIN' && actor.role !== 'SECURITY_OFFICER') {
+      throw new AppError(403, 'FORBIDDEN', 'Admin or Security Officer role required');
+    }
+    const [total, decisions] = await policyComplianceRepository.listRejectedPolicies(
+      query,
+      actor.role === 'SECURITY_OFFICER' ? userId : undefined,
+    );
+    return {
+      items: decisions.map(mapRejectedPolicy),
+      pagination: {
+        page: query.page,
+        limit: query.limit,
+        total,
+        totalPages: Math.ceil(total / query.limit),
+      },
+    };
+  },
+
+  async rejectPolicy(
+    userId: string,
+    policyId: string,
+    versionId: string,
+    input: RejectPolicyBody,
+  ) {
+    await requireActiveAdmin(userId);
+    const version = await policyComplianceRepository.findReviewableDraft(policyId, versionId);
+    if (!version) {
+      throw new AppError(404, 'POLICY_DRAFT_NOT_FOUND', 'Submitted policy draft not found');
+    }
+    const result = await policyComplianceRepository.rejectDraft(
+      policyId,
+      versionId,
+      userId,
+      input,
+    );
+    if (!result) {
+      throw new AppError(
+        409,
+        'POLICY_DRAFT_CHANGED',
+        'The policy draft changed before it could be rejected',
+      );
+    }
+    return {
+      ...mapPolicyReview(result.version),
+      decision: {
+        id: result.decision.id,
+        action: result.decision.action,
+        comment: result.decision.comment ?? input.reason,
+        actorUserId: result.decision.actor_user_id,
+        decidedAt: result.decision.decided_at,
+      },
+    };
+  },
+
   async approveForPublication(userId: string, policyId: string, versionId: string) {
     await requireActiveAdmin(userId);
     const version = await policyComplianceRepository.findReviewableDraft(policyId, versionId);
