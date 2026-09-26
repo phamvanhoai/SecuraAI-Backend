@@ -17,7 +17,9 @@ describe('AI alert metrics service', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(anomalyDetectionRepository.findActor).mockResolvedValue({
-      id: userId, status: 'ACTIVE', role: 'SECURITY_OFFICER',
+      id: userId,
+      status: 'ACTIVE',
+      role: 'SECURITY_OFFICER',
     });
   });
 
@@ -30,7 +32,10 @@ describe('AI alert metrics service', () => {
       { status: 'DISMISSED', _count: { _all: 5 } },
     ]);
     await expect(aiAlertsService.metrics(userId)).resolves.toEqual({
-      total: 15, newAlerts: 3, reviewing: 3, confirmed: 4,
+      total: 15,
+      newAlerts: 3,
+      reviewing: 3,
+      confirmed: 4,
     });
   });
 });

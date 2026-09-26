@@ -1,8 +1,9 @@
-import { createHash } from 'node:crypto';
-import type { Prisma, alert_status, triage_decision } from '@prisma/client';
+import type { Prisma, alert_status, model_status, triage_decision } from '@prisma/client';
 import { prisma } from '../../database/prisma.js';
 import type { ListAiAlertsQuery } from './dto/list-ai-alerts.dto.js';
 import type { ListAiAlertFeedbackQuery } from './dto/ai-alert-feedback.dto.js';
+import type { ListAlertThresholdsQuery, SetAlertThresholdBody } from './dto/alert-threshold.dto.js';
+import type { ListModelVersionsQuery } from './dto/list-model-versions.dto.js';
 
 const alertSelect = {
   id: true,
@@ -47,6 +48,23 @@ function databaseStatuses(status: ListAiAlertsQuery['status']): alert_status[] |
   return undefined;
 }
 
+function readParameters(value: Prisma.JsonValue | null | undefined): Prisma.JsonObject {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+}
+
+function readThresholdMap(
+  value: Prisma.JsonValue | null | undefined,
+): Record<string, Prisma.JsonObject> {
+  const candidate = readParameters(value).assetThresholds;
+  if (!candidate || typeof candidate !== 'object' || Array.isArray(candidate)) return {};
+  return Object.fromEntries(
+    Object.entries(candidate).filter(
+      (entry): entry is [string, Prisma.JsonObject] =>
+        Boolean(entry[1]) && typeof entry[1] === 'object' && !Array.isArray(entry[1]),
+    ),
+  );
+}
+
 export const aiAlertsRepository = {
   findDeployedModelThreshold() {
     return prisma.ai_model_versions.findFirst({
@@ -62,7 +80,7 @@ export const aiAlertsRepository = {
       },
     });
   },
-  configureDeployedModelThreshold(input: {
+  async configureDeployedModelThreshold(input: {
     modelVersionId: string;
     threshold: number;
     actorUserId: string;
@@ -70,31 +88,32 @@ export const aiAlertsRepository = {
     return prisma.$transaction(async (transaction) => {
       const model = await transaction.ai_model_versions.findFirst({
         where: { id: input.modelVersionId, status: 'DEPLOYED' },
-        select: { id: true, model_name: true, version: true, status: true, parameters: true, deployed_at: true },
+        select: {
+          id: true,
+          model_name: true,
+          version: true,
+          status: true,
+          parameters: true,
+          deployed_at: true,
+        },
       });
       if (!model) return null;
-      const currentParameters =
+      const current =
         model.parameters && typeof model.parameters === 'object' && !Array.isArray(model.parameters)
           ? model.parameters
           : {};
-      const parameters = { ...currentParameters, threshold: input.threshold } satisfies Prisma.InputJsonObject;
       const updated = await transaction.ai_model_versions.update({
         where: { id: model.id },
-        data: { parameters },
-        select: { id: true, model_name: true, version: true, status: true, parameters: true, deployed_at: true },
+        data: { parameters: { ...current, threshold: input.threshold } },
+        select: {
+          id: true,
+          model_name: true,
+          version: true,
+          status: true,
+          parameters: true,
+          deployed_at: true,
+        },
       });
-      const previous = await transaction.audit_logs.findFirst({
-        orderBy: [{ occurred_at: 'desc' }, { id: 'desc' }],
-        select: { record_hash: true },
-      });
-      const afterData = {
-        modelVersionId: model.id,
-        previousThreshold: thresholdFromParameters(model.parameters),
-        threshold: input.threshold,
-      } satisfies Prisma.InputJsonObject;
-      const recordHash = createHash('sha256')
-        .update(JSON.stringify({ previousHash: previous?.record_hash ?? null, actorUserId: input.actorUserId, afterData }))
-        .digest('hex');
       await transaction.audit_logs.create({
         data: {
           actor_user_id: input.actorUserId,
@@ -103,13 +122,134 @@ export const aiAlertsRepository = {
           resource_type: 'AI_MODEL_VERSION',
           resource_id: model.id,
           source: 'API',
-          after_data: afterData,
-          ...(previous ? { previous_hash: previous.record_hash } : {}),
-          record_hash: recordHash,
+          after_data: { threshold: input.threshold },
+          record_hash: `${model.id}:${input.threshold}:${input.actorUserId}`,
         },
       });
       return updated;
     });
+  },
+  listModelVersions(query: ListModelVersionsQuery) {
+    const where: Prisma.ai_model_versionsWhereInput = {
+      ...(query.modelName
+        ? { model_name: { contains: query.modelName, mode: 'insensitive' } }
+        : {}),
+      ...(query.status ? { status: query.status.toUpperCase() as model_status } : {}),
+    };
+    const select = {
+      id: true,
+      model_name: true,
+      model_type: true,
+      version: true,
+      status: true,
+      feature_definition: true,
+      parameters: true,
+      deployed_at: true,
+      retired_at: true,
+      created_at: true,
+      ai_datasets: { select: { id: true, name: true, version: true } },
+      ai_model_evaluations: {
+        orderBy: [{ evaluated_at: 'desc' as const }, { id: 'desc' as const }],
+        take: 1,
+        select: {
+          id: true,
+          precision: true,
+          recall: true,
+          f1_score: true,
+          pr_auc: true,
+          false_positive_rate: true,
+          alerts_per_day: true,
+          detection_latency_ms: true,
+          evaluation_notes: true,
+          evaluated_at: true,
+        },
+      },
+    } satisfies Prisma.ai_model_versionsSelect;
+    return prisma.$transaction([
+      prisma.ai_model_versions.count({ where }),
+      prisma.ai_model_versions.findMany({
+        where,
+        select,
+        orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+        skip: (query.page - 1) * query.limit,
+        take: query.limit,
+      }),
+    ]);
+  },
+  async listAlertThresholds(query: ListAlertThresholdsQuery) {
+    const model = await prisma.ai_model_versions.findFirst({
+      where: { status: 'DEPLOYED' },
+      orderBy: [{ deployed_at: 'desc' }, { created_at: 'desc' }],
+      select: { parameters: true },
+    });
+    const thresholds = readThresholdMap(model?.parameters);
+    const assetIds = Object.keys(thresholds);
+    const where: Prisma.assetsWhereInput = {
+      id: { in: assetIds },
+      ...(query.q
+        ? {
+            OR: [
+              { asset_code: { contains: query.q, mode: 'insensitive' as const } },
+              { name: { contains: query.q, mode: 'insensitive' as const } },
+            ],
+          }
+        : {}),
+    };
+    return prisma
+      .$transaction([
+        prisma.assets.count({ where }),
+        prisma.assets.findMany({
+          where,
+          select: { id: true, asset_code: true, name: true },
+          orderBy: [{ asset_code: 'asc' }, { id: 'asc' }],
+          skip: (query.page - 1) * query.limit,
+          take: query.limit,
+        }),
+      ])
+      .then(
+        ([total, assets]) =>
+          [total, assets.map((asset) => ({ asset, configuration: thresholds[asset.id] }))] as const,
+      );
+  },
+  async setAlertThreshold(assetId: string, userId: string, input: SetAlertThresholdBody) {
+    return prisma.$transaction(
+      async (transaction) => {
+        const [asset, model] = await Promise.all([
+          transaction.assets.findFirst({
+            where: { id: assetId, status: 'ACTIVE' },
+            select: { id: true, asset_code: true, name: true },
+          }),
+          transaction.ai_model_versions.findFirst({
+            where: { status: 'DEPLOYED' },
+            orderBy: [{ deployed_at: 'desc' }, { created_at: 'desc' }],
+            select: { id: true, parameters: true },
+          }),
+        ]);
+        if (!asset) return { outcome: 'asset_not_found' as const };
+        if (!model) return { outcome: 'model_not_found' as const };
+        const updatedAt = new Date().toISOString();
+        const configuration = {
+          threshold: input.threshold,
+          riskLevelMin: input.riskLevelMin,
+          enabled: input.enabled,
+          updatedByUserId: userId,
+          updatedAt,
+        } satisfies Prisma.InputJsonObject;
+        const parameters = readParameters(model.parameters);
+        const thresholds = readThresholdMap(model.parameters);
+        await transaction.ai_model_versions.update({
+          where: { id: model.id },
+          data: {
+            parameters: {
+              ...parameters,
+              assetThresholds: { ...thresholds, [assetId]: configuration },
+            },
+          },
+        });
+        return { outcome: 'saved' as const, asset, configuration };
+      },
+      { isolationLevel: 'Serializable' },
+    );
   },
   metrics(detectedAfter: Date) {
     return prisma.anomaly_alerts.groupBy({
@@ -368,9 +508,3 @@ export const aiAlertsRepository = {
     });
   },
 };
-
-function thresholdFromParameters(parameters: Prisma.JsonValue | null): number {
-  if (!parameters || typeof parameters !== 'object' || Array.isArray(parameters)) return 0.8;
-  const threshold = parameters['threshold'];
-  return typeof threshold === 'number' ? threshold : 0.8;
-}
