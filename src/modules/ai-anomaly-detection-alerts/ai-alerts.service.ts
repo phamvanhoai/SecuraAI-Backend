@@ -77,6 +77,15 @@ function toResponse(alert: AiAlertRecord) {
 }
 
 export const aiAlertsService = {
+  async listActiveAssetOptions(userId: string) {
+    await requireSecurityOfficer(userId);
+    const assets = await aiAlertsRepository.listActiveAssetOptions();
+    return assets.map((asset) => ({
+      id: asset.id,
+      assetCode: asset.asset_code,
+      name: asset.name,
+    }));
+  },
   async getDetectionThreshold(userId: string) {
     await requireThresholdManager(userId);
     const model = await aiAlertsRepository.findDeployedModelThreshold();

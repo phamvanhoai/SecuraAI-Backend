@@ -47,6 +47,14 @@ export const listAlertThresholds: RequestHandler = async (req, res) => {
   res.status(200).json({ success: true, data });
 };
 
+export const listAlertThresholdAssetOptions: RequestHandler = async (_req, res) => {
+  const userId: unknown = res.locals.authenticatedUserId;
+  if (typeof userId !== 'string')
+    throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+  const data = await aiAlertsService.listActiveAssetOptions(userId);
+  res.status(200).json({ success: true, data });
+};
+
 export const setAlertThreshold: RequestHandler = async (req, res) => {
   const userId: unknown = res.locals.authenticatedUserId;
   if (typeof userId !== 'string')

@@ -5,7 +5,11 @@ vi.mock('../src/modules/ai-anomaly-detection-alerts/anomaly-detection.repository
   anomalyDetectionRepository: { findActor: vi.fn() },
 }));
 vi.mock('../src/modules/ai-anomaly-detection-alerts/ai-alerts.repository.js', () => ({
-  aiAlertsRepository: { listAlertThresholds: vi.fn(), setAlertThreshold: vi.fn() },
+  aiAlertsRepository: {
+    listActiveAssetOptions: vi.fn(),
+    listAlertThresholds: vi.fn(),
+    setAlertThreshold: vi.fn(),
+  },
 }));
 
 import { aiAlertsRepository } from '../src/modules/ai-anomaly-detection-alerts/ai-alerts.repository.js';
@@ -43,6 +47,16 @@ describe('asset alert threshold service', () => {
       items: [{ asset: { id: assetId }, threshold: 0.72 }],
       pagination: { total: 1, totalPages: 1 },
     });
+  });
+
+  it('lists active assets for threshold selection', async () => {
+    vi.mocked(aiAlertsRepository.listActiveAssetOptions).mockResolvedValue([
+      { id: assetId, asset_code: 'AST-001', name: 'Gateway' },
+    ]);
+
+    await expect(aiAlertsService.listActiveAssetOptions(userId)).resolves.toEqual([
+      { id: assetId, assetCode: 'AST-001', name: 'Gateway' },
+    ]);
   });
 
   it('upserts a custom threshold for an active asset', async () => {
