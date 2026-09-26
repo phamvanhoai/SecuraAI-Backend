@@ -9,6 +9,24 @@ import {
 } from './dto/ai-alert-feedback.dto.js';
 import { confirmAiAlertSchema } from './dto/confirm-ai-alert.dto.js';
 import { markAiAlertFalsePositiveSchema } from './dto/mark-ai-alert-false-positive.dto.js';
+import { configureDetectionThresholdSchema } from './dto/detection-threshold.dto.js';
+
+export const getDetectionThreshold: RequestHandler = async (_req, res) => {
+  const userId: unknown = res.locals.authenticatedUserId;
+  if (typeof userId !== 'string') throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+  const data = await aiAlertsService.getDetectionThreshold(userId);
+  res.status(200).json({ success: true, data });
+};
+
+export const configureDetectionThreshold: RequestHandler = async (req, res) => {
+  const userId: unknown = res.locals.authenticatedUserId;
+  if (typeof userId !== 'string') throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+  const data = await aiAlertsService.configureDetectionThreshold(
+    userId,
+    configureDetectionThresholdSchema.parse(req.body),
+  );
+  res.status(200).json({ success: true, data });
+};
 
 export const listAiAlerts: RequestHandler = async (req, res) => {
   const userId: unknown = res.locals.authenticatedUserId;
