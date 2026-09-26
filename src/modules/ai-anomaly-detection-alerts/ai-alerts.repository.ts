@@ -66,6 +66,14 @@ function readThresholdMap(
 }
 
 export const aiAlertsRepository = {
+  listActiveAssetOptions() {
+    return prisma.assets.findMany({
+      where: { status: 'ACTIVE' },
+      select: { id: true, asset_code: true, name: true },
+      orderBy: [{ asset_code: 'asc' }, { id: 'asc' }],
+      take: 100,
+    });
+  },
   findDeployedModelThreshold() {
     return prisma.ai_model_versions.findFirst({
       where: { status: 'DEPLOYED' },

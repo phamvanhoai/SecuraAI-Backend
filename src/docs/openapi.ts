@@ -239,6 +239,20 @@ export const openApiSpec = {
         },
       },
     },
+    '/ai-alerts/thresholds/assets/options': {
+      get: {
+        tags: ['AI Anomaly Detection & Alerts'],
+        summary: 'List active assets available for custom alert thresholds',
+        description:
+          'Returns a bounded list of active V2 assets for the custom threshold selector. Requires an active Security Officer account.',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          '200': { description: 'Active asset options' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer role required' },
+        },
+      },
+    },
     '/ai-alerts/thresholds/{assetId}': {
       put: {
         tags: ['AI Anomaly Detection & Alerts'],

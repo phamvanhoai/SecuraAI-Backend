@@ -11,6 +11,7 @@ import {
   getAiAlertMetrics,
   markAiAlertFalsePositive,
   listAlertThresholds,
+  listAlertThresholdAssetOptions,
   setAlertThreshold,
   listModelVersions,
   getDetectionThreshold,
@@ -46,6 +47,11 @@ aiAlertsRouter.put(
   authenticate,
   validate({ body: configureDetectionThresholdSchema }),
   asyncHandler(configureDetectionThreshold),
+);
+aiAlertsRouter.get(
+  '/thresholds/assets/options',
+  authenticate,
+  asyncHandler(listAlertThresholdAssetOptions),
 );
 aiAlertsRouter.get(
   '/thresholds/assets',
