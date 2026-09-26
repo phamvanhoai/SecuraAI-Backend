@@ -8,6 +8,7 @@ import {
   submitPolicyForReview,
   listReviewablePolicyDrafts,
   editPolicyDraft,
+  requestPolicyRevision,
 } from './policy-compliance.controller.js';
 import {
   policyDraftReviewParamsSchema,
@@ -19,6 +20,10 @@ import {
   editPolicyDraftBodySchema,
   editPolicyDraftParamsSchema,
 } from './dto/edit-policy-draft.dto.js';
+import {
+  requestPolicyRevisionBodySchema,
+  requestPolicyRevisionParamsSchema,
+} from './dto/request-policy-revision.dto.js';
 
 export const policyComplianceRouter = Router();
 policyComplianceRouter.patch(
@@ -26,6 +31,12 @@ policyComplianceRouter.patch(
   authenticate,
   validate({ params: editPolicyDraftParamsSchema, body: editPolicyDraftBodySchema }),
   asyncHandler(editPolicyDraft),
+);
+policyComplianceRouter.post(
+  '/policies/:policyId/versions/:versionId/revision-requests',
+  authenticate,
+  validate({ params: requestPolicyRevisionParamsSchema, body: requestPolicyRevisionBodySchema }),
+  asyncHandler(requestPolicyRevision),
 );
 policyComplianceRouter.post(
   '/policies/:policyId/versions/:versionId/submit',
