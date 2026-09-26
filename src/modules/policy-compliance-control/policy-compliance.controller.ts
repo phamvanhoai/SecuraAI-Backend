@@ -7,6 +7,7 @@ import {
 import { policyComplianceService } from './policy-compliance.service.js';
 import { listPolicyDraftsQuerySchema } from './dto/list-policy-drafts.dto.js';
 import { submitPolicyForReviewParamsSchema } from './dto/submit-policy-for-review.dto.js';
+import { approvePolicyForPublicationParamsSchema } from './dto/approve-policy-for-publication.dto.js';
 import {
   editPolicyDraftBodySchema,
   editPolicyDraftParamsSchema,
@@ -53,6 +54,14 @@ export const submitPolicyForReview: RequestHandler = async (req, res) => {
     authenticatedUserId(res.locals.authenticatedUserId),
     policyId,
     versionId,
+  );
+  res.status(200).json({ success: true, data });
+};
+
+export const approvePolicyForPublication: RequestHandler = async (req, res) => {
+  const { policyId, versionId } = approvePolicyForPublicationParamsSchema.parse(req.params);
+  const data = await policyComplianceService.approveForPublication(
+    authenticatedUserId(res.locals.authenticatedUserId), policyId, versionId,
   );
   res.status(200).json({ success: true, data });
 };

@@ -109,6 +109,18 @@ function mapPolicyReview(version: PolicyReviewRecord) {
 }
 
 export const policyComplianceService = {
+  async approveForPublication(userId: string, policyId: string, versionId: string) {
+    await requireActiveAdmin(userId);
+    const version = await policyComplianceRepository.findReviewableDraft(policyId, versionId);
+    if (!version) throw new AppError(404, 'POLICY_DRAFT_NOT_FOUND', 'Submitted policy draft not found');
+    const result = await policyComplianceRepository.approveDraftForPublication(policyId, versionId, userId);
+    if (!result) throw new AppError(409, 'POLICY_DRAFT_CHANGED', 'The policy draft changed before it could be approved');
+    return {
+      ...mapPolicyReview(result.version),
+      decision: { id: result.decision.id, action: result.decision.action, comment: result.decision.comment, actorUserId: result.decision.actor_user_id, decidedAt: result.decision.decided_at },
+    };
+  },
+
   async editOwnDraft(
     userId: string,
     policyId: string,
