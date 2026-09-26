@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type { Prisma, alert_status, triage_decision } from '@prisma/client';
 import { prisma } from '../../database/prisma.js';
 import type { ListAiAlertsQuery } from './dto/list-ai-alerts.dto.js';
@@ -47,6 +48,69 @@ function databaseStatuses(status: ListAiAlertsQuery['status']): alert_status[] |
 }
 
 export const aiAlertsRepository = {
+  findDeployedModelThreshold() {
+    return prisma.ai_model_versions.findFirst({
+      where: { status: 'DEPLOYED' },
+      orderBy: [{ deployed_at: 'desc' }, { created_at: 'desc' }],
+      select: {
+        id: true,
+        model_name: true,
+        version: true,
+        status: true,
+        parameters: true,
+        deployed_at: true,
+      },
+    });
+  },
+  configureDeployedModelThreshold(input: {
+    modelVersionId: string;
+    threshold: number;
+    actorUserId: string;
+  }) {
+    return prisma.$transaction(async (transaction) => {
+      const model = await transaction.ai_model_versions.findFirst({
+        where: { id: input.modelVersionId, status: 'DEPLOYED' },
+        select: { id: true, model_name: true, version: true, status: true, parameters: true, deployed_at: true },
+      });
+      if (!model) return null;
+      const currentParameters =
+        model.parameters && typeof model.parameters === 'object' && !Array.isArray(model.parameters)
+          ? model.parameters
+          : {};
+      const parameters = { ...currentParameters, threshold: input.threshold } satisfies Prisma.InputJsonObject;
+      const updated = await transaction.ai_model_versions.update({
+        where: { id: model.id },
+        data: { parameters },
+        select: { id: true, model_name: true, version: true, status: true, parameters: true, deployed_at: true },
+      });
+      const previous = await transaction.audit_logs.findFirst({
+        orderBy: [{ occurred_at: 'desc' }, { id: 'desc' }],
+        select: { record_hash: true },
+      });
+      const afterData = {
+        modelVersionId: model.id,
+        previousThreshold: thresholdFromParameters(model.parameters),
+        threshold: input.threshold,
+      } satisfies Prisma.InputJsonObject;
+      const recordHash = createHash('sha256')
+        .update(JSON.stringify({ previousHash: previous?.record_hash ?? null, actorUserId: input.actorUserId, afterData }))
+        .digest('hex');
+      await transaction.audit_logs.create({
+        data: {
+          actor_user_id: input.actorUserId,
+          actor_type: 'USER',
+          action: 'CONFIGURE_DETECTION_THRESHOLD',
+          resource_type: 'AI_MODEL_VERSION',
+          resource_id: model.id,
+          source: 'API',
+          after_data: afterData,
+          ...(previous ? { previous_hash: previous.record_hash } : {}),
+          record_hash: recordHash,
+        },
+      });
+      return updated;
+    });
+  },
   metrics(detectedAfter: Date) {
     return prisma.anomaly_alerts.groupBy({
       by: ['status'],
@@ -304,3 +368,9 @@ export const aiAlertsRepository = {
     });
   },
 };
+
+function thresholdFromParameters(parameters: Prisma.JsonValue | null): number {
+  if (!parameters || typeof parameters !== 'object' || Array.isArray(parameters)) return 0.8;
+  const threshold = parameters['threshold'];
+  return typeof threshold === 'number' ? threshold : 0.8;
+}

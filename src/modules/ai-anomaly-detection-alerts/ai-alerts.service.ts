@@ -6,9 +6,10 @@ import type {
   CreateAiAlertFeedback,
   ListAiAlertFeedbackQuery,
 } from './dto/ai-alert-feedback.dto.js';
-import type { triage_decision } from '@prisma/client';
+import type { Prisma, triage_decision } from '@prisma/client';
 import type { ConfirmAiAlert } from './dto/confirm-ai-alert.dto.js';
 import type { MarkAiAlertFalsePositive } from './dto/mark-ai-alert-false-positive.dto.js';
+import type { ConfigureDetectionThreshold } from './dto/detection-threshold.dto.js';
 
 function responseStatus(status: AiAlertRecord['status']) {
   if (status === 'NEW') return 'new' as const;
@@ -53,6 +54,27 @@ function toResponse(alert: AiAlertRecord) {
 }
 
 export const aiAlertsService = {
+  async getDetectionThreshold(userId: string) {
+    await requireThresholdManager(userId);
+    const model = await aiAlertsRepository.findDeployedModelThreshold();
+    if (!model)
+      throw new AppError(409, 'NO_DEPLOYED_MODEL', 'Deploy an anomaly detection model before configuring its threshold');
+    return detectionThresholdResponse(model);
+  },
+  async configureDetectionThreshold(userId: string, input: ConfigureDetectionThreshold) {
+    await requireThresholdManager(userId);
+    const model = await aiAlertsRepository.findDeployedModelThreshold();
+    if (!model)
+      throw new AppError(409, 'NO_DEPLOYED_MODEL', 'Deploy an anomaly detection model before configuring its threshold');
+    const updated = await aiAlertsRepository.configureDeployedModelThreshold({
+      modelVersionId: model.id,
+      threshold: input.threshold,
+      actorUserId: userId,
+    });
+    if (!updated)
+      throw new AppError(409, 'DEPLOYED_MODEL_CHANGED', 'The deployed model changed; reload and try again');
+    return detectionThresholdResponse(updated);
+  },
   async metrics(userId: string) {
     await requireSecurityOfficer(userId);
     const detectedAfter = new Date(Date.now() - 86_400_000);
@@ -204,6 +226,37 @@ async function requireSecurityOfficer(userId: string): Promise<void> {
     throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
   if (actor.role !== 'SECURITY_OFFICER')
     throw new AppError(403, 'FORBIDDEN', 'Security Officer role required');
+}
+
+async function requireThresholdManager(userId: string): Promise<void> {
+  const actor = await anomalyDetectionRepository.findActor(userId);
+  if (!actor || actor.status !== 'ACTIVE')
+    throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+  if (actor.role !== 'SECURITY_OFFICER' && actor.role !== 'EXECUTIVE')
+    throw new AppError(403, 'FORBIDDEN', 'Security Officer or Executive role required');
+}
+
+function detectionThresholdResponse(model: {
+  id: string;
+  model_name: string;
+  version: string;
+  status: string;
+  parameters: Prisma.JsonValue | null;
+  deployed_at: Date | null;
+}) {
+  let threshold = 0.8;
+  if (model.parameters && typeof model.parameters === 'object' && !Array.isArray(model.parameters)) {
+    const configured = model.parameters['threshold'];
+    if (typeof configured === 'number') threshold = configured;
+  }
+  return {
+    modelVersionId: model.id,
+    modelName: model.model_name,
+    version: model.version,
+    status: model.status.toLowerCase(),
+    threshold,
+    deployedAt: model.deployed_at,
+  };
 }
 
 function feedbackDecision(label: CreateAiAlertFeedback['feedbackLabel']): triage_decision {

@@ -92,8 +92,6 @@ export const legacyV1RouteContracts = [
   { method: 'patch', path: '/compliance/policies/{policyId}/drafts/{versionId}', tag: 'Policies' },
   { method: 'get', path: '/security-monitoring/log-sources', tag: 'Security Monitoring' },
   { method: 'post', path: '/security-monitoring/log-sources', tag: 'Security Monitoring' },
-  { method: 'get', path: '/ai-alerts/thresholds', tag: 'AI Alerts' },
-  { method: 'put', path: '/ai-alerts/thresholds/{assetId}', tag: 'AI Alerts' },
   { method: 'get', path: '/ai-alerts/models', tag: 'AI Alerts' },
   { method: 'post', path: '/ai-alerts/models', tag: 'AI Alerts' },
   { method: 'post', path: '/ai-alerts/models/{modelVersionId}/activate', tag: 'AI Alerts' },

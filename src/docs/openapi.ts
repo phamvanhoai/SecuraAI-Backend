@@ -286,6 +286,46 @@ export const openApiSpec = {
         },
       },
     },
+    '/ai-alerts/thresholds': {
+      get: {
+        tags: ['AI Anomaly Detection & Alerts'],
+        summary: 'View the deployed model detection threshold',
+        description: 'Returns the anomaly threshold used by the currently deployed V2 model. Requires an active Security Officer or Executive account.',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          '200': { description: 'Current deployed model and detection threshold' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer or Executive role required' },
+          '409': { description: 'No anomaly detection model is deployed' },
+        },
+      },
+      put: {
+        tags: ['AI Anomaly Detection & Alerts'],
+        summary: 'Configure the deployed model detection threshold',
+        description: 'Updates the threshold in the deployed model parameters and records an audit entry. New detection runs use the updated value. Requires an active Security Officer or Executive account.',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['threshold'],
+                additionalProperties: false,
+                properties: { threshold: { type: 'number', minimum: 0.5, maximum: 1 } },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'Updated deployed model and detection threshold' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer or Executive role required' },
+          '409': { description: 'No model is deployed or the deployed model changed' },
+          '422': { description: 'Invalid threshold' },
+        },
+      },
+    },
     '/auth/login': {
       post: {
         tags: ['Authentication'],
