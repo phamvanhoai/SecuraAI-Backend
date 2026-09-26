@@ -20,7 +20,9 @@ describe('AI alert explanation service', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(anomalyDetectionRepository.findActor).mockResolvedValue({
-      id: userId, status: 'ACTIVE', role: 'SECURITY_OFFICER',
+      id: userId,
+      status: 'ACTIVE',
+      role: 'SECURITY_OFFICER',
     });
   });
 
@@ -34,10 +36,14 @@ describe('AI alert explanation service', () => {
         anomaly_score: new Prisma.Decimal('0.825'),
         threshold: new Prisma.Decimal('0.7'),
         detected_at: new Date('2026-09-26T00:00:00Z'),
-        anomaly_feature_contributions: [{
-          feature_name: 'offHours', feature_value: 'true',
-          contribution_score: new Prisma.Decimal('0.4'), rank: 1,
-        }],
+        anomaly_feature_contributions: [
+          {
+            feature_name: 'offHours',
+            feature_value: 'true',
+            contribution_score: new Prisma.Decimal('0.4'),
+            rank: 1,
+          },
+        ],
       },
     });
     const result = await aiAlertsService.getExplanation(userId, alertId);

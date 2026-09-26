@@ -3,7 +3,10 @@ import { describe, expect, it } from 'vitest';
 
 const sql = readFileSync('project-docs/new/database.sql', 'utf8');
 const schema = readFileSync('prisma/schema.prisma', 'utf8');
-const migration = readFileSync('prisma/migrations/00000000000000_baseline_v2/migration.sql', 'utf8');
+const migration = readFileSync(
+  'prisma/migrations/00000000000000_baseline_v2/migration.sql',
+  'utf8',
+);
 
 describe('V2 database baseline', () => {
   it('tracks exactly the 56 approved tables in Prisma', () => {

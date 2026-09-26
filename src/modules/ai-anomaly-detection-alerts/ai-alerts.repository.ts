@@ -66,6 +66,69 @@ function readThresholdMap(
 }
 
 export const aiAlertsRepository = {
+  findDeployedModelThreshold() {
+    return prisma.ai_model_versions.findFirst({
+      where: { status: 'DEPLOYED' },
+      orderBy: [{ deployed_at: 'desc' }, { created_at: 'desc' }],
+      select: {
+        id: true,
+        model_name: true,
+        version: true,
+        status: true,
+        parameters: true,
+        deployed_at: true,
+      },
+    });
+  },
+  async configureDeployedModelThreshold(input: {
+    modelVersionId: string;
+    threshold: number;
+    actorUserId: string;
+  }) {
+    return prisma.$transaction(async (transaction) => {
+      const model = await transaction.ai_model_versions.findFirst({
+        where: { id: input.modelVersionId, status: 'DEPLOYED' },
+        select: {
+          id: true,
+          model_name: true,
+          version: true,
+          status: true,
+          parameters: true,
+          deployed_at: true,
+        },
+      });
+      if (!model) return null;
+      const current =
+        model.parameters && typeof model.parameters === 'object' && !Array.isArray(model.parameters)
+          ? model.parameters
+          : {};
+      const updated = await transaction.ai_model_versions.update({
+        where: { id: model.id },
+        data: { parameters: { ...current, threshold: input.threshold } },
+        select: {
+          id: true,
+          model_name: true,
+          version: true,
+          status: true,
+          parameters: true,
+          deployed_at: true,
+        },
+      });
+      await transaction.audit_logs.create({
+        data: {
+          actor_user_id: input.actorUserId,
+          actor_type: 'USER',
+          action: 'CONFIGURE_DETECTION_THRESHOLD',
+          resource_type: 'AI_MODEL_VERSION',
+          resource_id: model.id,
+          source: 'API',
+          after_data: { threshold: input.threshold },
+          record_hash: `${model.id}:${input.threshold}:${input.actorUserId}`,
+        },
+      });
+      return updated;
+    });
+  },
   listModelVersions(query: ListModelVersionsQuery) {
     const where: Prisma.ai_model_versionsWhereInput = {
       ...(query.modelName

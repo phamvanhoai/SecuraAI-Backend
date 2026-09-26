@@ -15,6 +15,26 @@ import {
   listAlertThresholdsQuerySchema,
   setAlertThresholdBodySchema,
 } from './dto/alert-threshold.dto.js';
+import { configureDetectionThresholdSchema } from './dto/detection-threshold.dto.js';
+
+export const getDetectionThreshold: RequestHandler = async (_req, res) => {
+  const userId: unknown = res.locals.authenticatedUserId;
+  if (typeof userId !== 'string')
+    throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+  res
+    .status(200)
+    .json({ success: true, data: await aiAlertsService.getDetectionThreshold(userId) });
+};
+export const configureDetectionThreshold: RequestHandler = async (req, res) => {
+  const userId: unknown = res.locals.authenticatedUserId;
+  if (typeof userId !== 'string')
+    throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+  const data = await aiAlertsService.configureDetectionThreshold(
+    userId,
+    configureDetectionThresholdSchema.parse(req.body),
+  );
+  res.status(200).json({ success: true, data });
+};
 
 export const listAlertThresholds: RequestHandler = async (req, res) => {
   const userId: unknown = res.locals.authenticatedUserId;

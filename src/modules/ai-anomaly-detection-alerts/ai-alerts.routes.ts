@@ -13,6 +13,8 @@ import {
   listAlertThresholds,
   setAlertThreshold,
   listModelVersions,
+  getDetectionThreshold,
+  configureDetectionThreshold,
 } from './ai-alerts.controller.js';
 import { listAiAlertsQuerySchema } from './dto/list-ai-alerts.dto.js';
 import {
@@ -28,6 +30,7 @@ import {
   setAlertThresholdBodySchema,
 } from './dto/alert-threshold.dto.js';
 import { listModelVersionsQuerySchema } from './dto/list-model-versions.dto.js';
+import { configureDetectionThresholdSchema } from './dto/detection-threshold.dto.js';
 
 export const aiAlertsRouter = Router();
 aiAlertsRouter.get(
@@ -37,8 +40,15 @@ aiAlertsRouter.get(
   asyncHandler(listModelVersions),
 );
 aiAlertsRouter.get('/metrics', authenticate, asyncHandler(getAiAlertMetrics));
-aiAlertsRouter.get(
+aiAlertsRouter.get('/thresholds', authenticate, asyncHandler(getDetectionThreshold));
+aiAlertsRouter.put(
   '/thresholds',
+  authenticate,
+  validate({ body: configureDetectionThresholdSchema }),
+  asyncHandler(configureDetectionThreshold),
+);
+aiAlertsRouter.get(
+  '/thresholds/assets',
   authenticate,
   validate({ query: listAlertThresholdsQuerySchema }),
   asyncHandler(listAlertThresholds),

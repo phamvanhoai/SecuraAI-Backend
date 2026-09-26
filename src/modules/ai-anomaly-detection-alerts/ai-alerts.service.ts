@@ -12,6 +12,7 @@ import type { ConfirmAiAlert } from './dto/confirm-ai-alert.dto.js';
 import type { MarkAiAlertFalsePositive } from './dto/mark-ai-alert-false-positive.dto.js';
 import type { ListAlertThresholdsQuery, SetAlertThresholdBody } from './dto/alert-threshold.dto.js';
 import type { ListModelVersionsQuery } from './dto/list-model-versions.dto.js';
+import type { ConfigureDetectionThreshold } from './dto/detection-threshold.dto.js';
 
 const storedThresholdSchema = z.object({
   threshold: z.number().min(0.01).max(1),
@@ -76,6 +77,39 @@ function toResponse(alert: AiAlertRecord) {
 }
 
 export const aiAlertsService = {
+  async getDetectionThreshold(userId: string) {
+    await requireThresholdManager(userId);
+    const model = await aiAlertsRepository.findDeployedModelThreshold();
+    if (!model)
+      throw new AppError(
+        409,
+        'NO_DEPLOYED_MODEL',
+        'Deploy an anomaly detection model before configuring its threshold',
+      );
+    return detectionThresholdResponse(model);
+  },
+  async configureDetectionThreshold(userId: string, input: ConfigureDetectionThreshold) {
+    await requireThresholdManager(userId);
+    const model = await aiAlertsRepository.findDeployedModelThreshold();
+    if (!model)
+      throw new AppError(
+        409,
+        'NO_DEPLOYED_MODEL',
+        'Deploy an anomaly detection model before configuring its threshold',
+      );
+    const updated = await aiAlertsRepository.configureDeployedModelThreshold({
+      modelVersionId: model.id,
+      threshold: input.threshold,
+      actorUserId: userId,
+    });
+    if (!updated)
+      throw new AppError(
+        409,
+        'DEPLOYED_MODEL_CHANGED',
+        'The deployed model changed; reload and try again',
+      );
+    return detectionThresholdResponse(updated);
+  },
   async listModelVersions(userId: string, query: ListModelVersionsQuery) {
     await requireSecurityOfficer(userId);
     const [total, models] = await aiAlertsRepository.listModelVersions(query);
@@ -297,6 +331,36 @@ export const aiAlertsService = {
 
 function decimalNumber(value: Prisma.Decimal | null): number | null {
   return value?.toNumber() ?? null;
+}
+
+async function requireThresholdManager(userId: string): Promise<void> {
+  const actor = await anomalyDetectionRepository.findActor(userId);
+  if (!actor || actor.status !== 'ACTIVE')
+    throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+  if (actor.role !== 'SECURITY_OFFICER' && actor.role !== 'EXECUTIVE')
+    throw new AppError(403, 'FORBIDDEN', 'Security Officer or Executive role required');
+}
+
+function detectionThresholdResponse(model: {
+  id: string;
+  model_name: string;
+  version: string;
+  status: string;
+  parameters: Prisma.JsonValue | null;
+  deployed_at: Date | null;
+}) {
+  const parameters =
+    model.parameters && typeof model.parameters === 'object' && !Array.isArray(model.parameters)
+      ? model.parameters
+      : {};
+  return {
+    modelVersionId: model.id,
+    modelName: model.model_name,
+    version: model.version,
+    status: model.status.toLowerCase(),
+    threshold: typeof parameters['threshold'] === 'number' ? parameters['threshold'] : 0.8,
+    deployedAt: model.deployed_at,
+  };
 }
 
 async function requireSecurityOfficer(userId: string): Promise<void> {

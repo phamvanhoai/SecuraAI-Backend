@@ -31,7 +31,10 @@ describe('V2 authentication service', () => {
       role: user_role.ADMIN,
       status: user_status.ACTIVE,
     });
-    vi.mocked(authRepository.createSession).mockResolvedValue({ id: userId, role: user_role.ADMIN });
+    vi.mocked(authRepository.createSession).mockResolvedValue({
+      id: userId,
+      role: user_role.ADMIN,
+    });
 
     const result = await authService.login({ email: 'admin@example.test', password });
 
@@ -60,7 +63,9 @@ describe('V2 authentication service', () => {
 
   it('uses the same generic error for unknown, invalid, and inactive accounts', async () => {
     vi.mocked(authRepository.findByEmail).mockResolvedValueOnce(null);
-    await expect(authService.login({ email: 'unknown@example.test', password })).rejects.toMatchObject({
+    await expect(
+      authService.login({ email: 'unknown@example.test', password }),
+    ).rejects.toMatchObject({
       statusCode: 401,
       code: 'INVALID_CREDENTIALS',
     });
@@ -76,7 +81,9 @@ describe('V2 authentication service', () => {
     await expect(
       authService.login({ email: 'admin@example.test', password: 'wrong-password' }),
     ).rejects.toMatchObject({ statusCode: 401, code: 'INVALID_CREDENTIALS' });
-    await expect(authService.login({ email: 'admin@example.test', password })).rejects.toMatchObject({
+    await expect(
+      authService.login({ email: 'admin@example.test', password }),
+    ).rejects.toMatchObject({
       statusCode: 401,
       code: 'INVALID_CREDENTIALS',
     });
@@ -84,7 +91,10 @@ describe('V2 authentication service', () => {
   });
 
   it('rotates refresh tokens and rejects a session that cannot be claimed', async () => {
-    vi.mocked(authRepository.rotateSession).mockResolvedValueOnce({ id: userId, role: user_role.ADMIN });
+    vi.mocked(authRepository.rotateSession).mockResolvedValueOnce({
+      id: userId,
+      role: user_role.ADMIN,
+    });
     const result = await authService.refresh('a'.repeat(64));
     expect(result.refreshToken).not.toBe('a'.repeat(64));
     expect(authRepository.rotateSession).toHaveBeenCalledWith(

@@ -18,21 +18,29 @@ describe('confirm AI alert service', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     vi.mocked(anomalyDetectionRepository.findActor).mockResolvedValue({
-      id: userId, status: 'ACTIVE', role: 'SECURITY_OFFICER',
+      id: userId,
+      status: 'ACTIVE',
+      role: 'SECURITY_OFFICER',
     });
   });
 
   it('returns the linked incident and changed state', async () => {
     vi.mocked(aiAlertsRepository.confirmAsIncident).mockResolvedValue({
       alert: {
-        id: alertId, severity: 'HIGH', status: 'NEW', security_findings: null,
+        id: alertId,
+        severity: 'HIGH',
+        status: 'NEW',
+        security_findings: null,
         anomaly_detections: {
-          model_version_id: userId, detected_at: new Date('2026-09-25T00:00:00Z'),
+          model_version_id: userId,
+          detected_at: new Date('2026-09-25T00:00:00Z'),
           normalized_events: { event_type: 'LOGIN_FAILURE' },
         },
       },
       incident: {
-        id: userId, incident_code: 'INC-C82662FF8CB74E97', status: 'OPEN',
+        id: userId,
+        incident_code: 'INC-C82662FF8CB74E97',
+        status: 'OPEN',
         confirmed_at: new Date('2026-09-25T00:05:00Z'),
       },
       changed: true,

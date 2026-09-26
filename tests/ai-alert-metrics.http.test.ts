@@ -14,7 +14,10 @@ import { aiAlertsService } from '../src/modules/ai-anomaly-detection-alerts/ai-a
 const userId = '9a9bf33a-02db-48e4-a8ad-90517278d7f2';
 const app = createApp();
 const token = jwt.sign({ type: 'access' }, env.JWT_ACCESS_SECRET, {
-  algorithm: 'HS256', issuer: 'securaai-api', audience: 'securaai-client', subject: userId,
+  algorithm: 'HS256',
+  issuer: 'securaai-api',
+  audience: 'securaai-client',
+  subject: userId,
   expiresIn: '15m',
 });
 
@@ -27,7 +30,10 @@ describe('GET /api/v1/ai-alerts/metrics', () => {
 
   it('returns all alert counters in one response', async () => {
     vi.mocked(aiAlertsService.metrics).mockResolvedValue({
-      total: 10, newAlerts: 3, reviewing: 2, confirmed: 4,
+      total: 10,
+      newAlerts: 3,
+      reviewing: 2,
+      confirmed: 4,
     });
     const response = await request(app)
       .get('/api/v1/ai-alerts/metrics')
