@@ -133,7 +133,6 @@ export const legacyV1RouteContracts = [
   },
   { method: 'put', path: '/compliance/policies/{policyId}/departments', tag: 'Policies' },
   { method: 'get', path: '/compliance/policies/{policyId}/drafts/{versionId}', tag: 'Policies' },
-  { method: 'patch', path: '/compliance/policies/{policyId}/drafts/{versionId}', tag: 'Policies' },
   { method: 'get', path: '/security-monitoring/log-sources', tag: 'Security Monitoring' },
   { method: 'post', path: '/security-monitoring/log-sources', tag: 'Security Monitoring' },
   { method: 'post', path: '/ai-alerts/models', tag: 'AI Alerts' },

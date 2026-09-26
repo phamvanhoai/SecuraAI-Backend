@@ -2,6 +2,8 @@ import type { Prisma, policy_version_status } from '@prisma/client';
 import { prisma } from '../../database/prisma.js';
 import type { ReviewablePolicyDraftQuery } from './dto/view-policy-draft.dto.js';
 import type { ListPolicyDraftsQuery } from './dto/list-policy-drafts.dto.js';
+import type { EditPolicyDraftBody } from './dto/edit-policy-draft.dto.js';
+import type { RequestPolicyRevisionBody } from './dto/request-policy-revision.dto.js';
 
 export const submittedPolicyVersionStatuses: policy_version_status[] = [
   'IN_REVIEW',
@@ -158,7 +160,12 @@ export const policyComplianceRepository = {
     });
   },
 
-  approveDraftForPublication(policyId: string, versionId: string, actorUserId: string) {
+  requestDraftRevision(
+    policyId: string,
+    versionId: string,
+    actorUserId: string,
+    input: RequestPolicyRevisionBody,
+  ) {
     return prisma.$transaction(async (transaction) => {
       const updated = await transaction.policy_versions.updateMany({
         where: {
@@ -167,15 +174,16 @@ export const policyComplianceRepository = {
           status: { in: [...submittedPolicyVersionStatuses] },
           policies_policy_versions_policy_idTopolicies: { status: 'DRAFT' },
         },
-        data: { status: 'APPROVED' },
+        data: { status: 'DRAFT' },
       });
       if (updated.count !== 1) return null;
 
       const decision = await transaction.policy_decisions.create({
         data: {
           policy_version_id: versionId,
-          action: 'APPROVED',
+          action: 'REVISION_REQUESTED',
           actor_user_id: actorUserId,
+          comment: input.comment,
         },
         select: {
           id: true,
@@ -197,6 +205,23 @@ export const policyComplianceRepository = {
     });
   },
 
+  approveDraftForPublication(policyId: string, versionId: string, actorUserId: string) {
+    return prisma.$transaction(async (transaction) => {
+      const updated = await transaction.policy_versions.updateMany({
+        where: { id: versionId, policy_id: policyId, status: { in: [...submittedPolicyVersionStatuses] }, policies_policy_versions_policy_idTopolicies: { status: 'DRAFT' } },
+        data: { status: 'APPROVED' },
+      });
+      if (updated.count !== 1) return null;
+      const decision = await transaction.policy_decisions.create({
+        data: { policy_version_id: versionId, action: 'APPROVED', actor_user_id: actorUserId },
+        select: { id: true, action: true, actor_user_id: true, comment: true, decided_at: true },
+      });
+      await transaction.policies.update({ where: { id: policyId }, data: { updated_at: new Date() } });
+      const version = await transaction.policy_versions.findUniqueOrThrow({ where: { id: versionId }, select: policyReviewSelect });
+      return { version, decision };
+    });
+  },
+
   listOwnDrafts(userId: string, query: ListPolicyDraftsQuery) {
     const where: Prisma.policy_versionsWhereInput = {
       status: 'DRAFT',
@@ -205,10 +230,12 @@ export const policyComplianceRepository = {
         owner_user_id: userId,
         status: 'DRAFT',
         ...(query.q
-          ? { OR: [
-              { policy_code: { contains: query.q, mode: 'insensitive' as const } },
-              { title: { contains: query.q, mode: 'insensitive' as const } },
-            ] }
+          ? {
+              OR: [
+                { policy_code: { contains: query.q, mode: 'insensitive' as const } },
+                { title: { contains: query.q, mode: 'insensitive' as const } },
+              ],
+            }
           : {}),
       },
     };
@@ -234,6 +261,50 @@ export const policyComplianceRepository = {
     });
   },
 
+  findDraftForEdit(policyId: string, versionId: string) {
+    return prisma.policy_versions.findFirst({
+      where: { id: versionId, policy_id: policyId },
+      select: ownedPolicyDraftSelect,
+    });
+  },
+
+  editDraft(policyId: string, versionId: string, actorUserId: string, input: EditPolicyDraftBody) {
+    return prisma.$transaction(async (transaction) => {
+      const versionUpdate = await transaction.policy_versions.updateMany({
+        where: {
+          id: versionId,
+          policy_id: policyId,
+          author_user_id: actorUserId,
+          status: 'DRAFT',
+          policies_policy_versions_policy_idTopolicies: {
+            owner_user_id: actorUserId,
+            status: 'DRAFT',
+          },
+        },
+        data: {
+          ...(input.versionNumber !== undefined && { version_number: input.versionNumber }),
+          ...(input.content !== undefined && { content: input.content }),
+          ...(input.changeSummary !== undefined && { change_summary: input.changeSummary }),
+        },
+      });
+      if (versionUpdate.count !== 1) return null;
+
+      await transaction.policies.update({
+        where: { id: policyId },
+        data: {
+          ...(input.title !== undefined && { title: input.title }),
+          ...(input.description !== undefined && { description: input.description }),
+          updated_at: new Date(),
+        },
+      });
+
+      return transaction.policy_versions.findUniqueOrThrow({
+        where: { id: versionId },
+        select: ownedPolicyDraftSelect,
+      });
+    });
+  },
+
   submitDraft(policyId: string, versionId: string, actorUserId: string) {
     return prisma.$transaction(async (transaction) => {
       const updated = await transaction.policy_versions.updateMany({
@@ -249,7 +320,10 @@ export const policyComplianceRepository = {
         data: { status: 'IN_REVIEW' },
       });
       if (updated.count !== 1) return null;
-      await transaction.policies.update({ where: { id: policyId }, data: { updated_at: new Date() } });
+      await transaction.policies.update({
+        where: { id: policyId },
+        data: { updated_at: new Date() },
+      });
       return transaction.policy_versions.findUniqueOrThrow({
         where: { id: versionId },
         select: draftForSubmissionSelect,

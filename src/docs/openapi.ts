@@ -17,12 +17,13 @@ export const openApiSpec = {
   },
   paths: {
     ...pendingV2Paths,
-    '/compliance/policies/{policyId}/versions/{versionId}/approve': {
-      post: {
-        tags: ['Policy Management'],
-        summary: 'Approve a reviewed policy version for publication',
+    '/compliance/policies/{policyId}/drafts/{versionId}': {
+      ...pendingV2Paths['/compliance/policies/{policyId}/drafts/{versionId}'],
+      patch: {
+        tags: ['Policies'],
+        summary: 'Edit an owned policy draft',
         description:
-          'Records an APPROVED policy decision and moves a submitted V2 policy version to APPROVED. Publication remains a separate workflow. Requires an active Admin account.',
+          'Updates policy metadata and draft-version content for an active Security Officer who owns and authored the V2 draft. Only DRAFT policies and versions are editable.',
         security: [{ bearerAuth: [] }],
         parameters: [
           {
@@ -38,13 +39,76 @@ export const openApiSpec = {
             schema: { type: 'string', format: 'uuid' },
           },
         ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                additionalProperties: false,
+                minProperties: 1,
+                properties: {
+                  title: { type: 'string', minLength: 3, maxLength: 255 },
+                  description: { type: 'string', maxLength: 2000, nullable: true },
+                  versionNumber: { type: 'string', minLength: 1, maxLength: 30 },
+                  content: { type: 'string', minLength: 1, maxLength: 500000 },
+                  changeSummary: { type: 'string', maxLength: 5000, nullable: true },
+                },
+              },
+            },
+          },
+        },
         responses: {
-          '200': { description: 'Policy version approved for publication' },
+          '200': { description: 'Updated policy draft' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer role and draft ownership required' },
+          '404': { description: 'Policy draft not found' },
+          '409': { description: 'Draft is no longer editable or version number conflicts' },
+          '422': { description: 'Invalid identifiers or update fields' },
+        },
+      },
+    },
+    '/compliance/policies/{policyId}/versions/{versionId}/revision-requests': {
+      post: {
+        tags: ['Policy Management'],
+        summary: 'Request revision of a submitted policy draft',
+        description:
+          'Records an Admin REVISION_REQUESTED decision with a required comment and returns the submitted version to DRAFT so its Security Officer owner can revise and resubmit it.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'policyId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+          {
+            name: 'versionId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['comment'],
+                properties: { comment: { type: 'string', minLength: 3, maxLength: 5000 } },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'Revision requested and policy version returned to draft' },
           '401': { description: 'Authentication required' },
           '403': { description: 'Admin role required' },
           '404': { description: 'Submitted policy draft not found' },
           '409': { description: 'Policy draft changed concurrently' },
-          '422': { description: 'Invalid policy or version identifier' },
+          '422': { description: 'Invalid identifiers or revision comment' },
         },
       },
     },
