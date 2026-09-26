@@ -17,12 +17,13 @@ export const openApiSpec = {
   },
   paths: {
     ...pendingV2Paths,
-    '/compliance/policies/{policyId}/versions/{versionId}/revision-requests': {
-      post: {
-        tags: ['Policy Management'],
-        summary: 'Request revision of a submitted policy draft',
+    '/compliance/policies/{policyId}/drafts/{versionId}': {
+      ...pendingV2Paths['/compliance/policies/{policyId}/drafts/{versionId}'],
+      patch: {
+        tags: ['Policies'],
+        summary: 'Edit an owned policy draft',
         description:
-          'Records an Admin REVISION_REQUESTED decision with a required comment and returns the submitted version to DRAFT so its Security Officer owner can revise and resubmit it.',
+          'Updates policy metadata and draft-version content for an active Security Officer who owns and authored the V2 draft. Only DRAFT policies and versions are editable.',
         security: [{ bearerAuth: [] }],
         parameters: [
           {
@@ -45,21 +46,25 @@ export const openApiSpec = {
               schema: {
                 type: 'object',
                 additionalProperties: false,
-                required: ['comment'],
+                minProperties: 1,
                 properties: {
-                  comment: { type: 'string', minLength: 3, maxLength: 5000 },
+                  title: { type: 'string', minLength: 3, maxLength: 255 },
+                  description: { type: 'string', maxLength: 2000, nullable: true },
+                  versionNumber: { type: 'string', minLength: 1, maxLength: 30 },
+                  content: { type: 'string', minLength: 1, maxLength: 500000 },
+                  changeSummary: { type: 'string', maxLength: 5000, nullable: true },
                 },
               },
             },
           },
         },
         responses: {
-          '200': { description: 'Revision requested and policy version returned to draft' },
+          '200': { description: 'Updated policy draft' },
           '401': { description: 'Authentication required' },
-          '403': { description: 'Admin role required' },
-          '404': { description: 'Submitted policy draft not found' },
-          '409': { description: 'Policy draft changed concurrently' },
-          '422': { description: 'Invalid identifiers or revision comment' },
+          '403': { description: 'Security Officer role and draft ownership required' },
+          '404': { description: 'Policy draft not found' },
+          '409': { description: 'Draft is no longer editable or version number conflicts' },
+          '422': { description: 'Invalid identifiers or update fields' },
         },
       },
     },

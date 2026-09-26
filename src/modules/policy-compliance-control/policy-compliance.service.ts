@@ -1,7 +1,8 @@
 import { AppError } from '../../common/errors/app-error.js';
 import type { ReviewablePolicyDraftQuery } from './dto/view-policy-draft.dto.js';
 import type { ListPolicyDraftsQuery } from './dto/list-policy-drafts.dto.js';
-import type { RequestPolicyRevisionBody } from './dto/request-policy-revision.dto.js';
+import type { EditPolicyDraftBody } from './dto/edit-policy-draft.dto.js';
+import { Prisma } from '@prisma/client';
 import {
   policyComplianceRepository,
   type PolicyReviewRecord,
@@ -107,40 +108,46 @@ function mapPolicyReview(version: PolicyReviewRecord) {
 }
 
 export const policyComplianceService = {
-  async requestRevision(
+  async editOwnDraft(
     userId: string,
     policyId: string,
     versionId: string,
-    input: RequestPolicyRevisionBody,
+    input: EditPolicyDraftBody,
   ) {
-    await requireActiveAdmin(userId);
-    const version = await policyComplianceRepository.findReviewableDraft(policyId, versionId);
-    if (!version) {
-      throw new AppError(404, 'POLICY_DRAFT_NOT_FOUND', 'Submitted policy draft not found');
-    }
-    const result = await policyComplianceRepository.requestDraftRevision(
-      policyId,
-      versionId,
-      userId,
-      input,
-    );
-    if (!result) {
-      throw new AppError(
-        409,
-        'POLICY_DRAFT_CHANGED',
-        'The policy draft changed before revision could be requested',
+    const actor = await policyComplianceRepository.findActor(userId);
+    if (!actor || actor.status !== 'ACTIVE')
+      throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+    if (actor.role !== 'SECURITY_OFFICER')
+      throw new AppError(403, 'FORBIDDEN', 'Security Officer role required');
+
+    const draft = await policyComplianceRepository.findDraftForEdit(policyId, versionId);
+    if (!draft) throw new AppError(404, 'POLICY_DRAFT_NOT_FOUND', 'Policy draft not found');
+    const policy = draft.policies_policy_versions_policy_idTopolicies;
+    if (draft.author_user_id !== userId || policy.owner_user_id !== userId)
+      throw new AppError(403, 'FORBIDDEN', 'You can only edit policy drafts you own');
+    if (policy.status !== 'DRAFT' || draft.status !== 'DRAFT')
+      throw new AppError(409, 'POLICY_DRAFT_NOT_EDITABLE', 'Only a draft policy version can be edited');
+
+    try {
+      const updated = await policyComplianceRepository.editDraft(
+        policyId,
+        versionId,
+        userId,
+        input,
       );
+      if (!updated)
+        throw new AppError(409, 'POLICY_DRAFT_CHANGED', 'The policy draft changed before it could be updated');
+      return mapOwnedPolicyDraft(updated);
+    } catch (error: unknown) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        throw new AppError(
+          409,
+          'POLICY_VERSION_CONFLICT',
+          'This policy already has the requested version number',
+        );
+      }
+      throw error;
     }
-    return {
-      ...mapPolicyReview(result.version),
-      decision: {
-        id: result.decision.id,
-        action: result.decision.action,
-        comment: result.decision.comment ?? input.comment,
-        actorUserId: result.decision.actor_user_id,
-        decidedAt: result.decision.decided_at,
-      },
-    };
   },
   async submitForReview(userId: string, policyId: string, versionId: string) {
     const actor = await policyComplianceRepository.findActor(userId);

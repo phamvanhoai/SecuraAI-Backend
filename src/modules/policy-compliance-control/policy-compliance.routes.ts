@@ -7,7 +7,7 @@ import {
   listOwnPolicyDrafts,
   submitPolicyForReview,
   listReviewablePolicyDrafts,
-  requestPolicyRevision,
+  editPolicyDraft,
 } from './policy-compliance.controller.js';
 import {
   policyDraftReviewParamsSchema,
@@ -16,16 +16,16 @@ import {
 import { listPolicyDraftsQuerySchema } from './dto/list-policy-drafts.dto.js';
 import { submitPolicyForReviewParamsSchema } from './dto/submit-policy-for-review.dto.js';
 import {
-  requestPolicyRevisionBodySchema,
-  requestPolicyRevisionParamsSchema,
-} from './dto/request-policy-revision.dto.js';
+  editPolicyDraftBodySchema,
+  editPolicyDraftParamsSchema,
+} from './dto/edit-policy-draft.dto.js';
 
 export const policyComplianceRouter = Router();
-policyComplianceRouter.post(
-  '/policies/:policyId/versions/:versionId/revision-requests',
+policyComplianceRouter.patch(
+  '/policies/:policyId/drafts/:versionId',
   authenticate,
-  validate({ params: requestPolicyRevisionParamsSchema, body: requestPolicyRevisionBodySchema }),
-  asyncHandler(requestPolicyRevision),
+  validate({ params: editPolicyDraftParamsSchema, body: editPolicyDraftBodySchema }),
+  asyncHandler(editPolicyDraft),
 );
 policyComplianceRouter.post(
   '/policies/:policyId/versions/:versionId/submit',
