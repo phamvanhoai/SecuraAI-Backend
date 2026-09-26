@@ -1,6 +1,7 @@
 import { AppError } from '../../common/errors/app-error.js';
 import type { ReviewablePolicyDraftQuery } from './dto/view-policy-draft.dto.js';
 import type { ListPolicyDraftsQuery } from './dto/list-policy-drafts.dto.js';
+import type { RequestPolicyRevisionBody } from './dto/request-policy-revision.dto.js';
 import {
   policyComplianceRepository,
   type PolicyReviewRecord,
@@ -106,6 +107,41 @@ function mapPolicyReview(version: PolicyReviewRecord) {
 }
 
 export const policyComplianceService = {
+  async requestRevision(
+    userId: string,
+    policyId: string,
+    versionId: string,
+    input: RequestPolicyRevisionBody,
+  ) {
+    await requireActiveAdmin(userId);
+    const version = await policyComplianceRepository.findReviewableDraft(policyId, versionId);
+    if (!version) {
+      throw new AppError(404, 'POLICY_DRAFT_NOT_FOUND', 'Submitted policy draft not found');
+    }
+    const result = await policyComplianceRepository.requestDraftRevision(
+      policyId,
+      versionId,
+      userId,
+      input,
+    );
+    if (!result) {
+      throw new AppError(
+        409,
+        'POLICY_DRAFT_CHANGED',
+        'The policy draft changed before revision could be requested',
+      );
+    }
+    return {
+      ...mapPolicyReview(result.version),
+      decision: {
+        id: result.decision.id,
+        action: result.decision.action,
+        comment: result.decision.comment ?? input.comment,
+        actorUserId: result.decision.actor_user_id,
+        decidedAt: result.decision.decided_at,
+      },
+    };
+  },
   async submitForReview(userId: string, policyId: string, versionId: string) {
     const actor = await policyComplianceRepository.findActor(userId);
     if (!actor || actor.status !== 'ACTIVE')

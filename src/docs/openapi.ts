@@ -17,6 +17,52 @@ export const openApiSpec = {
   },
   paths: {
     ...pendingV2Paths,
+    '/compliance/policies/{policyId}/versions/{versionId}/revision-requests': {
+      post: {
+        tags: ['Policy Management'],
+        summary: 'Request revision of a submitted policy draft',
+        description:
+          'Records an Admin REVISION_REQUESTED decision with a required comment and returns the submitted version to DRAFT so its Security Officer owner can revise and resubmit it.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'policyId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+          {
+            name: 'versionId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['comment'],
+                properties: {
+                  comment: { type: 'string', minLength: 3, maxLength: 5000 },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'Revision requested and policy version returned to draft' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Admin role required' },
+          '404': { description: 'Submitted policy draft not found' },
+          '409': { description: 'Policy draft changed concurrently' },
+          '422': { description: 'Invalid identifiers or revision comment' },
+        },
+      },
+    },
     '/compliance/policies/{policyId}/versions/{versionId}/submit': {
       post: {
         tags: ['Policies'],
