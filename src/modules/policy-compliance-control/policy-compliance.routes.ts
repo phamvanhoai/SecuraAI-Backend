@@ -7,6 +7,14 @@ import {
   listOwnPolicyDrafts,
   submitPolicyForReview,
   listReviewablePolicyDrafts,
+  approvePolicyForPublication,
+  editPolicyDraft,
+  requestPolicyRevision,
+  rejectPolicy,
+  listRejectedPolicies,
+  listOwnedPublishedPolicies,
+  listEmployeePublishedPolicies,
+  getEmployeePublishedPolicy,
 } from './policy-compliance.controller.js';
 import {
   policyDraftReviewParamsSchema,
@@ -14,8 +22,73 @@ import {
 } from './dto/view-policy-draft.dto.js';
 import { listPolicyDraftsQuerySchema } from './dto/list-policy-drafts.dto.js';
 import { submitPolicyForReviewParamsSchema } from './dto/submit-policy-for-review.dto.js';
+import { approvePolicyForPublicationParamsSchema } from './dto/approve-policy-for-publication.dto.js';
+import {
+  editPolicyDraftBodySchema,
+  editPolicyDraftParamsSchema,
+} from './dto/edit-policy-draft.dto.js';
+import {
+  requestPolicyRevisionBodySchema,
+  requestPolicyRevisionParamsSchema,
+} from './dto/request-policy-revision.dto.js';
+import {
+  rejectedPolicyQuerySchema,
+  rejectPolicyBodySchema,
+  rejectPolicyParamsSchema,
+} from './dto/reject-policy.dto.js';
+import {
+  publishedPolicyListQuerySchema,
+  publishedPolicyParamsSchema,
+} from './dto/view-published-policy.dto.js';
 
 export const policyComplianceRouter = Router();
+policyComplianceRouter.get(
+  '/policies/published/mine',
+  authenticate,
+  asyncHandler(listOwnedPublishedPolicies),
+);
+policyComplianceRouter.get(
+  '/policies/acknowledgements/mine',
+  authenticate,
+  validate({ query: publishedPolicyListQuerySchema }),
+  asyncHandler(listEmployeePublishedPolicies),
+);
+policyComplianceRouter.get(
+  '/policies/:policyId/versions/:versionId/acknowledgement',
+  authenticate,
+  validate({ params: publishedPolicyParamsSchema }),
+  asyncHandler(getEmployeePublishedPolicy),
+);
+policyComplianceRouter.get(
+  '/policies/rejected',
+  authenticate,
+  validate({ query: rejectedPolicyQuerySchema }),
+  asyncHandler(listRejectedPolicies),
+);
+policyComplianceRouter.post(
+  '/policies/:policyId/versions/:versionId/reject',
+  authenticate,
+  validate({ params: rejectPolicyParamsSchema, body: rejectPolicyBodySchema }),
+  asyncHandler(rejectPolicy),
+);
+policyComplianceRouter.post(
+  '/policies/:policyId/versions/:versionId/approve',
+  authenticate,
+  validate({ params: approvePolicyForPublicationParamsSchema }),
+  asyncHandler(approvePolicyForPublication),
+);
+policyComplianceRouter.patch(
+  '/policies/:policyId/drafts/:versionId',
+  authenticate,
+  validate({ params: editPolicyDraftParamsSchema, body: editPolicyDraftBodySchema }),
+  asyncHandler(editPolicyDraft),
+);
+policyComplianceRouter.post(
+  '/policies/:policyId/versions/:versionId/revision-requests',
+  authenticate,
+  validate({ params: requestPolicyRevisionParamsSchema, body: requestPolicyRevisionBodySchema }),
+  asyncHandler(requestPolicyRevision),
+);
 policyComplianceRouter.post(
   '/policies/:policyId/versions/:versionId/submit',
   authenticate,

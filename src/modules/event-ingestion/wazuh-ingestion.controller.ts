@@ -3,10 +3,10 @@ import { wazuhIngestionService } from './wazuh-ingestion.service.js';
 import type { WazuhEventIngestInput } from './dto/wazuh-event-ingest.dto.js';
 
 export const wazuhIngestionController = {
-  async handleIngestEvent(req: Request, res: Response): Promise<void> {
+  handleIngestEvent: async (req: Request, res: Response): Promise<void> => {
+    const ingestKey = req.headers['x-securaai-ingest-key'];
     const rawAuth =
-      (req.headers['x-securaai-ingest-key'] as string | undefined) ??
-      (req.headers['authorization'] as string | undefined);
+      (Array.isArray(ingestKey) ? undefined : ingestKey) ?? req.headers['authorization'];
 
     const body = req.body as WazuhEventIngestInput;
     const result = await wazuhIngestionService.ingestNormalizedEvent(rawAuth, body);

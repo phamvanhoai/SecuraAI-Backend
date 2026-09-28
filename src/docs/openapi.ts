@@ -22,7 +22,7 @@ export const openApiSpec = {
         tags: ['Event Ingestion'],
         summary: 'Register a normalized event source',
         description:
-          'Creates a new normalized event source (such as Wazuh/SIEM) with supported event families. Requires an active Admin or Security Officer account.',
+          'Creates a normalized event source such as Wazuh/SIEM. Requires an active Admin or Security Officer account.',
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
@@ -30,6 +30,7 @@ export const openApiSpec = {
             'application/json': {
               schema: {
                 type: 'object',
+                additionalProperties: false,
                 required: ['name', 'sourceType', 'ingestionMethod', 'eventFamilies'],
                 properties: {
                   name: { type: 'string', minLength: 1, maxLength: 255 },
@@ -57,6 +58,217 @@ export const openApiSpec = {
           '401': { description: 'Authentication required' },
           '403': { description: 'Admin or Security Officer role required' },
           '422': { description: 'Validation failed' },
+        },
+      },
+    },
+    '/integrations/wazuh/events': {
+      post: {
+        tags: ['Event Ingestion'],
+        summary: 'Ingest a normalized Wazuh event',
+        description:
+          'Accepts one normalized event from the configured Wazuh integration. Requires the X-SecuraAI-Ingest-Key header or a bearer ingestion token.',
+        parameters: [
+          {
+            name: 'X-SecuraAI-Ingest-Key',
+            in: 'header',
+            required: false,
+            schema: { type: 'string' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: { type: 'object' } } },
+        },
+        responses: {
+          '201': { description: 'Event ingested' },
+          '401': { description: 'Ingestion token missing' },
+          '403': { description: 'Ingestion token invalid' },
+          '422': { description: 'Invalid normalized event' },
+          '503': { description: 'Wazuh ingestion is not configured' },
+        },
+      },
+    },
+    '/compliance/policies/published/mine': {
+      get: {
+        tags: ['Policy Management'], summary: 'List owned published policies',
+        description: 'Returns current published V2 policy versions owned by the active Security Officer, including content and publication details.',
+        security: [{ bearerAuth: [] }],
+        responses: { '200': { description: 'Owned published policy versions' }, '401': { description: 'Authentication required' }, '403': { description: 'Security Officer role required' } },
+      },
+    },
+    '/compliance/policies/acknowledgements/mine': {
+      get: {
+        tags: ['Policy Management'], summary: 'List published policies for the current Employee',
+        description: 'Returns current active V2 policies and their published versions with the Employee reading status.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 } },
+          { name: 'q', in: 'query', schema: { type: 'string', minLength: 1, maxLength: 100 } },
+          { name: 'status', in: 'query', schema: { type: 'string', enum: ['all', 'pending', 'acknowledged'], default: 'all' } },
+        ],
+        responses: { '200': { description: 'Paginated published policy list' }, '401': { description: 'Authentication required' }, '403': { description: 'Employee role required' }, '422': { description: 'Invalid query parameters' } },
+      },
+    },
+    '/compliance/policies/{policyId}/versions/{versionId}/acknowledgement': {
+      get: {
+        tags: ['Policy Management'], summary: 'View a published policy version',
+        description: 'Returns the content and details of the current published V2 policy version to an active Employee.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'policyId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+          { name: 'versionId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+        ],
+        responses: { '200': { description: 'Published policy content and details' }, '401': { description: 'Authentication required' }, '403': { description: 'Employee role required' }, '404': { description: 'Published policy not found' }, '422': { description: 'Invalid identifiers' } },
+      },
+    },
+    '/compliance/policies/rejected': {
+      get: {
+        tags: ['Policy Management'],
+        summary: 'List rejected policy versions',
+        description:
+          'Returns a searchable, paginated audit list of rejected V2 policy versions with the recorded reason and Admin decision details. Active Admins see all records; active Security Officers see only policies they own.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 } },
+          { name: 'q', in: 'query', schema: { type: 'string', minLength: 1, maxLength: 100 } },
+          { name: 'sortOrder', in: 'query', schema: { type: 'string', enum: ['asc', 'desc'], default: 'desc' } },
+        ],
+        responses: {
+          '200': { description: 'Paginated rejected policy list' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Admin or Security Officer role required' },
+          '422': { description: 'Invalid query parameters' },
+        },
+      },
+    },
+    '/compliance/policies/{policyId}/versions/{versionId}/reject': {
+      post: {
+        tags: ['Policy Management'],
+        summary: 'Reject a submitted policy draft',
+        description:
+          'Records an Admin REJECTED decision with a required reason and moves the submitted V2 policy version to REJECTED. Rejection is final for that version and does not publish it or return it to draft.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'policyId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+          { name: 'versionId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['reason'],
+                properties: { reason: { type: 'string', minLength: 3, maxLength: 5000 } },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'Policy version rejected and decision recorded' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Admin role required' },
+          '404': { description: 'Submitted policy draft not found' },
+          '409': { description: 'Policy draft changed concurrently' },
+          '422': { description: 'Invalid identifiers or rejection reason' },
+        },
+      },
+    },
+    '/compliance/policies/{policyId}/drafts/{versionId}': {
+      ...pendingV2Paths['/compliance/policies/{policyId}/drafts/{versionId}'],
+      patch: {
+        tags: ['Policies'],
+        summary: 'Edit an owned policy draft',
+        description:
+          'Updates policy metadata and draft-version content for an active Security Officer who owns and authored the V2 draft. Only DRAFT policies and versions are editable.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'policyId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+          {
+            name: 'versionId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                additionalProperties: false,
+                minProperties: 1,
+                properties: {
+                  title: { type: 'string', minLength: 3, maxLength: 255 },
+                  description: { type: 'string', maxLength: 2000, nullable: true },
+                  versionNumber: { type: 'string', minLength: 1, maxLength: 30 },
+                  content: { type: 'string', minLength: 1, maxLength: 500000 },
+                  changeSummary: { type: 'string', maxLength: 5000, nullable: true },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'Updated policy draft' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer role and draft ownership required' },
+          '404': { description: 'Policy draft not found' },
+          '409': { description: 'Draft is no longer editable or version number conflicts' },
+          '422': { description: 'Invalid identifiers or update fields' },
+        },
+      },
+    },
+    '/compliance/policies/{policyId}/versions/{versionId}/revision-requests': {
+      post: {
+        tags: ['Policy Management'],
+        summary: 'Request revision of a submitted policy draft',
+        description:
+          'Records an Admin REVISION_REQUESTED decision with a required comment and returns the submitted version to DRAFT so its Security Officer owner can revise and resubmit it.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'policyId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+          {
+            name: 'versionId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['comment'],
+                properties: { comment: { type: 'string', minLength: 3, maxLength: 5000 } },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'Revision requested and policy version returned to draft' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Admin role required' },
+          '404': { description: 'Submitted policy draft not found' },
+          '409': { description: 'Policy draft changed concurrently' },
+          '422': { description: 'Invalid identifiers or revision comment' },
         },
       },
     },

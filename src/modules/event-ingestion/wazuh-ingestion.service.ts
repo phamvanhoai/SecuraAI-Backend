@@ -1,4 +1,6 @@
 import { AppError } from '../../common/errors/app-error.js';
+import { env } from '../../config/env.js';
+import { timingSafeEqual } from 'node:crypto';
 import type {
   WazuhEventIngestInput,
   WazuhIngestResponseDto,
@@ -6,18 +8,19 @@ import type {
 import { wazuhIngestionRepository } from './wazuh-ingestion.repository.js';
 
 function verifyIngestToken(token?: string): void {
-  const configuredToken = process.env['SECURAAI_INGEST_TOKEN'] ?? process.env['WAZUH_INGEST_TOKEN'];
+  const configuredToken = env.WAZUH_INGEST_TOKEN;
+  if (!configuredToken) {
+    throw new AppError(503, 'WAZUH_INGESTION_NOT_CONFIGURED', 'Wazuh ingestion is not configured');
+  }
+  if (!token) {
+    throw new AppError(401, 'UNAUTHORIZED', 'Missing SecuraAI ingestion token');
+  }
 
-  // If a token is configured in environment, verify it
-  if (configuredToken && configuredToken !== 'YOUR_SECURA_AI_INGEST_TOKEN') {
-    if (!token) {
-      throw new AppError(401, 'UNAUTHORIZED', 'Missing SecuraAI Ingestion Token');
-    }
-    // Clean bearer prefix if present
-    const cleanToken = token.startsWith('Bearer ') ? token.slice(7).trim() : token.trim();
-    if (cleanToken !== configuredToken) {
-      throw new AppError(403, 'FORBIDDEN', 'Invalid SecuraAI Ingestion Token');
-    }
+  const cleanToken = token.startsWith('Bearer ') ? token.slice(7).trim() : token.trim();
+  const supplied = Buffer.from(cleanToken);
+  const expected = Buffer.from(configuredToken);
+  if (supplied.length !== expected.length || !timingSafeEqual(supplied, expected)) {
+    throw new AppError(403, 'FORBIDDEN', 'Invalid SecuraAI ingestion token');
   }
 }
 
@@ -38,7 +41,7 @@ export const wazuhIngestionService = {
     return {
       eventId: saved.id,
       externalEventId: saved.external_event_id,
-      eventFamily: saved.event_family as 'AUTHENTICATION' | 'VPN_SSO' | 'APPLICATION_ACCESS',
+      eventFamily: saved.event_family,
       eventType: saved.event_type,
       status: 'INGESTED',
       ingestedAt: saved.ingested_at,
