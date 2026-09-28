@@ -38,7 +38,7 @@ export const wazuhIngestionService = {
     return {
       eventId: saved.id,
       externalEventId: saved.external_event_id,
-      eventFamily: saved.event_family as 'AUTHENTICATION' | 'VPN_SSO' | 'APPLICATION_ACCESS',
+      eventFamily: saved.event_family,
       eventType: saved.event_type,
       status: 'INGESTED',
       ingestedAt: saved.ingested_at,

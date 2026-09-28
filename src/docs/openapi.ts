@@ -18,6 +18,48 @@ export const openApiSpec = {
   paths: {
     ...pendingV2Paths,
     '/event-sources': {
+      get: {
+        tags: ['Event Ingestion'],
+        summary: 'List configured event sources',
+        description:
+          'Retrieve a paginated list of all configured event sources. Restricted to ADMIN and SECURITY_OFFICER roles.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
+          {
+            name: 'limit',
+            in: 'query',
+            schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
+          },
+          { name: 'q', in: 'query', schema: { type: 'string', maxLength: 100 } },
+          { name: 'sourceType', in: 'query', schema: { type: 'string', maxLength: 100 } },
+          {
+            name: 'status',
+            in: 'query',
+            schema: { type: 'string', enum: ['ACTIVE', 'INACTIVE'] },
+          },
+          {
+            name: 'sortBy',
+            in: 'query',
+            schema: {
+              type: 'string',
+              enum: ['name', 'sourceType', 'status', 'updatedAt', 'createdAt'],
+              default: 'updatedAt',
+            },
+          },
+          {
+            name: 'sortOrder',
+            in: 'query',
+            schema: { type: 'string', enum: ['asc', 'desc'], default: 'desc' },
+          },
+        ],
+        responses: {
+          '200': { description: 'Paginated list of configured event sources' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Admin or Security Officer role required' },
+          '422': { description: 'Invalid query parameters' },
+        },
+      },
       post: {
         tags: ['Event Ingestion'],
         summary: 'Register a normalized event source',
