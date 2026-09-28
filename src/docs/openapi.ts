@@ -17,6 +17,49 @@ export const openApiSpec = {
   },
   paths: {
     ...pendingV2Paths,
+    '/event-sources': {
+      post: {
+        tags: ['Event Ingestion'],
+        summary: 'Register a normalized event source',
+        description:
+          'Creates a new normalized event source (such as Wazuh/SIEM) with supported event families. Requires an active Admin or Security Officer account.',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['name', 'sourceType', 'ingestionMethod', 'eventFamilies'],
+                properties: {
+                  name: { type: 'string', minLength: 1, maxLength: 255 },
+                  sourceType: { type: 'string', minLength: 1, maxLength: 100 },
+                  endpoint: { type: 'string', nullable: true },
+                  ingestionMethod: { type: 'string', enum: ['API', 'FILE'] },
+                  authenticationType: { type: 'string', nullable: true },
+                  status: { type: 'string', enum: ['ACTIVE', 'INACTIVE'], default: 'ACTIVE' },
+                  description: { type: 'string', nullable: true },
+                  eventFamilies: {
+                    type: 'array',
+                    items: {
+                      type: 'string',
+                      enum: ['AUTHENTICATION', 'VPN_SSO', 'APPLICATION_ACCESS'],
+                    },
+                    minItems: 1,
+                  },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '201': { description: 'Event source registered successfully' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Admin or Security Officer role required' },
+          '422': { description: 'Validation failed' },
+        },
+      },
+    },
     '/compliance/policies/{policyId}/versions/{versionId}/submit': {
       post: {
         tags: ['Policies'],
