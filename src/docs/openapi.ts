@@ -17,6 +17,77 @@ export const openApiSpec = {
   },
   paths: {
     ...pendingV2Paths,
+    '/event-sources': {
+      post: {
+        tags: ['Event Ingestion'],
+        summary: 'Register a normalized event source',
+        description:
+          'Creates a normalized event source such as Wazuh/SIEM. Requires an active Admin or Security Officer account.',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['name', 'sourceType', 'ingestionMethod', 'eventFamilies'],
+                properties: {
+                  name: { type: 'string', minLength: 1, maxLength: 255 },
+                  sourceType: { type: 'string', minLength: 1, maxLength: 100 },
+                  endpoint: { type: 'string', nullable: true },
+                  ingestionMethod: { type: 'string', enum: ['API', 'FILE'] },
+                  authenticationType: { type: 'string', nullable: true },
+                  status: { type: 'string', enum: ['ACTIVE', 'INACTIVE'], default: 'ACTIVE' },
+                  description: { type: 'string', nullable: true },
+                  eventFamilies: {
+                    type: 'array',
+                    items: {
+                      type: 'string',
+                      enum: ['AUTHENTICATION', 'VPN_SSO', 'APPLICATION_ACCESS'],
+                    },
+                    minItems: 1,
+                  },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '201': { description: 'Event source registered successfully' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Admin or Security Officer role required' },
+          '422': { description: 'Validation failed' },
+        },
+      },
+    },
+    '/integrations/wazuh/events': {
+      post: {
+        tags: ['Event Ingestion'],
+        summary: 'Ingest a normalized Wazuh event',
+        description:
+          'Accepts one normalized event from the configured Wazuh integration. Requires the X-SecuraAI-Ingest-Key header or a bearer ingestion token.',
+        parameters: [
+          {
+            name: 'X-SecuraAI-Ingest-Key',
+            in: 'header',
+            required: false,
+            schema: { type: 'string' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: { type: 'object' } } },
+        },
+        responses: {
+          '201': { description: 'Event ingested' },
+          '401': { description: 'Ingestion token missing' },
+          '403': { description: 'Ingestion token invalid' },
+          '422': { description: 'Invalid normalized event' },
+          '503': { description: 'Wazuh ingestion is not configured' },
+        },
+      },
+    },
     '/compliance/policies/published/mine': {
       get: {
         tags: ['Policy Management'], summary: 'List owned published policies',
