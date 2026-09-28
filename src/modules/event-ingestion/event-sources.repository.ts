@@ -1,4 +1,4 @@
-import type { event_family, event_source_status, ingestion_method } from '@prisma/client';
+import type { event_family, event_source_status, ingestion_method, Prisma } from '@prisma/client';
 import { prisma } from '../../database/prisma.js';
 
 export type EventSourceRecord = {
@@ -27,6 +27,74 @@ export type CreateEventSourceData = {
   createdBy: string;
   eventFamilies: event_family[];
 };
+
+export type FindEventSourcesOptions = {
+  skip: number;
+  take: number;
+  q?: string | undefined;
+  sourceType?: string | undefined;
+  status?: event_source_status | undefined;
+  sortBy?: 'name' | 'sourceType' | 'status' | 'updatedAt' | 'createdAt' | undefined;
+  sortOrder?: 'asc' | 'desc' | undefined;
+};
+
+const eventSourceSelect = {
+  id: true,
+  name: true,
+  source_type: true,
+  endpoint: true,
+  ingestion_method: true,
+  authentication_type: true,
+  status: true,
+  description: true,
+  created_by: true,
+  created_at: true,
+  updated_at: true,
+  event_source_families: {
+    select: {
+      event_family: true,
+    },
+  },
+} as const;
+
+function buildWhere(
+  options: Pick<FindEventSourcesOptions, 'q' | 'sourceType' | 'status'>,
+): Prisma.event_sourcesWhereInput {
+  const where: Prisma.event_sourcesWhereInput = {};
+  if (options.status) {
+    where.status = options.status;
+  }
+  if (options.sourceType) {
+    where.source_type = { equals: options.sourceType, mode: 'insensitive' };
+  }
+  if (options.q) {
+    where.OR = [
+      { name: { contains: options.q, mode: 'insensitive' } },
+      { source_type: { contains: options.q, mode: 'insensitive' } },
+      { description: { contains: options.q, mode: 'insensitive' } },
+    ];
+  }
+  return where;
+}
+
+function buildOrderBy(
+  sortBy?: string,
+  sortOrder: 'asc' | 'desc' = 'desc',
+): Prisma.event_sourcesOrderByWithRelationInput {
+  switch (sortBy) {
+    case 'name':
+      return { name: sortOrder };
+    case 'sourceType':
+      return { source_type: sortOrder };
+    case 'status':
+      return { status: sortOrder };
+    case 'createdAt':
+      return { created_at: sortOrder };
+    case 'updatedAt':
+    default:
+      return { updated_at: sortOrder };
+  }
+}
 
 export const eventSourcesRepository = {
   findActor(userId: string) {
@@ -60,24 +128,27 @@ export const eventSourcesRepository = {
           })),
         },
       },
-      select: {
-        id: true,
-        name: true,
-        source_type: true,
-        endpoint: true,
-        ingestion_method: true,
-        authentication_type: true,
-        status: true,
-        description: true,
-        created_by: true,
-        created_at: true,
-        updated_at: true,
-        event_source_families: {
-          select: {
-            event_family: true,
-          },
-        },
-      },
+      select: eventSourceSelect,
     });
+  },
+
+  async findMany(options: FindEventSourcesOptions): Promise<EventSourceRecord[]> {
+    const where = buildWhere(options);
+    const orderBy = buildOrderBy(options.sortBy, options.sortOrder);
+
+    return prisma.event_sources.findMany({
+      where,
+      orderBy,
+      skip: options.skip,
+      take: options.take,
+      select: eventSourceSelect,
+    });
+  },
+
+  async count(
+    options: Pick<FindEventSourcesOptions, 'q' | 'sourceType' | 'status'>,
+  ): Promise<number> {
+    const where = buildWhere(options);
+    return prisma.event_sources.count({ where });
   },
 };

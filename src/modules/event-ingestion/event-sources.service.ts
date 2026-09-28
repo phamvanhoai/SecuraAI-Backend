@@ -1,5 +1,9 @@
 import { AppError } from '../../common/errors/app-error.js';
 import type { CreateEventSourceInput, EventSourceResponseDto } from './dto/create-event-source.dto.js';
+import type {
+  ListEventSourcesQuery,
+  PaginatedEventSourcesResponseDto,
+} from './dto/list-event-sources.dto.js';
 import {
   eventSourcesRepository,
   type EventSourceRecord,
@@ -28,7 +32,7 @@ async function requireAuthorizedActor(userId: string): Promise<void> {
     throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
   }
   if (actor.role !== 'ADMIN' && actor.role !== 'SECURITY_OFFICER') {
-    throw new AppError(403, 'FORBIDDEN', 'Insufficient permissions to register event sources');
+    throw new AppError(403, 'FORBIDDEN', 'Insufficient permissions to access event sources');
   }
 }
 
@@ -52,5 +56,44 @@ export const eventSourcesService = {
     });
 
     return toEventSourceResponse(created);
+  },
+
+  async listEventSources(
+    userId: string,
+    query: ListEventSourcesQuery,
+  ): Promise<PaginatedEventSourcesResponseDto> {
+    await requireAuthorizedActor(userId);
+
+    const { page, limit, q, sourceType, status, sortBy, sortOrder } = query;
+    const skip = (page - 1) * limit;
+
+    const [records, total] = await Promise.all([
+      eventSourcesRepository.findMany({
+        skip,
+        take: limit,
+        q,
+        sourceType,
+        status,
+        sortBy,
+        sortOrder,
+      }),
+      eventSourcesRepository.count({
+        q,
+        sourceType,
+        status,
+      }),
+    ]);
+
+    const totalPages = Math.max(1, Math.ceil(total / limit));
+
+    return {
+      items: records.map(toEventSourceResponse),
+      pagination: {
+        page,
+        limit,
+        total,
+        totalPages,
+      },
+    };
   },
 };

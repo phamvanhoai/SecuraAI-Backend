@@ -5,4 +5,5 @@ export { wazuhIngestionRouter } from './wazuh-ingestion.routes.js';
 export { wazuhIngestionService } from './wazuh-ingestion.service.js';
 export { wazuhIngestionRepository } from './wazuh-ingestion.repository.js';
 export * from './dto/create-event-source.dto.js';
+export * from './dto/list-event-sources.dto.js';
 export * from './dto/wazuh-event-ingest.dto.js';
