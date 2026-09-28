@@ -15,6 +15,10 @@ const envSchema = z.object({
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
   TRUST_PROXY: booleanString.default(false),
   SWAGGER_ENABLED: booleanString.default(true),
+  OLLAMA_ENABLED: booleanString.default(false),
+  OLLAMA_BASE_URL: z.url().default('http://127.0.0.1:11434'),
+  OLLAMA_MODEL: z.string().trim().min(1).default('qwen3:4b'),
+  OLLAMA_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120_000).default(60_000),
 });
 
 const result = envSchema.safeParse(process.env);
