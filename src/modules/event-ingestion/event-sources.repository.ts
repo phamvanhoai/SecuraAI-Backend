@@ -151,4 +151,46 @@ export const eventSourcesRepository = {
     const where = buildWhere(options);
     return prisma.event_sources.count({ where });
   },
+
+  findById(id: string) {
+    return prisma.event_sources.findUnique({
+      where: { id },
+      select: {
+        ...eventSourceSelect,
+        users: {
+          select: {
+            id: true,
+            email: true,
+            full_name: true,
+          },
+        },
+        integration_api_keys: {
+          select: {
+            id: true,
+            name: true,
+            key_prefix: true,
+            status: true,
+            expires_at: true,
+            last_used_at: true,
+            last_used_ip: true,
+            created_at: true,
+          },
+          orderBy: { created_at: 'desc' },
+        },
+        _count: {
+          select: {
+            normalized_events: true,
+            event_ingestion_batches: true,
+          },
+        },
+        event_ingestion_batches: {
+          select: {
+            created_at: true,
+          },
+          orderBy: { created_at: 'desc' },
+          take: 1,
+        },
+      },
+    });
+  },
 };

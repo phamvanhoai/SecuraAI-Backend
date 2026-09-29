@@ -102,6 +102,30 @@ export const openApiSpec = {
         },
       },
     },
+    '/event-sources/{id}': {
+      get: {
+        tags: ['Event Ingestion'],
+        summary: 'Get event source details',
+        description:
+          'Display comprehensive configuration details of a specific event source, including endpoint URLs, supported event families, and ingestion settings, while masking sensitive credentials. Restricted to ADMIN and SECURITY_OFFICER roles.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          '200': { description: 'Comprehensive event source configuration and masked credential details' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Admin or Security Officer role required' },
+          '404': { description: 'Event source not found' },
+          '422': { description: 'Invalid event source ID format' },
+        },
+      },
+    },
     '/compliance/policies/{policyId}/versions/{versionId}/submit': {
       post: {
         tags: ['Policies'],
