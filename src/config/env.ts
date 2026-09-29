@@ -25,6 +25,7 @@ const envSchema = z.object({
   SMTP_SECURE: booleanString.default(false),
   SMTP_USER: optionalString,
   SMTP_PASS: optionalString,
+  GOOGLE_CLIENT_ID: optionalString,
 });
 
 const result = envSchema.safeParse(process.env);

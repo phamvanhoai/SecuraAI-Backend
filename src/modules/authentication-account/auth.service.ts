@@ -1,12 +1,13 @@
 import { createHash, randomBytes, randomInt } from 'node:crypto';
 import argon2 from 'argon2';
 import jwt from 'jsonwebtoken';
+import { OAuth2Client } from 'google-auth-library';
 import type { user_role } from '@prisma/client';
 import { AppError } from '../../common/errors/app-error.js';
 import { env } from '../../config/env.js';
 import { authRepository } from './auth.repository.js';
 import { authEmailService } from './auth.email.service.js';
-import type { LoginBody } from './dto/auth.dto.js';
+import type { GoogleLoginBody, LoginBody } from './dto/auth.dto.js';
 import type {
   ChangePasswordBody,
   ConfirmPasswordResetBody,
@@ -14,6 +15,7 @@ import type {
 } from './dto/password.dto.js';
 
 const dummyHash = argon2.hash('invalid-account-password', { type: argon2.argon2id });
+const googleClient = new OAuth2Client();
 
 function hashToken(token: string): string {
   return createHash('sha256').update(token).digest('hex');
@@ -43,6 +45,45 @@ function tokenPair(user: { id: string; role: user_role }, refreshToken: string) 
 }
 
 export const authService = {
+  async loginWithGoogle(input: GoogleLoginBody) {
+    if (!env.GOOGLE_CLIENT_ID) {
+      throw new AppError(503, 'GOOGLE_LOGIN_UNAVAILABLE', 'Google sign-in is unavailable');
+    }
+    let payload;
+    try {
+      const ticket = await googleClient.verifyIdToken({
+        idToken: input.credential,
+        audience: env.GOOGLE_CLIENT_ID,
+      });
+      payload = ticket.getPayload();
+    } catch {
+      throw new AppError(401, 'INVALID_GOOGLE_CREDENTIAL', 'Unable to sign in with Google');
+    }
+    if (!payload?.sub || !payload.email || payload.email_verified !== true) {
+      throw new AppError(401, 'INVALID_GOOGLE_CREDENTIAL', 'Unable to sign in with Google');
+    }
+    const email = payload.email.trim().toLowerCase();
+    const user = await authRepository.findForGoogleLogin(email, payload.sub);
+    if (
+      !user ||
+      user.status !== 'ACTIVE' ||
+      user.email.toLowerCase() !== email ||
+      (user.google_subject !== null && user.google_subject !== payload.sub)
+    ) {
+      throw new AppError(401, 'INVALID_GOOGLE_CREDENTIAL', 'Unable to sign in with Google');
+    }
+    const refreshToken = createRefreshToken();
+    const sessionUser = await authRepository.createGoogleSession(
+      user.id,
+      payload.sub,
+      hashToken(refreshToken),
+      refreshExpiresAt(),
+    );
+    if (!sessionUser) {
+      throw new AppError(401, 'INVALID_GOOGLE_CREDENTIAL', 'Unable to sign in with Google');
+    }
+    return tokenPair(sessionUser, refreshToken);
+  },
   async login(input: LoginBody) {
     const user = await authRepository.findByEmail(input.email);
     let validPassword = false;

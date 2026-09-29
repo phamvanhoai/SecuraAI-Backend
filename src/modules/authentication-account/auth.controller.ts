@@ -1,7 +1,7 @@
 import type { RequestHandler } from 'express';
 import { authService } from './auth.service.js';
 import { AppError } from '../../common/errors/app-error.js';
-import { loginBodySchema, refreshBodySchema } from './dto/auth.dto.js';
+import { googleLoginBodySchema, loginBodySchema, refreshBodySchema } from './dto/auth.dto.js';
 import {
   changePasswordBodySchema,
   confirmPasswordResetBodySchema,
@@ -10,6 +10,11 @@ import {
 
 export const login: RequestHandler = async (req, res) => {
   const data = await authService.login(loginBodySchema.parse(req.body));
+  res.status(200).json({ success: true, data });
+};
+
+export const loginWithGoogle: RequestHandler = async (req, res) => {
+  const data = await authService.loginWithGoogle(googleLoginBodySchema.parse(req.body));
   res.status(200).json({ success: true, data });
 };
 
