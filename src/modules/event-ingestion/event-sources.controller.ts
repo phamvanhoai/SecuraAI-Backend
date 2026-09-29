@@ -7,6 +7,10 @@ import {
   updateEventSourceParamsSchema,
   updateEventSourceSchema,
 } from './dto/update-event-source.dto.js';
+import {
+  testEventSourceConnectionSchema,
+  testExistingEventSourceConnectionSchema,
+} from './dto/test-event-source-connection.dto.js';
 import { eventSourcesService } from './event-sources.service.js';
 
 function authenticatedUserId(value: unknown): string {
@@ -42,5 +46,20 @@ export const updateEventSource: RequestHandler = async (req, res) => {
   const params = updateEventSourceParamsSchema.parse(req.params);
   const input = updateEventSourceSchema.parse(req.body);
   const data = await eventSourcesService.updateEventSource(userId, params.id, input);
+  res.status(200).json({ success: true, data });
+};
+
+export const testEventSourceConnection: RequestHandler = async (req, res) => {
+  const userId = authenticatedUserId(res.locals.authenticatedUserId);
+  const input = testEventSourceConnectionSchema.parse(req.body);
+  const data = await eventSourcesService.testConnection(userId, input);
+  res.status(200).json({ success: true, data });
+};
+
+export const testEventSourceConnectionById: RequestHandler = async (req, res) => {
+  const userId = authenticatedUserId(res.locals.authenticatedUserId);
+  const params = eventSourceIdParamsSchema.parse(req.params);
+  const input = testExistingEventSourceConnectionSchema.parse(req.body);
+  const data = await eventSourcesService.testConnectionById(userId, params.id, input);
   res.status(200).json({ success: true, data });
 };

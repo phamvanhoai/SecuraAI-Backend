@@ -226,6 +226,112 @@ export const openApiSpec = {
         },
       },
     },
+    '/event-sources/test-connection': {
+      post: {
+        tags: ['Event Ingestion'],
+        summary: 'Test event source configuration and connection',
+        description:
+          'Test and verify the connection and authentication configuration of a Wazuh event source, displaying diagnostic results (success/failure, latency, status code, metadata) to validate settings before saving. Restricted to ADMIN and SECURITY_OFFICER roles.',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['endpoint'],
+                properties: {
+                  endpoint: { type: 'string', minLength: 1, maxLength: 2048, example: 'https://192.168.56.101:55000' },
+                  username: { type: 'string', maxLength: 255, example: 'wazuh-wui' },
+                  password: { type: 'string', maxLength: 255, example: 'secret_password' },
+                  verifySsl: { type: 'boolean', default: true },
+                  timeoutMs: { type: 'integer', minimum: 1000, maximum: 30000, default: 5000 },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': {
+            description: 'Connection test diagnostic results',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    data: {
+                      type: 'object',
+                      properties: {
+                        connected: { type: 'boolean' },
+                        statusCode: { type: 'integer', nullable: true },
+                        latencyMs: { type: 'number' },
+                        message: { type: 'string' },
+                        provider: { type: 'string' },
+                        details: {
+                          type: 'object',
+                          nullable: true,
+                          properties: {
+                            title: { type: 'string', nullable: true },
+                            apiVersion: { type: 'string', nullable: true },
+                            hostname: { type: 'string', nullable: true },
+                          },
+                        },
+                        verifySslWarning: { type: 'boolean' },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Admin or Security Officer role required' },
+          '422': { description: 'Validation failed' },
+        },
+      },
+    },
+    '/event-sources/{id}/test-connection': {
+      post: {
+        tags: ['Event Ingestion'],
+        summary: 'Test connection of an existing registered event source',
+        description:
+          'Test and verify the live connection of an existing registered event source using its configured endpoint and optional credentials override. Restricted to ADMIN and SECURITY_OFFICER roles.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        requestBody: {
+          required: false,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  username: { type: 'string', maxLength: 255 },
+                  password: { type: 'string', maxLength: 255 },
+                  verifySsl: { type: 'boolean' },
+                  timeoutMs: { type: 'integer', minimum: 1000, maximum: 30000, default: 5000 },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'Connection test diagnostic results' },
+          '400': { description: 'Event source has no endpoint configured' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Admin or Security Officer role required' },
+          '404': { description: 'Event source not found' },
+          '422': { description: 'Validation failed' },
+        },
+      },
+    },
     '/compliance/policies/{policyId}/versions/{versionId}/submit': {
       post: {
         tags: ['Policies'],

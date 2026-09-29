@@ -6,6 +6,8 @@ import {
   createEventSource,
   getEventSourceDetail,
   listEventSources,
+  testEventSourceConnection,
+  testEventSourceConnectionById,
   updateEventSource,
 } from './event-sources.controller.js';
 import { createEventSourceSchema } from './dto/create-event-source.dto.js';
@@ -15,8 +17,29 @@ import {
   updateEventSourceParamsSchema,
   updateEventSourceSchema,
 } from './dto/update-event-source.dto.js';
+import {
+  testEventSourceConnectionSchema,
+  testExistingEventSourceConnectionSchema,
+} from './dto/test-event-source-connection.dto.js';
 
 export const eventSourcesRouter = Router();
+
+eventSourcesRouter.post(
+  '/test-connection',
+  authenticate,
+  validate({ body: testEventSourceConnectionSchema }),
+  asyncHandler(testEventSourceConnection),
+);
+
+eventSourcesRouter.post(
+  '/:id/test-connection',
+  authenticate,
+  validate({
+    params: eventSourceIdParamsSchema,
+    body: testExistingEventSourceConnectionSchema,
+  }),
+  asyncHandler(testEventSourceConnectionById),
+);
 
 eventSourcesRouter.get(
   '/',

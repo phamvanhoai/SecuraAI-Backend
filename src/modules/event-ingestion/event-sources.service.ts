@@ -6,6 +6,12 @@ import type {
 } from './dto/list-event-sources.dto.js';
 import type { EventSourceDetailResponseDto } from './dto/get-event-source-detail.dto.js';
 import type { UpdateEventSourceInput } from './dto/update-event-source.dto.js';
+import type {
+  TestEventSourceConnectionInput,
+  TestExistingEventSourceConnectionInput,
+  TestEventSourceConnectionResponseDto,
+} from './dto/test-event-source-connection.dto.js';
+import { wazuhConnectionTester } from './connectors/wazuh-connection-tester.js';
 import {
   eventSourcesRepository,
   type EventSourceRecord,
@@ -170,5 +176,38 @@ export const eventSourcesService = {
 
     const updated = await eventSourcesRepository.update(id, input);
     return toEventSourceResponse(updated);
+  },
+
+  async testConnection(
+    userId: string,
+    input: TestEventSourceConnectionInput,
+  ): Promise<TestEventSourceConnectionResponseDto> {
+    await requireAuthorizedActor(userId);
+    return wazuhConnectionTester.testConnection(input);
+  },
+
+  async testConnectionById(
+    userId: string,
+    id: string,
+    input: TestExistingEventSourceConnectionInput,
+  ): Promise<TestEventSourceConnectionResponseDto> {
+    await requireAuthorizedActor(userId);
+
+    const existing = await eventSourcesRepository.findById(id);
+    if (!existing) {
+      throw new AppError(404, 'NOT_FOUND', 'Event source not found');
+    }
+
+    if (!existing.endpoint) {
+      throw new AppError(400, 'BAD_REQUEST', 'Event source does not have an endpoint configured');
+    }
+
+    return wazuhConnectionTester.testConnection({
+      endpoint: existing.endpoint,
+      username: input.username,
+      password: input.password,
+      verifySsl: input.verifySsl ?? true,
+      timeoutMs: input.timeoutMs,
+    });
   },
 };
