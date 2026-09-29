@@ -2,6 +2,7 @@ import { AppError } from '../../common/errors/app-error.js';
 import { assetsRepository } from './assets.repository.js';
 import type { ListAssetsQuery } from './dto/list-assets.dto.js';
 import type { CreateAssetInput } from './dto/create-asset.dto.js';
+import type { UpdateAssetInput } from './dto/update-asset.dto.js';
 async function activeActor(userId: string) {
   const actor = await assetsRepository.findActor(userId);
   if (!actor || actor.status !== 'ACTIVE')
@@ -11,6 +12,21 @@ async function activeActor(userId: string) {
 const person = (item: { id: string; full_name: string; status: string } | null) =>
   item ? { id: item.id, fullName: item.full_name, inactive: item.status !== 'ACTIVE' } : null;
 export const assetsService = {
+  async archive(userId: string, assetId: string) { const actor = await activeActor(userId); if (actor.role !== 'SECURITY_OFFICER') throw new AppError(403, 'FORBIDDEN', 'Security Officer role required'); const item = await assetsRepository.findById(assetId); if (!item) throw new AppError(404, 'ASSET_NOT_FOUND', 'Asset not found'); if (item.status === 'ARCHIVED') throw new AppError(409, 'ASSET_ALREADY_ARCHIVED', 'Asset is already archived'); await assetsRepository.archive(assetId); },
+  async update(userId: string, assetId: string, input: UpdateAssetInput) {
+    const actor = await activeActor(userId);
+    if (actor.role !== 'SECURITY_OFFICER') throw new AppError(403, 'FORBIDDEN', 'Security Officer role required');
+    if (input.dependencyIds.includes(assetId)) throw new AppError(422, 'INVALID_ASSET_DEPENDENCY', 'An asset cannot depend on itself');
+    const existing = await assetsRepository.findById(assetId);
+    if (!existing) throw new AppError(404, 'ASSET_NOT_FOUND', 'Asset not found');
+    const references = await assetsRepository.validateCreateReferences({ ...(input.ownerUserId ? { ownerUserId: input.ownerUserId } : {}), ...(input.businessServiceId ? { businessServiceId: input.businessServiceId } : {}), dependencyIds: input.dependencyIds, eventSourceIds: input.eventSourceIds });
+    if (!references.ownerValid) throw new AppError(422, 'INVALID_ASSET_OWNER', 'Selected asset owner is unavailable');
+    if (!references.serviceValid) throw new AppError(422, 'INVALID_BUSINESS_SERVICE', 'Selected business service is unavailable');
+    if (!references.dependenciesValid) throw new AppError(422, 'INVALID_ASSET_DEPENDENCY', 'One or more dependencies are unavailable');
+    if (!references.eventSourcesValid) throw new AppError(422, 'INVALID_EVENT_SOURCE', 'One or more event sources are unavailable');
+    const item = await assetsRepository.update(assetId, input);
+    return { id: item.id, assetCode: item.asset_code, name: item.name, assetType: item.asset_type, criticality: item.criticality, dataClassification: item.data_classification, description: item.description, status: item.status.toLowerCase(), owner: person(item.users_assets_owner_user_idTousers), businessService: item.business_services ? { id: item.business_services.id, name: item.business_services.name, inactive: item.business_services.status !== 'ACTIVE' } : null, createdAt: item.created_at, updatedAt: item.updated_at };
+  },
   async createOptions(userId: string) {
     const actor = await activeActor(userId);
     if (actor.role !== 'SECURITY_OFFICER')
