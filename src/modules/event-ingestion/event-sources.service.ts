@@ -5,6 +5,7 @@ import type {
   PaginatedEventSourcesResponseDto,
 } from './dto/list-event-sources.dto.js';
 import type { EventSourceDetailResponseDto } from './dto/get-event-source-detail.dto.js';
+import type { UpdateEventSourceInput } from './dto/update-event-source.dto.js';
 import {
   eventSourcesRepository,
   type EventSourceRecord,
@@ -138,5 +139,36 @@ export const eventSourcesService = {
         lastIngestedAt: lastBatch ? lastBatch.created_at : null,
       },
     };
+  },
+
+  async updateEventSource(
+    userId: string,
+    id: string,
+    input: UpdateEventSourceInput,
+  ): Promise<EventSourceResponseDto> {
+    await requireAuthorizedActor(userId);
+
+    const existing = await eventSourcesRepository.findById(id);
+    if (!existing) {
+      throw new AppError(404, 'NOT_FOUND', 'Event source not found');
+    }
+
+    if (input.name !== undefined && input.name !== existing.name) {
+      const duplicate = await eventSourcesRepository.findByName(input.name);
+      if (duplicate && duplicate.id !== id) {
+        throw new AppError(409, 'CONFLICT', 'An event source with this name already exists');
+      }
+    }
+
+    const effectiveMethod = input.ingestionMethod ?? existing.ingestion_method;
+    const effectiveEndpoint =
+      input.endpoint !== undefined ? input.endpoint : existing.endpoint;
+
+    if (effectiveMethod === 'API' && (!effectiveEndpoint || effectiveEndpoint.trim().length === 0)) {
+      throw new AppError(400, 'BAD_REQUEST', 'Endpoint is required when ingestion method is API');
+    }
+
+    const updated = await eventSourcesRepository.update(id, input);
+    return toEventSourceResponse(updated);
   },
 };

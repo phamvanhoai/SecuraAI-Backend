@@ -125,6 +125,106 @@ export const openApiSpec = {
           '422': { description: 'Invalid event source ID format' },
         },
       },
+      put: {
+        tags: ['Event Ingestion'],
+        summary: 'Update event source configuration',
+        description:
+          'Update the connection and ingestion configuration of a registered event source. System identifier fields (id, sourceType, createdBy, createdAt) remain immutable. Restricted to ADMIN and SECURITY_OFFICER roles.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  name: { type: 'string', minLength: 1, maxLength: 255 },
+                  endpoint: { type: 'string', nullable: true },
+                  ingestionMethod: { type: 'string', enum: ['API', 'FILE'] },
+                  authenticationType: { type: 'string', nullable: true },
+                  status: { type: 'string', enum: ['ACTIVE', 'INACTIVE'] },
+                  description: { type: 'string', nullable: true },
+                  eventFamilies: {
+                    type: 'array',
+                    items: {
+                      type: 'string',
+                      enum: ['AUTHENTICATION', 'VPN_SSO', 'APPLICATION_ACCESS'],
+                    },
+                    minItems: 1,
+                  },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'Event source configuration updated successfully' },
+          '400': { description: 'Bad request or missing required fields' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Admin or Security Officer role required' },
+          '404': { description: 'Event source not found' },
+          '409': { description: 'An event source with this name already exists' },
+          '422': { description: 'Validation failed' },
+        },
+      },
+      patch: {
+        tags: ['Event Ingestion'],
+        summary: 'Partially update event source configuration',
+        description:
+          'Partially update the connection and ingestion configuration of a registered event source. Restricted to ADMIN and SECURITY_OFFICER roles.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  name: { type: 'string', minLength: 1, maxLength: 255 },
+                  endpoint: { type: 'string', nullable: true },
+                  ingestionMethod: { type: 'string', enum: ['API', 'FILE'] },
+                  authenticationType: { type: 'string', nullable: true },
+                  status: { type: 'string', enum: ['ACTIVE', 'INACTIVE'] },
+                  description: { type: 'string', nullable: true },
+                  eventFamilies: {
+                    type: 'array',
+                    items: {
+                      type: 'string',
+                      enum: ['AUTHENTICATION', 'VPN_SSO', 'APPLICATION_ACCESS'],
+                    },
+                    minItems: 1,
+                  },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'Event source configuration updated successfully' },
+          '400': { description: 'Bad request or missing required fields' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Admin or Security Officer role required' },
+          '404': { description: 'Event source not found' },
+          '409': { description: 'An event source with this name already exists' },
+          '422': { description: 'Validation failed' },
+        },
+      },
     },
     '/compliance/policies/{policyId}/versions/{versionId}/submit': {
       post: {
