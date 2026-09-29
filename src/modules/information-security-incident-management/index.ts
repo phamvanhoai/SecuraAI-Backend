@@ -1,2 +1,1 @@
-// V2 incident-management routes are not implemented yet.
-export {};
+export { incidentAssetsRouter } from './incident-assets.routes.js';
