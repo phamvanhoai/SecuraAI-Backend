@@ -17,6 +17,152 @@ export const openApiSpec = {
   },
   paths: {
     ...pendingV2Paths,
+    '/compliance/policies/published/mine': {
+      get: {
+        tags: ['Policy Management'],
+        summary: 'List owned published policies',
+        description:
+          'Returns current published V2 policy versions owned by the active Security Officer, including content and publication details.',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          '200': { description: 'Owned published policy versions' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer role required' },
+        },
+      },
+    },
+    '/compliance/policies/acknowledgements/mine': {
+      get: {
+        tags: ['Policy Management'],
+        summary: 'List published policies for the current Employee',
+        description:
+          'Returns current active V2 policies and their published versions with the Employee reading status.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
+          {
+            name: 'limit',
+            in: 'query',
+            schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
+          },
+          { name: 'q', in: 'query', schema: { type: 'string', minLength: 1, maxLength: 100 } },
+          {
+            name: 'status',
+            in: 'query',
+            schema: { type: 'string', enum: ['all', 'pending', 'acknowledged'], default: 'all' },
+          },
+        ],
+        responses: {
+          '200': { description: 'Paginated published policy list' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Employee role required' },
+          '422': { description: 'Invalid query parameters' },
+        },
+      },
+    },
+    '/compliance/policies/{policyId}/versions/{versionId}/acknowledgement': {
+      get: {
+        tags: ['Policy Management'],
+        summary: 'View a published policy version',
+        description:
+          'Returns the content and details of the current published V2 policy version to an active Employee.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'policyId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+          {
+            name: 'versionId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          '200': { description: 'Published policy content and details' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Employee role required' },
+          '404': { description: 'Published policy not found' },
+          '422': { description: 'Invalid identifiers' },
+        },
+      },
+    },
+    '/compliance/policies/rejected': {
+      get: {
+        tags: ['Policy Management'],
+        summary: 'List rejected policy versions',
+        description:
+          'Returns a searchable, paginated audit list of rejected V2 policy versions with the recorded reason and Admin decision details. Active Admins see all records; active Security Officers see only policies they own.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
+          {
+            name: 'limit',
+            in: 'query',
+            schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
+          },
+          { name: 'q', in: 'query', schema: { type: 'string', minLength: 1, maxLength: 100 } },
+          {
+            name: 'sortOrder',
+            in: 'query',
+            schema: { type: 'string', enum: ['asc', 'desc'], default: 'desc' },
+          },
+        ],
+        responses: {
+          '200': { description: 'Paginated rejected policy list' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Admin or Security Officer role required' },
+          '422': { description: 'Invalid query parameters' },
+        },
+      },
+    },
+    '/compliance/policies/{policyId}/versions/{versionId}/reject': {
+      post: {
+        tags: ['Policy Management'],
+        summary: 'Reject a submitted policy draft',
+        description:
+          'Records an Admin REJECTED decision with a required reason and moves the submitted V2 policy version to REJECTED. Rejection is final for that version and does not publish it or return it to draft.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'policyId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+          {
+            name: 'versionId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['reason'],
+                properties: { reason: { type: 'string', minLength: 3, maxLength: 5000 } },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'Policy version rejected and decision recorded' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Admin role required' },
+          '404': { description: 'Submitted policy draft not found' },
+          '409': { description: 'Policy draft changed concurrently' },
+          '422': { description: 'Invalid identifiers or rejection reason' },
+        },
+      },
+    },
     '/compliance/policies/{policyId}/drafts/{versionId}': {
       ...pendingV2Paths['/compliance/policies/{policyId}/drafts/{versionId}'],
       patch: {
@@ -692,6 +838,96 @@ export const openApiSpec = {
         },
       },
     },
+    '/auth/password-reset/request': {
+      post: {
+        tags: ['Authentication'],
+        summary: 'Request a password reset code',
+        description:
+          'Always returns the same response to avoid revealing whether an account exists.',
+        security: [],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['email'],
+                additionalProperties: false,
+                properties: { email: { type: 'string', format: 'email', maxLength: 255 } },
+              },
+            },
+          },
+        },
+        responses: {
+          '202': { description: 'Request accepted regardless of account existence' },
+          '422': { description: 'Invalid request body' },
+          '429': { description: 'Too many attempts' },
+          '503': { description: 'Email service is unavailable' },
+        },
+      },
+    },
+    '/auth/password-reset/confirm': {
+      post: {
+        tags: ['Authentication'],
+        summary: 'Reset a password using a one-time code',
+        security: [],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['token', 'newPassword', 'confirmPassword'],
+                additionalProperties: false,
+                properties: {
+                  token: { type: 'string', pattern: '^\\d{6}$' },
+                  newPassword: { type: 'string', minLength: 8, maxLength: 128 },
+                  confirmPassword: { type: 'string', minLength: 8, maxLength: 128 },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'Password reset and existing sessions revoked' },
+          '400': { description: 'Reset code is invalid, expired or already used' },
+          '422': { description: 'Invalid request body' },
+          '429': { description: 'Too many attempts' },
+        },
+      },
+    },
+    '/auth/change-password': {
+      post: {
+        tags: ['Authentication'],
+        summary: 'Change the authenticated user password',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['currentPassword', 'newPassword', 'confirmPassword'],
+                additionalProperties: false,
+                properties: {
+                  currentPassword: { type: 'string', minLength: 1, maxLength: 128 },
+                  newPassword: { type: 'string', minLength: 8, maxLength: 128 },
+                  confirmPassword: { type: 'string', minLength: 8, maxLength: 128 },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'Password changed while existing sessions remain active' },
+          '400': { description: 'Current password is incorrect or password is unchanged' },
+          '401': { description: 'Authentication required' },
+          '409': { description: 'Password changed concurrently' },
+          '422': { description: 'Invalid request body' },
+          '429': { description: 'Too many attempts' },
+        },
+      },
+    },
     '/users/me': {
       get: {
         tags: ['Users'],
@@ -750,6 +986,79 @@ export const openApiSpec = {
             },
           },
           '401': { description: 'Missing, invalid or expired token, or inactive account' },
+        },
+      },
+    },
+    '/users': {
+      ...pendingV2Paths['/users'],
+      get: {
+        tags: ['Users'],
+        summary: 'List V2 user accounts',
+        description:
+          'Active Admin only. Returns a searchable, filterable and paginated list from the V2 users table.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
+          {
+            name: 'limit',
+            in: 'query',
+            schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
+          },
+          { name: 'q', in: 'query', schema: { type: 'string', minLength: 1, maxLength: 100 } },
+          {
+            name: 'roleCode',
+            in: 'query',
+            schema: {
+              type: 'string',
+              enum: ['ADMIN', 'SECURITY_OFFICER', 'EMPLOYEE', 'EXECUTIVE'],
+            },
+          },
+          {
+            name: 'status',
+            in: 'query',
+            schema: { type: 'string', enum: ['active', 'inactive', 'locked'] },
+          },
+        ],
+        responses: {
+          '200': { description: 'Paginated user list and status summary' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Admin role required' },
+          '422': { description: 'Invalid query parameters' },
+        },
+      },
+      post: {
+        tags: ['Users'],
+        summary: 'Create a V2 user account',
+        description:
+          'Active Admin only. Creates one active account, records an audit event, and emails a generated temporary password. V2 supports one role per account.',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['email', 'fullName', 'role'],
+                properties: {
+                  email: { type: 'string', format: 'email', maxLength: 255 },
+                  fullName: { type: 'string', minLength: 2, maxLength: 255 },
+                  role: {
+                    type: 'string',
+                    enum: ['SECURITY_OFFICER', 'EMPLOYEE', 'EXECUTIVE'],
+                  },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '201': { description: 'Account created and temporary password email sent' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Admin role required' },
+          '409': { description: 'Email already exists' },
+          '422': { description: 'Invalid request body' },
+          '503': { description: 'Email service unavailable or delivery failed' },
         },
       },
     },
