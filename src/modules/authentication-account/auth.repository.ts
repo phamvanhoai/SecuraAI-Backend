@@ -13,6 +13,45 @@ export const authRepository = {
     return prisma.users.findUnique({ where: { email }, select: authUserSelect });
   },
 
+  findForGoogleLogin(email: string, googleSubject: string) {
+    return prisma.users.findFirst({
+      where: { OR: [{ google_subject: googleSubject }, { email }] },
+      select: { id: true, email: true, role: true, status: true, google_subject: true },
+    });
+  },
+
+  createGoogleSession(
+    userId: string,
+    googleSubject: string,
+    refreshTokenHash: string,
+    expiresAt: Date,
+  ) {
+    return prisma.$transaction(async (database) => {
+      await database.$queryRaw`SELECT id FROM users WHERE id = ${userId}::uuid FOR UPDATE`;
+      const user = await database.users.findUnique({
+        where: { id: userId },
+        select: { id: true, role: true, status: true, google_subject: true },
+      });
+      if (
+        !user ||
+        user.status !== 'ACTIVE' ||
+        (user.google_subject !== null && user.google_subject !== googleSubject)
+      ) {
+        return null;
+      }
+      await database.users.update({
+        where: { id: user.id },
+        data: { google_subject: googleSubject, last_login_at: new Date(), updated_at: new Date() },
+        select: { id: true },
+      });
+      await database.auth_sessions.create({
+        data: { user_id: user.id, refresh_token_hash: refreshTokenHash, expires_at: expiresAt },
+        select: { id: true },
+      });
+      return { id: user.id, role: user.role };
+    });
+  },
+
   createSession(
     userId: string,
     expectedPasswordHash: string,

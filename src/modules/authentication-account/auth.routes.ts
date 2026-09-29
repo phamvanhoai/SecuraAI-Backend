@@ -7,11 +7,12 @@ import {
   changePassword,
   confirmPasswordReset,
   login,
+  loginWithGoogle,
   logout,
   refresh,
   requestPasswordReset,
 } from './auth.controller.js';
-import { loginBodySchema, refreshBodySchema } from './dto/auth.dto.js';
+import { googleLoginBodySchema, loginBodySchema, refreshBodySchema } from './dto/auth.dto.js';
 import {
   changePasswordBodySchema,
   confirmPasswordResetBodySchema,
@@ -28,6 +29,12 @@ const authLimiter = rateLimit({
 });
 
 authRouter.post('/login', authLimiter, validate({ body: loginBodySchema }), asyncHandler(login));
+authRouter.post(
+  '/google',
+  authLimiter,
+  validate({ body: googleLoginBodySchema }),
+  asyncHandler(loginWithGoogle),
+);
 authRouter.post(
   '/refresh',
   authLimiter,

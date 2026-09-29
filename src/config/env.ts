@@ -34,6 +34,7 @@ const envSchema = z.object({
   OLLAMA_MODEL: z.string().trim().min(1).default('qwen3:4b'),
   OLLAMA_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120_000).default(60_000),
   WAZUH_INGEST_TOKEN: optionalSecret,
+  GOOGLE_CLIENT_ID: optionalString,
 });
 
 const result = envSchema.safeParse(process.env);
