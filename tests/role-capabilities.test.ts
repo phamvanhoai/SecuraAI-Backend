@@ -60,6 +60,14 @@ describe('WBS role capability compatibility', () => {
     }
   });
 
+  it('allows only Security Officer to link incidents to existing risks', () => {
+    for (const role of Object.values(user_role)) {
+      expect(capabilitiesForRole(role).includes('incidents.link-risks')).toBe(
+        role === user_role.SECURITY_OFFICER,
+      );
+    }
+  });
+
   it('limits Executive and Employee to functions explicitly listed for them', () => {
     expect(capabilitiesForRole(user_role.EXECUTIVE)).toEqual([
       'assets.read',
