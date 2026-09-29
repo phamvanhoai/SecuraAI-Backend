@@ -464,6 +464,63 @@ export const openApiSpec = {
         },
       },
     },
+    '/incidents/{incidentId}/risks/options': {
+      get: {
+        tags: ['Information Security Incident Management'],
+        summary: 'List existing risks available to link to an incident',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'incidentId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          '200': { description: 'Non-archived risks with current link status' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer role required' },
+          '404': { description: 'Incident not found' },
+          '422': { description: 'Invalid incident ID' },
+        },
+      },
+    },
+    '/incidents/{incidentId}/risks': {
+      post: {
+        tags: ['Information Security Incident Management'],
+        summary: 'Link an incident to an existing risk',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'incidentId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['riskId'],
+                properties: { riskId: { type: 'string', format: 'uuid' } },
+              },
+            },
+          },
+        },
+        responses: {
+          '201': { description: 'Incident linked to existing risk' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer role required' },
+          '404': { description: 'Incident or risk not found' },
+          '409': { description: 'Risk already linked to incident' },
+          '422': { description: 'Invalid request' },
+        },
+      },
+    },
     '/incidents/{incidentId}/controls/options': {
       get: {
         tags: ['Information Security Incident Management'],

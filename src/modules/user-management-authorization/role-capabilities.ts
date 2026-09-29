@@ -49,6 +49,7 @@ const capabilitiesByRole = {
     'incidents.update-progress',
     'incidents.link-assets',
     'incidents.link-controls',
+    'incidents.link-risks',
     'compliance.assess-controls',
     'login-history.read',
     'log-sources.read',
