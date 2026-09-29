@@ -4,6 +4,7 @@ import type {
   ListEventSourcesQuery,
   PaginatedEventSourcesResponseDto,
 } from './dto/list-event-sources.dto.js';
+import type { EventSourceDetailResponseDto } from './dto/get-event-source-detail.dto.js';
 import {
   eventSourcesRepository,
   type EventSourceRecord,
@@ -93,6 +94,48 @@ export const eventSourcesService = {
         limit,
         total,
         totalPages,
+      },
+    };
+  },
+
+  async getEventSourceDetail(
+    userId: string,
+    id: string,
+  ): Promise<EventSourceDetailResponseDto> {
+    await requireAuthorizedActor(userId);
+
+    const record = await eventSourcesRepository.findById(id);
+    if (!record) {
+      throw new AppError(404, 'NOT_FOUND', 'Event source not found');
+    }
+
+    const baseResponse = toEventSourceResponse(record);
+    const lastBatch = record.event_ingestion_batches[0];
+
+    return {
+      ...baseResponse,
+      creator: record.users
+        ? {
+            id: record.users.id,
+            email: record.users.email,
+            fullName: record.users.full_name,
+          }
+        : null,
+      apiKeys: record.integration_api_keys.map((key) => ({
+        id: key.id,
+        name: key.name,
+        keyPrefix: key.key_prefix,
+        maskedKey: `${key.key_prefix}...****`,
+        status: key.status,
+        expiresAt: key.expires_at,
+        lastUsedAt: key.last_used_at,
+        lastUsedIp: key.last_used_ip,
+        createdAt: key.created_at,
+      })),
+      stats: {
+        totalIngestedEvents: record._count.normalized_events,
+        totalBatches: record._count.event_ingestion_batches,
+        lastIngestedAt: lastBatch ? lastBatch.created_at : null,
       },
     };
   },
