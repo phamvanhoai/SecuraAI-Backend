@@ -464,6 +464,63 @@ export const openApiSpec = {
         },
       },
     },
+    '/incidents/{incidentId}/controls/options': {
+      get: {
+        tags: ['Information Security Incident Management'],
+        summary: 'List controls available to link to an incident',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'incidentId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          '200': { description: 'Security controls with current link status' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer role required' },
+          '404': { description: 'Incident not found' },
+          '422': { description: 'Invalid incident ID' },
+        },
+      },
+    },
+    '/incidents/{incidentId}/controls': {
+      post: {
+        tags: ['Information Security Incident Management'],
+        summary: 'Link an incident to a security control',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'incidentId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['controlId'],
+                properties: { controlId: { type: 'string', format: 'uuid' } },
+              },
+            },
+          },
+        },
+        responses: {
+          '201': { description: 'Incident linked to security control' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer role required' },
+          '404': { description: 'Incident or security control not found' },
+          '409': { description: 'Control already linked to incident' },
+          '422': { description: 'Invalid incident ID or request body' },
+        },
+      },
+    },
     '/incidents/{incidentId}/assets/options': {
       get: {
         tags: ['Information Security Incident Management'],
