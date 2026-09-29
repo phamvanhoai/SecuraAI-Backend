@@ -314,10 +314,51 @@ export const openApiSpec = {
       },
     },
     '/risks/{riskId}/acceptance': {
-      post: { tags: ['Risk Assessment'], summary: 'Review, reassess, and submit risk acceptance', description: 'Allows the assigned Risk Owner to record a fresh residual assessment, update the selected treatment plan, and submit acceptance for approval.', security: [{ bearerAuth: [] }], parameters: [{ name: 'riskId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }], responses: { '201': { description: 'Acceptance submitted' }, '403': { description: 'Assigned Risk Owner required' }, '404': { description: 'Risk not found' }, '409': { description: 'A pending acceptance already exists' }, '422': { description: 'Invalid treatment plan, reassessment, or validity date' } } },
+      post: {
+        tags: ['Risk Assessment'],
+        summary: 'Review, reassess, and submit risk acceptance',
+        description:
+          'Allows the assigned Risk Owner to record a fresh residual assessment, update the selected treatment plan, and submit acceptance for approval.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'riskId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          '201': { description: 'Acceptance submitted' },
+          '403': { description: 'Assigned Risk Owner required' },
+          '404': { description: 'Risk not found' },
+          '409': { description: 'A pending acceptance already exists' },
+          '422': { description: 'Invalid treatment plan, reassessment, or validity date' },
+        },
+      },
     },
     '/risks/acceptances/{acceptanceId}/decision': {
-      patch: { tags: ['Risk Assessment'], summary: 'Approve or reject risk acceptance', description: 'Allows an authorized Security Officer or Executive approver to decide a pending request. Requesters cannot approve their own request.', security: [{ bearerAuth: [] }], parameters: [{ name: 'acceptanceId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }], responses: { '200': { description: 'Decision recorded' }, '403': { description: 'Authorized Approver required or self-approval attempted' }, '404': { description: 'Acceptance not found' }, '409': { description: 'Acceptance already decided' } } },
+      patch: {
+        tags: ['Risk Assessment'],
+        summary: 'Approve or reject risk acceptance',
+        description:
+          'Allows an authorized Security Officer or Executive approver to decide a pending request. Requesters cannot approve their own request.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'acceptanceId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          '200': { description: 'Decision recorded' },
+          '403': { description: 'Authorized Approver required or self-approval attempted' },
+          '404': { description: 'Acceptance not found' },
+          '409': { description: 'Acceptance already decided' },
+        },
+      },
     },
     '/risks/treatment-plans/create-options': {
       get: {
@@ -326,9 +367,16 @@ export const openApiSpec = {
         security: [{ bearerAuth: [] }],
         parameters: [
           { name: 'q', in: 'query', schema: { type: 'string', maxLength: 100 } },
-          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 100 } },
+          {
+            name: 'limit',
+            in: 'query',
+            schema: { type: 'integer', minimum: 1, maximum: 100, default: 100 },
+          },
         ],
-        responses: { '200': { description: 'Active users and available controls' }, '401': { description: 'Authentication required' } },
+        responses: {
+          '200': { description: 'Active users and available controls' },
+          '401': { description: 'Authentication required' },
+        },
       },
     },
     '/risks/treatment-plans': {
@@ -336,20 +384,60 @@ export const openApiSpec = {
       post: {
         tags: ['Risk Assessment'],
         summary: 'Create a risk treatment plan',
-        description: 'Allows a Security Officer or the assigned Risk Owner to create a draft plan with actions, owners, controls, due dates, and target risk.',
+        description:
+          'Allows a Security Officer or the assigned Risk Owner to create a draft plan with actions, owners, controls, due dates, and target risk.',
         security: [{ bearerAuth: [] }],
-        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['riskId', 'title', 'strategy', 'ownerUserId', 'targetDate', 'targetRisk', 'controlIds', 'actions'] } } } },
-        responses: { '201': { description: 'Treatment plan created' }, '403': { description: 'Security Officer or assigned Risk Owner required' }, '404': { description: 'Risk not found' }, '422': { description: 'Invalid owners, controls, or due dates' } },
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: [
+                  'riskId',
+                  'title',
+                  'strategy',
+                  'ownerUserId',
+                  'targetDate',
+                  'targetRisk',
+                  'controlIds',
+                  'actions',
+                ],
+              },
+            },
+          },
+        },
+        responses: {
+          '201': { description: 'Treatment plan created' },
+          '403': { description: 'Security Officer or assigned Risk Owner required' },
+          '404': { description: 'Risk not found' },
+          '422': { description: 'Invalid owners, controls, or due dates' },
+        },
       },
     },
     '/risks/treatment-plans/{treatmentPlanId}': {
       ...pendingV2Paths['/risks/treatment-plans/{treatmentPlanId}'],
       patch: {
-        tags: ['Risk Assessment'], summary: 'Update a risk treatment plan',
-        description: 'Updates ownership, dates, lifecycle status, actions, and action progress for a Security Officer or assigned Risk Owner.',
+        tags: ['Risk Assessment'],
+        summary: 'Update a risk treatment plan',
+        description:
+          'Updates ownership, dates, lifecycle status, actions, and action progress for a Security Officer or assigned Risk Owner.',
         security: [{ bearerAuth: [] }],
-        parameters: [{ name: 'treatmentPlanId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
-        responses: { '200': { description: 'Treatment plan updated' }, '403': { description: 'Security Officer or assigned Risk Owner required' }, '404': { description: 'Treatment plan not found' }, '409': { description: 'Plan was concurrently updated' }, '422': { description: 'Invalid actions, owners, statuses, or dates' } },
+        parameters: [
+          {
+            name: 'treatmentPlanId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          '200': { description: 'Treatment plan updated' },
+          '403': { description: 'Security Officer or assigned Risk Owner required' },
+          '404': { description: 'Treatment plan not found' },
+          '409': { description: 'Plan was concurrently updated' },
+          '422': { description: 'Invalid actions, owners, statuses, or dates' },
+        },
       },
     },
     '/risks/{riskId}': {
@@ -376,6 +464,63 @@ export const openApiSpec = {
         },
       },
     },
+    '/incidents/{incidentId}/assets/options': {
+      get: {
+        tags: ['Information Security Incident Management'],
+        summary: 'List assets available to link to an incident',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'incidentId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          '200': { description: 'Active assets with current link status' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer role required' },
+          '404': { description: 'Incident not found' },
+          '422': { description: 'Invalid incident ID' },
+        },
+      },
+    },
+    '/incidents/{incidentId}/assets': {
+      post: {
+        tags: ['Information Security Incident Management'],
+        summary: 'Link an incident to an asset',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'incidentId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['assetId'],
+                properties: { assetId: { type: 'string', format: 'uuid' } },
+              },
+            },
+          },
+        },
+        responses: {
+          '201': { description: 'Incident linked to asset' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer role required' },
+          '404': { description: 'Incident or active asset not found' },
+          '409': { description: 'Asset already linked to incident' },
+          '422': { description: 'Invalid incident ID or request body' },
+        },
+      },
+    },
     '/assets': {
       ...pendingV2Paths['/assets'],
       get: {
@@ -387,9 +532,13 @@ export const openApiSpec = {
       post: {
         tags: ['IT Asset Management'],
         summary: 'Create an IT asset',
-        description: 'Registers an IT asset and its optional V2 relationships. Requires an active Security Officer.',
+        description:
+          'Registers an IT asset and its optional V2 relationships. Requires an active Security Officer.',
         security: [{ bearerAuth: [] }],
-        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object' } } } },
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: { type: 'object' } } },
+        },
         responses: {
           '201': { description: 'IT asset created' },
           '401': { description: 'Authentication required' },
@@ -413,15 +562,62 @@ export const openApiSpec = {
     },
     '/assets/{assetId}': {
       ...pendingV2Paths['/assets/{assetId}'],
-      delete: { tags: ['IT Asset Management'], summary: 'Archive an IT asset', description: 'Marks an asset as archived without deleting its details or relationships. Requires an active Security Officer.', security: [{ bearerAuth: [] }], parameters: [{ name: 'assetId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }], responses: { '204': { description: 'Asset archived' }, '401': { description: 'Authentication required' }, '403': { description: 'Security Officer role required' }, '404': { description: 'Asset not found' }, '409': { description: 'Asset is already archived' } } },
+      delete: {
+        tags: ['IT Asset Management'],
+        summary: 'Archive an IT asset',
+        description:
+          'Marks an asset as archived without deleting its details or relationships. Requires an active Security Officer.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'assetId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          '204': { description: 'Asset archived' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer role required' },
+          '404': { description: 'Asset not found' },
+          '409': { description: 'Asset is already archived' },
+        },
+      },
       patch: {
-        tags: ['IT Asset Management'], summary: 'Edit an IT asset', description: 'Updates asset business context and replaces its dependency and event-source links. Requires an active Security Officer.', security: [{ bearerAuth: [] }], parameters: [{ name: 'assetId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }], responses: { '200': { description: 'Updated IT asset' }, '401': { description: 'Authentication required' }, '403': { description: 'Security Officer role required' }, '404': { description: 'Asset not found' }, '422': { description: 'Invalid input or unavailable relationship' } },
+        tags: ['IT Asset Management'],
+        summary: 'Edit an IT asset',
+        description:
+          'Updates asset business context and replaces its dependency and event-source links. Requires an active Security Officer.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'assetId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          '200': { description: 'Updated IT asset' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer role required' },
+          '404': { description: 'Asset not found' },
+          '422': { description: 'Invalid input or unavailable relationship' },
+        },
       },
       get: {
         tags: ['IT Asset Management'],
         summary: 'View IT asset details',
         security: [{ bearerAuth: [] }],
-        parameters: [{ name: 'assetId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+        parameters: [
+          {
+            name: 'assetId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
         responses: {
           '200': { description: 'Detailed IT asset record' },
           '401': { description: 'Authentication required' },
@@ -900,7 +1096,12 @@ export const openApiSpec = {
                 type: 'object',
                 required: ['endpoint'],
                 properties: {
-                  endpoint: { type: 'string', minLength: 1, maxLength: 2048, example: 'https://192.168.56.101:55000' },
+                  endpoint: {
+                    type: 'string',
+                    minLength: 1,
+                    maxLength: 2048,
+                    example: 'https://192.168.56.101:55000',
+                  },
                   username: { type: 'string', maxLength: 255, example: 'wazuh-wui' },
                   password: { type: 'string', maxLength: 255, example: 'secret_password' },
                   verifySsl: { type: 'boolean', default: true },
