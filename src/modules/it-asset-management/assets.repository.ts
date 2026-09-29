@@ -2,6 +2,7 @@ import type { Prisma } from '@prisma/client';
 import { prisma } from '../../database/prisma.js';
 import type { ListAssetsQuery } from './dto/list-assets.dto.js';
 import type { CreateAssetInput } from './dto/create-asset.dto.js';
+import type { UpdateAssetInput } from './dto/update-asset.dto.js';
 const select = {
   id: true,
   asset_code: true,
@@ -200,4 +201,14 @@ export const assetsRepository = {
       select,
     });
   },
+  update(assetId: string, input: UpdateAssetInput) {
+    return prisma.assets.update({ where: { id: assetId }, data: {
+      name: input.name, asset_type: input.assetType, owner_user_id: input.ownerUserId,
+      business_service_id: input.businessServiceId, criticality: input.criticality,
+      data_classification: input.dataClassification, description: input.description,
+      asset_dependencies_asset_dependencies_asset_idToassets: { deleteMany: {}, create: input.dependencyIds.map((id) => ({ assets_asset_dependencies_depends_on_asset_idToassets: { connect: { id } } })) },
+      asset_event_sources: { deleteMany: {}, create: input.eventSourceIds.map((id) => ({ event_source_id: id })) },
+    }, select });
+  },
+  archive(assetId: string) { return prisma.assets.update({ where: { id: assetId }, data: { status: 'ARCHIVED', archived_at: new Date() }, select: { id: true } }); },
 };

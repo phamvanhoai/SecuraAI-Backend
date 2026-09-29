@@ -101,6 +101,10 @@ export const openApiSpec = {
     },
     '/assets/{assetId}': {
       ...pendingV2Paths['/assets/{assetId}'],
+      delete: { tags: ['IT Asset Management'], summary: 'Archive an IT asset', description: 'Marks an asset as archived without deleting its details or relationships. Requires an active Security Officer.', security: [{ bearerAuth: [] }], parameters: [{ name: 'assetId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }], responses: { '204': { description: 'Asset archived' }, '401': { description: 'Authentication required' }, '403': { description: 'Security Officer role required' }, '404': { description: 'Asset not found' }, '409': { description: 'Asset is already archived' } } },
+      patch: {
+        tags: ['IT Asset Management'], summary: 'Edit an IT asset', description: 'Updates asset business context and replaces its dependency and event-source links. Requires an active Security Officer.', security: [{ bearerAuth: [] }], parameters: [{ name: 'assetId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }], responses: { '200': { description: 'Updated IT asset' }, '401': { description: 'Authentication required' }, '403': { description: 'Security Officer role required' }, '404': { description: 'Asset not found' }, '422': { description: 'Invalid input or unavailable relationship' } },
+      },
       get: {
         tags: ['IT Asset Management'],
         summary: 'View IT asset details',
