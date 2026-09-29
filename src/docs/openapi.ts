@@ -1386,6 +1386,35 @@ export const openApiSpec = {
         },
       },
     },
+    '/auth/google': {
+      post: {
+        tags: ['Authentication'],
+        summary: 'Authenticate an existing V2 account with Google',
+        description:
+          'Verifies a Google ID token and creates a SecuraAI session only when its verified email belongs to an existing active account. Roles remain database-controlled.',
+        security: [],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['credential'],
+                additionalProperties: false,
+                properties: { credential: { type: 'string', minLength: 1, maxLength: 4096 } },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'Access and refresh token pair' },
+          '401': { description: 'Invalid Google credential or unavailable account' },
+          '422': { description: 'Invalid request body' },
+          '429': { description: 'Too many attempts' },
+          '503': { description: 'Google sign-in is not configured' },
+        },
+      },
+    },
     '/auth/logout': {
       post: {
         tags: ['Authentication'],
