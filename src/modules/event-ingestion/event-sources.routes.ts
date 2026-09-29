@@ -6,10 +6,15 @@ import {
   createEventSource,
   getEventSourceDetail,
   listEventSources,
+  updateEventSource,
 } from './event-sources.controller.js';
 import { createEventSourceSchema } from './dto/create-event-source.dto.js';
 import { listEventSourcesQuerySchema } from './dto/list-event-sources.dto.js';
 import { eventSourceIdParamsSchema } from './dto/get-event-source-detail.dto.js';
+import {
+  updateEventSourceParamsSchema,
+  updateEventSourceSchema,
+} from './dto/update-event-source.dto.js';
 
 export const eventSourcesRouter = Router();
 
@@ -32,4 +37,24 @@ eventSourcesRouter.post(
   authenticate,
   validate({ body: createEventSourceSchema }),
   asyncHandler(createEventSource),
+);
+
+eventSourcesRouter.put(
+  '/:id',
+  authenticate,
+  validate({
+    params: updateEventSourceParamsSchema,
+    body: updateEventSourceSchema,
+  }),
+  asyncHandler(updateEventSource),
+);
+
+eventSourcesRouter.patch(
+  '/:id',
+  authenticate,
+  validate({
+    params: updateEventSourceParamsSchema,
+    body: updateEventSourceSchema,
+  }),
+  asyncHandler(updateEventSource),
 );
