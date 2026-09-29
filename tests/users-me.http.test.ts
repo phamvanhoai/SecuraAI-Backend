@@ -57,8 +57,9 @@ describe('GET /api/v1/users/me', () => {
         mustChangePassword: false,
         mfaEnabled: false,
         roles: [{ code: 'ADMIN', name: 'ADMIN' }],
-        permissions: [
-          'users.read',
+      permissions: [
+        'assets.read',
+        'users.read',
           'users.create',
           'users.update',
           'users.assign-role',

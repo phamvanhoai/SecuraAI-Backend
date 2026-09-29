@@ -16,7 +16,7 @@ describe('WBS role capability compatibility', () => {
     const admin = capabilitiesForRole(user_role.ADMIN);
     const officer = capabilitiesForRole(user_role.SECURITY_OFFICER);
     expect(admin).toContain('users.read');
-    expect(admin).not.toContain('assets.read');
+    expect(admin).toContain('assets.read');
     expect(officer).toContain('assets.read');
     expect(officer).not.toContain('users.assign-role');
   });
@@ -46,10 +46,14 @@ describe('WBS role capability compatibility', () => {
 
   it('limits Executive and Employee to functions explicitly listed for them', () => {
     expect(capabilitiesForRole(user_role.EXECUTIVE)).toEqual([
+      'assets.read',
       'ai-alerts.thresholds.manage',
       'incidents.read',
       'reports.read',
     ]);
-    expect(capabilitiesForRole(user_role.EMPLOYEE)).toEqual(['policies.acknowledge']);
+    expect(capabilitiesForRole(user_role.EMPLOYEE)).toEqual([
+      'assets.read',
+      'policies.acknowledge',
+    ]);
   });
 });
