@@ -2,6 +2,10 @@ import 'dotenv/config';
 import { z } from 'zod';
 
 const booleanString = z.enum(['true', 'false']).transform((value) => value === 'true');
+const optionalString = z.preprocess(
+  (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
+  z.string().trim().min(1).optional(),
+);
 const optionalSecret = z.preprocess(
   (value) => (value === '' ? undefined : value),
   z.string().min(32).optional(),
@@ -19,6 +23,12 @@ const envSchema = z.object({
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
   TRUST_PROXY: booleanString.default(false),
   SWAGGER_ENABLED: booleanString.default(true),
+  APP_NAME: z.string().trim().min(1).default('SecuraAI'),
+  SMTP_HOST: optionalString,
+  SMTP_PORT: z.coerce.number().int().positive().max(65535).default(587),
+  SMTP_SECURE: booleanString.default(false),
+  SMTP_USER: optionalString,
+  SMTP_PASS: optionalString,
   OLLAMA_ENABLED: booleanString.default(false),
   OLLAMA_BASE_URL: z.url().default('http://127.0.0.1:11434'),
   OLLAMA_MODEL: z.string().trim().min(1).default('qwen3:4b'),
