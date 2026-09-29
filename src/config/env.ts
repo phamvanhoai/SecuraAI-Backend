@@ -2,6 +2,10 @@ import 'dotenv/config';
 import { z } from 'zod';
 
 const booleanString = z.enum(['true', 'false']).transform((value) => value === 'true');
+const optionalString = z.preprocess(
+  (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
+  z.string().trim().min(1).optional(),
+);
 
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -15,6 +19,13 @@ const envSchema = z.object({
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
   TRUST_PROXY: booleanString.default(false),
   SWAGGER_ENABLED: booleanString.default(true),
+  APP_NAME: z.string().trim().min(1).default('SecuraAI'),
+  SMTP_HOST: optionalString,
+  SMTP_PORT: z.coerce.number().int().positive().max(65535).default(587),
+  SMTP_SECURE: booleanString.default(false),
+  SMTP_USER: optionalString,
+  SMTP_PASS: optionalString,
+  GOOGLE_CLIENT_ID: optionalString,
 });
 
 const result = envSchema.safeParse(process.env);
