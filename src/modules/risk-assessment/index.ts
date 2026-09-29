@@ -1,2 +1,1 @@
-// V2 risk-assessment routes are not implemented yet.
-export {};
+export { riskRegisterRouter } from './risk-register.routes.js';
