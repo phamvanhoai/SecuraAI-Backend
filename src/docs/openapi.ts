@@ -376,6 +376,57 @@ export const openApiSpec = {
         },
       },
     },
+    '/assets': {
+      ...pendingV2Paths['/assets'],
+      get: {
+        tags: ['IT Asset Management'],
+        summary: 'View the IT asset list',
+        security: [{ bearerAuth: [] }],
+        responses: { '200': { description: 'Paginated IT asset list scoped to the caller' } },
+      },
+      post: {
+        tags: ['IT Asset Management'],
+        summary: 'Create an IT asset',
+        description: 'Registers an IT asset and its optional V2 relationships. Requires an active Security Officer.',
+        security: [{ bearerAuth: [] }],
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object' } } } },
+        responses: {
+          '201': { description: 'IT asset created' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer role required' },
+          '409': { description: 'Asset code already exists' },
+          '422': { description: 'Invalid input or unavailable relationship' },
+        },
+      },
+    },
+    '/assets/create-options': {
+      get: {
+        tags: ['IT Asset Management'],
+        summary: 'Get IT asset creation options',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          '200': { description: 'Asset creation options' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer role required' },
+        },
+      },
+    },
+    '/assets/{assetId}': {
+      ...pendingV2Paths['/assets/{assetId}'],
+      get: {
+        tags: ['IT Asset Management'],
+        summary: 'View IT asset details',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'assetId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+        responses: {
+          '200': { description: 'Detailed IT asset record' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'The caller is not the assigned Asset Owner' },
+          '404': { description: 'Asset not found' },
+          '422': { description: 'Invalid asset ID' },
+        },
+      },
+    },
     '/event-sources': {
       get: {
         tags: ['Event Ingestion'],
