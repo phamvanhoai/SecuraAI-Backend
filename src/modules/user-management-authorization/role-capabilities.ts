@@ -5,10 +5,12 @@ import type { user_role } from '@prisma/client';
  * conservatively from the "Vai trò thực hiện" column in
  * project-docs/new/Report3_Project Tracking.xlsx (WBS), not from a database
  * permission grant. Future V2 handlers must enforce their own role/scope rules.
- * Ownership-specific actors and removed training use cases are not inferred.
+ * `assets.read` grants entry to the asset directory; the asset API still
+ * enforces contextual Asset Owner scope for non-Security-Officer accounts.
  */
 const capabilitiesByRole = {
   ADMIN: [
+    'assets.read',
     'users.read',
     'users.create',
     'users.update',
@@ -51,11 +53,13 @@ const capabilitiesByRole = {
     'reports.read',
   ],
   EXECUTIVE: [
+    'assets.read',
     'ai-alerts.thresholds.manage',
     'incidents.read',
     'reports.read',
   ],
   EMPLOYEE: [
+    'assets.read',
     'policies.acknowledge',
   ],
 } as const satisfies Record<user_role, readonly string[]>;

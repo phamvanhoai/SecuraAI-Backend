@@ -9,6 +9,7 @@ import {
 import { policyComplianceRouter } from '../modules/policy-compliance-control/index.js';
 import { eventSourcesRouter, wazuhIngestionRouter } from '../modules/event-ingestion/index.js';
 import { riskRegisterRouter } from '../modules/risk-assessment/index.js';
+import { assetsRouter } from '../modules/it-asset-management/index.js';
 import { pendingV2Router } from './pending-v2.routes.js';
 
 export const apiRouter = Router();
@@ -18,6 +19,7 @@ apiRouter.use('/users', usersRouter);
 apiRouter.use('/anomaly-detections', anomalyDetectionRouter);
 apiRouter.use('/ai-alerts', aiAlertsRouter);
 apiRouter.use('/risks', riskRegisterRouter);
+apiRouter.use('/assets', assetsRouter);
 apiRouter.use('/compliance', policyComplianceRouter);
 apiRouter.use('/event-sources', eventSourcesRouter);
 apiRouter.use('/integrations/wazuh', wazuhIngestionRouter);
