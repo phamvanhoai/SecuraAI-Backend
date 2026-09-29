@@ -96,8 +96,6 @@ export const legacyV1RouteContracts = [
     path: '/risks/treatment-plans/{treatmentPlanId}/approve',
     tag: 'Risk Assessments',
   },
-  { method: 'post', path: '/assets', tag: 'Assets' },
-  { method: 'get', path: '/assets/create-options', tag: 'Assets' },
   { method: 'get', path: '/assets/import-template', tag: 'Assets' },
   { method: 'get', path: '/assets/export', tag: 'Assets' },
   { method: 'post', path: '/assets/import', tag: 'Assets' },

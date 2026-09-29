@@ -22,22 +22,107 @@ export const openApiSpec = {
       get: {
         tags: ['IT Asset Management'],
         summary: 'View the IT asset list',
-        description: 'Returns a searchable, filterable, paginated asset directory. Security Officers can view all assets; other active users can view only assets assigned to them as Asset Owner.',
+        description:
+          'Returns a searchable, filterable, paginated asset directory. Security Officers can view all assets; other active users can view only assets assigned to them as Asset Owner.',
         security: [{ bearerAuth: [] }],
         parameters: [
           { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
-          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 10 } },
+          {
+            name: 'limit',
+            in: 'query',
+            schema: { type: 'integer', minimum: 1, maximum: 100, default: 10 },
+          },
           { name: 'q', in: 'query', schema: { type: 'string', maxLength: 100 } },
           { name: 'assetType', in: 'query', schema: { type: 'string', maxLength: 100 } },
           { name: 'criticality', in: 'query', schema: { type: 'string', maxLength: 50 } },
           { name: 'status', in: 'query', schema: { type: 'string', enum: ['active', 'archived'] } },
         ],
-        responses: { '200': { description: 'Paginated IT asset list scoped to the caller' }, '401': { description: 'Authentication required' }, '422': { description: 'Invalid filters' } },
+        responses: {
+          '200': { description: 'Paginated IT asset list scoped to the caller' },
+          '401': { description: 'Authentication required' },
+          '422': { description: 'Invalid filters' },
+        },
+      },
+      post: {
+        tags: ['IT Asset Management'],
+        summary: 'Create an IT asset',
+        description:
+          'Registers an IT asset and optionally links its owner, business service, dependencies, and event sources. Requires an active Security Officer.',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['assetCode', 'name', 'assetType', 'criticality', 'dataClassification'],
+                properties: {
+                  assetCode: { type: 'string', maxLength: 100 },
+                  name: { type: 'string', maxLength: 255 },
+                  assetType: { type: 'string', maxLength: 100 },
+                  ownerUserId: { type: 'string', format: 'uuid' },
+                  businessServiceId: { type: 'string', format: 'uuid' },
+                  criticality: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] },
+                  dataClassification: { type: 'string', maxLength: 50 },
+                  description: { type: 'string', maxLength: 10000 },
+                  dependencies: { type: 'array', maxItems: 50 },
+                  eventSourceIds: {
+                    type: 'array',
+                    maxItems: 50,
+                    items: { type: 'string', format: 'uuid' },
+                  },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '201': { description: 'IT asset created' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer role required' },
+          '409': { description: 'Asset code already exists' },
+          '422': { description: 'Invalid input or unavailable relationship' },
+        },
+      },
+    },
+    '/assets/create-options': {
+      get: {
+        tags: ['IT Asset Management'],
+        summary: 'Get IT asset creation options',
+        description:
+          'Returns bounded active owners, business services, assets, and event sources for the create form. Requires an active Security Officer.',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          '200': { description: 'Asset creation options' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer role required' },
+        },
       },
     },
     '/assets/{assetId}': {
       ...pendingV2Paths['/assets/{assetId}'],
-      get: { tags: ['IT Asset Management'], summary: 'View IT asset details', description: 'Returns asset identity, ownership, business service, dependencies, controls, event sources, risks, and incidents. Security Officers can view any asset; an Asset Owner can view only assets assigned to them.', security: [{ bearerAuth: [] }], parameters: [{ name: 'assetId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }], responses: { '200': { description: 'Detailed IT asset record' }, '401': { description: 'Authentication required' }, '403': { description: 'The caller is not the assigned Asset Owner' }, '404': { description: 'Asset not found' }, '422': { description: 'Invalid asset ID' } } },
+      get: {
+        tags: ['IT Asset Management'],
+        summary: 'View IT asset details',
+        description:
+          'Returns asset identity, ownership, business service, dependencies, controls, event sources, risks, and incidents. Security Officers can view any asset; an Asset Owner can view only assets assigned to them.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'assetId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          '200': { description: 'Detailed IT asset record' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'The caller is not the assigned Asset Owner' },
+          '404': { description: 'Asset not found' },
+          '422': { description: 'Invalid asset ID' },
+        },
+      },
     },
     '/event-sources': {
       get: {
@@ -154,36 +239,75 @@ export const openApiSpec = {
     },
     '/compliance/policies/published/mine': {
       get: {
-        tags: ['Policy Management'], summary: 'List owned published policies',
-        description: 'Returns current published V2 policy versions owned by the active Security Officer, including content and publication details.',
+        tags: ['Policy Management'],
+        summary: 'List owned published policies',
+        description:
+          'Returns current published V2 policy versions owned by the active Security Officer, including content and publication details.',
         security: [{ bearerAuth: [] }],
-        responses: { '200': { description: 'Owned published policy versions' }, '401': { description: 'Authentication required' }, '403': { description: 'Security Officer role required' } },
+        responses: {
+          '200': { description: 'Owned published policy versions' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer role required' },
+        },
       },
     },
     '/compliance/policies/acknowledgements/mine': {
       get: {
-        tags: ['Policy Management'], summary: 'List published policies for the current Employee',
-        description: 'Returns current active V2 policies and their published versions with the Employee reading status.',
+        tags: ['Policy Management'],
+        summary: 'List published policies for the current Employee',
+        description:
+          'Returns current active V2 policies and their published versions with the Employee reading status.',
         security: [{ bearerAuth: [] }],
         parameters: [
           { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
-          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 } },
+          {
+            name: 'limit',
+            in: 'query',
+            schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
+          },
           { name: 'q', in: 'query', schema: { type: 'string', minLength: 1, maxLength: 100 } },
-          { name: 'status', in: 'query', schema: { type: 'string', enum: ['all', 'pending', 'acknowledged'], default: 'all' } },
+          {
+            name: 'status',
+            in: 'query',
+            schema: { type: 'string', enum: ['all', 'pending', 'acknowledged'], default: 'all' },
+          },
         ],
-        responses: { '200': { description: 'Paginated published policy list' }, '401': { description: 'Authentication required' }, '403': { description: 'Employee role required' }, '422': { description: 'Invalid query parameters' } },
+        responses: {
+          '200': { description: 'Paginated published policy list' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Employee role required' },
+          '422': { description: 'Invalid query parameters' },
+        },
       },
     },
     '/compliance/policies/{policyId}/versions/{versionId}/acknowledgement': {
       get: {
-        tags: ['Policy Management'], summary: 'View a published policy version',
-        description: 'Returns the content and details of the current published V2 policy version to an active Employee.',
+        tags: ['Policy Management'],
+        summary: 'View a published policy version',
+        description:
+          'Returns the content and details of the current published V2 policy version to an active Employee.',
         security: [{ bearerAuth: [] }],
         parameters: [
-          { name: 'policyId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
-          { name: 'versionId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+          {
+            name: 'policyId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+          {
+            name: 'versionId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
         ],
-        responses: { '200': { description: 'Published policy content and details' }, '401': { description: 'Authentication required' }, '403': { description: 'Employee role required' }, '404': { description: 'Published policy not found' }, '422': { description: 'Invalid identifiers' } },
+        responses: {
+          '200': { description: 'Published policy content and details' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Employee role required' },
+          '404': { description: 'Published policy not found' },
+          '422': { description: 'Invalid identifiers' },
+        },
       },
     },
     '/compliance/policies/rejected': {
@@ -195,9 +319,17 @@ export const openApiSpec = {
         security: [{ bearerAuth: [] }],
         parameters: [
           { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
-          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 } },
+          {
+            name: 'limit',
+            in: 'query',
+            schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
+          },
           { name: 'q', in: 'query', schema: { type: 'string', minLength: 1, maxLength: 100 } },
-          { name: 'sortOrder', in: 'query', schema: { type: 'string', enum: ['asc', 'desc'], default: 'desc' } },
+          {
+            name: 'sortOrder',
+            in: 'query',
+            schema: { type: 'string', enum: ['asc', 'desc'], default: 'desc' },
+          },
         ],
         responses: {
           '200': { description: 'Paginated rejected policy list' },
@@ -215,8 +347,18 @@ export const openApiSpec = {
           'Records an Admin REJECTED decision with a required reason and moves the submitted V2 policy version to REJECTED. Rejection is final for that version and does not publish it or return it to draft.',
         security: [{ bearerAuth: [] }],
         parameters: [
-          { name: 'policyId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
-          { name: 'versionId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+          {
+            name: 'policyId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+          {
+            name: 'versionId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
         ],
         requestBody: {
           required: true,
