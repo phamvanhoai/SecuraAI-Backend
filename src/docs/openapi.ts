@@ -464,6 +464,66 @@ export const openApiSpec = {
         },
       },
     },
+    '/incidents/{incidentId}/control-weaknesses/options': {
+      get: {
+        tags: ['Information Security Incident Management'],
+        summary: 'List linked controls available for a weakness finding',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'incidentId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          '200': { description: 'Incident-linked controls with open-weakness state' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer role required' },
+          '404': { description: 'Incident not found' },
+        },
+      },
+    },
+    '/incidents/{incidentId}/control-weaknesses': {
+      post: {
+        tags: ['Information Security Incident Management'],
+        summary: 'Record a control weakness from an incident',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'incidentId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['controlId', 'severity', 'description'],
+                properties: {
+                  controlId: { type: 'string', format: 'uuid' },
+                  severity: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] },
+                  description: { type: 'string', minLength: 20, maxLength: 5000 },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '201': { description: 'Control weakness recorded' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer role required' },
+          '404': { description: 'Incident not found' },
+          '409': { description: 'Open weakness already exists' },
+          '422': { description: 'Control is not linked or input is invalid' },
+        },
+      },
+    },
     '/incidents/{incidentId}/risks/options': {
       get: {
         tags: ['Information Security Incident Management'],
