@@ -1,0 +1,7 @@
+import type { RequestHandler } from 'express';
+import { AppError } from '../../common/errors/app-error.js';
+import { assetIdParamsSchema, listAssetsQuerySchema } from './dto/list-assets.dto.js';
+import { assetsService } from './assets.service.js';
+function authenticatedUserId(value: unknown): string { if (typeof value !== 'string') throw new AppError(401, 'UNAUTHORIZED', 'Authentication required'); return value; }
+export const listAssets: RequestHandler = async (req, res) => { const data = await assetsService.list(authenticatedUserId(res.locals.authenticatedUserId), listAssetsQuerySchema.parse(req.query)); res.status(200).json({ success: true, data }); };
+export const getAsset: RequestHandler = async (req, res) => { const { assetId } = assetIdParamsSchema.parse(req.params); const data = await assetsService.get(authenticatedUserId(res.locals.authenticatedUserId), assetId); res.status(200).json({ success: true, data }); };

@@ -17,6 +17,28 @@ export const openApiSpec = {
   },
   paths: {
     ...pendingV2Paths,
+    '/assets': {
+      ...pendingV2Paths['/assets'],
+      get: {
+        tags: ['IT Asset Management'],
+        summary: 'View the IT asset list',
+        description: 'Returns a searchable, filterable, paginated asset directory. Security Officers can view all assets; other active users can view only assets assigned to them as Asset Owner.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 10 } },
+          { name: 'q', in: 'query', schema: { type: 'string', maxLength: 100 } },
+          { name: 'assetType', in: 'query', schema: { type: 'string', maxLength: 100 } },
+          { name: 'criticality', in: 'query', schema: { type: 'string', maxLength: 50 } },
+          { name: 'status', in: 'query', schema: { type: 'string', enum: ['active', 'archived'] } },
+        ],
+        responses: { '200': { description: 'Paginated IT asset list scoped to the caller' }, '401': { description: 'Authentication required' }, '422': { description: 'Invalid filters' } },
+      },
+    },
+    '/assets/{assetId}': {
+      ...pendingV2Paths['/assets/{assetId}'],
+      get: { tags: ['IT Asset Management'], summary: 'View IT asset details', description: 'Returns asset identity, ownership, business service, dependencies, controls, event sources, risks, and incidents. Security Officers can view any asset; an Asset Owner can view only assets assigned to them.', security: [{ bearerAuth: [] }], parameters: [{ name: 'assetId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }], responses: { '200': { description: 'Detailed IT asset record' }, '401': { description: 'Authentication required' }, '403': { description: 'The caller is not the assigned Asset Owner' }, '404': { description: 'Asset not found' }, '422': { description: 'Invalid asset ID' } } },
+    },
     '/event-sources': {
       get: {
         tags: ['Event Ingestion'],
