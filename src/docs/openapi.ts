@@ -17,6 +17,365 @@ export const openApiSpec = {
   },
   paths: {
     ...pendingV2Paths,
+    '/compliance/control-assessments': {
+      get: {
+        tags: ['Policy & Compliance Control'],
+        summary: 'List controls for effectiveness assessment',
+        description:
+          'Security Officers receive all controls; other active users receive controls assigned to them as Control Owner.',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          '200': { description: 'Controls with implementation, evidence, and assessment history' },
+          '401': { description: 'Authentication required' },
+        },
+      },
+    },
+    '/compliance/controls/{controlId}/assessments': {
+      ...pendingV2Paths['/compliance/controls/{controlId}/assessments'],
+      post: {
+        tags: ['Policy & Compliance Control'],
+        summary: 'Assess control effectiveness',
+        description:
+          'Records testing method, result, effectiveness, and notes. Requires active supporting evidence and Security Officer or assigned Control Owner access.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'controlId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          '201': { description: 'Effectiveness assessment recorded' },
+          '403': { description: 'Not Security Officer or assigned owner' },
+          '404': { description: 'Control not found' },
+          '422': { description: 'Active evidence required or invalid assessment' },
+        },
+      },
+    },
+    '/risks': {
+      ...pendingV2Paths['/risks'],
+      post: {
+        tags: ['Risk Assessment'],
+        summary: 'Create an initial risk assessment',
+        description:
+          'Creates a V2 risk, its asset scope, threats, vulnerabilities, and initial assessment atomically. Business service scope resolves to its active assets.',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: [
+                  'title',
+                  'description',
+                  'ownerUserId',
+                  'reviewDate',
+                  'scope',
+                  'threats',
+                  'vulnerabilities',
+                  'inherentLikelihood',
+                  'inherentImpact',
+                  'controlEffectiveness',
+                  'residualLikelihood',
+                  'residualImpact',
+                  'targetRisk',
+                  'assessmentReason',
+                ],
+              },
+            },
+          },
+        },
+        responses: {
+          '201': { description: 'Risk assessment created' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer role required' },
+          '422': { description: 'Invalid assessment or scope' },
+        },
+      },
+      get: {
+        tags: ['Risk Assessment'],
+        summary: 'View the risk register',
+        description:
+          'Returns a bounded, searchable page of V2 risks with their latest rating, related assets, owner, review date, and linked-record counts. Requires an active Security Officer account.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
+          {
+            name: 'limit',
+            in: 'query',
+            schema: { type: 'integer', minimum: 1, maximum: 100, default: 10 },
+          },
+          { name: 'q', in: 'query', schema: { type: 'string', minLength: 1, maxLength: 100 } },
+          {
+            name: 'status',
+            in: 'query',
+            schema: {
+              type: 'string',
+              enum: ['open', 'under_treatment', 'accepted', 'closed', 'archived'],
+            },
+          },
+          {
+            name: 'riskRating',
+            in: 'query',
+            schema: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] },
+          },
+          { name: 'ownerId', in: 'query', schema: { type: 'string', format: 'uuid' } },
+          { name: 'assetId', in: 'query', schema: { type: 'string', format: 'uuid' } },
+          { name: 'reviewFrom', in: 'query', schema: { type: 'string', format: 'date' } },
+          { name: 'reviewTo', in: 'query', schema: { type: 'string', format: 'date' } },
+          {
+            name: 'sortBy',
+            in: 'query',
+            schema: {
+              type: 'string',
+              enum: ['riskCode', 'title', 'reviewDate', 'updatedAt'],
+              default: 'updatedAt',
+            },
+          },
+          {
+            name: 'sortOrder',
+            in: 'query',
+            schema: { type: 'string', enum: ['asc', 'desc'], default: 'desc' },
+          },
+        ],
+        responses: {
+          '200': { description: 'Paginated risk register' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer role required' },
+          '422': { description: 'Invalid query parameters' },
+        },
+      },
+    },
+    '/risks/create-options': {
+      get: {
+        tags: ['Risk Assessment'],
+        summary: 'List options for creating a risk assessment',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'q', in: 'query', schema: { type: 'string', maxLength: 100 } },
+          {
+            name: 'limit',
+            in: 'query',
+            schema: { type: 'integer', minimum: 1, maximum: 100, default: 50 },
+          },
+        ],
+        responses: {
+          '200': { description: 'Active assets, business services, and risk owners' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer role required' },
+        },
+      },
+    },
+    '/risks/{riskId}/threats': {
+      post: {
+        tags: ['Risk Assessment'],
+        summary: 'Identify and link a threat',
+        description:
+          'Documents a threat for an existing risk and links it to one or more vulnerabilities belonging to that risk.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'riskId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { type: 'object', required: ['name', 'description', 'vulnerabilityIds'] },
+            },
+          },
+        },
+        responses: {
+          '201': { description: 'Threat identified' },
+          '403': { description: 'Security Officer role required' },
+          '404': { description: 'Risk not found' },
+          '409': { description: 'Threat name already exists for the risk' },
+          '422': { description: 'Invalid vulnerability links' },
+        },
+      },
+    },
+    '/risks/{riskId}/vulnerabilities': {
+      post: {
+        tags: ['Risk Assessment'],
+        summary: 'Identify and link a vulnerability',
+        description:
+          'Documents a vulnerability for an existing risk and links it to security controls already associated with that risk.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'riskId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { type: 'object', required: ['name', 'description', 'controlIds'] },
+            },
+          },
+        },
+        responses: {
+          '201': { description: 'Vulnerability identified' },
+          '403': { description: 'Security Officer role required' },
+          '404': { description: 'Risk not found' },
+          '409': { description: 'Vulnerability name already exists for the risk' },
+          '422': { description: 'Invalid security control links' },
+        },
+      },
+    },
+    '/risks/{riskId}/inherent-assessments': {
+      post: {
+        tags: ['Risk Assessment'],
+        summary: 'Assess inherent risk',
+        description:
+          'Records likelihood and potential impact before existing security-control effectiveness is considered. Requires asset, threat, and vulnerability context.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'riskId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: { type: 'object', required: ['likelihood', 'impact', 'assessmentReason'] },
+            },
+          },
+        },
+        responses: {
+          '201': { description: 'Inherent risk assessed' },
+          '403': { description: 'Security Officer role required' },
+          '404': { description: 'Risk not found' },
+          '422': { description: 'Incomplete risk context or invalid scores' },
+        },
+      },
+    },
+    '/risks/{riskId}/residual-assessments': {
+      post: {
+        tags: ['Risk Assessment'],
+        summary: 'Assess residual risk',
+        description:
+          'Allows only the assigned Risk Owner to record remaining risk after all related controls have effectiveness assessments, and evaluates it against appetite and tolerance.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'riskId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          '201': { description: 'Residual risk assessed' },
+          '403': { description: 'Assigned Risk Owner required' },
+          '404': { description: 'Risk not found' },
+          '422': { description: 'Inherent or control assessments missing' },
+        },
+      },
+    },
+    '/risks/{riskId}/target-risk': {
+      post: {
+        tags: ['Risk Assessment'],
+        summary: 'Define target risk',
+        description:
+          'Allows the assigned Risk Owner to set a target risk against a draft or active treatment plan after residual risk is assessed.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'riskId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          '201': { description: 'Target risk defined' },
+          '403': { description: 'Assigned Risk Owner required' },
+          '404': { description: 'Risk not found' },
+          '422': {
+            description:
+              'Residual assessment or treatment plan required, or target exceeds residual risk',
+          },
+        },
+      },
+    },
+    '/risks/{riskId}/acceptance': {
+      post: { tags: ['Risk Assessment'], summary: 'Review, reassess, and submit risk acceptance', description: 'Allows the assigned Risk Owner to record a fresh residual assessment, update the selected treatment plan, and submit acceptance for approval.', security: [{ bearerAuth: [] }], parameters: [{ name: 'riskId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }], responses: { '201': { description: 'Acceptance submitted' }, '403': { description: 'Assigned Risk Owner required' }, '404': { description: 'Risk not found' }, '409': { description: 'A pending acceptance already exists' }, '422': { description: 'Invalid treatment plan, reassessment, or validity date' } } },
+    },
+    '/risks/acceptances/{acceptanceId}/decision': {
+      patch: { tags: ['Risk Assessment'], summary: 'Approve or reject risk acceptance', description: 'Allows an authorized Security Officer or Executive approver to decide a pending request. Requesters cannot approve their own request.', security: [{ bearerAuth: [] }], parameters: [{ name: 'acceptanceId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }], responses: { '200': { description: 'Decision recorded' }, '403': { description: 'Authorized Approver required or self-approval attempted' }, '404': { description: 'Acceptance not found' }, '409': { description: 'Acceptance already decided' } } },
+    },
+    '/risks/treatment-plans/create-options': {
+      get: {
+        tags: ['Risk Assessment'],
+        summary: 'List treatment-plan owners and security controls',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'q', in: 'query', schema: { type: 'string', maxLength: 100 } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 100 } },
+        ],
+        responses: { '200': { description: 'Active users and available controls' }, '401': { description: 'Authentication required' } },
+      },
+    },
+    '/risks/treatment-plans': {
+      ...pendingV2Paths['/risks/treatment-plans'],
+      post: {
+        tags: ['Risk Assessment'],
+        summary: 'Create a risk treatment plan',
+        description: 'Allows a Security Officer or the assigned Risk Owner to create a draft plan with actions, owners, controls, due dates, and target risk.',
+        security: [{ bearerAuth: [] }],
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['riskId', 'title', 'strategy', 'ownerUserId', 'targetDate', 'targetRisk', 'controlIds', 'actions'] } } } },
+        responses: { '201': { description: 'Treatment plan created' }, '403': { description: 'Security Officer or assigned Risk Owner required' }, '404': { description: 'Risk not found' }, '422': { description: 'Invalid owners, controls, or due dates' } },
+      },
+    },
+    '/risks/treatment-plans/{treatmentPlanId}': {
+      ...pendingV2Paths['/risks/treatment-plans/{treatmentPlanId}'],
+      patch: {
+        tags: ['Risk Assessment'], summary: 'Update a risk treatment plan',
+        description: 'Updates ownership, dates, lifecycle status, actions, and action progress for a Security Officer or assigned Risk Owner.',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'treatmentPlanId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+        responses: { '200': { description: 'Treatment plan updated' }, '403': { description: 'Security Officer or assigned Risk Owner required' }, '404': { description: 'Treatment plan not found' }, '409': { description: 'Plan was concurrently updated' }, '422': { description: 'Invalid actions, owners, statuses, or dates' } },
+      },
+    },
+    '/risks/{riskId}': {
+      get: {
+        tags: ['Risk Assessment'],
+        summary: 'View a detailed risk record',
+        description:
+          'Returns a V2 risk with assessments, assets, controls, treatment plans, threats, vulnerabilities, owner, review date, and linked incidents.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'riskId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          '200': { description: 'Detailed risk record' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer role required' },
+          '404': { description: 'Risk not found' },
+          '422': { description: 'Invalid risk ID' },
+        },
+      },
+    },
     '/event-sources': {
       get: {
         tags: ['Event Ingestion'],
@@ -132,36 +491,75 @@ export const openApiSpec = {
     },
     '/compliance/policies/published/mine': {
       get: {
-        tags: ['Policy Management'], summary: 'List owned published policies',
-        description: 'Returns current published V2 policy versions owned by the active Security Officer, including content and publication details.',
+        tags: ['Policy Management'],
+        summary: 'List owned published policies',
+        description:
+          'Returns current published V2 policy versions owned by the active Security Officer, including content and publication details.',
         security: [{ bearerAuth: [] }],
-        responses: { '200': { description: 'Owned published policy versions' }, '401': { description: 'Authentication required' }, '403': { description: 'Security Officer role required' } },
+        responses: {
+          '200': { description: 'Owned published policy versions' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer role required' },
+        },
       },
     },
     '/compliance/policies/acknowledgements/mine': {
       get: {
-        tags: ['Policy Management'], summary: 'List published policies for the current Employee',
-        description: 'Returns current active V2 policies and their published versions with the Employee reading status.',
+        tags: ['Policy Management'],
+        summary: 'List published policies for the current Employee',
+        description:
+          'Returns current active V2 policies and their published versions with the Employee reading status.',
         security: [{ bearerAuth: [] }],
         parameters: [
           { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
-          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 } },
+          {
+            name: 'limit',
+            in: 'query',
+            schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
+          },
           { name: 'q', in: 'query', schema: { type: 'string', minLength: 1, maxLength: 100 } },
-          { name: 'status', in: 'query', schema: { type: 'string', enum: ['all', 'pending', 'acknowledged'], default: 'all' } },
+          {
+            name: 'status',
+            in: 'query',
+            schema: { type: 'string', enum: ['all', 'pending', 'acknowledged'], default: 'all' },
+          },
         ],
-        responses: { '200': { description: 'Paginated published policy list' }, '401': { description: 'Authentication required' }, '403': { description: 'Employee role required' }, '422': { description: 'Invalid query parameters' } },
+        responses: {
+          '200': { description: 'Paginated published policy list' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Employee role required' },
+          '422': { description: 'Invalid query parameters' },
+        },
       },
     },
     '/compliance/policies/{policyId}/versions/{versionId}/acknowledgement': {
       get: {
-        tags: ['Policy Management'], summary: 'View a published policy version',
-        description: 'Returns the content and details of the current published V2 policy version to an active Employee.',
+        tags: ['Policy Management'],
+        summary: 'View a published policy version',
+        description:
+          'Returns the content and details of the current published V2 policy version to an active Employee.',
         security: [{ bearerAuth: [] }],
         parameters: [
-          { name: 'policyId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
-          { name: 'versionId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+          {
+            name: 'policyId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+          {
+            name: 'versionId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
         ],
-        responses: { '200': { description: 'Published policy content and details' }, '401': { description: 'Authentication required' }, '403': { description: 'Employee role required' }, '404': { description: 'Published policy not found' }, '422': { description: 'Invalid identifiers' } },
+        responses: {
+          '200': { description: 'Published policy content and details' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Employee role required' },
+          '404': { description: 'Published policy not found' },
+          '422': { description: 'Invalid identifiers' },
+        },
       },
     },
     '/compliance/policies/rejected': {
@@ -173,9 +571,17 @@ export const openApiSpec = {
         security: [{ bearerAuth: [] }],
         parameters: [
           { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
-          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 } },
+          {
+            name: 'limit',
+            in: 'query',
+            schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
+          },
           { name: 'q', in: 'query', schema: { type: 'string', minLength: 1, maxLength: 100 } },
-          { name: 'sortOrder', in: 'query', schema: { type: 'string', enum: ['asc', 'desc'], default: 'desc' } },
+          {
+            name: 'sortOrder',
+            in: 'query',
+            schema: { type: 'string', enum: ['asc', 'desc'], default: 'desc' },
+          },
         ],
         responses: {
           '200': { description: 'Paginated rejected policy list' },
@@ -193,8 +599,18 @@ export const openApiSpec = {
           'Records an Admin REJECTED decision with a required reason and moves the submitted V2 policy version to REJECTED. Rejection is final for that version and does not publish it or return it to draft.',
         security: [{ bearerAuth: [] }],
         parameters: [
-          { name: 'policyId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
-          { name: 'versionId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+          {
+            name: 'policyId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+          {
+            name: 'versionId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
         ],
         requestBody: {
           required: true,
