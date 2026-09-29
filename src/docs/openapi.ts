@@ -149,6 +149,40 @@ export const openApiSpec = {
         },
       },
     },
+    '/risks/reassessment-requests/mine': {
+      get: {
+        tags: ['Risk Assessment'],
+        summary: 'List reassessment requests for risks owned by the current user',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 10 } },
+          { name: 'status', in: 'query', schema: { type: 'string', enum: ['pending', 'under_review'] } },
+        ],
+        responses: {
+          '200': { description: 'Owner-scoped reassessment request queue' },
+          '401': { description: 'Authentication required' },
+        },
+      },
+    },
+    '/risks/reassessment-requests/{requestId}/review': {
+      post: {
+        tags: ['Risk Assessment'],
+        summary: 'Start reviewing a pending risk reassessment request',
+        description: 'Transitions a pending request to under review without changing the risk rating.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'requestId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+        ],
+        responses: {
+          '200': { description: 'Request entered review' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Current user is not the assigned Risk Owner' },
+          '404': { description: 'Reassessment request not found' },
+          '409': { description: 'Request is no longer pending' },
+        },
+      },
+    },
     '/risks/create-options': {
       get: {
         tags: ['Risk Assessment'],

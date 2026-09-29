@@ -8,7 +8,10 @@ import {
 } from '../modules/ai-anomaly-detection-alerts/index.js';
 import { policyComplianceRouter } from '../modules/policy-compliance-control/index.js';
 import { eventSourcesRouter, wazuhIngestionRouter } from '../modules/event-ingestion/index.js';
-import { riskRegisterRouter } from '../modules/risk-assessment/index.js';
+import {
+  riskRegisterRouter,
+  riskReassessmentReviewRouter,
+} from '../modules/risk-assessment/index.js';
 import { assetsRouter } from '../modules/it-asset-management/index.js';
 import {
   incidentAssetsRouter,
@@ -26,6 +29,7 @@ apiRouter.use('/users', usersRouter);
 apiRouter.use('/anomaly-detections', anomalyDetectionRouter);
 apiRouter.use('/ai-alerts', aiAlertsRouter);
 apiRouter.use('/risks', riskRegisterRouter);
+apiRouter.use('/risks', riskReassessmentReviewRouter);
 apiRouter.use('/assets', assetsRouter);
 apiRouter.use('/incidents', incidentAssetsRouter);
 apiRouter.use('/incidents', incidentControlsRouter);
