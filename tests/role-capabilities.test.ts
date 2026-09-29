@@ -76,6 +76,14 @@ describe('WBS role capability compatibility', () => {
     }
   });
 
+  it('allows only Security Officer to request risk reassessment', () => {
+    for (const role of Object.values(user_role)) {
+      expect(capabilitiesForRole(role).includes('incidents.request-risk-reassessment')).toBe(
+        role === user_role.SECURITY_OFFICER,
+      );
+    }
+  });
+
   it('limits Executive and Employee to functions explicitly listed for them', () => {
     expect(capabilitiesForRole(user_role.EXECUTIVE)).toEqual([
       'assets.read',

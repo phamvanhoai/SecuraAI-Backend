@@ -464,6 +464,49 @@ export const openApiSpec = {
         },
       },
     },
+    '/incidents/{incidentId}/risk-reassessment-requests/options': {
+      get: {
+        tags: ['Information Security Incident Management'],
+        summary: 'List linked risks and control weaknesses for a reassessment request',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'incidentId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+        responses: {
+          '200': { description: 'Linked risks and incident control weaknesses' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer role required' },
+          '404': { description: 'Incident not found' },
+        },
+      },
+    },
+    '/incidents/{incidentId}/risk-reassessment-requests': {
+      post: {
+        tags: ['Information Security Incident Management'],
+        summary: 'Create a risk reassessment request from an incident',
+        description: 'Creates a pending review request without changing the current risk rating or status.',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'incidentId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: {
+            type: 'object',
+            required: ['riskId', 'reason'],
+            properties: {
+              riskId: { type: 'string', format: 'uuid' },
+              controlFindingId: { type: 'string', format: 'uuid' },
+              reason: { type: 'string', minLength: 20, maxLength: 5000 },
+            },
+          } } },
+        },
+        responses: {
+          '201': { description: 'Pending risk reassessment request created' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer role required' },
+          '404': { description: 'Incident not found' },
+          '409': { description: 'An active request already exists for the incident and risk' },
+          '422': { description: 'Risk is not linked, control weakness is invalid, or input is invalid' },
+        },
+      },
+    },
     '/incidents/{incidentId}/control-weaknesses/options': {
       get: {
         tags: ['Information Security Incident Management'],
