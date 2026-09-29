@@ -4,6 +4,8 @@ import type {
   ListEventSourcesQuery,
   PaginatedEventSourcesResponseDto,
 } from './dto/list-event-sources.dto.js';
+import type { EventSourceDetailResponseDto } from './dto/get-event-source-detail.dto.js';
+import type { UpdateEventSourceInput } from './dto/update-event-source.dto.js';
 import {
   eventSourcesRepository,
   type EventSourceRecord,
@@ -95,5 +97,78 @@ export const eventSourcesService = {
         totalPages,
       },
     };
+  },
+
+  async getEventSourceDetail(
+    userId: string,
+    id: string,
+  ): Promise<EventSourceDetailResponseDto> {
+    await requireAuthorizedActor(userId);
+
+    const record = await eventSourcesRepository.findById(id);
+    if (!record) {
+      throw new AppError(404, 'NOT_FOUND', 'Event source not found');
+    }
+
+    const baseResponse = toEventSourceResponse(record);
+    const lastBatch = record.event_ingestion_batches[0];
+
+    return {
+      ...baseResponse,
+      creator: record.users
+        ? {
+            id: record.users.id,
+            email: record.users.email,
+            fullName: record.users.full_name,
+          }
+        : null,
+      apiKeys: record.integration_api_keys.map((key) => ({
+        id: key.id,
+        name: key.name,
+        keyPrefix: key.key_prefix,
+        maskedKey: `${key.key_prefix}...****`,
+        status: key.status,
+        expiresAt: key.expires_at,
+        lastUsedAt: key.last_used_at,
+        lastUsedIp: key.last_used_ip,
+        createdAt: key.created_at,
+      })),
+      stats: {
+        totalIngestedEvents: record._count.normalized_events,
+        totalBatches: record._count.event_ingestion_batches,
+        lastIngestedAt: lastBatch ? lastBatch.created_at : null,
+      },
+    };
+  },
+
+  async updateEventSource(
+    userId: string,
+    id: string,
+    input: UpdateEventSourceInput,
+  ): Promise<EventSourceResponseDto> {
+    await requireAuthorizedActor(userId);
+
+    const existing = await eventSourcesRepository.findById(id);
+    if (!existing) {
+      throw new AppError(404, 'NOT_FOUND', 'Event source not found');
+    }
+
+    if (input.name !== undefined && input.name !== existing.name) {
+      const duplicate = await eventSourcesRepository.findByName(input.name);
+      if (duplicate && duplicate.id !== id) {
+        throw new AppError(409, 'CONFLICT', 'An event source with this name already exists');
+      }
+    }
+
+    const effectiveMethod = input.ingestionMethod ?? existing.ingestion_method;
+    const effectiveEndpoint =
+      input.endpoint !== undefined ? input.endpoint : existing.endpoint;
+
+    if (effectiveMethod === 'API' && (!effectiveEndpoint || effectiveEndpoint.trim().length === 0)) {
+      throw new AppError(400, 'BAD_REQUEST', 'Endpoint is required when ingestion method is API');
+    }
+
+    const updated = await eventSourcesRepository.update(id, input);
+    return toEventSourceResponse(updated);
   },
 };
