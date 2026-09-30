@@ -88,8 +88,6 @@ export const legacyV1RouteContracts = [
   { method: 'get', path: '/assets/export', tag: 'Assets' },
   { method: 'post', path: '/assets/import', tag: 'Assets' },
   { method: 'get', path: '/assets/imports/{importJobId}', tag: 'Assets' },
-  { method: 'post', path: '/assets/{assetId}/classify-criticality', tag: 'Assets' },
-  { method: 'put', path: '/assets/{assetId}/owner', tag: 'Assets' },
   { method: 'get', path: '/assets/{assetId}/history', tag: 'Assets' },
   { method: 'post', path: '/compliance/policies', tag: 'Policies' },
   { method: 'get', path: '/compliance/policy-control-mappings', tag: 'Policies' },
