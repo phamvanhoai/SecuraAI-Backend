@@ -41,7 +41,8 @@ export type AiAlertRecord = Prisma.anomaly_alertsGetPayload<{ select: typeof ale
 function databaseStatuses(status: ListAiAlertsQuery['status']): alert_status[] | undefined {
   if (!status) return undefined;
   if (status === 'new') return ['NEW'];
-  if (status === 'reviewing') return ['IN_TRIAGE', 'NEED_INVESTIGATION'];
+  if (status === 'reviewing') return ['IN_TRIAGE'];
+  if (status === 'needs_investigation') return ['NEED_INVESTIGATION'];
   if (status === 'confirmed') return ['CONFIRMED'];
   if (status === 'dismissed' || status === 'false_positive' || status === 'resolved')
     return ['DISMISSED'];
@@ -494,12 +495,17 @@ export const aiAlertsRepository = {
           changed: false,
         };
       }
-      if (alert.status !== 'IN_TRIAGE') return { outcome: 'invalid_status' as const };
+      if (alert.status !== 'IN_TRIAGE' && alert.status !== 'NEED_INVESTIGATION')
+        return { outcome: 'invalid_status' as const };
       if (alert.assigned_to !== input.userId) return { outcome: 'not_owner' as const };
 
       const now = new Date();
       const claimed = await transaction.anomaly_alerts.updateMany({
-        where: { id: alert.id, status: 'IN_TRIAGE', assigned_to: input.userId },
+        where: {
+          id: alert.id,
+          status: { in: ['IN_TRIAGE', 'NEED_INVESTIGATION'] },
+          assigned_to: input.userId,
+        },
         data: { status: 'CONFIRMED', updated_at: now },
       });
       if (claimed.count !== 1) return { outcome: 'conflict' as const };
@@ -574,11 +580,16 @@ export const aiAlertsRepository = {
         if (alert.assigned_to !== input.userId) return { outcome: 'not_owner' as const };
         return { outcome: 'unchanged' as const, alert, triage: existing };
       }
-      if (alert.status !== 'IN_TRIAGE') return { outcome: 'invalid_status' as const };
+      if (alert.status !== 'IN_TRIAGE' && alert.status !== 'NEED_INVESTIGATION')
+        return { outcome: 'invalid_status' as const };
       if (alert.assigned_to !== input.userId) return { outcome: 'not_owner' as const };
       const now = new Date();
       const claimed = await transaction.anomaly_alerts.updateMany({
-        where: { id: alert.id, status: 'IN_TRIAGE', assigned_to: input.userId },
+        where: {
+          id: alert.id,
+          status: { in: ['IN_TRIAGE', 'NEED_INVESTIGATION'] },
+          assigned_to: input.userId,
+        },
         data: { status: 'DISMISSED', updated_at: now },
       });
       if (claimed.count !== 1) return { outcome: 'conflict' as const };
@@ -593,6 +604,66 @@ export const aiAlertsRepository = {
           completed_at: now,
         },
         select: { analyst_user_id: true, completed_at: true, created_at: true },
+      });
+      return { outcome: 'changed' as const, alert, triage };
+    });
+  },
+  markFurtherInvestigation(input: { alertId: string; userId: string; reason: string }) {
+    return prisma.$transaction(async (transaction) => {
+      const alert = await transaction.anomaly_alerts.findUnique({
+        where: { id: input.alertId },
+        select: {
+          id: true,
+          status: true,
+          assigned_to: true,
+          anomaly_detections: { select: { model_version_id: true } },
+          alert_triage_records: {
+            where: { decision: 'NEED_INVESTIGATION', completed_at: { not: null } },
+            orderBy: { created_at: 'desc' },
+            take: 1,
+            select: { analyst_user_id: true, completed_at: true, created_at: true },
+          },
+        },
+      });
+      if (!alert) return { outcome: 'not_found' as const };
+      const existing = alert.alert_triage_records[0];
+      if (alert.status === 'NEED_INVESTIGATION' && existing) {
+        if (alert.assigned_to !== input.userId) return { outcome: 'not_owner' as const };
+        return { outcome: 'unchanged' as const, alert, triage: existing };
+      }
+      if (alert.status !== 'IN_TRIAGE') return { outcome: 'invalid_status' as const };
+      if (alert.assigned_to !== input.userId) return { outcome: 'not_owner' as const };
+
+      const now = new Date();
+      const claimed = await transaction.anomaly_alerts.updateMany({
+        where: { id: alert.id, status: 'IN_TRIAGE', assigned_to: input.userId },
+        data: { status: 'NEED_INVESTIGATION', updated_at: now },
+      });
+      if (claimed.count !== 1) return { outcome: 'conflict' as const };
+      const triage = await transaction.alert_triage_records.create({
+        data: {
+          alert_id: alert.id,
+          analyst_user_id: input.userId,
+          decision: 'NEED_INVESTIGATION',
+          reason: input.reason,
+          model_version_id: alert.anomaly_detections.model_version_id,
+          started_at: now,
+          completed_at: now,
+        },
+        select: { analyst_user_id: true, completed_at: true, created_at: true },
+      });
+      await transaction.audit_logs.create({
+        data: {
+          actor_user_id: input.userId,
+          actor_type: 'USER',
+          action: 'MARK_AI_ALERT_NEEDS_INVESTIGATION',
+          resource_type: 'ANOMALY_ALERT',
+          resource_id: alert.id,
+          source: 'API',
+          before_data: { status: 'IN_TRIAGE' },
+          after_data: { status: 'NEED_INVESTIGATION', reason: input.reason },
+          record_hash: `${alert.id}:NEED_INVESTIGATION:${input.userId}:${now.toISOString()}`,
+        },
       });
       return { outcome: 'changed' as const, alert, triage };
     });
