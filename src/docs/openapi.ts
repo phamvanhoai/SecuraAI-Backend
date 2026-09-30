@@ -1037,6 +1037,7 @@ export const openApiSpec = {
             schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
           },
           { name: 'q', in: 'query', schema: { type: 'string', minLength: 1, maxLength: 100 } },
+          { name: 'departmentId', in: 'query', schema: { type: 'string', format: 'uuid' } },
           {
             name: 'status',
             in: 'query',
@@ -2164,7 +2165,7 @@ export const openApiSpec = {
         tags: ['Users'],
         summary: 'Get the current active V2 user session profile',
         description:
-          'Requires a valid access token. The permissions field contains conservative role-derived frontend capability names from the Project Tracking WBS, not stored per-user grants. V2 has no detailed permission or MFA models yet.',
+          'Requires a valid access token. The permissions field contains conservative role-derived frontend capability names from the Project Tracking WBS, not stored per-user grants.',
         security: [{ bearerAuth: [] }],
         responses: {
           '200': {
@@ -2184,7 +2185,6 @@ export const openApiSpec = {
                         'fullName',
                         'status',
                         'mustChangePassword',
-                        'mfaEnabled',
                         'roles',
                         'permissions',
                       ],
@@ -2194,7 +2194,6 @@ export const openApiSpec = {
                         fullName: { type: 'string' },
                         status: { type: 'string', enum: ['ACTIVE'] },
                         mustChangePassword: { type: 'boolean', example: false },
-                        mfaEnabled: { type: 'boolean', example: false },
                         roles: {
                           type: 'array',
                           items: {
@@ -2274,6 +2273,9 @@ export const openApiSpec = {
                 properties: {
                   email: { type: 'string', format: 'email', maxLength: 255 },
                   fullName: { type: 'string', minLength: 2, maxLength: 255 },
+                  phone: { type: 'string', minLength: 3, maxLength: 30 },
+                  employeeCode: { type: 'string', minLength: 1, maxLength: 50 },
+                  departmentId: { type: 'string', format: 'uuid' },
                   role: {
                     type: 'string',
                     enum: ['SECURITY_OFFICER', 'EMPLOYEE', 'EXECUTIVE'],
@@ -2290,6 +2292,83 @@ export const openApiSpec = {
           '409': { description: 'Email already exists' },
           '422': { description: 'Invalid request body' },
           '503': { description: 'Email service unavailable or delivery failed' },
+        },
+      },
+    },
+    '/users/create-options': {
+      get: {
+        tags: ['Users'],
+        summary: 'List active departments for user forms',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          '200': { description: 'Active department options' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Admin role required' },
+        },
+      },
+    },
+    '/users/{userId}': {
+      ...pendingV2Paths['/users/{userId}'],
+      get: {
+        tags: ['Users'],
+        summary: 'View a V2 user account',
+        description:
+          'Active Admin only. Password hashes and Google subject identifiers are never returned.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'userId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          '200': { description: 'User account details' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Admin role required' },
+          '404': { description: 'User not found' },
+          '422': { description: 'Invalid user identifier' },
+        },
+      },
+      patch: {
+        tags: ['Users'],
+        summary: 'Edit a V2 user profile',
+        description: 'Active Admin only. Updates the full name and records an audit event.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'userId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['fullName', 'phone', 'employeeCode', 'departmentId', 'status'],
+                properties: {
+                  fullName: { type: 'string', minLength: 2, maxLength: 255 },
+                  phone: { type: ['string', 'null'], minLength: 3, maxLength: 30 },
+                  employeeCode: { type: ['string', 'null'], minLength: 1, maxLength: 50 },
+                  departmentId: { type: ['string', 'null'], format: 'uuid' },
+                  status: { type: 'string', enum: ['ACTIVE', 'INACTIVE', 'LOCKED'] },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'Updated user account details' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Admin role required' },
+          '404': { description: 'User not found' },
+          '422': { description: 'Invalid request' },
         },
       },
     },
