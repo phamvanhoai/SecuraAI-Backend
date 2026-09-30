@@ -183,6 +183,23 @@ export const openApiSpec = {
         },
       },
     },
+    '/risks/reassessment-requests/{requestId}/complete': {
+      post: {
+        tags: ['Risk Assessment'],
+        summary: 'Complete incident-driven residual reassessment and update its treatment plan',
+        description: 'Atomically creates an incident reassessment, updates the selected treatment plan, and completes the request.',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'requestId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['residualLikelihood', 'residualImpact', 'controlEffectiveness', 'assessmentReason', 'treatmentPlanId', 'treatmentPlanStatus', 'targetDate'] } } } },
+        responses: {
+          '200': { description: 'Reassessment completed and treatment plan updated' },
+          '403': { description: 'Risk Owner or Security Officer required' },
+          '404': { description: 'Reassessment request not found' },
+          '409': { description: 'Request is not under review' },
+          '422': { description: 'Invalid treatment plan or missing inherent assessment' },
+        },
+      },
+    },
     '/risks/create-options': {
       get: {
         tags: ['Risk Assessment'],

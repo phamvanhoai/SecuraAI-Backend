@@ -3,6 +3,7 @@ import { AppError } from '../../common/errors/app-error.js';
 import {
   listOwnedReassessmentRequestsQuerySchema,
   reviewRiskReassessmentRequestParamsSchema,
+  completeRiskReassessmentBodySchema,
 } from './dto/review-risk-reassessment-request.dto.js';
 import { riskReassessmentReviewService } from './risk-reassessment-review.service.js';
 
@@ -30,4 +31,8 @@ export const startRiskReassessmentReview: RequestHandler = async (req, res) => {
       requestId,
     ),
   });
+};
+export const completeRiskReassessment: RequestHandler = async (req, res) => {
+  const { requestId } = reviewRiskReassessmentRequestParamsSchema.parse(req.params);
+  res.status(200).json({ success: true, data: await riskReassessmentReviewService.complete(userId(res.locals.authenticatedUserId), requestId, completeRiskReassessmentBodySchema.parse(req.body)) });
 };

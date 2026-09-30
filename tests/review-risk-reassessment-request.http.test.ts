@@ -2,7 +2,7 @@ import jwt from 'jsonwebtoken';
 import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('../src/database/prisma.js', () => ({ prisma: { $queryRaw: vi.fn() } }));
-vi.mock('../src/modules/risk-assessment/risk-reassessment-review.service.js', () => ({ riskReassessmentReviewService: { listOwned: vi.fn(), startReview: vi.fn() } }));
+vi.mock('../src/modules/risk-assessment/risk-reassessment-review.service.js', () => ({ riskReassessmentReviewService: { listOwned: vi.fn(), startReview: vi.fn(), complete: vi.fn() } }));
 import { createApp } from '../src/app.js';
 import { env } from '../src/config/env.js';
 import { riskReassessmentReviewService } from '../src/modules/risk-assessment/risk-reassessment-review.service.js';
@@ -20,7 +20,7 @@ describe('risk reassessment review routes', () => {
   it('starts review with 200', async () => {
     vi.mocked(riskReassessmentReviewService.startReview).mockResolvedValue({
       id: requestId, reason: 'Review reason', status: 'under_review', requestedAt: new Date(), reviewedAt: null,
-      risk: { id: requestId, riskCode: 'RISK-1', title: 'Compromise', status: 'open' },
+      risk: { id: requestId, riskCode: 'RISK-1', title: 'Compromise', status: 'open', latestInherentAssessment: null, treatmentPlans: [] },
       incident: { id: requestId, incidentCode: 'INC-1', title: 'Login', severity: 'high' },
       controlWeakness: null, requestedBy: { id: requestId, fullName: 'Security Officer' },
     });

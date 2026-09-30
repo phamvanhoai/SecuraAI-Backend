@@ -5,10 +5,12 @@ import { asyncHandler } from '../../common/utils/async-handler.js';
 import {
   listOwnedRiskReassessmentRequests,
   startRiskReassessmentReview,
+  completeRiskReassessment,
 } from './risk-reassessment-review.controller.js';
 import {
   listOwnedReassessmentRequestsQuerySchema,
   reviewRiskReassessmentRequestParamsSchema,
+  completeRiskReassessmentBodySchema,
 } from './dto/review-risk-reassessment-request.dto.js';
 
 export const riskReassessmentReviewRouter = Router();
@@ -24,3 +26,4 @@ riskReassessmentReviewRouter.post(
   validate({ params: reviewRiskReassessmentRequestParamsSchema }),
   asyncHandler(startRiskReassessmentReview),
 );
+riskReassessmentReviewRouter.post('/reassessment-requests/:requestId/complete', authenticate, validate({ params: reviewRiskReassessmentRequestParamsSchema, body: completeRiskReassessmentBodySchema }), asyncHandler(completeRiskReassessment));
