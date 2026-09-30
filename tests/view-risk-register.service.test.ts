@@ -58,6 +58,7 @@ const record = {
       },
     },
   ],
+  risk_treatment_plans: [],
   _count: { control_risk_links: 2, risk_treatment_plans: 1, incident_risks: 1 },
 };
 
