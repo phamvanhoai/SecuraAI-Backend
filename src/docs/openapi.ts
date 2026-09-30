@@ -1460,7 +1460,7 @@ export const openApiSpec = {
         tags: ['AI Anomaly Detection & Alerts'],
         summary: 'Confirm an AI alert as a security incident',
         description:
-          'Atomically records triage, creates a linked finding and incident, and marks the alert confirmed. Repeated calls return the existing incident. Requires an active Security Officer account.',
+          'Confirms an assigned in-triage alert as a true positive, then atomically records the decision, creates a linked finding and incident, and marks the alert confirmed. Repeated calls by the assigned analyst return the existing incident.',
         security: [{ bearerAuth: [] }],
         parameters: [
           {
@@ -1487,6 +1487,10 @@ export const openApiSpec = {
           '401': { description: 'Authentication required' },
           '403': { description: 'Security Officer role required' },
           '404': { description: 'AI alert not found' },
+          '409': {
+            description:
+              'Triage has not started, the alert belongs to another analyst, or its status changed concurrently',
+          },
           '422': { description: 'Invalid request body or alert ID' },
         },
       },
