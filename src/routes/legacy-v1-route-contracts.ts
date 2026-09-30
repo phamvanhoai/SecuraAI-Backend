@@ -89,7 +89,6 @@ export const legacyV1RouteContracts = [
   { method: 'post', path: '/assets/import', tag: 'Assets' },
   { method: 'get', path: '/assets/imports/{importJobId}', tag: 'Assets' },
   { method: 'get', path: '/assets/{assetId}/history', tag: 'Assets' },
-  { method: 'post', path: '/compliance/policies', tag: 'Policies' },
   { method: 'get', path: '/compliance/policy-control-mappings', tag: 'Policies' },
   { method: 'get', path: '/compliance/frameworks', tag: 'Policies' },
   { method: 'get', path: '/compliance/frameworks/{frameworkId}/controls', tag: 'Policies' },
