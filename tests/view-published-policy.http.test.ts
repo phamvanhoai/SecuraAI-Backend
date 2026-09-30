@@ -2,7 +2,7 @@ import jwt from 'jsonwebtoken';
 import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('../src/database/prisma.js', () => ({ prisma: { $queryRaw: vi.fn() } }));
-vi.mock('../src/modules/policy-compliance-control/policy-compliance.service.js', () => ({ policyComplianceService: { listOwnedPublishedPolicies: vi.fn(), listPublishedPoliciesForEmployee: vi.fn(), getPublishedPolicyForEmployee: vi.fn() } }));
+vi.mock('../src/modules/policy-compliance-control/policy-compliance.service.js', () => ({ policyComplianceService: { listOwnedPublishedPolicies: vi.fn(), listPublishedPoliciesForEmployee: vi.fn(), getPublishedPolicyForEmployee: vi.fn(), acknowledgePublishedPolicy: vi.fn() } }));
 import { createApp } from '../src/app.js';
 import { env } from '../src/config/env.js';
 import { policyComplianceService } from '../src/modules/policy-compliance-control/policy-compliance.service.js';
@@ -30,5 +30,20 @@ describe('published policy HTTP routes', () => {
     const response = await request(app).get(`/api/v1/compliance/policies/${policyId}/versions/${versionId}/acknowledgement`).set('Authorization', `Bearer ${token}`);
     expect(response.status).toBe(200);
     expect(policyComplianceService.getPublishedPolicyForEmployee).toHaveBeenCalledWith(userId, policyId, versionId);
+  });
+  it('records acknowledgement of a published version', async () => {
+    vi.mocked(policyComplianceService.acknowledgePublishedPolicy).mockResolvedValue({
+      policyId,
+      versionId,
+      acknowledgedAt: new Date('2026-09-30T00:00:00Z'),
+      alreadyAcknowledged: false,
+    });
+    const response = await request(app)
+      .post(`/api/v1/compliance/policies/${policyId}/versions/${versionId}/acknowledgements`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({});
+    expect(response.status).toBe(200);
+    expect(response.body.data).toMatchObject({ policyId, versionId, alreadyAcknowledged: false });
+    expect(policyComplianceService.acknowledgePublishedPolicy).toHaveBeenCalledWith(userId, policyId, versionId);
   });
 });

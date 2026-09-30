@@ -15,6 +15,7 @@ import {
   listOwnedPublishedPolicies,
   listEmployeePublishedPolicies,
   getEmployeePublishedPolicy,
+  acknowledgeEmployeePublishedPolicy,
   createPolicyDraft,
 } from './policy-compliance.controller.js';
 import {
@@ -90,6 +91,12 @@ policyComplianceRouter.get(
   authenticate,
   validate({ params: publishedPolicyParamsSchema }),
   asyncHandler(getEmployeePublishedPolicy),
+);
+policyComplianceRouter.post(
+  '/policies/:policyId/versions/:versionId/acknowledgements',
+  authenticate,
+  validate({ params: publishedPolicyParamsSchema }),
+  asyncHandler(acknowledgeEmployeePublishedPolicy),
 );
 policyComplianceRouter.get(
   '/policies/rejected',
