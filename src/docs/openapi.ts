@@ -726,8 +726,11 @@ export const openApiSpec = {
         tags: ['AI Anomaly Detection & Alerts'],
         summary: 'List active assets available for custom alert thresholds',
         description:
-          'Returns a bounded list of active V2 assets for the custom threshold selector. Requires an active Security Officer account.',
+          'Returns up to 50 active V2 assets matching an optional code or name search for the threshold selector. Requires an active Security Officer account.',
         security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'q', in: 'query', schema: { type: 'string', minLength: 1, maxLength: 100 } },
+        ],
         responses: {
           '200': { description: 'Active asset options' },
           '401': { description: 'Authentication required' },

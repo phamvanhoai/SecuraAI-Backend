@@ -103,9 +103,9 @@ function toResponse(alert: AiAlertRecord) {
 }
 
 export const aiAlertsService = {
-  async listActiveAssetOptions(userId: string) {
+  async listActiveAssetOptions(userId: string, q?: string) {
     await requireSecurityOfficer(userId);
-    const assets = await aiAlertsRepository.listActiveAssetOptions();
+    const assets = await aiAlertsRepository.listActiveAssetOptions(q);
     return assets.map((asset) => ({
       id: asset.id,
       assetCode: asset.asset_code,

@@ -27,6 +27,7 @@ import { confirmAiAlertSchema } from './dto/confirm-ai-alert.dto.js';
 import { markAiAlertFalsePositiveSchema } from './dto/mark-ai-alert-false-positive.dto.js';
 import {
   alertThresholdAssetParamsSchema,
+  listAlertThresholdAssetOptionsQuerySchema,
   listAlertThresholdsQuerySchema,
   setAlertThresholdBodySchema,
 } from './dto/alert-threshold.dto.js';
@@ -51,6 +52,7 @@ aiAlertsRouter.put(
 aiAlertsRouter.get(
   '/thresholds/assets/options',
   authenticate,
+  validate({ query: listAlertThresholdAssetOptionsQuerySchema }),
   asyncHandler(listAlertThresholdAssetOptions),
 );
 aiAlertsRouter.get(
