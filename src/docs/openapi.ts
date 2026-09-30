@@ -101,9 +101,67 @@ export const openApiSpec = {
     },
     '/assets/{assetId}': {
       ...pendingV2Paths['/assets/{assetId}'],
-      delete: { tags: ['IT Asset Management'], summary: 'Archive an IT asset', description: 'Marks an asset as archived without deleting its details or relationships. Requires an active Security Officer.', security: [{ bearerAuth: [] }], parameters: [{ name: 'assetId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }], responses: { '204': { description: 'Asset archived' }, '401': { description: 'Authentication required' }, '403': { description: 'Security Officer role required' }, '404': { description: 'Asset not found' }, '409': { description: 'Asset is already archived' } } },
+      delete: {
+        tags: ['IT Asset Management'],
+        summary: 'Archive an IT asset',
+        description:
+          'Marks an asset as archived without deleting its details or relationships. Requires an active Security Officer.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'assetId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          '204': { description: 'Asset archived' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer role required' },
+          '404': { description: 'Asset not found' },
+          '409': { description: 'Asset is already archived' },
+        },
+      },
       patch: {
-        tags: ['IT Asset Management'], summary: 'Edit an IT asset', description: 'Updates the asset name, type, and description. Ownership, classification, business service, dependencies, event sources, and lifecycle status are managed by their dedicated operations. Requires an active Security Officer.', security: [{ bearerAuth: [] }], parameters: [{ name: 'assetId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }], requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', additionalProperties: false, required: ['name', 'assetType', 'description'], properties: { name: { type: 'string', maxLength: 255 }, assetType: { type: 'string', maxLength: 100 }, description: { type: 'string', maxLength: 10000, nullable: true } } } } } }, responses: { '200': { description: 'Updated IT asset' }, '401': { description: 'Authentication required' }, '403': { description: 'Security Officer role required' }, '404': { description: 'Asset not found' }, '409': { description: 'Archived asset cannot be edited' }, '422': { description: 'Invalid input' } },
+        tags: ['IT Asset Management'],
+        summary: 'Edit an IT asset',
+        description:
+          'Updates the asset name, type, and description. Ownership, classification, business service, dependencies, event sources, and lifecycle status are managed by their dedicated operations. Requires an active Security Officer.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'assetId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['name', 'assetType', 'description'],
+                properties: {
+                  name: { type: 'string', maxLength: 255 },
+                  assetType: { type: 'string', maxLength: 100 },
+                  description: { type: 'string', maxLength: 10000, nullable: true },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'Updated IT asset' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer role required' },
+          '404': { description: 'Asset not found' },
+          '409': { description: 'Archived asset cannot be edited' },
+          '422': { description: 'Invalid input' },
+        },
       },
       get: {
         tags: ['IT Asset Management'],
@@ -129,21 +187,132 @@ export const openApiSpec = {
       },
     },
     '/assets/{assetId}/owner': {
-      put: { tags: ['IT Asset Management'], summary: 'Assign an asset owner', description: 'Assigns, reassigns, or removes the responsible owner of an active IT asset. Requires an active Security Officer.', security: [{ bearerAuth: [] }], parameters: [{ name: 'assetId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }], responses: { '200': { description: 'Owner assignment result' }, '401': { description: 'Authentication required' }, '403': { description: 'Security Officer role required' }, '404': { description: 'Asset not found' }, '409': { description: 'Archived asset cannot be reassigned' }, '422': { description: 'Invalid or inactive owner' } } },
+      put: {
+        tags: ['IT Asset Management'],
+        summary: 'Assign an asset owner',
+        description:
+          'Assigns, reassigns, or removes the responsible owner of an active IT asset. Requires an active Security Officer.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'assetId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          '200': { description: 'Owner assignment result' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer role required' },
+          '404': { description: 'Asset not found' },
+          '409': { description: 'Archived asset cannot be reassigned' },
+          '422': { description: 'Invalid or inactive owner' },
+        },
+      },
     },
     '/assets/{assetId}/classify-criticality': {
       post: {
         tags: ['IT Asset Management'],
         summary: 'Classify asset criticality and data sensitivity',
-        description: 'Calculates business criticality from CIA and business-impact scores and records the selected data classification. Requires an active Security Officer.',
+        description:
+          'Calculates business criticality from CIA and business-impact scores and records the selected data classification. Requires an active Security Officer.',
         security: [{ bearerAuth: [] }],
-        parameters: [{ name: 'assetId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
-        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', additionalProperties: false, required: ['confidentialityImpact', 'integrityImpact', 'availabilityImpact', 'businessImpact', 'dataClassification'], properties: { confidentialityImpact: { type: 'integer', minimum: 1, maximum: 5 }, integrityImpact: { type: 'integer', minimum: 1, maximum: 5 }, availabilityImpact: { type: 'integer', minimum: 1, maximum: 5 }, businessImpact: { type: 'integer', minimum: 1, maximum: 5 }, dataClassification: { type: 'string', enum: ['public', 'internal', 'confidential', 'restricted'] } } } } } },
-        responses: { '200': { description: 'Updated criticality and data classification' }, '401': { description: 'Authentication required' }, '403': { description: 'Security Officer role required' }, '404': { description: 'Asset not found' }, '409': { description: 'Archived asset cannot be classified' }, '422': { description: 'Invalid classification input' } },
+        parameters: [
+          {
+            name: 'assetId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                additionalProperties: false,
+                required: [
+                  'confidentialityImpact',
+                  'integrityImpact',
+                  'availabilityImpact',
+                  'businessImpact',
+                  'dataClassification',
+                ],
+                properties: {
+                  confidentialityImpact: { type: 'integer', minimum: 1, maximum: 5 },
+                  integrityImpact: { type: 'integer', minimum: 1, maximum: 5 },
+                  availabilityImpact: { type: 'integer', minimum: 1, maximum: 5 },
+                  businessImpact: { type: 'integer', minimum: 1, maximum: 5 },
+                  dataClassification: {
+                    type: 'string',
+                    enum: ['public', 'internal', 'confidential', 'restricted'],
+                  },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'Updated criticality and data classification' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer role required' },
+          '404': { description: 'Asset not found' },
+          '409': { description: 'Archived asset cannot be classified' },
+          '422': { description: 'Invalid classification input' },
+        },
       },
     },
     '/assets/{assetId}/context': {
-      put: { tags: ['IT Asset Management'], summary: 'Link asset business context', description: 'Replaces the active asset business service, dependencies, and event-source links. Requires an active Security Officer.', security: [{ bearerAuth: [] }], parameters: [{ name: 'assetId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }], requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', additionalProperties: false, required: ['businessServiceId', 'dependencyIds', 'eventSourceIds'], properties: { businessServiceId: { type: 'string', format: 'uuid', nullable: true }, dependencyIds: { type: 'array', maxItems: 50, items: { type: 'string', format: 'uuid' } }, eventSourceIds: { type: 'array', maxItems: 50, items: { type: 'string', format: 'uuid' } } } } } } }, responses: { '200': { description: 'Updated asset context links' }, '401': { description: 'Authentication required' }, '403': { description: 'Security Officer role required' }, '404': { description: 'Asset not found' }, '409': { description: 'Archived asset cannot be linked' }, '422': { description: 'Invalid or unavailable relationship' } } },
+      put: {
+        tags: ['IT Asset Management'],
+        summary: 'Link asset business context',
+        description:
+          'Replaces the active asset business service, dependencies, and event-source links. Requires an active Security Officer.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'assetId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['businessServiceId', 'dependencyIds', 'eventSourceIds'],
+                properties: {
+                  businessServiceId: { type: 'string', format: 'uuid', nullable: true },
+                  dependencyIds: {
+                    type: 'array',
+                    maxItems: 50,
+                    items: { type: 'string', format: 'uuid' },
+                  },
+                  eventSourceIds: {
+                    type: 'array',
+                    maxItems: 50,
+                    items: { type: 'string', format: 'uuid' },
+                  },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'Updated asset context links' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer role required' },
+          '404': { description: 'Asset not found' },
+          '409': { description: 'Archived asset cannot be linked' },
+          '422': { description: 'Invalid or unavailable relationship' },
+        },
+      },
     },
     '/event-sources': {
       get: {
@@ -255,6 +424,76 @@ export const openApiSpec = {
           '403': { description: 'Ingestion token invalid' },
           '422': { description: 'Invalid normalized event' },
           '503': { description: 'Wazuh ingestion is not configured' },
+        },
+      },
+    },
+    '/incidents': {
+      ...pendingV2Paths['/incidents'],
+      get: {
+        tags: ['Incident Management'],
+        summary: 'List security incidents',
+        description:
+          'Returns a searchable, paginated list of V2 security incidents for active Security Officers and Executives.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
+          {
+            name: 'limit',
+            in: 'query',
+            schema: { type: 'integer', minimum: 1, maximum: 100, default: 10 },
+          },
+          { name: 'search', in: 'query', schema: { type: 'string', minLength: 1, maxLength: 100 } },
+          {
+            name: 'severity',
+            in: 'query',
+            schema: { type: 'string', minLength: 1, maxLength: 50 },
+          },
+          {
+            name: 'status',
+            in: 'query',
+            schema: {
+              type: 'string',
+              enum: [
+                'open',
+                'triage',
+                'containment',
+                'eradication',
+                'recovery',
+                'lessons_learned',
+                'closed',
+              ],
+            },
+          },
+        ],
+        responses: {
+          '200': { description: 'Paginated incident list' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer or Executive role required' },
+          '422': { description: 'Invalid query parameters' },
+        },
+      },
+    },
+    '/incidents/{incidentId}': {
+      get: {
+        tags: ['Incident Management'],
+        summary: 'View security incident details',
+        description:
+          'Returns core incident details, responsible users, timestamps, and related-record counts from the V2 database.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'incidentId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          '200': { description: 'Incident details' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer or Executive role required' },
+          '404': { description: 'Incident not found' },
+          '422': { description: 'Invalid incident identifier' },
         },
       },
     },
@@ -677,7 +916,9 @@ export const openApiSpec = {
           },
         },
         responses: {
-          '200': { description: 'Batch import processed with execution statistics and error details' },
+          '200': {
+            description: 'Batch import processed with execution statistics and error details',
+          },
           '400': { description: 'Event source is inactive or invalid import payload' },
           '401': { description: 'Authentication required' },
           '403': { description: 'Admin or Security Officer role required' },
@@ -724,7 +965,11 @@ export const openApiSpec = {
             schema: { type: 'string', format: 'uuid' },
           },
           { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
-          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 } },
+          {
+            name: 'limit',
+            in: 'query',
+            schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
+          },
           { name: 'errorCode', in: 'query', schema: { type: 'string' } },
           { name: 'q', in: 'query', schema: { type: 'string' } },
         ],
@@ -751,7 +996,11 @@ export const openApiSpec = {
             schema: { type: 'string', format: 'uuid' },
           },
           { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
-          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 50, default: 10 } },
+          {
+            name: 'limit',
+            in: 'query',
+            schema: { type: 'integer', minimum: 1, maximum: 50, default: 10 },
+          },
         ],
         responses: {
           '200': { description: 'Paginated list of import batches for event source' },
