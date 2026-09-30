@@ -15,6 +15,7 @@ import {
   listOwnedPublishedPolicies,
   listEmployeePublishedPolicies,
   getEmployeePublishedPolicy,
+  createPolicyDraft,
 } from './policy-compliance.controller.js';
 import {
   policyDraftReviewParamsSchema,
@@ -40,8 +41,39 @@ import {
   publishedPolicyListQuerySchema,
   publishedPolicyParamsSchema,
 } from './dto/view-published-policy.dto.js';
+import { createPolicyDraftBodySchema } from './dto/create-policy-draft.dto.js';
+import {
+  assessControlEffectiveness,
+  listControlEffectiveness,
+} from './control-effectiveness.controller.js';
+import {
+  assessControlEffectivenessBodySchema,
+  controlEffectivenessParamsSchema,
+  listControlEffectivenessQuerySchema,
+} from './dto/assess-control-effectiveness.dto.js';
 
 export const policyComplianceRouter = Router();
+policyComplianceRouter.post(
+  '/policies',
+  authenticate,
+  validate({ body: createPolicyDraftBodySchema }),
+  asyncHandler(createPolicyDraft),
+);
+policyComplianceRouter.get(
+  '/control-assessments',
+  authenticate,
+  validate({ query: listControlEffectivenessQuerySchema }),
+  asyncHandler(listControlEffectiveness),
+);
+policyComplianceRouter.post(
+  '/controls/:controlId/assessments',
+  authenticate,
+  validate({
+    params: controlEffectivenessParamsSchema,
+    body: assessControlEffectivenessBodySchema,
+  }),
+  asyncHandler(assessControlEffectiveness),
+);
 policyComplianceRouter.get(
   '/policies/published/mine',
   authenticate,

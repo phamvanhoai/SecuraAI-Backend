@@ -13,7 +13,7 @@ const organizationMigration = readFileSync(
 );
 
 describe('V2 database baseline', () => {
-  it('tracks the approved tables plus subsequent migrations in Prisma', () => {
+  it('keeps every approved baseline table and tracks additive V2 migrations in Prisma', () => {
     const sqlTables = [...sql.matchAll(/^CREATE TABLE\s+([a-z_][a-z0-9_]*)\s*\(/gim)]
       .map((match) => match[1])
       .sort();
@@ -22,7 +22,10 @@ describe('V2 database baseline', () => {
       .sort();
 
     expect(sqlTables).toHaveLength(57);
-    expect(prismaModels).toEqual(sqlTables);
+    expect(prismaModels).toHaveLength(59);
+    expect(prismaModels).toEqual(expect.arrayContaining(sqlTables));
+    expect(prismaModels).toContain('risk_threat_vulnerabilities');
+    expect(prismaModels).toContain('risk_vulnerability_controls');
     expect(prismaModels).not.toContain('training_courses');
   });
 

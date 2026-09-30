@@ -12,6 +12,7 @@ import { markAiAlertFalsePositiveSchema } from './dto/mark-ai-alert-false-positi
 import { listModelVersionsQuerySchema } from './dto/list-model-versions.dto.js';
 import {
   alertThresholdAssetParamsSchema,
+  listAlertThresholdAssetOptionsQuerySchema,
   listAlertThresholdsQuerySchema,
   setAlertThresholdBodySchema,
 } from './dto/alert-threshold.dto.js';
@@ -47,11 +48,12 @@ export const listAlertThresholds: RequestHandler = async (req, res) => {
   res.status(200).json({ success: true, data });
 };
 
-export const listAlertThresholdAssetOptions: RequestHandler = async (_req, res) => {
+export const listAlertThresholdAssetOptions: RequestHandler = async (req, res) => {
   const userId: unknown = res.locals.authenticatedUserId;
   if (typeof userId !== 'string')
     throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
-  const data = await aiAlertsService.listActiveAssetOptions(userId);
+  const { q } = listAlertThresholdAssetOptionsQuerySchema.parse(req.query);
+  const data = await aiAlertsService.listActiveAssetOptions(userId, q);
   res.status(200).json({ success: true, data });
 };
 

@@ -25,6 +25,7 @@ import {
   publishedPolicyListQuerySchema,
   publishedPolicyParamsSchema,
 } from './dto/view-published-policy.dto.js';
+import { createPolicyDraftBodySchema } from './dto/create-policy-draft.dto.js';
 
 function authenticatedUserId(value: unknown): string {
   if (typeof value !== 'string') throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
@@ -37,6 +38,14 @@ export const listReviewablePolicyDrafts: RequestHandler = async (req, res) => {
     reviewablePolicyDraftQuerySchema.parse(req.query),
   );
   res.status(200).json({ success: true, data });
+};
+
+export const createPolicyDraft: RequestHandler = async (req, res) => {
+  const data = await policyComplianceService.createPolicyDraft(
+    authenticatedUserId(res.locals.authenticatedUserId),
+    createPolicyDraftBodySchema.parse(req.body),
+  );
+  res.status(201).json({ success: true, data });
 };
 
 export const getPolicyDraftReview: RequestHandler = async (req, res) => {

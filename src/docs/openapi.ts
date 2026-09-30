@@ -17,6 +17,247 @@ export const openApiSpec = {
   },
   paths: {
     ...pendingV2Paths,
+    '/assets': {
+      ...pendingV2Paths['/assets'],
+      get: {
+        tags: ['IT Asset Management'],
+        summary: 'View the IT asset list',
+        description:
+          'Returns a searchable, filterable, paginated asset directory. Security Officers can view all assets; other active users can view only assets assigned to them as Asset Owner.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
+          {
+            name: 'limit',
+            in: 'query',
+            schema: { type: 'integer', minimum: 1, maximum: 100, default: 10 },
+          },
+          { name: 'q', in: 'query', schema: { type: 'string', maxLength: 100 } },
+          { name: 'assetType', in: 'query', schema: { type: 'string', maxLength: 100 } },
+          { name: 'criticality', in: 'query', schema: { type: 'string', maxLength: 50 } },
+          { name: 'status', in: 'query', schema: { type: 'string', enum: ['active', 'archived'] } },
+        ],
+        responses: {
+          '200': { description: 'Paginated IT asset list scoped to the caller' },
+          '401': { description: 'Authentication required' },
+          '422': { description: 'Invalid filters' },
+        },
+      },
+      post: {
+        tags: ['IT Asset Management'],
+        summary: 'Create an IT asset',
+        description:
+          'Registers an IT asset and optionally links its owner, business service, dependencies, and event sources. Requires an active Security Officer.',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['assetCode', 'name', 'assetType', 'criticality', 'dataClassification'],
+                properties: {
+                  assetCode: { type: 'string', maxLength: 100 },
+                  name: { type: 'string', maxLength: 255 },
+                  assetType: { type: 'string', maxLength: 100 },
+                  ownerUserId: { type: 'string', format: 'uuid' },
+                  businessServiceId: { type: 'string', format: 'uuid' },
+                  criticality: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] },
+                  dataClassification: { type: 'string', maxLength: 50 },
+                  description: { type: 'string', maxLength: 10000 },
+                  dependencies: { type: 'array', maxItems: 50 },
+                  eventSourceIds: {
+                    type: 'array',
+                    maxItems: 50,
+                    items: { type: 'string', format: 'uuid' },
+                  },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '201': { description: 'IT asset created' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer role required' },
+          '409': { description: 'Asset code already exists' },
+          '422': { description: 'Invalid input or unavailable relationship' },
+        },
+      },
+    },
+    '/assets/create-options': {
+      get: {
+        tags: ['IT Asset Management'],
+        summary: 'Get IT asset creation options',
+        description:
+          'Returns bounded active owners, business services, assets, and event sources for the create form. Requires an active Security Officer.',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          '200': { description: 'Asset creation options' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer role required' },
+        },
+      },
+    },
+    '/assets/{assetId}': {
+      ...pendingV2Paths['/assets/{assetId}'],
+      delete: { tags: ['IT Asset Management'], summary: 'Archive an IT asset', description: 'Marks an asset as archived without deleting its details or relationships. Requires an active Security Officer.', security: [{ bearerAuth: [] }], parameters: [{ name: 'assetId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }], responses: { '204': { description: 'Asset archived' }, '401': { description: 'Authentication required' }, '403': { description: 'Security Officer role required' }, '404': { description: 'Asset not found' }, '409': { description: 'Asset is already archived' } } },
+      patch: {
+        tags: ['IT Asset Management'], summary: 'Edit an IT asset', description: 'Updates the asset name, type, and description. Ownership, classification, business service, dependencies, event sources, and lifecycle status are managed by their dedicated operations. Requires an active Security Officer.', security: [{ bearerAuth: [] }], parameters: [{ name: 'assetId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }], requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', additionalProperties: false, required: ['name', 'assetType', 'description'], properties: { name: { type: 'string', maxLength: 255 }, assetType: { type: 'string', maxLength: 100 }, description: { type: 'string', maxLength: 10000, nullable: true } } } } } }, responses: { '200': { description: 'Updated IT asset' }, '401': { description: 'Authentication required' }, '403': { description: 'Security Officer role required' }, '404': { description: 'Asset not found' }, '409': { description: 'Archived asset cannot be edited' }, '422': { description: 'Invalid input' } },
+      },
+      get: {
+        tags: ['IT Asset Management'],
+        summary: 'View IT asset details',
+        description:
+          'Returns asset identity, ownership, business service, dependencies, controls, event sources, risks, and incidents. Security Officers can view any asset; an Asset Owner can view only assets assigned to them.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'assetId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          '200': { description: 'Detailed IT asset record' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'The caller is not the assigned Asset Owner' },
+          '404': { description: 'Asset not found' },
+          '422': { description: 'Invalid asset ID' },
+        },
+      },
+    },
+    '/assets/{assetId}/owner': {
+      put: { tags: ['IT Asset Management'], summary: 'Assign an asset owner', description: 'Assigns, reassigns, or removes the responsible owner of an active IT asset. Requires an active Security Officer.', security: [{ bearerAuth: [] }], parameters: [{ name: 'assetId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }], responses: { '200': { description: 'Owner assignment result' }, '401': { description: 'Authentication required' }, '403': { description: 'Security Officer role required' }, '404': { description: 'Asset not found' }, '409': { description: 'Archived asset cannot be reassigned' }, '422': { description: 'Invalid or inactive owner' } } },
+    },
+    '/assets/{assetId}/classify-criticality': {
+      post: {
+        tags: ['IT Asset Management'],
+        summary: 'Classify asset criticality and data sensitivity',
+        description: 'Calculates business criticality from CIA and business-impact scores and records the selected data classification. Requires an active Security Officer.',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'assetId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', additionalProperties: false, required: ['confidentialityImpact', 'integrityImpact', 'availabilityImpact', 'businessImpact', 'dataClassification'], properties: { confidentialityImpact: { type: 'integer', minimum: 1, maximum: 5 }, integrityImpact: { type: 'integer', minimum: 1, maximum: 5 }, availabilityImpact: { type: 'integer', minimum: 1, maximum: 5 }, businessImpact: { type: 'integer', minimum: 1, maximum: 5 }, dataClassification: { type: 'string', enum: ['public', 'internal', 'confidential', 'restricted'] } } } } } },
+        responses: { '200': { description: 'Updated criticality and data classification' }, '401': { description: 'Authentication required' }, '403': { description: 'Security Officer role required' }, '404': { description: 'Asset not found' }, '409': { description: 'Archived asset cannot be classified' }, '422': { description: 'Invalid classification input' } },
+      },
+    },
+    '/assets/{assetId}/context': {
+      put: { tags: ['IT Asset Management'], summary: 'Link asset business context', description: 'Replaces the active asset business service, dependencies, and event-source links. Requires an active Security Officer.', security: [{ bearerAuth: [] }], parameters: [{ name: 'assetId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }], requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', additionalProperties: false, required: ['businessServiceId', 'dependencyIds', 'eventSourceIds'], properties: { businessServiceId: { type: 'string', format: 'uuid', nullable: true }, dependencyIds: { type: 'array', maxItems: 50, items: { type: 'string', format: 'uuid' } }, eventSourceIds: { type: 'array', maxItems: 50, items: { type: 'string', format: 'uuid' } } } } } } }, responses: { '200': { description: 'Updated asset context links' }, '401': { description: 'Authentication required' }, '403': { description: 'Security Officer role required' }, '404': { description: 'Asset not found' }, '409': { description: 'Archived asset cannot be linked' }, '422': { description: 'Invalid or unavailable relationship' } } },
+    },
+    '/event-sources': {
+      get: {
+        tags: ['Event Ingestion'],
+        summary: 'List configured event sources',
+        description:
+          'Retrieve a paginated list of all configured event sources. Restricted to ADMIN and SECURITY_OFFICER roles.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
+          {
+            name: 'limit',
+            in: 'query',
+            schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
+          },
+          { name: 'q', in: 'query', schema: { type: 'string', maxLength: 100 } },
+          { name: 'sourceType', in: 'query', schema: { type: 'string', maxLength: 100 } },
+          {
+            name: 'status',
+            in: 'query',
+            schema: { type: 'string', enum: ['ACTIVE', 'INACTIVE'] },
+          },
+          {
+            name: 'sortBy',
+            in: 'query',
+            schema: {
+              type: 'string',
+              enum: ['name', 'sourceType', 'status', 'updatedAt', 'createdAt'],
+              default: 'updatedAt',
+            },
+          },
+          {
+            name: 'sortOrder',
+            in: 'query',
+            schema: { type: 'string', enum: ['asc', 'desc'], default: 'desc' },
+          },
+        ],
+        responses: {
+          '200': { description: 'Paginated list of configured event sources' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Admin or Security Officer role required' },
+          '422': { description: 'Invalid query parameters' },
+        },
+      },
+      post: {
+        tags: ['Event Ingestion'],
+        summary: 'Register a normalized event source',
+        description:
+          'Creates a normalized event source such as Wazuh/SIEM. Requires an active Admin or Security Officer account.',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['name', 'sourceType', 'ingestionMethod', 'eventFamilies'],
+                properties: {
+                  name: { type: 'string', minLength: 1, maxLength: 255 },
+                  sourceType: { type: 'string', minLength: 1, maxLength: 100 },
+                  endpoint: { type: 'string', nullable: true },
+                  ingestionMethod: { type: 'string', enum: ['API', 'FILE'] },
+                  authenticationType: { type: 'string', nullable: true },
+                  status: { type: 'string', enum: ['ACTIVE', 'INACTIVE'], default: 'ACTIVE' },
+                  description: { type: 'string', nullable: true },
+                  eventFamilies: {
+                    type: 'array',
+                    items: {
+                      type: 'string',
+                      enum: ['AUTHENTICATION', 'VPN_SSO', 'APPLICATION_ACCESS'],
+                    },
+                    minItems: 1,
+                  },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '201': { description: 'Event source registered successfully' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Admin or Security Officer role required' },
+          '422': { description: 'Validation failed' },
+        },
+      },
+    },
+    '/integrations/wazuh/events': {
+      post: {
+        tags: ['Event Ingestion'],
+        summary: 'Ingest a normalized Wazuh event',
+        description:
+          'Accepts one normalized event from the configured Wazuh integration. Requires the X-SecuraAI-Ingest-Key header or a bearer ingestion token.',
+        parameters: [
+          {
+            name: 'X-SecuraAI-Ingest-Key',
+            in: 'header',
+            required: false,
+            schema: { type: 'string' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: { type: 'object' } } },
+        },
+        responses: {
+          '201': { description: 'Event ingested' },
+          '401': { description: 'Ingestion token missing' },
+          '403': { description: 'Ingestion token invalid' },
+          '422': { description: 'Invalid normalized event' },
+          '503': { description: 'Wazuh ingestion is not configured' },
+        },
+      },
+    },
     '/compliance/policies/published/mine': {
       get: {
         tags: ['Policy Management'],
@@ -164,6 +405,46 @@ export const openApiSpec = {
         },
       },
     },
+    '/compliance/policies': {
+      post: {
+        tags: ['Policy Management'],
+        summary: 'Create a policy draft',
+        description:
+          'Creates a V2 policy and its first draft version in one transaction. Requires an active Security Officer account.',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['policyCode', 'title', 'versionNumber', 'content'],
+                properties: {
+                  policyCode: {
+                    type: 'string',
+                    minLength: 2,
+                    maxLength: 50,
+                    pattern: '^[A-Za-z0-9][A-Za-z0-9._-]*$',
+                  },
+                  title: { type: 'string', minLength: 3, maxLength: 255 },
+                  description: { type: 'string', maxLength: 2000 },
+                  versionNumber: { type: 'string', minLength: 1, maxLength: 30 },
+                  content: { type: 'string', minLength: 1, maxLength: 500000 },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '201': { description: 'Policy draft created' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer role required' },
+          '409': { description: 'Policy code already exists' },
+          '422': { description: 'Invalid policy draft input' },
+        },
+      },
+    },
     '/compliance/policies/{policyId}/drafts/{versionId}': {
       ...pendingV2Paths['/compliance/policies/{policyId}/drafts/{versionId}'],
       patch: {
@@ -256,6 +537,59 @@ export const openApiSpec = {
           '404': { description: 'Submitted policy draft not found' },
           '409': { description: 'Policy draft changed concurrently' },
           '422': { description: 'Invalid identifiers or revision comment' },
+        },
+      },
+    },
+    '/event-sources/{id}/import': {
+      post: {
+        tags: ['Event Ingestion'],
+        summary: 'Import normalized event records from file or batch upload',
+        description:
+          'Validates and imports a batch of normalized security events from JSON or CSV files into an active event source. Records are persisted in normalized_events and invalid records in invalid_events.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['events'],
+                properties: {
+                  fileName: { type: 'string', maxLength: 255 },
+                  fileFormat: { type: 'string', enum: ['JSON', 'CSV'], default: 'JSON' },
+                  eventFamily: {
+                    type: 'string',
+                    enum: ['AUTHENTICATION', 'VPN_SSO', 'APPLICATION_ACCESS'],
+                  },
+                  events: {
+                    type: 'array',
+                    minItems: 1,
+                    maxItems: 5000,
+                    items: {
+                      type: 'object',
+                      required: ['eventType', 'occurredAt'],
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'Batch import processed with execution statistics and error details' },
+          '400': { description: 'Event source is inactive or invalid import payload' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Admin or Security Officer role required' },
+          '404': { description: 'Event source not found' },
+          '422': { description: 'Validation failed' },
         },
       },
     },
@@ -486,8 +820,11 @@ export const openApiSpec = {
         tags: ['AI Anomaly Detection & Alerts'],
         summary: 'List active assets available for custom alert thresholds',
         description:
-          'Returns a bounded list of active V2 assets for the custom threshold selector. Requires an active Security Officer account.',
+          'Returns up to 50 active V2 assets matching an optional code or name search for the threshold selector. Requires an active Security Officer account.',
         security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'q', in: 'query', schema: { type: 'string', minLength: 1, maxLength: 100 } },
+        ],
         responses: {
           '200': { description: 'Active asset options' },
           '401': { description: 'Authentication required' },
@@ -815,35 +1152,6 @@ export const openApiSpec = {
         },
       },
     },
-    '/auth/google': {
-      post: {
-        tags: ['Authentication'],
-        summary: 'Authenticate an existing V2 account with Google',
-        description:
-          'Verifies a Google ID token and creates a SecuraAI session only when its verified email belongs to an existing active account. Roles remain database-controlled.',
-        security: [],
-        requestBody: {
-          required: true,
-          content: {
-            'application/json': {
-              schema: {
-                type: 'object',
-                required: ['credential'],
-                additionalProperties: false,
-                properties: { credential: { type: 'string', minLength: 1, maxLength: 4096 } },
-              },
-            },
-          },
-        },
-        responses: {
-          '200': { description: 'Access and refresh token pair' },
-          '401': { description: 'Invalid Google credential or unavailable account' },
-          '422': { description: 'Invalid request body' },
-          '429': { description: 'Too many attempts' },
-          '503': { description: 'Google sign-in is not configured' },
-        },
-      },
-    },
     '/auth/logout': {
       post: {
         tags: ['Authentication'],
@@ -865,96 +1173,6 @@ export const openApiSpec = {
         responses: {
           '204': { description: 'Refresh session revoked or already absent' },
           '422': { description: 'Invalid request body' },
-        },
-      },
-    },
-    '/auth/password-reset/request': {
-      post: {
-        tags: ['Authentication'],
-        summary: 'Request a password reset code',
-        description:
-          'Always returns the same response to avoid revealing whether an account exists.',
-        security: [],
-        requestBody: {
-          required: true,
-          content: {
-            'application/json': {
-              schema: {
-                type: 'object',
-                required: ['email'],
-                additionalProperties: false,
-                properties: { email: { type: 'string', format: 'email', maxLength: 255 } },
-              },
-            },
-          },
-        },
-        responses: {
-          '202': { description: 'Request accepted regardless of account existence' },
-          '422': { description: 'Invalid request body' },
-          '429': { description: 'Too many attempts' },
-          '503': { description: 'Email service is unavailable' },
-        },
-      },
-    },
-    '/auth/password-reset/confirm': {
-      post: {
-        tags: ['Authentication'],
-        summary: 'Reset a password using a one-time code',
-        security: [],
-        requestBody: {
-          required: true,
-          content: {
-            'application/json': {
-              schema: {
-                type: 'object',
-                required: ['token', 'newPassword', 'confirmPassword'],
-                additionalProperties: false,
-                properties: {
-                  token: { type: 'string', pattern: '^\\d{6}$' },
-                  newPassword: { type: 'string', minLength: 8, maxLength: 128 },
-                  confirmPassword: { type: 'string', minLength: 8, maxLength: 128 },
-                },
-              },
-            },
-          },
-        },
-        responses: {
-          '200': { description: 'Password reset and existing sessions revoked' },
-          '400': { description: 'Reset code is invalid, expired or already used' },
-          '422': { description: 'Invalid request body' },
-          '429': { description: 'Too many attempts' },
-        },
-      },
-    },
-    '/auth/change-password': {
-      post: {
-        tags: ['Authentication'],
-        summary: 'Change the authenticated user password',
-        security: [{ bearerAuth: [] }],
-        requestBody: {
-          required: true,
-          content: {
-            'application/json': {
-              schema: {
-                type: 'object',
-                required: ['currentPassword', 'newPassword', 'confirmPassword'],
-                additionalProperties: false,
-                properties: {
-                  currentPassword: { type: 'string', minLength: 1, maxLength: 128 },
-                  newPassword: { type: 'string', minLength: 8, maxLength: 128 },
-                  confirmPassword: { type: 'string', minLength: 8, maxLength: 128 },
-                },
-              },
-            },
-          },
-        },
-        responses: {
-          '200': { description: 'Password changed while existing sessions remain active' },
-          '400': { description: 'Current password is incorrect or password is unchanged' },
-          '401': { description: 'Authentication required' },
-          '409': { description: 'Password changed concurrently' },
-          '422': { description: 'Invalid request body' },
-          '429': { description: 'Too many attempts' },
         },
       },
     },

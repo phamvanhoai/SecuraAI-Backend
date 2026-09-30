@@ -6,6 +6,10 @@ const optionalString = z.preprocess(
   (value) => (typeof value === 'string' && value.trim() === '' ? undefined : value),
   z.string().trim().min(1).optional(),
 );
+const optionalSecret = z.preprocess(
+  (value) => (value === '' ? undefined : value),
+  z.string().min(32).optional(),
+);
 
 const envSchema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -25,6 +29,11 @@ const envSchema = z.object({
   SMTP_SECURE: booleanString.default(false),
   SMTP_USER: optionalString,
   SMTP_PASS: optionalString,
+  OLLAMA_ENABLED: booleanString.default(false),
+  OLLAMA_BASE_URL: z.url().default('http://127.0.0.1:11434'),
+  OLLAMA_MODEL: z.string().trim().min(1).default('qwen3:4b'),
+  OLLAMA_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120_000).default(60_000),
+  WAZUH_INGEST_TOKEN: optionalSecret,
   GOOGLE_CLIENT_ID: optionalString,
 });
 
