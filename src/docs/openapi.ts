@@ -103,7 +103,7 @@ export const openApiSpec = {
       ...pendingV2Paths['/assets/{assetId}'],
       delete: { tags: ['IT Asset Management'], summary: 'Archive an IT asset', description: 'Marks an asset as archived without deleting its details or relationships. Requires an active Security Officer.', security: [{ bearerAuth: [] }], parameters: [{ name: 'assetId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }], responses: { '204': { description: 'Asset archived' }, '401': { description: 'Authentication required' }, '403': { description: 'Security Officer role required' }, '404': { description: 'Asset not found' }, '409': { description: 'Asset is already archived' } } },
       patch: {
-        tags: ['IT Asset Management'], summary: 'Edit an IT asset', description: 'Updates asset business context and replaces its dependency and event-source links. Requires an active Security Officer.', security: [{ bearerAuth: [] }], parameters: [{ name: 'assetId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }], responses: { '200': { description: 'Updated IT asset' }, '401': { description: 'Authentication required' }, '403': { description: 'Security Officer role required' }, '404': { description: 'Asset not found' }, '422': { description: 'Invalid input or unavailable relationship' } },
+        tags: ['IT Asset Management'], summary: 'Edit an IT asset', description: 'Updates the asset name, type, and description. Ownership, classification, business service, dependencies, event sources, and lifecycle status are managed by their dedicated operations. Requires an active Security Officer.', security: [{ bearerAuth: [] }], parameters: [{ name: 'assetId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }], requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', additionalProperties: false, required: ['name', 'assetType', 'description'], properties: { name: { type: 'string', maxLength: 255 }, assetType: { type: 'string', maxLength: 100 }, description: { type: 'string', maxLength: 10000, nullable: true } } } } } }, responses: { '200': { description: 'Updated IT asset' }, '401': { description: 'Authentication required' }, '403': { description: 'Security Officer role required' }, '404': { description: 'Asset not found' }, '409': { description: 'Archived asset cannot be edited' }, '422': { description: 'Invalid input' } },
       },
       get: {
         tags: ['IT Asset Management'],
@@ -127,6 +127,23 @@ export const openApiSpec = {
           '422': { description: 'Invalid asset ID' },
         },
       },
+    },
+    '/assets/{assetId}/owner': {
+      put: { tags: ['IT Asset Management'], summary: 'Assign an asset owner', description: 'Assigns, reassigns, or removes the responsible owner of an active IT asset. Requires an active Security Officer.', security: [{ bearerAuth: [] }], parameters: [{ name: 'assetId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }], responses: { '200': { description: 'Owner assignment result' }, '401': { description: 'Authentication required' }, '403': { description: 'Security Officer role required' }, '404': { description: 'Asset not found' }, '409': { description: 'Archived asset cannot be reassigned' }, '422': { description: 'Invalid or inactive owner' } } },
+    },
+    '/assets/{assetId}/classify-criticality': {
+      post: {
+        tags: ['IT Asset Management'],
+        summary: 'Classify asset criticality and data sensitivity',
+        description: 'Calculates business criticality from CIA and business-impact scores and records the selected data classification. Requires an active Security Officer.',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'assetId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', additionalProperties: false, required: ['confidentialityImpact', 'integrityImpact', 'availabilityImpact', 'businessImpact', 'dataClassification'], properties: { confidentialityImpact: { type: 'integer', minimum: 1, maximum: 5 }, integrityImpact: { type: 'integer', minimum: 1, maximum: 5 }, availabilityImpact: { type: 'integer', minimum: 1, maximum: 5 }, businessImpact: { type: 'integer', minimum: 1, maximum: 5 }, dataClassification: { type: 'string', enum: ['public', 'internal', 'confidential', 'restricted'] } } } } } },
+        responses: { '200': { description: 'Updated criticality and data classification' }, '401': { description: 'Authentication required' }, '403': { description: 'Security Officer role required' }, '404': { description: 'Asset not found' }, '409': { description: 'Archived asset cannot be classified' }, '422': { description: 'Invalid classification input' } },
+      },
+    },
+    '/assets/{assetId}/context': {
+      put: { tags: ['IT Asset Management'], summary: 'Link asset business context', description: 'Replaces the active asset business service, dependencies, and event-source links. Requires an active Security Officer.', security: [{ bearerAuth: [] }], parameters: [{ name: 'assetId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }], requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', additionalProperties: false, required: ['businessServiceId', 'dependencyIds', 'eventSourceIds'], properties: { businessServiceId: { type: 'string', format: 'uuid', nullable: true }, dependencyIds: { type: 'array', maxItems: 50, items: { type: 'string', format: 'uuid' } }, eventSourceIds: { type: 'array', maxItems: 50, items: { type: 'string', format: 'uuid' } } } } } } }, responses: { '200': { description: 'Updated asset context links' }, '401': { description: 'Authentication required' }, '403': { description: 'Security Officer role required' }, '404': { description: 'Asset not found' }, '409': { description: 'Archived asset cannot be linked' }, '422': { description: 'Invalid or unavailable relationship' } } },
     },
     '/event-sources': {
       get: {
