@@ -10,6 +10,7 @@ import {
   getAiAlertExplanation,
   getAiAlertMetrics,
   markAiAlertFalsePositive,
+  markAiAlertFurtherInvestigation,
   startAiAlertTriage,
   listAlertThresholds,
   listAlertThresholdAssetOptions,
@@ -26,6 +27,7 @@ import {
 } from './dto/ai-alert-feedback.dto.js';
 import { confirmAiAlertSchema } from './dto/confirm-ai-alert.dto.js';
 import { markAiAlertFalsePositiveSchema } from './dto/mark-ai-alert-false-positive.dto.js';
+import { markAiAlertFurtherInvestigationSchema } from './dto/mark-ai-alert-further-investigation.dto.js';
 import {
   alertThresholdAssetParamsSchema,
   listAlertThresholdAssetOptionsQuerySchema,
@@ -109,4 +111,10 @@ aiAlertsRouter.post(
   authenticate,
   validate({ params: aiAlertIdParamsSchema, body: markAiAlertFalsePositiveSchema }),
   asyncHandler(markAiAlertFalsePositive),
+);
+aiAlertsRouter.post(
+  '/:alertId/further-investigation',
+  authenticate,
+  validate({ params: aiAlertIdParamsSchema, body: markAiAlertFurtherInvestigationSchema }),
+  asyncHandler(markAiAlertFurtherInvestigation),
 );

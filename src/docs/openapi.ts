@@ -1250,7 +1250,15 @@ export const openApiSpec = {
             in: 'query',
             schema: {
               type: 'string',
-              enum: ['new', 'reviewing', 'confirmed', 'false_positive', 'resolved', 'dismissed'],
+              enum: [
+                'new',
+                'reviewing',
+                'needs_investigation',
+                'confirmed',
+                'false_positive',
+                'resolved',
+                'dismissed',
+              ],
             },
           },
           { name: 'detectedAfter', in: 'query', schema: { type: 'string', format: 'date-time' } },
@@ -1460,7 +1468,7 @@ export const openApiSpec = {
         tags: ['AI Anomaly Detection & Alerts'],
         summary: 'Confirm an AI alert as a security incident',
         description:
-          'Confirms an assigned in-triage alert as a true positive, then atomically records the decision, creates a linked finding and incident, and marks the alert confirmed. Repeated calls by the assigned analyst return the existing incident.',
+          'Confirms an assigned alert under triage or further investigation as a true positive, then atomically records the decision, creates a linked finding and incident, and marks the alert confirmed. Repeated calls by the assigned analyst return the existing incident.',
         security: [{ bearerAuth: [] }],
         parameters: [
           {
@@ -1500,7 +1508,7 @@ export const openApiSpec = {
         tags: ['AI Anomaly Detection & Alerts'],
         summary: 'Mark an AI alert as a false positive',
         description:
-          'Dismisses an assigned in-triage alert as a false positive and records the analyst decision. Repeated calls by the assigned analyst are idempotent; confirmed incidents are rejected.',
+          'Dismisses an assigned alert under triage or further investigation as a false positive and records the analyst decision. Repeated calls by the assigned analyst are idempotent; confirmed incidents are rejected.',
         security: [{ bearerAuth: [] }],
         parameters: [
           {
@@ -1530,6 +1538,49 @@ export const openApiSpec = {
           '409': {
             description:
               'Triage has not started, the alert belongs to another analyst, is confirmed, or changed concurrently',
+          },
+          '422': { description: 'Invalid request body or alert ID' },
+        },
+      },
+    },
+    '/ai-alerts/{alertId}/further-investigation': {
+      post: {
+        tags: ['AI Anomaly Detection & Alerts'],
+        summary: 'Mark an AI alert as needing further investigation',
+        description:
+          'Moves an alert assigned to the authenticated analyst from active triage to further investigation and records the required reason. Repeated calls by the assigned analyst are idempotent.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'alertId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['reason'],
+                additionalProperties: false,
+                properties: {
+                  reason: { type: 'string', minLength: 10, maxLength: 2000 },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'Alert marked as needing further investigation' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer role required' },
+          '404': { description: 'AI alert not found' },
+          '409': {
+            description:
+              'Triage has not started, the alert belongs to another analyst, or its status changed concurrently',
           },
           '422': { description: 'Invalid request body or alert ID' },
         },

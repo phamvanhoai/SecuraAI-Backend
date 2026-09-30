@@ -10,6 +10,7 @@ import type {
 import type { Prisma, triage_decision } from '@prisma/client';
 import type { ConfirmAiAlert } from './dto/confirm-ai-alert.dto.js';
 import type { MarkAiAlertFalsePositive } from './dto/mark-ai-alert-false-positive.dto.js';
+import type { MarkAiAlertFurtherInvestigation } from './dto/mark-ai-alert-further-investigation.dto.js';
 import type { ListAlertThresholdsQuery, SetAlertThresholdBody } from './dto/alert-threshold.dto.js';
 import type { ListModelVersionsQuery } from './dto/list-model-versions.dto.js';
 import type { ConfigureDetectionThreshold } from './dto/detection-threshold.dto.js';
@@ -62,7 +63,8 @@ function thresholdResponse(record: {
 
 function responseStatus(status: AiAlertRecord['status']) {
   if (status === 'NEW') return 'new' as const;
-  if (status === 'IN_TRIAGE' || status === 'NEED_INVESTIGATION') return 'reviewing' as const;
+  if (status === 'IN_TRIAGE') return 'reviewing' as const;
+  if (status === 'NEED_INVESTIGATION') return 'needs_investigation' as const;
   if (status === 'CONFIRMED') return 'confirmed' as const;
   return 'dismissed' as const;
 }
@@ -439,6 +441,46 @@ export const aiAlertsService = {
       id: result.alert.id,
       alertCode: `ALT-${result.alert.id.slice(0, 8).toUpperCase()}`,
       status: 'false_positive' as const,
+      reviewedByUserId: result.triage.analyst_user_id,
+      reviewedAt: result.triage.completed_at ?? result.triage.created_at,
+      changed: result.outcome === 'changed',
+    };
+  },
+  async markFurtherInvestigation(
+    userId: string,
+    alertId: string,
+    input: MarkAiAlertFurtherInvestigation,
+  ) {
+    await requireSecurityOfficer(userId);
+    const result = await aiAlertsRepository.markFurtherInvestigation({
+      alertId,
+      userId,
+      reason: input.reason,
+    });
+    if (result.outcome === 'not_found')
+      throw new AppError(404, 'AI_ALERT_NOT_FOUND', 'AI alert not found');
+    if (result.outcome === 'invalid_status')
+      throw new AppError(
+        409,
+        'AI_ALERT_TRIAGE_REQUIRED',
+        'Start analyst triage before requesting further investigation',
+      );
+    if (result.outcome === 'not_owner')
+      throw new AppError(
+        409,
+        'AI_ALERT_TRIAGE_OWNERSHIP_CONFLICT',
+        'Only the analyst assigned to this alert can request further investigation',
+      );
+    if (result.outcome === 'conflict')
+      throw new AppError(
+        409,
+        'AI_ALERT_STATUS_CONFLICT',
+        'The alert status changed while it was being updated; refresh and try again',
+      );
+    return {
+      id: result.alert.id,
+      alertCode: `ALT-${result.alert.id.slice(0, 8).toUpperCase()}`,
+      status: 'needs_investigation' as const,
       reviewedByUserId: result.triage.analyst_user_id,
       reviewedAt: result.triage.completed_at ?? result.triage.created_at,
       changed: result.outcome === 'changed',
