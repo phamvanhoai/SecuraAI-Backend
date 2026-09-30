@@ -66,6 +66,61 @@ function readThresholdMap(
 }
 
 export const aiAlertsRepository = {
+  async startTriage(input: { alertId: string; analystUserId: string }) {
+    return prisma.$transaction(async (transaction) => {
+      const startedAt = new Date();
+      const claimed = await transaction.anomaly_alerts.updateMany({
+        where: { id: input.alertId, status: 'NEW', assigned_to: null },
+        data: {
+          status: 'IN_TRIAGE',
+          assigned_to: input.analystUserId,
+          updated_at: startedAt,
+        },
+      });
+      if (claimed.count === 1) {
+        await transaction.audit_logs.create({
+          data: {
+            actor_user_id: input.analystUserId,
+            actor_type: 'USER',
+            action: 'START_AI_ALERT_TRIAGE',
+            resource_type: 'ANOMALY_ALERT',
+            resource_id: input.alertId,
+            source: 'API',
+            after_data: { status: 'IN_TRIAGE', assignedTo: input.analystUserId },
+            record_hash: `${input.alertId}:START_TRIAGE:${input.analystUserId}:${startedAt.toISOString()}`,
+          },
+        });
+      }
+      const alert = await transaction.anomaly_alerts.findUnique({
+        where: { id: input.alertId },
+        select: {
+          id: true,
+          status: true,
+          assigned_to: true,
+          updated_at: true,
+          anomaly_detections: { select: { model_version_id: true } },
+        },
+      });
+      if (!alert) return { outcome: 'not_found' as const };
+      if (claimed.count === 1) {
+        await transaction.alert_triage_records.create({
+          data: {
+            alert_id: alert.id,
+            analyst_user_id: input.analystUserId,
+            decision: 'NEED_INVESTIGATION',
+            reason: 'Analyst triage started',
+            model_version_id: alert.anomaly_detections.model_version_id,
+            started_at: startedAt,
+          },
+        });
+        return { outcome: 'started' as const, alert, startedAt };
+      }
+      if (alert.status === 'IN_TRIAGE' && alert.assigned_to === input.analystUserId) {
+        return { outcome: 'already_started' as const, alert, startedAt: alert.updated_at };
+      }
+      return { outcome: 'conflict' as const, alert };
+    });
+  },
   listActiveAssetOptions(q?: string) {
     return prisma.assets.findMany({
       where: {

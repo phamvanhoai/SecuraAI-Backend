@@ -1354,6 +1354,31 @@ export const openApiSpec = {
         },
       },
     },
+    '/ai-alerts/{alertId}/triage/start': {
+      post: {
+        tags: ['AI Anomaly Detection & Alerts'],
+        summary: 'Start analyst triage for an AI alert',
+        description:
+          'Atomically assigns a new alert to the authenticated Security Officer and moves it into triage. Repeating the request by the assigned analyst is idempotent; competing claims return a conflict.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'alertId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          '200': { description: 'Triage assignment and start time returned' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer role required' },
+          '404': { description: 'AI alert not found' },
+          '409': { description: 'Alert is assigned to another analyst or no longer new' },
+          '422': { description: 'Invalid alert ID' },
+        },
+      },
+    },
     '/ai-alerts/{alertId}/feedback': {
       get: {
         tags: ['AI Anomaly Detection & Alerts'],
