@@ -417,6 +417,24 @@ export const aiAlertsService = {
         'AI_ALERT_ALREADY_CONFIRMED',
         'A confirmed security incident cannot be marked as a false positive',
       );
+    if (result.outcome === 'invalid_status')
+      throw new AppError(
+        409,
+        'AI_ALERT_TRIAGE_REQUIRED',
+        'Start analyst triage before dismissing this alert as a false positive',
+      );
+    if (result.outcome === 'not_owner')
+      throw new AppError(
+        409,
+        'AI_ALERT_TRIAGE_OWNERSHIP_CONFLICT',
+        'Only the analyst assigned to this alert can dismiss it as a false positive',
+      );
+    if (result.outcome === 'conflict')
+      throw new AppError(
+        409,
+        'AI_ALERT_STATUS_CONFLICT',
+        'The alert status changed while it was being dismissed; refresh and try again',
+      );
     return {
       id: result.alert.id,
       alertCode: `ALT-${result.alert.id.slice(0, 8).toUpperCase()}`,

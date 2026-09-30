@@ -1500,7 +1500,7 @@ export const openApiSpec = {
         tags: ['AI Anomaly Detection & Alerts'],
         summary: 'Mark an AI alert as a false positive',
         description:
-          'Atomically records FALSE_POSITIVE triage feedback and dismisses the alert for model improvement. Repeated calls are idempotent; confirmed incidents are rejected. Requires an active Security Officer account.',
+          'Dismisses an assigned in-triage alert as a false positive and records the analyst decision. Repeated calls by the assigned analyst are idempotent; confirmed incidents are rejected.',
         security: [{ bearerAuth: [] }],
         parameters: [
           {
@@ -1527,7 +1527,10 @@ export const openApiSpec = {
           '401': { description: 'Authentication required' },
           '403': { description: 'Security Officer role required' },
           '404': { description: 'AI alert not found' },
-          '409': { description: 'Alert is already linked to a confirmed security incident' },
+          '409': {
+            description:
+              'Triage has not started, the alert belongs to another analyst, is confirmed, or changed concurrently',
+          },
           '422': { description: 'Invalid request body or alert ID' },
         },
       },

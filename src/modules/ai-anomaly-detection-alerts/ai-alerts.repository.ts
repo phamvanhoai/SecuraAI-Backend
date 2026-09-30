@@ -555,6 +555,7 @@ export const aiAlertsRepository = {
         select: {
           id: true,
           status: true,
+          assigned_to: true,
           security_findings: { select: { id: true } },
           anomaly_detections: { select: { model_version_id: true } },
           alert_triage_records: {
@@ -570,9 +571,17 @@ export const aiAlertsRepository = {
         return { outcome: 'confirmed' as const };
       const existing = alert.alert_triage_records[0];
       if (alert.status === 'DISMISSED' && existing) {
+        if (alert.assigned_to !== input.userId) return { outcome: 'not_owner' as const };
         return { outcome: 'unchanged' as const, alert, triage: existing };
       }
+      if (alert.status !== 'IN_TRIAGE') return { outcome: 'invalid_status' as const };
+      if (alert.assigned_to !== input.userId) return { outcome: 'not_owner' as const };
       const now = new Date();
+      const claimed = await transaction.anomaly_alerts.updateMany({
+        where: { id: alert.id, status: 'IN_TRIAGE', assigned_to: input.userId },
+        data: { status: 'DISMISSED', updated_at: now },
+      });
+      if (claimed.count !== 1) return { outcome: 'conflict' as const };
       const triage = await transaction.alert_triage_records.create({
         data: {
           alert_id: alert.id,
@@ -584,10 +593,6 @@ export const aiAlertsRepository = {
           completed_at: now,
         },
         select: { analyst_user_id: true, completed_at: true, created_at: true },
-      });
-      await transaction.anomaly_alerts.update({
-        where: { id: alert.id },
-        data: { status: 'DISMISSED', assigned_to: input.userId },
       });
       return { outcome: 'changed' as const, alert, triage };
     });
