@@ -11,7 +11,12 @@ import {
   testEventSourceConnectionSchema,
   testExistingEventSourceConnectionSchema,
 } from './dto/test-event-source-connection.dto.js';
-import { importEventsBodySchema } from './dto/import-events.dto.js';
+import {
+  batchIdParamSchema,
+  getBatchInvalidEventsQuerySchema,
+  getSourceBatchesQuerySchema,
+  importEventsBodySchema,
+} from './dto/import-events.dto.js';
 import { eventSourcesService } from './event-sources.service.js';
 import { eventImportService } from './event-import.service.js';
 
@@ -71,5 +76,28 @@ export const importNormalizedEvents: RequestHandler = async (req, res) => {
   const params = eventSourceIdParamsSchema.parse(req.params);
   const input = importEventsBodySchema.parse(req.body);
   const data = await eventImportService.importNormalizedEvents(params.id, input, userId);
+  res.status(200).json({ success: true, data });
+};
+
+export const getBatchDetail: RequestHandler = async (req, res) => {
+  authenticatedUserId(res.locals.authenticatedUserId);
+  const params = batchIdParamSchema.parse(req.params);
+  const data = await eventImportService.getBatchDetail(params.batchId);
+  res.status(200).json({ success: true, data });
+};
+
+export const getBatchInvalidEvents: RequestHandler = async (req, res) => {
+  authenticatedUserId(res.locals.authenticatedUserId);
+  const params = batchIdParamSchema.parse(req.params);
+  const query = getBatchInvalidEventsQuerySchema.parse(req.query);
+  const data = await eventImportService.getBatchInvalidEvents(params.batchId, query);
+  res.status(200).json({ success: true, data });
+};
+
+export const getSourceBatches: RequestHandler = async (req, res) => {
+  authenticatedUserId(res.locals.authenticatedUserId);
+  const params = eventSourceIdParamsSchema.parse(req.params);
+  const query = getSourceBatchesQuerySchema.parse(req.query);
+  const data = await eventImportService.getSourceBatches(params.id, query);
   res.status(200).json({ success: true, data });
 };

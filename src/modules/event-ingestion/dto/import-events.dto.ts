@@ -56,3 +56,76 @@ export type ImportEventsResponseDto = {
     errorMessage: string;
   }>;
 };
+
+export const batchIdParamSchema = z.object({
+  batchId: z.string().uuid('Invalid batch ID format'),
+});
+
+export type BatchIdParam = z.infer<typeof batchIdParamSchema>;
+
+export const getBatchInvalidEventsQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  errorCode: z.string().trim().optional(),
+  q: z.string().trim().optional(),
+});
+
+export type GetBatchInvalidEventsQuery = z.infer<typeof getBatchInvalidEventsQuerySchema>;
+
+export const getSourceBatchesQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(50).default(10),
+});
+
+export type GetSourceBatchesQuery = z.infer<typeof getSourceBatchesQuerySchema>;
+
+export type BatchDetailResponseDto = {
+  id: string;
+  eventSourceId: string;
+  eventSourceName: string;
+  ingestionMethod: string;
+  eventFamily: string | null;
+  fileName: string | null;
+  fileFormat: string | null;
+  totalRecords: number;
+  acceptedRecords: number;
+  rejectedRecords: number;
+  status: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'PARTIALLY_COMPLETED' | 'FAILED';
+  startedAt: Date | null;
+  completedAt: Date | null;
+  createdBy: string | null;
+  creatorName: string | null;
+  createdAt: Date;
+};
+
+export type InvalidEventItemDto = {
+  id: string;
+  batchId: string | null;
+  eventSourceId: string;
+  eventFamily: string | null;
+  recordIndex: number | null;
+  errorCode: string;
+  errorMessage: string;
+  rawPayload: Record<string, unknown> | null;
+  createdAt: Date;
+};
+
+export type PaginatedInvalidEventsDto = {
+  items: InvalidEventItemDto[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+};
+
+export type PaginatedBatchesDto = {
+  items: BatchDetailResponseDto[];
+  pagination: {
+    page: number;
+    limit: number;
+    total: number;
+    totalPages: number;
+  };
+};
