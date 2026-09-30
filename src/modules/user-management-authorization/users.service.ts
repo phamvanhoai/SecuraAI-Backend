@@ -7,7 +7,16 @@ import type { ListUsersQuery } from './dto/list-users-query.dto.js';
 import { usersEmailService } from './users.email.service.js';
 import { usersRepository } from './users.repository.js';
 import { capabilitiesForRole } from './role-capabilities.js';
+import { userAccessScopeCatalog } from './user-access-scope-catalog.js';
 import type { UpdateUserBody } from './dto/update-user.dto.js';
+import type { AssignUserAccessBody } from './dto/assign-user-access.dto.js';
+
+const roleNames = {
+  ADMIN: 'Administrator',
+  SECURITY_OFFICER: 'Security Officer',
+  EMPLOYEE: 'Employee',
+  EXECUTIVE: 'Executive',
+} as const;
 
 function mapUserDetail(user: {
   id: string;
@@ -61,6 +70,63 @@ function requireAdminResult(
 }
 
 export const usersService = {
+  async getUserAccessAssignmentOptions(actorUserId: string) {
+    const result = await usersRepository.getUserAccessAssignmentOptions(actorUserId);
+    if (result.kind !== 'found') return requireAdminResult(result, 'manage user access');
+    return {
+      roles: Object.entries(roleNames).map(([code, name]) => ({ code, name })),
+      scopeCodes: userAccessScopeCatalog,
+      targetTypes: ['GLOBAL', 'BUSINESS_SERVICE', 'ASSET'] as const,
+      businessServices: result.businessServices,
+      assets: result.assets,
+    };
+  },
+  async getUserAccessAssignment(actorUserId: string, userId: string) {
+    const result = await usersRepository.getUserAccessAssignment(actorUserId, userId);
+    if (result.kind !== 'found') return requireAdminResult(result, 'view user access');
+    return {
+      user: {
+        id: result.user.id,
+        fullName: result.user.full_name,
+        email: result.user.email,
+        status: result.user.status,
+      },
+      role: result.user.role,
+      scopes: result.scopes.map((scope) => ({
+        id: scope.id,
+        scopeCode: scope.scope_code,
+        targetType: scope.business_service_id
+          ? ('BUSINESS_SERVICE' as const)
+          : scope.asset_id
+            ? ('ASSET' as const)
+            : ('GLOBAL' as const),
+        targetId: scope.business_service_id ?? scope.asset_id,
+        assignedAt: scope.assigned_at,
+        expiresAt: scope.expires_at,
+      })),
+      ownershipSummary: result.ownershipSummary,
+    };
+  },
+  async assignUserAccess(actorUserId: string, userId: string, input: AssignUserAccessBody) {
+    const result = await usersRepository.assignUserAccess(actorUserId, userId, input);
+    if (result.kind !== 'updated') {
+      if (result.kind === 'invalid_scope_target') {
+        throw new AppError(422, 'INVALID_SCOPE_TARGET', 'One or more scope targets are invalid');
+      }
+      if (result.kind === 'self_role_change') {
+        throw new AppError(409, 'SELF_ROLE_CHANGE_FORBIDDEN', 'Administrators cannot change their own role');
+      }
+      if (result.kind === 'last_admin') {
+        throw new AppError(409, 'LAST_ADMIN_REQUIRED', 'The last active administrator cannot be demoted');
+      }
+      return requireAdminResult(result, 'manage user access');
+    }
+    return {
+      changed: result.changed,
+      role: result.user.role,
+      scopeCount: result.scopeCount,
+    };
+  },
   async listDepartments(actorUserId: string) {
     const result = await usersRepository.listDepartments(actorUserId);
     if (result.kind === 'unauthorized') {

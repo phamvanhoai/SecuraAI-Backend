@@ -34,11 +34,6 @@ export const legacyV1RouteContracts = [
   { method: 'delete', path: '/access-control/roles/{roleId}', tag: 'Role Management' },
   { method: 'delete', path: '/users/{userId}', tag: 'Users' },
   { method: 'post', path: '/users/{userId}/deactivate', tag: 'Users' },
-  { method: 'post', path: '/users/{userId}/roles', tag: 'Users' },
-  { method: 'get', path: '/users/assignable-roles', tag: 'Users' },
-  { method: 'post', path: '/risks', tag: 'Risk Assessments' },
-  { method: 'get', path: '/risks', tag: 'Risk Assessments' },
-  { method: 'get', path: '/risks/create-options', tag: 'Risk Assessments' },
   { method: 'patch', path: '/risks/{riskAssessmentId}', tag: 'Risk Assessments' },
   { method: 'post', path: '/risks/{riskAssessmentId}/cancel', tag: 'Risk Assessments' },
   {

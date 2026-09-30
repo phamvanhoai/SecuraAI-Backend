@@ -17,6 +17,30 @@ export const openApiSpec = {
   },
   paths: {
     ...pendingV2Paths,
+    '/users/access-assignment-options': {
+      get: {
+        tags: ['Users'], summary: 'List role and access-scope assignment options',
+        description: 'Returns the four V2 roles, the allow-listed supplemental permission codes, and up to 200 active business services and assets that may target a scope. Active ADMIN account required.',
+        security: [{ bearerAuth: [] }],
+        responses: { '200': { description: 'Assignment options' }, '401': { description: 'Authentication required' }, '403': { description: 'Administrator required' } },
+      },
+    },
+    '/users/{userId}/access-assignment': {
+      get: {
+        tags: ['Users'], summary: 'View a user role, scopes, and ownership summary',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'userId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+        responses: { '200': { description: 'Current access assignment' }, '404': { description: 'User not found' } },
+      },
+      put: {
+        tags: ['Users'], summary: 'Replace a user role and supplemental access scopes',
+        description: 'Atomically replaces the single V2 role and supplemental permission scopes. Each scope targets the whole system, one business service, or one asset and may expire. Ownership is read-only here and remains managed by the responsible business module. Role changes revoke active refresh sessions. Self-demotion and demotion of the last active administrator are rejected.',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'userId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['role', 'scopes'] } } } },
+        responses: { '200': { description: 'Assignment saved' }, '403': { description: 'Administrator required' }, '404': { description: 'User not found' }, '409': { description: 'Protected administrator invariant' }, '422': { description: 'Invalid assignment or target' } },
+      },
+    },
     '/compliance/control-assessments': {
       get: {
         tags: ['Policy & Compliance Control'],
