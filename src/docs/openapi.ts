@@ -258,6 +258,69 @@ export const openApiSpec = {
         },
       },
     },
+    '/compliance/policies/version-history': {
+      get: {
+        tags: ['Policy Management'],
+        summary: 'List published policy version history',
+        description:
+          'Returns published and superseded V2 policy versions for active Admins and Security Officers. Draft and approval-workflow versions are excluded.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
+          {
+            name: 'limit',
+            in: 'query',
+            schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
+          },
+          { name: 'q', in: 'query', schema: { type: 'string', minLength: 1, maxLength: 100 } },
+          {
+            name: 'status',
+            in: 'query',
+            schema: {
+              type: 'string',
+              enum: ['all', 'published', 'archived'],
+              default: 'all',
+            },
+          },
+        ],
+        responses: {
+          '200': { description: 'Paginated published policy version history' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Admin or Security Officer role required' },
+          '422': { description: 'Invalid query parameters' },
+        },
+      },
+    },
+    '/compliance/policies/{policyId}/versions/{versionId}/history': {
+      get: {
+        tags: ['Policy Management'],
+        summary: 'View a published policy version from history',
+        description:
+          'Returns content and audit metadata for one published or superseded V2 policy version to an active Admin or Security Officer.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'policyId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+          {
+            name: 'versionId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          '200': { description: 'Published policy version details' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Admin or Security Officer role required' },
+          '404': { description: 'Published policy version not found' },
+          '422': { description: 'Invalid identifiers' },
+        },
+      },
+    },
     '/compliance/policies/published/mine': {
       get: {
         tags: ['Policy Management'],
