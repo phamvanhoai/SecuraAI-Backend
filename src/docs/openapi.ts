@@ -331,6 +331,36 @@ export const openApiSpec = {
         },
       },
     },
+    '/compliance/policies/{policyId}/versions/{versionId}/acknowledgements': {
+      post: {
+        tags: ['Policy Management'],
+        summary: 'Acknowledge a published policy version',
+        description:
+          'Records that the active Employee has read and understood the current published V2 policy version. Repeated requests return the existing acknowledgement.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'policyId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+          {
+            name: 'versionId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          '200': { description: 'Acknowledgement recorded or existing acknowledgement returned' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Employee role required' },
+          '404': { description: 'Current published policy version not found' },
+          '422': { description: 'Invalid identifiers' },
+        },
+      },
+    },
     '/compliance/policies/rejected': {
       get: {
         tags: ['Policy Management'],

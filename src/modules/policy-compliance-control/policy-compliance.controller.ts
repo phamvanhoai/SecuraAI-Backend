@@ -140,3 +140,13 @@ export const getEmployeePublishedPolicy: RequestHandler = async (req, res) => {
   );
   res.status(200).json({ success: true, data });
 };
+
+export const acknowledgeEmployeePublishedPolicy: RequestHandler = async (req, res) => {
+  const { policyId, versionId } = publishedPolicyParamsSchema.parse(req.params);
+  const data = await policyComplianceService.acknowledgePublishedPolicy(
+    authenticatedUserId(res.locals.authenticatedUserId),
+    policyId,
+    versionId,
+  );
+  res.status(200).json({ success: true, data });
+};

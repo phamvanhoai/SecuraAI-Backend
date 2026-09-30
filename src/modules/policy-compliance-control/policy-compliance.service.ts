@@ -225,6 +225,31 @@ export const policyComplianceService = {
     };
   },
 
+  async acknowledgePublishedPolicy(userId: string, policyId: string, versionId: string) {
+    const actor = await policyComplianceRepository.findActor(userId);
+    if (!actor || actor.status !== 'ACTIVE')
+      throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+    if (actor.role !== 'EMPLOYEE')
+      throw new AppError(403, 'FORBIDDEN', 'Employee role required');
+    const version = await policyComplianceRepository.findPublishedPolicyForEmployee(
+      policyId,
+      versionId,
+      userId,
+    );
+    if (!version)
+      throw new AppError(404, 'PUBLISHED_POLICY_NOT_FOUND', 'Published policy was not found');
+    const acknowledgement = await policyComplianceRepository.createPolicyAcknowledgement(
+      versionId,
+      userId,
+    );
+    return {
+      policyId,
+      versionId,
+      acknowledgedAt: acknowledgement.acknowledged_at,
+      alreadyAcknowledged: acknowledgement.alreadyAcknowledged,
+    };
+  },
+
   async listRejectedPolicies(userId: string, query: RejectedPolicyQuery) {
     const actor = await policyComplianceRepository.findActor(userId);
     if (!actor || actor.status !== 'ACTIVE') {
