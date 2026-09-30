@@ -367,7 +367,26 @@ export const aiAlertsService = {
       userId,
       ...(input.comment ? { comment: input.comment } : {}),
     });
-    if (!result) throw new AppError(404, 'AI_ALERT_NOT_FOUND', 'AI alert not found');
+    if (result.outcome === 'not_found')
+      throw new AppError(404, 'AI_ALERT_NOT_FOUND', 'AI alert not found');
+    if (result.outcome === 'invalid_status')
+      throw new AppError(
+        409,
+        'AI_ALERT_TRIAGE_REQUIRED',
+        'Start analyst triage before confirming this alert as a true positive',
+      );
+    if (result.outcome === 'not_owner')
+      throw new AppError(
+        409,
+        'AI_ALERT_TRIAGE_OWNERSHIP_CONFLICT',
+        'Only the analyst assigned to this alert can confirm it as a true positive',
+      );
+    if (result.outcome === 'conflict')
+      throw new AppError(
+        409,
+        'AI_ALERT_STATUS_CONFLICT',
+        'The alert status changed while it was being confirmed; refresh and try again',
+      );
     return {
       id: result.alert.id,
       alertCode: `ALT-${result.alert.id.slice(0, 8).toUpperCase()}`,

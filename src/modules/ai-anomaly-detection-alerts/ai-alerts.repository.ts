@@ -466,6 +466,7 @@ export const aiAlertsRepository = {
           id: true,
           severity: true,
           status: true,
+          assigned_to: true,
           anomaly_detections: {
             select: {
               model_version_id: true,
@@ -482,11 +483,26 @@ export const aiAlertsRepository = {
           },
         },
       });
-      if (!alert) return null;
+      if (!alert) return { outcome: 'not_found' as const };
       const existingIncident = alert.security_findings?.incidents;
-      if (existingIncident) return { alert, incident: existingIncident, changed: false };
+      if (existingIncident) {
+        if (alert.assigned_to !== input.userId) return { outcome: 'not_owner' as const };
+        return {
+          outcome: 'unchanged' as const,
+          alert,
+          incident: existingIncident,
+          changed: false,
+        };
+      }
+      if (alert.status !== 'IN_TRIAGE') return { outcome: 'invalid_status' as const };
+      if (alert.assigned_to !== input.userId) return { outcome: 'not_owner' as const };
 
       const now = new Date();
+      const claimed = await transaction.anomaly_alerts.updateMany({
+        where: { id: alert.id, status: 'IN_TRIAGE', assigned_to: input.userId },
+        data: { status: 'CONFIRMED', updated_at: now },
+      });
+      if (claimed.count !== 1) return { outcome: 'conflict' as const };
       const eventTitle = alert.anomaly_detections.normalized_events.event_type
         .replaceAll('_', ' ')
         .replace(/^./, (value) => value.toUpperCase());
@@ -529,11 +545,7 @@ export const aiAlertsRepository = {
         },
         select: { id: true, incident_code: true, status: true, confirmed_at: true },
       });
-      await transaction.anomaly_alerts.update({
-        where: { id: alert.id },
-        data: { status: 'CONFIRMED', assigned_to: input.userId },
-      });
-      return { alert, incident, changed: true };
+      return { outcome: 'confirmed' as const, alert, incident, changed: true };
     });
   },
   markFalsePositive(input: { alertId: string; userId: string; comment?: string }) {
