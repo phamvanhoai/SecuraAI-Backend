@@ -825,6 +825,35 @@ export const openApiSpec = {
           '422': { description: 'Invalid policy or version ID' },
         },
       },
+      post: {
+        tags: ['Policy Management'],
+        summary: 'Complete review of a submitted policy draft',
+        description:
+          'Records an auditable REVIEWED decision and moves the V2 policy version from IN_REVIEW to WAITING_APPROVAL. Requires an active Admin account.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'policyId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+          {
+            name: 'versionId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          '200': { description: 'Policy review recorded; version is waiting for approval' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Admin role required' },
+          '404': { description: 'Submitted policy draft not found' },
+          '409': { description: 'Draft was already reviewed or changed concurrently' },
+          '422': { description: 'Invalid policy or version ID' },
+        },
+      },
     },
     '/anomaly-detections/runs': {
       post: {

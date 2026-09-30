@@ -58,6 +58,16 @@ export const getPolicyDraftReview: RequestHandler = async (req, res) => {
   res.status(200).json({ success: true, data });
 };
 
+export const reviewPolicy: RequestHandler = async (req, res) => {
+  const { policyId, versionId } = policyDraftReviewParamsSchema.parse(req.params);
+  const data = await policyComplianceService.reviewPolicy(
+    authenticatedUserId(res.locals.authenticatedUserId),
+    policyId,
+    versionId,
+  );
+  res.status(200).json({ success: true, data });
+};
+
 export const listOwnPolicyDrafts: RequestHandler = async (req, res) => {
   const data = await policyComplianceService.listOwnDrafts(
     authenticatedUserId(res.locals.authenticatedUserId),
