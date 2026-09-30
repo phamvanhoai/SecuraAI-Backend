@@ -30,6 +30,8 @@ describe('list V2 users', () => {
           email: 'executive@example.com',
           username: 'executive-12345678',
           full_name: 'Executive User',
+          employee_code: null,
+          departments: null,
           role: user_role.EXECUTIVE,
           status: user_status.ACTIVE,
           created_at: new Date('2026-09-29T00:00:00.000Z'),

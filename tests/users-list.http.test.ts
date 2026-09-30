@@ -41,11 +41,20 @@ describe('GET /api/v1/users', () => {
     });
   });
 
-  it('rejects unsupported legacy department filters', async () => {
+  it('accepts a V2 department filter', async () => {
+    vi.mocked(usersService.listUsers).mockResolvedValue({
+      items: [],
+      pagination: { page: 1, limit: 20, total: 0, totalPages: 0 },
+      summary: { active: 0, inactive: 0, locked: 0, disabled: 0 },
+    });
     const response = await request(app)
       .get('/api/v1/users?departmentId=bd804acd-a5f7-4f4d-80e8-c0d53c219e31')
       .set('Authorization', `Bearer ${token}`);
-    expect(response.status).toBe(422);
-    expect(usersService.listUsers).not.toHaveBeenCalled();
+    expect(response.status).toBe(200);
+    expect(usersService.listUsers).toHaveBeenCalledWith(actorUserId, {
+      page: 1,
+      limit: 20,
+      departmentId: 'bd804acd-a5f7-4f4d-80e8-c0d53c219e31',
+    });
   });
 });

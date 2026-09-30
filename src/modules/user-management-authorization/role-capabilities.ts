@@ -50,14 +50,8 @@ const capabilitiesByRole = {
     'log-sources.read',
     'reports.read',
   ],
-  EXECUTIVE: [
-    'ai-alerts.thresholds.manage',
-    'incidents.read',
-    'reports.read',
-  ],
-  EMPLOYEE: [
-    'policies.acknowledge',
-  ],
+  EXECUTIVE: ['ai-alerts.thresholds.manage', 'incidents.read', 'reports.read'],
+  EMPLOYEE: ['policies.acknowledge'],
 } as const satisfies Record<user_role, readonly string[]>;
 
 export function capabilitiesForRole(role: user_role): readonly string[] {
