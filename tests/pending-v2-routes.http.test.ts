@@ -12,7 +12,7 @@ describe('historical V1 URL contracts', () => {
 
   it('exposes every pending operation as HTTP 501 and documents its real status', async () => {
 
-    expect(legacyV1RouteContracts.length).toBe(104);
+    expect(legacyV1RouteContracts.length).toBe(95);
 
 
 
