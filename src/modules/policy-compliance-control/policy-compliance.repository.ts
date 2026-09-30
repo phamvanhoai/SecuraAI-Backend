@@ -1,4 +1,4 @@
-import type { Prisma, policy_version_status } from '@prisma/client';
+import { Prisma, type policy_version_status } from '@prisma/client';
 import { prisma } from '../../database/prisma.js';
 import type { ReviewablePolicyDraftQuery } from './dto/view-policy-draft.dto.js';
 import type { ListPolicyDraftsQuery } from './dto/list-policy-drafts.dto.js';
@@ -400,6 +400,37 @@ export const policyComplianceRepository = {
         },
       },
     });
+  },
+
+  async createPolicyAcknowledgement(versionId: string, userId: string) {
+    const uniqueWhere = {
+      policy_version_id_user_id: {
+        policy_version_id: versionId,
+        user_id: userId,
+      },
+    } as const;
+    const existing = await prisma.policy_acknowledgements.findUnique({
+      where: uniqueWhere,
+      select: { acknowledged_at: true },
+    });
+    if (existing) return { ...existing, alreadyAcknowledged: true };
+
+    try {
+      const created = await prisma.policy_acknowledgements.create({
+        data: { policy_version_id: versionId, user_id: userId },
+        select: { acknowledged_at: true },
+      });
+      return { ...created, alreadyAcknowledged: false };
+    } catch (error) {
+      if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2002') {
+        throw error;
+      }
+      const acknowledgement = await prisma.policy_acknowledgements.findUniqueOrThrow({
+        where: uniqueWhere,
+        select: { acknowledged_at: true },
+      });
+      return { ...acknowledgement, alreadyAcknowledged: true };
+    }
   },
 
   listRejectedPolicies(query: RejectedPolicyQuery, ownerUserId?: string) {
