@@ -8,6 +8,8 @@ Policy Management also implements `POST /api/v1/compliance/policies/:policyId/ve
 
 An active Admin completes that review with `POST /api/v1/compliance/policies/:policyId/versions/:versionId/review`. The operation records a `REVIEWED` decision and moves the version from `IN_REVIEW` to `WAITING_APPROVAL`; publication approval is only permitted after this transition.
 
+After approval, `POST /api/v1/compliance/policies/:policyId/versions/:versionId/publish` atomically makes the version official: it becomes `PUBLISHED`, any prior current version becomes `SUPERSEDED`, the policy becomes `ACTIVE`, and `current_published_version_id` points to the newly published version.
+
 ## Setup
 
 Use Node.js 22+ and npm. Copy `.env.example` to `.env`, set a real `DATABASE_URL`, and install dependencies:

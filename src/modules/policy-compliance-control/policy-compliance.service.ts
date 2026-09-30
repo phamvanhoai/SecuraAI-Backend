@@ -362,6 +362,33 @@ export const policyComplianceService = {
     };
   },
 
+  async publishPolicyVersion(userId: string, policyId: string, versionId: string) {
+    await requireActiveAdmin(userId);
+    const version = await policyComplianceRepository.findPolicyVersionForPublication(
+      policyId,
+      versionId,
+    );
+    if (!version)
+      throw new AppError(
+        404,
+        'APPROVED_POLICY_VERSION_NOT_FOUND',
+        'Approved policy version not found',
+      );
+
+    const published = await policyComplianceRepository.publishApprovedVersion(policyId, versionId);
+    if (!published)
+      throw new AppError(
+        409,
+        'POLICY_VERSION_CHANGED',
+        'The approved policy version changed before it could be published',
+      );
+    const response = mapPolicyReview(published);
+    return {
+      ...response,
+      version: { ...response.version, effectiveDate: published.published_at },
+    };
+  },
+
   async reviewPolicy(userId: string, policyId: string, versionId: string) {
     await requireActiveAdmin(userId);
     const version = await policyComplianceRepository.findReviewableDraft(policyId, versionId);

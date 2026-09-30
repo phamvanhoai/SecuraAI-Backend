@@ -101,11 +101,6 @@ export const legacyV1RouteContracts = [
   { method: 'post', path: '/security-monitoring/log-sources', tag: 'Security Monitoring' },
   { method: 'post', path: '/ai-alerts/models', tag: 'AI Alerts' },
   { method: 'post', path: '/ai-alerts/models/{modelVersionId}/activate', tag: 'AI Alerts' },
-  {
-    method: 'post',
-    path: '/compliance/policies/{policyId}/versions/{versionId}/publish',
-    tag: 'Policies',
-  },
   { method: 'get', path: '/compliance/policies/version-history', tag: 'Policies' },
   {
     method: 'get',

@@ -763,7 +763,7 @@ export const openApiSpec = {
         tags: ['Policy Management'],
         summary: 'List submitted policy drafts available to Admin reviewers',
         description:
-          'Returns bounded V2 policies whose latest matching version is in review or waiting approval. Requires an active Admin account.',
+          'Returns bounded V2 policies whose latest workflow version is in review, waiting approval, or approved and ready to publish. Requires an active Admin account.',
         security: [{ bearerAuth: [] }],
         parameters: [
           { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
@@ -851,6 +851,37 @@ export const openApiSpec = {
           '403': { description: 'Admin role required' },
           '404': { description: 'Submitted policy draft not found' },
           '409': { description: 'Draft was already reviewed or changed concurrently' },
+          '422': { description: 'Invalid policy or version ID' },
+        },
+      },
+    },
+    '/compliance/policies/{policyId}/versions/{versionId}/publish': {
+      post: {
+        tags: ['Policy Management'],
+        summary: 'Publish an approved policy version',
+        description:
+          'Atomically marks the approved V2 version as PUBLISHED, supersedes the prior published version when present, activates the policy, and assigns current_published_version_id. Requires an active Admin account.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'policyId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+          {
+            name: 'versionId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          '200': { description: 'Policy version published as the current official version' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Admin role required' },
+          '404': { description: 'Approved policy version not found' },
+          '409': { description: 'Version changed concurrently before publication' },
           '422': { description: 'Invalid policy or version ID' },
         },
       },
