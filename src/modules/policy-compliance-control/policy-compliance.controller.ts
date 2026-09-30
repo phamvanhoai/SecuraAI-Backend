@@ -94,6 +94,16 @@ export const approvePolicyForPublication: RequestHandler = async (req, res) => {
   res.status(200).json({ success: true, data });
 };
 
+export const publishPolicyVersion: RequestHandler = async (req, res) => {
+  const { policyId, versionId } = approvePolicyForPublicationParamsSchema.parse(req.params);
+  const data = await policyComplianceService.publishPolicyVersion(
+    authenticatedUserId(res.locals.authenticatedUserId),
+    policyId,
+    versionId,
+  );
+  res.status(200).json({ success: true, data });
+};
+
 export const editPolicyDraft: RequestHandler = async (req, res) => {
   const { policyId, versionId } = editPolicyDraftParamsSchema.parse(req.params);
   const data = await policyComplianceService.editOwnDraft(
