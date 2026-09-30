@@ -5,6 +5,7 @@ import { asyncHandler } from '../../common/utils/async-handler.js';
 import {
   createEventSource,
   getEventSourceDetail,
+  importNormalizedEvents,
   listEventSources,
   testEventSourceConnection,
   testEventSourceConnectionById,
@@ -21,6 +22,7 @@ import {
   testEventSourceConnectionSchema,
   testExistingEventSourceConnectionSchema,
 } from './dto/test-event-source-connection.dto.js';
+import { importEventsBodySchema } from './dto/import-events.dto.js';
 
 export const eventSourcesRouter = Router();
 
@@ -80,4 +82,14 @@ eventSourcesRouter.patch(
     body: updateEventSourceSchema,
   }),
   asyncHandler(updateEventSource),
+);
+
+eventSourcesRouter.post(
+  '/:id/import',
+  authenticate,
+  validate({
+    params: eventSourceIdParamsSchema,
+    body: importEventsBodySchema,
+  }),
+  asyncHandler(importNormalizedEvents),
 );
