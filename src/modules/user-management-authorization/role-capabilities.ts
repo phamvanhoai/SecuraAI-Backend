@@ -47,21 +47,18 @@ const capabilitiesByRole = {
     'incidents.classify',
     'incidents.assign',
     'incidents.update-progress',
+    'incidents.link-assets',
+    'incidents.link-controls',
+    'incidents.link-risks',
+    'incidents.record-control-weakness',
+    'incidents.request-risk-reassessment',
     'compliance.assess-controls',
     'login-history.read',
     'log-sources.read',
     'reports.read',
   ],
-  EXECUTIVE: [
-    'assets.read',
-    'ai-alerts.thresholds.manage',
-    'incidents.read',
-    'reports.read',
-  ],
-  EMPLOYEE: [
-    'assets.read',
-    'policies.acknowledge',
-  ],
+  EXECUTIVE: ['assets.read', 'ai-alerts.thresholds.manage', 'incidents.read', 'reports.read'],
+  EMPLOYEE: ['assets.read', 'policies.acknowledge'],
 } as const satisfies Record<user_role, readonly string[]>;
 
 export function capabilitiesForRole(role: user_role): readonly string[] {

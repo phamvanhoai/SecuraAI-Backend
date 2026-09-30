@@ -28,6 +28,16 @@ export type CreateEventSourceData = {
   eventFamilies: event_family[];
 };
 
+export type UpdateEventSourceData = {
+  name?: string | undefined;
+  endpoint?: string | null | undefined;
+  ingestionMethod?: ingestion_method | undefined;
+  authenticationType?: string | null | undefined;
+  status?: event_source_status | undefined;
+  description?: string | null | undefined;
+  eventFamilies?: event_family[] | undefined;
+};
+
 export type FindEventSourcesOptions = {
   skip: number;
   take: number;
@@ -150,5 +160,102 @@ export const eventSourcesRepository = {
   ): Promise<number> {
     const where = buildWhere(options);
     return prisma.event_sources.count({ where });
+  },
+
+  findById(id: string) {
+    return prisma.event_sources.findUnique({
+      where: { id },
+      select: {
+        ...eventSourceSelect,
+        users: {
+          select: {
+            id: true,
+            email: true,
+            full_name: true,
+          },
+        },
+        integration_api_keys: {
+          select: {
+            id: true,
+            name: true,
+            key_prefix: true,
+            status: true,
+            expires_at: true,
+            last_used_at: true,
+            last_used_ip: true,
+            created_at: true,
+          },
+          orderBy: { created_at: 'desc' },
+        },
+        _count: {
+          select: {
+            normalized_events: true,
+            event_ingestion_batches: true,
+          },
+        },
+        event_ingestion_batches: {
+          select: {
+            created_at: true,
+          },
+          orderBy: { created_at: 'desc' },
+          take: 1,
+        },
+      },
+    });
+  },
+
+  async update(id: string, data: UpdateEventSourceData): Promise<EventSourceRecord> {
+    if (data.eventFamilies !== undefined) {
+      return prisma.$transaction(async (tx) => {
+        await tx.event_source_families.deleteMany({
+          where: { event_source_id: id },
+        });
+
+        if (data.eventFamilies && data.eventFamilies.length > 0) {
+          await tx.event_source_families.createMany({
+            data: data.eventFamilies.map((family) => ({
+              event_source_id: id,
+              event_family: family,
+            })),
+          });
+        }
+
+        return tx.event_sources.update({
+          where: { id },
+          data: {
+            ...(data.name !== undefined ? { name: data.name } : {}),
+            ...(data.endpoint !== undefined ? { endpoint: data.endpoint } : {}),
+            ...(data.ingestionMethod !== undefined
+              ? { ingestion_method: data.ingestionMethod }
+              : {}),
+            ...(data.authenticationType !== undefined
+              ? { authentication_type: data.authenticationType }
+              : {}),
+            ...(data.status !== undefined ? { status: data.status } : {}),
+            ...(data.description !== undefined ? { description: data.description } : {}),
+            updated_at: new Date(),
+          },
+          select: eventSourceSelect,
+        });
+      });
+    }
+
+    return prisma.event_sources.update({
+      where: { id },
+      data: {
+        ...(data.name !== undefined ? { name: data.name } : {}),
+        ...(data.endpoint !== undefined ? { endpoint: data.endpoint } : {}),
+        ...(data.ingestionMethod !== undefined
+          ? { ingestion_method: data.ingestionMethod }
+          : {}),
+        ...(data.authenticationType !== undefined
+          ? { authentication_type: data.authenticationType }
+          : {}),
+        ...(data.status !== undefined ? { status: data.status } : {}),
+        ...(data.description !== undefined ? { description: data.description } : {}),
+        updated_at: new Date(),
+      },
+      select: eventSourceSelect,
+    });
   },
 };

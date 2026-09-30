@@ -40,8 +40,32 @@ import {
   publishedPolicyListQuerySchema,
   publishedPolicyParamsSchema,
 } from './dto/view-published-policy.dto.js';
+import {
+  assessControlEffectiveness,
+  listControlEffectiveness,
+} from './control-effectiveness.controller.js';
+import {
+  assessControlEffectivenessBodySchema,
+  controlEffectivenessParamsSchema,
+  listControlEffectivenessQuerySchema,
+} from './dto/assess-control-effectiveness.dto.js';
 
 export const policyComplianceRouter = Router();
+policyComplianceRouter.get(
+  '/control-assessments',
+  authenticate,
+  validate({ query: listControlEffectivenessQuerySchema }),
+  asyncHandler(listControlEffectiveness),
+);
+policyComplianceRouter.post(
+  '/controls/:controlId/assessments',
+  authenticate,
+  validate({
+    params: controlEffectivenessParamsSchema,
+    body: assessControlEffectivenessBodySchema,
+  }),
+  asyncHandler(assessControlEffectiveness),
+);
 policyComplianceRouter.get(
   '/policies/published/mine',
   authenticate,
