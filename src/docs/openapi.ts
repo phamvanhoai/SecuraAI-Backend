@@ -499,6 +499,59 @@ export const openApiSpec = {
         },
       },
     },
+    '/event-sources/{id}/import': {
+      post: {
+        tags: ['Event Ingestion'],
+        summary: 'Import normalized event records from file or batch upload',
+        description:
+          'Validates and imports a batch of normalized security events from JSON or CSV files into an active event source. Records are persisted in normalized_events and invalid records in invalid_events.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['events'],
+                properties: {
+                  fileName: { type: 'string', maxLength: 255 },
+                  fileFormat: { type: 'string', enum: ['JSON', 'CSV'], default: 'JSON' },
+                  eventFamily: {
+                    type: 'string',
+                    enum: ['AUTHENTICATION', 'VPN_SSO', 'APPLICATION_ACCESS'],
+                  },
+                  events: {
+                    type: 'array',
+                    minItems: 1,
+                    maxItems: 5000,
+                    items: {
+                      type: 'object',
+                      required: ['eventType', 'occurredAt'],
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'Batch import processed with execution statistics and error details' },
+          '400': { description: 'Event source is inactive or invalid import payload' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Admin or Security Officer role required' },
+          '404': { description: 'Event source not found' },
+          '422': { description: 'Validation failed' },
+        },
+      },
+    },
     '/compliance/policies/{policyId}/versions/{versionId}/submit': {
       post: {
         tags: ['Policies'],
