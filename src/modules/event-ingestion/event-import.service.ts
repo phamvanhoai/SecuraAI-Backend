@@ -76,8 +76,21 @@ export const eventImportService = {
       if (isNaN(occurredAtDate.getTime())) {
         invalidRecords.push({
           recordIndex: i,
+          eventFamily: parsedData.eventFamily,
           errorCode: 'INVALID_TIMESTAMP',
           errorMessage: 'occurredAt is not a valid date/time format',
+          receivedPayload: rawItem,
+        });
+        continue;
+      }
+
+      const now = new Date();
+      if (occurredAtDate.getTime() > now.getTime() + 60_000) {
+        invalidRecords.push({
+          recordIndex: i,
+          eventFamily: parsedData.eventFamily,
+          errorCode: 'FUTURE_TIMESTAMP',
+          errorMessage: `Event timestamp occurredAt (${parsedData.occurredAt}) cannot be in the future (must be <= current time)`,
           receivedPayload: rawItem,
         });
         continue;

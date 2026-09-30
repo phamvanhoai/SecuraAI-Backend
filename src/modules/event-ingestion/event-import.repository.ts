@@ -23,13 +23,25 @@ export type ValidatedEventRecord = ImportEventItem & {
 
 export const eventImportRepository = {
   async createIngestionBatch(params: CreateBatchParams) {
+    const isFile = params.ingestionMethod === 'FILE';
+    const fileName = isFile
+      ? params.fileName && params.fileName.trim().length > 0
+        ? params.fileName.trim()
+        : 'events_import.json'
+      : params.fileName ?? null;
+    const fileFormat = isFile
+      ? params.fileFormat && params.fileFormat.trim().length > 0
+        ? params.fileFormat.trim()
+        : 'JSON'
+      : params.fileFormat ?? null;
+
     return prisma.event_ingestion_batches.create({
       data: {
         event_source_id: params.eventSourceId,
         ingestion_method: params.ingestionMethod,
         event_family: params.eventFamily ?? null,
-        file_name: params.fileName ?? null,
-        file_format: params.fileFormat ?? 'JSON',
+        file_name: fileName,
+        file_format: fileFormat,
         total_records: params.totalRecords,
         status: 'PROCESSING',
         started_at: new Date(),
@@ -88,10 +100,13 @@ export const eventImportRepository = {
         const invalidData: Prisma.invalid_eventsCreateManyInput[] = invalidRecords.map((inv) => ({
           event_source_id: eventSourceId,
           ingestion_batch_id: batchId,
+          event_family: (inv as { eventFamily?: event_family }).eventFamily ?? null,
           record_index: inv.recordIndex,
-          error_code: inv.errorCode,
-          error_message: inv.errorMessage,
-          received_payload: inv.receivedPayload as unknown as Prisma.InputJsonValue,
+          error_code: (inv.errorCode || 'UNKNOWN_ERROR').slice(0, 100),
+          error_message: inv.errorMessage || 'Validation failed',
+          received_payload: (inv.receivedPayload && typeof inv.receivedPayload === 'object'
+            ? inv.receivedPayload
+            : { raw: String(inv.receivedPayload) }) as unknown as Prisma.InputJsonValue,
         }));
 
         await tx.invalid_events.createMany({
