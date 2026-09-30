@@ -26,6 +26,10 @@ import {
   publishedPolicyParamsSchema,
 } from './dto/view-published-policy.dto.js';
 import { createPolicyDraftBodySchema } from './dto/create-policy-draft.dto.js';
+import {
+  policyVersionHistoryParamsSchema,
+  policyVersionHistoryQuerySchema,
+} from './dto/policy-version-history.dto.js';
 
 function authenticatedUserId(value: unknown): string {
   if (typeof value !== 'string') throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
@@ -51,6 +55,24 @@ export const createPolicyDraft: RequestHandler = async (req, res) => {
 export const getPolicyDraftReview: RequestHandler = async (req, res) => {
   const { policyId, versionId } = policyDraftReviewParamsSchema.parse(req.params);
   const data = await policyComplianceService.getReviewableDraft(
+    authenticatedUserId(res.locals.authenticatedUserId),
+    policyId,
+    versionId,
+  );
+  res.status(200).json({ success: true, data });
+};
+
+export const listPolicyVersionHistory: RequestHandler = async (req, res) => {
+  const data = await policyComplianceService.listPolicyVersionHistory(
+    authenticatedUserId(res.locals.authenticatedUserId),
+    policyVersionHistoryQuerySchema.parse(req.query),
+  );
+  res.status(200).json({ success: true, data });
+};
+
+export const getPolicyVersionHistory: RequestHandler = async (req, res) => {
+  const { policyId, versionId } = policyVersionHistoryParamsSchema.parse(req.params);
+  const data = await policyComplianceService.getPolicyVersionHistory(
     authenticatedUserId(res.locals.authenticatedUserId),
     policyId,
     versionId,

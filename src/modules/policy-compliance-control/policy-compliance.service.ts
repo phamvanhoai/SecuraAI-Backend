@@ -7,6 +7,7 @@ import type { RequestPolicyRevisionBody } from './dto/request-policy-revision.dt
 import type { RejectPolicyBody, RejectedPolicyQuery } from './dto/reject-policy.dto.js';
 import type { PublishedPolicyListQuery } from './dto/view-published-policy.dto.js';
 import type { CreatePolicyDraftBody } from './dto/create-policy-draft.dto.js';
+import type { PolicyVersionHistoryQuery } from './dto/policy-version-history.dto.js';
 import {
   policyComplianceRepository,
   type PolicyReviewRecord,
@@ -14,7 +15,28 @@ import {
   type OwnedPolicyDraftRecord,
   type PolicyDraftForSubmission,
   type RejectedPolicyDecisionRecord,
+  type PolicyVersionHistoryRecord,
 } from './policy-compliance.repository.js';
+
+function mapPolicyVersionHistory(version: PolicyVersionHistoryRecord) {
+  const policy = version.policies_policy_versions_policy_idTopolicies;
+  return {
+    policyId: version.policy_id,
+    policyCode: policy.policy_code,
+    title: policy.title,
+    description: policy.description,
+    versionId: version.id,
+    versionNumber: version.version_number,
+    changeSummary: version.change_summary,
+    status: version.status === 'SUPERSEDED' ? 'archived' : 'published',
+    effectiveDate: version.published_at,
+    createdAt: version.created_at,
+    publishedAt: version.published_at,
+    createdBy: { id: version.users.id, name: version.users.full_name },
+    // V2 stores the publication timestamp but does not store the publishing actor.
+    publishedBy: null,
+  };
+}
 
 function mapRejectedPolicy(decision: RejectedPolicyDecisionRecord) {
   const version = decision.policy_versions;
@@ -91,6 +113,16 @@ async function requireActiveAdmin(userId: string): Promise<void> {
   }
 }
 
+async function requirePolicyHistoryViewer(userId: string): Promise<void> {
+  const actor = await policyComplianceRepository.findActor(userId);
+  if (!actor || actor.status !== 'ACTIVE') {
+    throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+  }
+  if (actor.role !== 'ADMIN' && actor.role !== 'SECURITY_OFFICER') {
+    throw new AppError(403, 'FORBIDDEN', 'Admin or Security Officer role required');
+  }
+}
+
 function mapReviewablePolicy(policy: ReviewablePolicyRecord) {
   const version = policy.policy_versions_policy_versions_policy_idTopolicies[0];
   if (!version) throw new Error('Reviewable policy has no submitted version');
@@ -136,6 +168,48 @@ function mapPolicyReview(version: PolicyReviewRecord) {
 }
 
 export const policyComplianceService = {
+  async listPolicyVersionHistory(userId: string, query: PolicyVersionHistoryQuery) {
+    await requirePolicyHistoryViewer(userId);
+    const [total, versions] = await policyComplianceRepository.listPolicyVersionHistory(query);
+    return {
+      canViewDrafts: false,
+      items: versions.map(mapPolicyVersionHistory),
+      pagination: {
+        page: query.page,
+        limit: query.limit,
+        total,
+        totalPages: Math.ceil(total / query.limit),
+      },
+    };
+  },
+
+  async getPolicyVersionHistory(userId: string, policyId: string, versionId: string) {
+    await requirePolicyHistoryViewer(userId);
+    const version = await policyComplianceRepository.findPolicyVersionHistory(policyId, versionId);
+    if (!version) {
+      throw new AppError(404, 'POLICY_VERSION_NOT_FOUND', 'Published policy version not found');
+    }
+    const summary = mapPolicyVersionHistory(version);
+    return {
+      policyId: summary.policyId,
+      policyCode: summary.policyCode,
+      title: summary.title,
+      description: summary.description,
+      version: {
+        id: version.id,
+        versionNumber: version.version_number,
+        content: version.content,
+        changeSummary: version.change_summary,
+        status: summary.status,
+        effectiveDate: version.published_at,
+        createdAt: version.created_at,
+        publishedAt: version.published_at,
+        createdBy: summary.createdBy,
+        publishedBy: summary.publishedBy,
+      },
+    };
+  },
+
   async createPolicyDraft(userId: string, input: CreatePolicyDraftBody) {
     const actor = await policyComplianceRepository.findActor(userId);
     if (!actor || actor.status !== 'ACTIVE')
