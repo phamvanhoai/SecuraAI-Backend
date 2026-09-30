@@ -17,6 +17,7 @@ import {
   getEmployeePublishedPolicy,
   acknowledgeEmployeePublishedPolicy,
   createPolicyDraft,
+  reviewPolicy,
 } from './policy-compliance.controller.js';
 import {
   policyDraftReviewParamsSchema,
@@ -151,4 +152,10 @@ policyComplianceRouter.get(
   authenticate,
   validate({ params: policyDraftReviewParamsSchema }),
   asyncHandler(getPolicyDraftReview),
+);
+policyComplianceRouter.post(
+  '/policies/:policyId/versions/:versionId/review',
+  authenticate,
+  validate({ params: policyDraftReviewParamsSchema }),
+  asyncHandler(reviewPolicy),
 );

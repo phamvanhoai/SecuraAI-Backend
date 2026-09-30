@@ -348,11 +348,46 @@ export const policyComplianceService = {
     await requireActiveAdmin(userId);
     const version = await policyComplianceRepository.findReviewableDraft(policyId, versionId);
     if (!version) throw new AppError(404, 'POLICY_DRAFT_NOT_FOUND', 'Submitted policy draft not found');
+    if (version.status !== 'WAITING_APPROVAL')
+      throw new AppError(
+        409,
+        'POLICY_REVIEW_REQUIRED',
+        'The policy draft must be reviewed before it can be approved',
+      );
     const result = await policyComplianceRepository.approveDraftForPublication(policyId, versionId, userId);
     if (!result) throw new AppError(409, 'POLICY_DRAFT_CHANGED', 'The policy draft changed before it could be approved');
     return {
       ...mapPolicyReview(result.version),
       decision: { id: result.decision.id, action: result.decision.action, comment: result.decision.comment, actorUserId: result.decision.actor_user_id, decidedAt: result.decision.decided_at },
+    };
+  },
+
+  async reviewPolicy(userId: string, policyId: string, versionId: string) {
+    await requireActiveAdmin(userId);
+    const version = await policyComplianceRepository.findReviewableDraft(policyId, versionId);
+    if (!version)
+      throw new AppError(404, 'POLICY_DRAFT_NOT_FOUND', 'Submitted policy draft not found');
+    if (version.status === 'WAITING_APPROVAL')
+      throw new AppError(409, 'POLICY_ALREADY_REVIEWED', 'Policy draft has already been reviewed');
+    if (version.status !== 'IN_REVIEW')
+      throw new AppError(409, 'POLICY_NOT_REVIEWABLE', 'Policy draft is not awaiting review');
+
+    const result = await policyComplianceRepository.reviewDraft(policyId, versionId, userId);
+    if (!result)
+      throw new AppError(
+        409,
+        'POLICY_DRAFT_CHANGED',
+        'The policy draft changed before the review could be completed',
+      );
+    return {
+      ...mapPolicyReview(result.version),
+      decision: {
+        id: result.decision.id,
+        action: result.decision.action,
+        comment: result.decision.comment,
+        actorUserId: result.decision.actor_user_id,
+        decidedAt: result.decision.decided_at,
+      },
     };
   },
 
