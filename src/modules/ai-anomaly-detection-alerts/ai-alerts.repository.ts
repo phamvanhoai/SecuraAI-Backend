@@ -435,7 +435,10 @@ export const aiAlertsRepository = {
         analyst_user_id: true,
         decision: true,
         reason: true,
+        completed_at: true,
         created_at: true,
+        users: { select: { id: true, full_name: true, email: true } },
+        ai_model_versions: { select: { id: true, model_name: true, version: true } },
       },
     });
   },
@@ -454,7 +457,10 @@ export const aiAlertsRepository = {
           analyst_user_id: true,
           decision: true,
           reason: true,
+          completed_at: true,
           created_at: true,
+          users: { select: { id: true, full_name: true, email: true } },
+          ai_model_versions: { select: { id: true, model_name: true, version: true } },
         },
       }),
     ]);

@@ -1392,7 +1392,7 @@ export const openApiSpec = {
         tags: ['AI Anomaly Detection & Alerts'],
         summary: 'View reliability feedback for an AI alert',
         description:
-          'Returns bounded V2 alert triage history. Requires an active Security Officer account.',
+          'Returns bounded V2 alert triage history including the feedback reason, analyst identity, recorded time and model version used for each decision. Requires an active Security Officer account.',
         security: [{ bearerAuth: [] }],
         parameters: [
           {
@@ -1414,7 +1414,10 @@ export const openApiSpec = {
           },
         ],
         responses: {
-          '200': { description: 'Paginated feedback history' },
+          '200': {
+            description:
+              'Paginated feedback history with reason, analyst, recorded time and model version',
+          },
           '401': { description: 'Authentication required' },
           '403': { description: 'Security Officer role required' },
           '404': { description: 'AI alert not found' },

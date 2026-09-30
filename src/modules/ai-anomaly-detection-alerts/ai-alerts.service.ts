@@ -554,14 +554,29 @@ function feedbackResponse(record: {
   analyst_user_id: string;
   decision: triage_decision;
   reason: string;
+  completed_at: Date | null;
   created_at: Date;
+  users: { id: string; full_name: string; email: string };
+  ai_model_versions: { id: string; model_name: string; version: string };
 }) {
   return {
     id: record.id,
     alertId: record.alert_id,
     reviewedByUserId: record.analyst_user_id,
+    analyst: {
+      id: record.users.id,
+      name: record.users.full_name,
+      email: record.users.email,
+    },
     feedbackLabel: feedbackLabel(record.decision),
     comment: record.reason,
+    reason: record.reason,
+    recordedAt: record.completed_at ?? record.created_at,
+    modelVersion: {
+      id: record.ai_model_versions.id,
+      modelName: record.ai_model_versions.model_name,
+      version: record.ai_model_versions.version,
+    },
     createdAt: record.created_at,
   };
 }
