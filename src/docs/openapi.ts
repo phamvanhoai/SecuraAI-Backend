@@ -404,6 +404,46 @@ export const openApiSpec = {
         },
       },
     },
+    '/compliance/policies': {
+      post: {
+        tags: ['Policy Management'],
+        summary: 'Create a policy draft',
+        description:
+          'Creates a V2 policy and its first draft version in one transaction. Requires an active Security Officer account.',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['policyCode', 'title', 'versionNumber', 'content'],
+                properties: {
+                  policyCode: {
+                    type: 'string',
+                    minLength: 2,
+                    maxLength: 50,
+                    pattern: '^[A-Za-z0-9][A-Za-z0-9._-]*$',
+                  },
+                  title: { type: 'string', minLength: 3, maxLength: 255 },
+                  description: { type: 'string', maxLength: 2000 },
+                  versionNumber: { type: 'string', minLength: 1, maxLength: 30 },
+                  content: { type: 'string', minLength: 1, maxLength: 500000 },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '201': { description: 'Policy draft created' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer role required' },
+          '409': { description: 'Policy code already exists' },
+          '422': { description: 'Invalid policy draft input' },
+        },
+      },
+    },
     '/compliance/policies/{policyId}/drafts/{versionId}': {
       ...pendingV2Paths['/compliance/policies/{policyId}/drafts/{versionId}'],
       patch: {

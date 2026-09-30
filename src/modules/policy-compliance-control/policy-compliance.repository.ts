@@ -6,6 +6,7 @@ import type { EditPolicyDraftBody } from './dto/edit-policy-draft.dto.js';
 import type { RequestPolicyRevisionBody } from './dto/request-policy-revision.dto.js';
 import type { RejectPolicyBody, RejectedPolicyQuery } from './dto/reject-policy.dto.js';
 import type { PublishedPolicyListQuery } from './dto/view-published-policy.dto.js';
+import type { CreatePolicyDraftBody } from './dto/create-policy-draft.dto.js';
 
 const currentPublishedVersionSelect = {
   id: true,
@@ -148,6 +149,47 @@ export const policyComplianceRepository = {
     return prisma.users.findUnique({
       where: { id: userId },
       select: { id: true, role: true, status: true },
+    });
+  },
+
+  createPolicyDraft(userId: string, input: CreatePolicyDraftBody) {
+    return prisma.$transaction(async (transaction) => {
+      const policy = await transaction.policies.create({
+        data: {
+          policy_code: input.policyCode,
+          title: input.title,
+          ...(input.description !== undefined ? { description: input.description } : {}),
+          owner_user_id: userId,
+          status: 'DRAFT',
+        },
+        select: {
+          id: true,
+          policy_code: true,
+          title: true,
+          description: true,
+          owner_user_id: true,
+          status: true,
+          created_at: true,
+          updated_at: true,
+        },
+      });
+      const version = await transaction.policy_versions.create({
+        data: {
+          policy_id: policy.id,
+          version_number: input.versionNumber,
+          content: input.content,
+          status: 'DRAFT',
+          author_user_id: userId,
+        },
+        select: {
+          id: true,
+          version_number: true,
+          content: true,
+          status: true,
+          created_at: true,
+        },
+      });
+      return { policy, version };
     });
   },
 
