@@ -10,6 +10,11 @@ import {
   approvePolicyForPublication,
   editPolicyDraft,
   requestPolicyRevision,
+  rejectPolicy,
+  listRejectedPolicies,
+  listOwnedPublishedPolicies,
+  listEmployeePublishedPolicies,
+  getEmployeePublishedPolicy,
 } from './policy-compliance.controller.js';
 import {
   policyDraftReviewParamsSchema,
@@ -26,8 +31,70 @@ import {
   requestPolicyRevisionBodySchema,
   requestPolicyRevisionParamsSchema,
 } from './dto/request-policy-revision.dto.js';
+import {
+  rejectedPolicyQuerySchema,
+  rejectPolicyBodySchema,
+  rejectPolicyParamsSchema,
+} from './dto/reject-policy.dto.js';
+import {
+  publishedPolicyListQuerySchema,
+  publishedPolicyParamsSchema,
+} from './dto/view-published-policy.dto.js';
+import {
+  assessControlEffectiveness,
+  listControlEffectiveness,
+} from './control-effectiveness.controller.js';
+import {
+  assessControlEffectivenessBodySchema,
+  controlEffectivenessParamsSchema,
+  listControlEffectivenessQuerySchema,
+} from './dto/assess-control-effectiveness.dto.js';
 
 export const policyComplianceRouter = Router();
+policyComplianceRouter.get(
+  '/control-assessments',
+  authenticate,
+  validate({ query: listControlEffectivenessQuerySchema }),
+  asyncHandler(listControlEffectiveness),
+);
+policyComplianceRouter.post(
+  '/controls/:controlId/assessments',
+  authenticate,
+  validate({
+    params: controlEffectivenessParamsSchema,
+    body: assessControlEffectivenessBodySchema,
+  }),
+  asyncHandler(assessControlEffectiveness),
+);
+policyComplianceRouter.get(
+  '/policies/published/mine',
+  authenticate,
+  asyncHandler(listOwnedPublishedPolicies),
+);
+policyComplianceRouter.get(
+  '/policies/acknowledgements/mine',
+  authenticate,
+  validate({ query: publishedPolicyListQuerySchema }),
+  asyncHandler(listEmployeePublishedPolicies),
+);
+policyComplianceRouter.get(
+  '/policies/:policyId/versions/:versionId/acknowledgement',
+  authenticate,
+  validate({ params: publishedPolicyParamsSchema }),
+  asyncHandler(getEmployeePublishedPolicy),
+);
+policyComplianceRouter.get(
+  '/policies/rejected',
+  authenticate,
+  validate({ query: rejectedPolicyQuerySchema }),
+  asyncHandler(listRejectedPolicies),
+);
+policyComplianceRouter.post(
+  '/policies/:policyId/versions/:versionId/reject',
+  authenticate,
+  validate({ params: rejectPolicyParamsSchema, body: rejectPolicyBodySchema }),
+  asyncHandler(rejectPolicy),
+);
 policyComplianceRouter.post(
   '/policies/:policyId/versions/:versionId/approve',
   authenticate,

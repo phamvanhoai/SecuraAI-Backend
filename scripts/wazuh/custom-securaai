@@ -1,0 +1,311 @@
+#!/usr/bin/env python3
+# ==============================================================================
+# SecuraAI - Wazuh Custom Integration (Edge Normalizer)
+# Path on Wazuh Manager: /var/ossec/integrations/custom-securaai
+#
+# Kiến trúc:
+#   Wazuh Alert -> custom-securaai (Edge Normalizer) -> Normalized Event -> SecuraAI API
+#
+# Arguments do Wazuh truyền vào:
+#   sys.argv[1] : Đường dẫn file JSON alert tạm thời (/tmp/...)
+#   sys.argv[2] : API Key / Ingestion Token cấu hình trong ossec.conf (<api_key>)
+#   sys.argv[3] : SecuraAI Ingestion Endpoint cấu hình trong ossec.conf (<hook_url>)
+# ==============================================================================
+
+import json
+import sys
+import os
+import urllib.request
+import urllib.error
+from datetime import datetime, timezone
+
+# ------------------------------------------------------------------------------
+# Logging
+# ------------------------------------------------------------------------------
+LOG_FILE = "/var/ossec/logs/integrations.log"
+
+def log_message(msg: str):
+    timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
+    log_line = f"{timestamp} custom-securaai: {msg}\n"
+    try:
+        with open(LOG_FILE, "a", encoding="utf-8") as f:
+            f.write(log_line)
+    except Exception:
+        sys.stderr.write(log_line)
+
+
+# ------------------------------------------------------------------------------
+# Scope Filter & Event Mapping
+#
+# CHỈ phân loại vào 3 Event Families:
+#   1. AUTHENTICATION
+#   2. VPN_SSO
+#   3. APPLICATION_ACCESS
+#
+# Mọi alert khác không thuộc 3 nhóm này -> DROP ngay (Không normalize, không POST).
+# Chú ý: Tuyệt đối không suy luận APPLICATION_ACCESS chỉ vì group là 'windows_application'.
+# ------------------------------------------------------------------------------
+FAMILY_AUTHENTICATION = "AUTHENTICATION"
+FAMILY_VPN_SSO = "VPN_SSO"
+FAMILY_APPLICATION_ACCESS = "APPLICATION_ACCESS"
+
+# Windows Security Event IDs
+WIN_AUTH_FAILED_EVENTS = {"4625", "4776", "4771", "4772"}
+WIN_AUTH_SUCCESS_EVENTS = {"4624", "4648"}
+WIN_ACCOUNT_LOCKOUT_EVENTS = {"4740"}
+WIN_PRIVILEGE_USE_EVENTS = {"4672", "4673", "4674"}
+
+def determine_classification(alert: dict):
+    """
+    Phân tích rule ID, event ID, decoders và metadata của Wazuh Alert.
+    Trả về (eventFamily, eventType, platform, eventId) hoặc (None, None, None, None) nếu DROP.
+    """
+    rule = alert.get("rule", {})
+    rule_id = str(rule.get("id", ""))
+    groups = [g.lower() for g in rule.get("groups", [])]
+    description = (rule.get("description", "")).lower()
+
+    data = alert.get("data", {})
+    win_system = data.get("win", {}).get("system", {})
+    win_event_id = str(win_system.get("eventID", "")) if win_system else ""
+    channel = (win_system.get("channel", "")).lower() if win_system else ""
+
+    # --------------------------------------------------------------------------
+    # 1. WINDOWS SECURITY EVENTS (Chỉ bắt trong Security Channel hoặc có EventID cụ thể)
+    # --------------------------------------------------------------------------
+    if win_event_id:
+        if win_event_id in WIN_AUTH_FAILED_EVENTS:
+            return FAMILY_AUTHENTICATION, "LOGIN_FAILURE", "windows", win_event_id
+        if win_event_id in WIN_AUTH_SUCCESS_EVENTS:
+            return FAMILY_AUTHENTICATION, "LOGIN_SUCCESS", "windows", win_event_id
+        if win_event_id in WIN_ACCOUNT_LOCKOUT_EVENTS:
+            return FAMILY_AUTHENTICATION, "ACCOUNT_LOCKOUT", "windows", win_event_id
+        if win_event_id in WIN_PRIVILEGE_USE_EVENTS:
+            return FAMILY_APPLICATION_ACCESS, "PRIVILEGE_USE", "windows", win_event_id
+
+        # Nếu là Windows EventID khác không liên quan đến Auth/Privilege (ví dụ 1000, 60642...) -> DROP
+        return None, None, None, None
+
+    # --------------------------------------------------------------------------
+    # 2. LINUX / UNIX AUTHENTICATION (SSH, PAM, Su, Sudo)
+    # --------------------------------------------------------------------------
+    auth_failed_groups = {"authentication_failed", "sshd_failed_login", "pam_failed", "invalid_login"}
+    auth_success_groups = {"authentication_success", "sshd_success", "pam_success"}
+
+    if any(g in auth_failed_groups for g in groups):
+        return FAMILY_AUTHENTICATION, "LOGIN_FAILURE", "linux", rule_id
+
+    if any(g in auth_success_groups for g in groups):
+        return FAMILY_AUTHENTICATION, "LOGIN_SUCCESS", "linux", rule_id
+
+    if "sshd" in groups or "pam" in groups or "authentication" in groups:
+        if any(k in description for k in ["failed", "failure", "invalid user", "rejected"]):
+            return FAMILY_AUTHENTICATION, "LOGIN_FAILURE", "linux", rule_id
+        if any(k in description for k in ["accepted", "success", "session opened"]):
+            return FAMILY_AUTHENTICATION, "LOGIN_SUCCESS", "linux", rule_id
+        if "lockout" in description or "locked" in description:
+            return FAMILY_AUTHENTICATION, "ACCOUNT_LOCKOUT", "linux", rule_id
+
+    # --------------------------------------------------------------------------
+    # 3. VPN & SSO REMOTE ACCESS
+    # --------------------------------------------------------------------------
+    vpn_keywords = ["vpn", "openvpn", "cisco_vpn", "fortinet_vpn", "radius", "wireguard", "anyconnect"]
+    sso_keywords = ["sso", "saml", "oauth", "oidc", "keycloak", "okta", "auth0", "azure_ad"]
+
+    if any(k in groups for k in vpn_keywords) or any(k in description for k in vpn_keywords):
+        if any(k in description for k in ["failed", "error", "rejected", "denied", "invalid"]):
+            return FAMILY_VPN_SSO, "VPN_LOGIN_FAILURE", "network_vpn", rule_id
+        return FAMILY_VPN_SSO, "VPN_LOGIN_SUCCESS", "network_vpn", rule_id
+
+    if any(k in groups for k in sso_keywords) or any(k in description for k in sso_keywords):
+        if any(k in description for k in ["failed", "error", "denied", "invalid", "unauthorized"]):
+            return FAMILY_VPN_SSO, "SSO_LOGIN_FAILURE", "identity_sso", rule_id
+        return FAMILY_VPN_SSO, "SSO_LOGIN_SUCCESS", "identity_sso", rule_id
+
+    # --------------------------------------------------------------------------
+    # 4. APPLICATION ACCESS / PRIVILEGE ACTIVITIES
+    #    (Chỉ bắt web app auth, DB auth, hoặc privilege activity thực sự)
+    # --------------------------------------------------------------------------
+    app_auth_keywords = ["web_access_auth", "apache_auth", "nginx_auth", "mysql_auth", "postgresql_auth", "db_login"]
+    if any(k in groups for k in app_auth_keywords):
+        if any(k in description for k in ["forbidden", "unauthorized", "access denied", "failed"]):
+            return FAMILY_APPLICATION_ACCESS, "ACCESS_DENIED", "application", rule_id
+        return FAMILY_APPLICATION_ACCESS, "APPLICATION_LOGIN", "application", rule_id
+
+    # Mọi alert khác (bao gồm windows_application chung chung, rule 60642...) -> DROP
+    return None, None, None, None
+
+
+# ------------------------------------------------------------------------------
+# Normalization Logic (Tạo Normalized Event Schema cố định)
+# ------------------------------------------------------------------------------
+def extract_actor(alert: dict) -> dict:
+    """Trích xuất thông tin người dùng / tài khoản."""
+    data = alert.get("data", {})
+    win_data = data.get("win", {}).get("eventdata", {})
+
+    username = (
+        win_data.get("targetUserName")
+        or win_data.get("subjectUserName")
+        or data.get("dstuser")
+        or data.get("srcuser")
+        or alert.get("syscheck", {}).get("uname")
+        or "UNKNOWN"
+    )
+
+    domain = win_data.get("targetDomainName") or win_data.get("subjectDomainName") or None
+    user_id = win_data.get("targetUserSid") or win_data.get("subjectUserSid") or None
+
+    return {
+        "username": username,
+        "domain": domain,
+        "userId": user_id,
+    }
+
+
+def extract_source_ip(alert: dict) -> str:
+    """Trích xuất IP nguồn."""
+    data = alert.get("data", {})
+    win_data = data.get("win", {}).get("eventdata", {})
+
+    ip = (
+        win_data.get("ipAddress")
+        or win_data.get("clientAddress")
+        or data.get("srcip")
+        or alert.get("syslog", {}).get("srcip")
+        or "0.0.0.0"
+    )
+
+    if ip in ("-", "::1", "127.0.0.1"):
+        return ip
+    return ip.replace("::ffff:", "")
+
+
+def normalize_wazuh_alert(alert: dict) -> dict:
+    """
+    Chuyển đổi Wazuh Alert JSON sang schema SecuraAI Normalized Event cố định:
+    {
+      "source": { "type": "WAZUH" },
+      "eventFamily": "AUTHENTICATION" | "VPN_SSO" | "APPLICATION_ACCESS",
+      "eventType": "LOGIN_FAILURE" | ...,
+      "timestamp": "...",
+      "actor": { ... },
+      "sourceIp": "...",
+      "agent": { ... },
+      "rule": { ... },
+      "metadata": { ... }
+    }
+    """
+    event_family, event_type, platform, event_id = determine_classification(alert)
+
+    # Nếu không thuộc 3 Event Families -> DROP (trả về None)
+    if not event_family:
+        return None
+
+    agent = alert.get("agent", {})
+    rule = alert.get("rule", {})
+    data = alert.get("data", {})
+    win_eventdata = data.get("win", {}).get("eventdata", {})
+
+    timestamp = alert.get("timestamp") or datetime.now(timezone.utc).isoformat()
+
+    normalized_payload = {
+        "source": {
+            "type": "WAZUH",
+        },
+        "eventFamily": event_family,
+        "eventType": event_type,
+        "timestamp": timestamp,
+        "rawEventId": str(alert.get("id", "")),
+        "actor": extract_actor(alert),
+        "sourceIp": extract_source_ip(alert),
+        "agent": {
+            "id": str(agent.get("id", "000")),
+            "name": agent.get("name", "wazuh-manager"),
+            "ip": agent.get("ip", "127.0.0.1"),
+        },
+        "rule": {
+            "id": str(rule.get("id", "")),
+            "level": int(rule.get("level", 0)),
+            "description": rule.get("description", ""),
+        },
+        "metadata": {
+            "platform": platform,
+            "eventId": event_id,
+            "logonType": win_eventdata.get("logonType"),
+            "processName": win_eventdata.get("processName") or data.get("program_name"),
+            "status": win_eventdata.get("status") or win_eventdata.get("subStatus"),
+            "workstationName": win_eventdata.get("workstationName"),
+        },
+    }
+
+    return normalized_payload
+
+
+# ------------------------------------------------------------------------------
+# HTTP Dispatcher
+# ------------------------------------------------------------------------------
+def send_to_securaai(payload: dict, hook_url: str, api_key: str):
+    """POST Normalized Event JSON sang SecuraAI API."""
+    json_bytes = json.dumps(payload).encode("utf-8")
+
+    headers = {
+        "Content-Type": "application/json",
+        "User-Agent": "Wazuh-SecuraAI-Edge-Normalizer/1.0",
+    }
+
+    if api_key and api_key not in ("-", "none", "YOUR_SECURA_AI_INGEST_TOKEN"):
+        headers["X-SecuraAI-Ingest-Key"] = api_key
+        headers["Authorization"] = f"Bearer {api_key}"
+
+    req = urllib.request.Request(hook_url, data=json_bytes, headers=headers, method="POST")
+
+    try:
+        with urllib.request.urlopen(req, timeout=10) as response:
+            status_code = response.getcode()
+            log_message(f"Successfully posted event [{payload.get('rawEventId')}] to SecuraAI ({hook_url}). Status: {status_code}")
+    except urllib.error.HTTPError as e:
+        error_body = e.read().decode("utf-8", errors="replace")
+        log_message(f"HTTP Error {e.code} posting to SecuraAI: {error_body}")
+    except urllib.error.URLError as e:
+        log_message(f"Network error connecting to SecuraAI ({hook_url}): {e.reason}")
+    except Exception as e:
+        log_message(f"Unexpected error posting to SecuraAI: {str(e)}")
+
+
+# ------------------------------------------------------------------------------
+# Main Entry Point
+# ------------------------------------------------------------------------------
+def main():
+    if len(sys.argv) < 4:
+        log_message("Error: Missing arguments. Usage: custom-securaai <alert_file> <api_key> <hook_url>")
+        sys.exit(1)
+
+    alert_file_path = sys.argv[1]
+    api_key = sys.argv[2]
+    hook_url = sys.argv[3]
+
+    if not os.path.isfile(alert_file_path):
+        log_message(f"Error: Alert file not found: {alert_file_path}")
+        sys.exit(1)
+
+    try:
+        with open(alert_file_path, "r", encoding="utf-8") as f:
+            alert = json.load(f)
+    except Exception as e:
+        log_message(f"Failed to parse alert JSON from {alert_file_path}: {str(e)}")
+        sys.exit(1)
+
+    normalized = normalize_wazuh_alert(alert)
+
+    if not normalized:
+        # DROP: Alert không thuộc 3 Event Families mục tiêu -> Thoát code 0 ngay
+        sys.exit(0)
+
+    # POST Normalized Event sang SecuraAI API
+    send_to_securaai(normalized, hook_url, api_key)
+    sys.exit(0)
+
+
+if __name__ == "__main__":
+    main()

@@ -7,6 +7,19 @@ import {
   anomalyDetectionRouter,
 } from '../modules/ai-anomaly-detection-alerts/index.js';
 import { policyComplianceRouter } from '../modules/policy-compliance-control/index.js';
+import { eventSourcesRouter, wazuhIngestionRouter } from '../modules/event-ingestion/index.js';
+import {
+  riskRegisterRouter,
+  riskReassessmentReviewRouter,
+} from '../modules/risk-assessment/index.js';
+import { assetsRouter } from '../modules/it-asset-management/index.js';
+import {
+  incidentAssetsRouter,
+  incidentControlsRouter,
+  incidentRisksRouter,
+  controlWeaknessesRouter,
+  riskReassessmentRequestsRouter,
+} from '../modules/information-security-incident-management/index.js';
 import { pendingV2Router } from './pending-v2.routes.js';
 
 export const apiRouter = Router();
@@ -15,5 +28,16 @@ apiRouter.use('/auth', authRouter);
 apiRouter.use('/users', usersRouter);
 apiRouter.use('/anomaly-detections', anomalyDetectionRouter);
 apiRouter.use('/ai-alerts', aiAlertsRouter);
+apiRouter.use('/risks', riskRegisterRouter);
+apiRouter.use('/risks', riskReassessmentReviewRouter);
+apiRouter.use('/assets', assetsRouter);
+apiRouter.use('/incidents', incidentAssetsRouter);
+apiRouter.use('/incidents', incidentControlsRouter);
+apiRouter.use('/incidents', incidentRisksRouter);
+apiRouter.use('/incidents', controlWeaknessesRouter);
+apiRouter.use('/incidents', riskReassessmentRequestsRouter);
 apiRouter.use('/compliance', policyComplianceRouter);
+apiRouter.use('/event-sources', eventSourcesRouter);
+apiRouter.use('/integrations/wazuh', wazuhIngestionRouter);
+apiRouter.use('/event-ingestion/wazuh', wazuhIngestionRouter);
 apiRouter.use(pendingV2Router);
