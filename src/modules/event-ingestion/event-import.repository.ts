@@ -136,4 +136,133 @@ export const eventImportRepository = {
       return updatedBatch;
     });
   },
+
+  async findBatchById(batchId: string) {
+    return prisma.event_ingestion_batches.findUnique({
+      where: { id: batchId },
+      select: {
+        id: true,
+        event_source_id: true,
+        ingestion_method: true,
+        event_family: true,
+        file_name: true,
+        file_format: true,
+        total_records: true,
+        accepted_records: true,
+        rejected_records: true,
+        status: true,
+        started_at: true,
+        completed_at: true,
+        created_by: true,
+        created_at: true,
+        event_sources: {
+          select: {
+            id: true,
+            name: true,
+          },
+        },
+        users: {
+          select: {
+            id: true,
+            email: true,
+            full_name: true,
+          },
+        },
+      },
+    });
+  },
+
+  async findInvalidEventsByBatchId(
+    batchId: string,
+    params: { page: number; limit: number; errorCode?: string | undefined; q?: string | undefined },
+  ) {
+    const { page, limit, errorCode, q } = params;
+    const skip = (page - 1) * limit;
+
+    const where: Prisma.invalid_eventsWhereInput = {
+      ingestion_batch_id: batchId,
+      ...(errorCode ? { error_code: errorCode } : {}),
+      ...(q
+        ? {
+            OR: [
+              { error_message: { contains: q, mode: 'insensitive' } },
+              { error_code: { contains: q, mode: 'insensitive' } },
+            ],
+          }
+        : {}),
+    };
+
+    const [items, total] = await Promise.all([
+      prisma.invalid_events.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { record_index: 'asc' },
+        select: {
+          id: true,
+          ingestion_batch_id: true,
+          event_source_id: true,
+          event_family: true,
+          record_index: true,
+          error_code: true,
+          error_message: true,
+          received_payload: true,
+          created_at: true,
+        },
+      }),
+      prisma.invalid_events.count({ where }),
+    ]);
+
+    return { items, total };
+  },
+
+  async findBatchesBySourceId(sourceId: string, params: { page: number; limit: number }) {
+    const { page, limit } = params;
+    const skip = (page - 1) * limit;
+
+    const where: Prisma.event_ingestion_batchesWhereInput = {
+      event_source_id: sourceId,
+    };
+
+    const [items, total] = await Promise.all([
+      prisma.event_ingestion_batches.findMany({
+        where,
+        skip,
+        take: limit,
+        orderBy: { created_at: 'desc' },
+        select: {
+          id: true,
+          event_source_id: true,
+          ingestion_method: true,
+          event_family: true,
+          file_name: true,
+          file_format: true,
+          total_records: true,
+          accepted_records: true,
+          rejected_records: true,
+          status: true,
+          started_at: true,
+          completed_at: true,
+          created_by: true,
+          created_at: true,
+          event_sources: {
+            select: {
+              id: true,
+              name: true,
+            },
+          },
+          users: {
+            select: {
+              id: true,
+              email: true,
+              full_name: true,
+            },
+          },
+        },
+      }),
+      prisma.event_ingestion_batches.count({ where }),
+    ]);
+
+    return { items, total };
+  },
 };

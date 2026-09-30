@@ -385,6 +385,81 @@ export const openApiSpec = {
         },
       },
     },
+    '/event-sources/batches/{batchId}': {
+      get: {
+        tags: ['Event Ingestion'],
+        summary: 'Get import batch summary report',
+        description:
+          'Retrieves summary execution statistics for a specific event ingestion batch, including accepted/rejected records counts and status.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'batchId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          '200': { description: 'Import batch summary report' },
+          '401': { description: 'Authentication required' },
+          '404': { description: 'Batch not found' },
+          '422': { description: 'Invalid batch ID' },
+        },
+      },
+    },
+    '/event-sources/batches/{batchId}/invalid-events': {
+      get: {
+        tags: ['Event Ingestion'],
+        summary: 'List invalid events for an import batch',
+        description:
+          'Retrieves a paginated list of rejected/invalid events with specific validation error codes, reasons, and raw payloads.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'batchId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+          { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 } },
+          { name: 'errorCode', in: 'query', schema: { type: 'string' } },
+          { name: 'q', in: 'query', schema: { type: 'string' } },
+        ],
+        responses: {
+          '200': { description: 'Paginated list of invalid event records' },
+          '401': { description: 'Authentication required' },
+          '404': { description: 'Batch not found' },
+          '422': { description: 'Invalid query parameters' },
+        },
+      },
+    },
+    '/event-sources/{id}/batches': {
+      get: {
+        tags: ['Event Ingestion'],
+        summary: 'List import batches for an event source',
+        description:
+          'Retrieves historical import batches and their statuses for the given event source.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+          { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 50, default: 10 } },
+        ],
+        responses: {
+          '200': { description: 'Paginated list of import batches for event source' },
+          '401': { description: 'Authentication required' },
+          '404': { description: 'Event source not found' },
+          '422': { description: 'Invalid parameters' },
+        },
+      },
+    },
     '/compliance/policies/{policyId}/versions/{versionId}/submit': {
       post: {
         tags: ['Policies'],

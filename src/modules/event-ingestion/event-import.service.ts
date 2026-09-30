@@ -127,6 +127,103 @@ export const eventImportService = {
       })),
     };
   },
+
+  async getBatchDetail(batchId: string) {
+    const batch = await eventImportRepository.findBatchById(batchId);
+    if (!batch) {
+      throw new AppError(404, 'NOT_FOUND', 'Import batch not found');
+    }
+
+    return {
+      id: batch.id,
+      eventSourceId: batch.event_source_id,
+      eventSourceName: batch.event_sources.name,
+      ingestionMethod: batch.ingestion_method,
+      eventFamily: batch.event_family,
+      fileName: batch.file_name,
+      fileFormat: batch.file_format,
+      totalRecords: batch.total_records,
+      acceptedRecords: batch.accepted_records,
+      rejectedRecords: batch.rejected_records,
+      status: batch.status as 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'PARTIALLY_COMPLETED' | 'FAILED',
+      startedAt: batch.started_at,
+      completedAt: batch.completed_at,
+      createdBy: batch.created_by,
+      creatorName: batch.users?.full_name ?? batch.users?.email ?? null,
+      createdAt: batch.created_at,
+    };
+  },
+
+  async getBatchInvalidEvents(
+    batchId: string,
+    params: { page: number; limit: number; errorCode?: string | undefined; q?: string | undefined },
+  ) {
+    const batch = await eventImportRepository.findBatchById(batchId);
+    if (!batch) {
+      throw new AppError(404, 'NOT_FOUND', 'Import batch not found');
+    }
+
+    const { items, total } = await eventImportRepository.findInvalidEventsByBatchId(
+      batchId,
+      params,
+    );
+
+    return {
+      items: items.map((inv) => ({
+        id: inv.id,
+        batchId: inv.ingestion_batch_id,
+        eventSourceId: inv.event_source_id,
+        eventFamily: inv.event_family,
+        recordIndex: inv.record_index,
+        errorCode: inv.error_code ?? 'UNKNOWN_ERROR',
+        errorMessage: inv.error_message,
+        rawPayload: inv.received_payload as Record<string, unknown> | null,
+        createdAt: inv.created_at,
+      })),
+      pagination: {
+        page: params.page,
+        limit: params.limit,
+        total,
+        totalPages: Math.ceil(total / params.limit) || 1,
+      },
+    };
+  },
+
+  async getSourceBatches(sourceId: string, params: { page: number; limit: number }) {
+    const eventSource = await eventSourcesRepository.findById(sourceId);
+    if (!eventSource) {
+      throw new AppError(404, 'NOT_FOUND', 'Event source not found');
+    }
+
+    const { items, total } = await eventImportRepository.findBatchesBySourceId(sourceId, params);
+
+    return {
+      items: items.map((batch) => ({
+        id: batch.id,
+        eventSourceId: batch.event_source_id,
+        eventSourceName: batch.event_sources.name,
+        ingestionMethod: batch.ingestion_method,
+        eventFamily: batch.event_family,
+        fileName: batch.file_name,
+        fileFormat: batch.file_format,
+        totalRecords: batch.total_records,
+        acceptedRecords: batch.accepted_records,
+        rejectedRecords: batch.rejected_records,
+        status: batch.status as 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'PARTIALLY_COMPLETED' | 'FAILED',
+        startedAt: batch.started_at,
+        completedAt: batch.completed_at,
+        createdBy: batch.created_by,
+        creatorName: batch.users?.full_name ?? batch.users?.email ?? null,
+        createdAt: batch.created_at,
+      })),
+      pagination: {
+        page: params.page,
+        limit: params.limit,
+        total,
+        totalPages: Math.ceil(total / params.limit) || 1,
+      },
+    };
+  },
 };
 
 export function detectEventFamilyFromType(eventType: string): string | undefined {
