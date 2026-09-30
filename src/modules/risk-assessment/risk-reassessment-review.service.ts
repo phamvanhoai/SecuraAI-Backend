@@ -1,5 +1,6 @@
 import { AppError } from '../../common/errors/app-error.js';
 import type { ListOwnedReassessmentRequestsQuery } from './dto/review-risk-reassessment-request.dto.js';
+import type { CompleteRiskReassessmentInput } from './dto/review-risk-reassessment-request.dto.js';
 import { riskReassessmentReviewRepository } from './risk-reassessment-review.repository.js';
 
 async function requireActiveUser(userId: string) {
@@ -19,6 +20,12 @@ const mapRequest = (request: Awaited<ReturnType<typeof riskReassessmentReviewRep
     riskCode: request.risks.risk_code,
     title: request.risks.title,
     status: request.risks.status.toLowerCase(),
+    latestInherentAssessment: request.risks.risk_assessments[0] ? {
+      likelihood: request.risks.risk_assessments[0].inherent_likelihood,
+      impact: request.risks.risk_assessments[0].inherent_impact,
+      rating: request.risks.risk_assessments[0].inherent_rating?.toLowerCase() ?? null,
+    } : null,
+    treatmentPlans: request.risks.risk_treatment_plans.map((plan) => ({ id: plan.id, title: plan.title, strategy: plan.strategy.toLowerCase(), status: plan.status.toLowerCase(), targetDate: plan.target_completion_date })),
   },
   incident: {
     id: request.incidents.id,
@@ -47,8 +54,12 @@ const mapRequest = (request: Awaited<ReturnType<typeof riskReassessmentReviewRep
 
 export const riskReassessmentReviewService = {
   async listOwned(userId: string, query: ListOwnedReassessmentRequestsQuery) {
-    await requireActiveUser(userId);
-    const [total, requests] = await riskReassessmentReviewRepository.listOwned(userId, query);
+    const actor = await riskReassessmentReviewRepository.findActor(userId);
+    if (!actor || actor.status !== 'ACTIVE') throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+    const [total, requests] = await riskReassessmentReviewRepository.listOwned(
+      actor.role === 'SECURITY_OFFICER' ? undefined : userId,
+      query,
+    );
     return {
       items: requests.map(mapRequest),
       pagination: {
@@ -72,5 +83,18 @@ export const riskReassessmentReviewService = {
     if (!updated)
       throw new AppError(409, 'REASSESSMENT_REQUEST_CHANGED', 'The request status changed; refresh and try again');
     return mapRequest(updated);
+  },
+  async complete(userId: string, requestId: string, input: CompleteRiskReassessmentInput) {
+    const actor = await riskReassessmentReviewRepository.findActor(userId);
+    if (!actor || actor.status !== 'ACTIVE') throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+    const request = await riskReassessmentReviewRepository.findById(requestId);
+    if (!request) throw new AppError(404, 'REASSESSMENT_REQUEST_NOT_FOUND', 'Reassessment request not found');
+    if (request.risks.owner_user_id !== userId && actor.role !== 'SECURITY_OFFICER') throw new AppError(403, 'REASSESSMENT_REVIEWER_REQUIRED', 'Risk Owner or Security Officer required');
+    const result = await riskReassessmentReviewRepository.complete(requestId, userId, input);
+    if (result.kind === 'invalid_status') throw new AppError(409, 'REASSESSMENT_NOT_UNDER_REVIEW', 'Start review before completing reassessment');
+    if (result.kind === 'invalid_plan') throw new AppError(422, 'INVALID_TREATMENT_PLAN', 'Select an active treatment plan for this risk');
+    if (result.kind === 'missing_inherent') throw new AppError(422, 'INHERENT_ASSESSMENT_REQUIRED', 'The risk needs an inherent assessment first');
+    if (result.kind === 'not_found') throw new AppError(404, 'REASSESSMENT_REQUEST_NOT_FOUND', 'Reassessment request not found');
+    return { requestId, status: 'completed', assessmentId: result.assessment.id, residualScore: result.score, residualRating: result.assessment.residual_rating?.toLowerCase(), treatmentPlan: { id: result.treatmentPlan.id, title: result.treatmentPlan.title, status: result.treatmentPlan.status.toLowerCase(), targetDate: result.treatmentPlan.target_completion_date }, completedAt: result.completedAt };
   },
 };
