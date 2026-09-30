@@ -10,6 +10,7 @@ import {
   getAiAlertExplanation,
   getAiAlertMetrics,
   markAiAlertFalsePositive,
+  startAiAlertTriage,
   listAlertThresholds,
   listAlertThresholdAssetOptions,
   setAlertThreshold,
@@ -84,6 +85,12 @@ aiAlertsRouter.get(
   authenticate,
   validate({ params: aiAlertIdParamsSchema, query: listAiAlertFeedbackQuerySchema }),
   asyncHandler(listAiAlertFeedback),
+);
+aiAlertsRouter.post(
+  '/:alertId/triage/start',
+  authenticate,
+  validate({ params: aiAlertIdParamsSchema }),
+  asyncHandler(startAiAlertTriage),
 );
 aiAlertsRouter.post(
   '/:alertId/feedback',

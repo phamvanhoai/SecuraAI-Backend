@@ -103,6 +103,33 @@ function toResponse(alert: AiAlertRecord) {
 }
 
 export const aiAlertsService = {
+  async startTriage(userId: string, alertId: string) {
+    await requireSecurityOfficer(userId);
+    const result = await aiAlertsRepository.startTriage({
+      alertId,
+      analystUserId: userId,
+    });
+    if (result.outcome === 'not_found') {
+      throw new AppError(404, 'AI_ALERT_NOT_FOUND', 'AI alert not found');
+    }
+    if (result.outcome === 'conflict') {
+      throw new AppError(
+        409,
+        'AI_ALERT_TRIAGE_CONFLICT',
+        result.alert.status === 'IN_TRIAGE'
+          ? 'This AI alert is already being reviewed by another analyst'
+          : 'This AI alert can no longer enter triage from its current status',
+      );
+    }
+    return {
+      id: result.alert.id,
+      alertCode: `ALT-${result.alert.id.slice(0, 8).toUpperCase()}`,
+      status: 'reviewing' as const,
+      assignedToUserId: result.alert.assigned_to,
+      triageStartedAt: result.startedAt,
+      changed: result.outcome === 'started',
+    };
+  },
   async listActiveAssetOptions(userId: string, q?: string) {
     await requireSecurityOfficer(userId);
     const assets = await aiAlertsRepository.listActiveAssetOptions(q);
