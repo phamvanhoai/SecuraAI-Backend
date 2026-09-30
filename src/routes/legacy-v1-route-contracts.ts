@@ -48,13 +48,10 @@ export const legacyV1RouteContracts = [
     path: '/admin/mfa-recovery-requests/{requestId}/reject',
     tag: 'MFA Recovery Administration',
   },
-  { method: 'get', path: '/users/{userId}', tag: 'Users' },
-  { method: 'patch', path: '/users/{userId}', tag: 'Users' },
   { method: 'delete', path: '/users/{userId}', tag: 'Users' },
   { method: 'post', path: '/users/{userId}/deactivate', tag: 'Users' },
   { method: 'post', path: '/users/{userId}/roles', tag: 'Users' },
   { method: 'get', path: '/users/assignable-roles', tag: 'Users' },
-  { method: 'get', path: '/users/create-options', tag: 'Users' },
   { method: 'patch', path: '/risks/{riskAssessmentId}', tag: 'Risk Assessments' },
   { method: 'post', path: '/risks/{riskAssessmentId}/cancel', tag: 'Risk Assessments' },
   {

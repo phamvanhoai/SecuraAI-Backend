@@ -56,12 +56,25 @@ CREATE TYPE audit_actor_type AS ENUM ('USER','SYSTEM','API_KEY');
 -- 1. AUTHENTICATION & AUTHORIZATION
 -- ============================================================
 
+CREATE TABLE departments (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    code varchar(50) NOT NULL UNIQUE,
+    name varchar(255) NOT NULL,
+    status varchar(20) NOT NULL DEFAULT 'ACTIVE',
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT chk_departments_status CHECK (status IN ('ACTIVE','INACTIVE'))
+);
+
 CREATE TABLE users (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     email varchar(255) NOT NULL UNIQUE,
     username varchar(100) NOT NULL UNIQUE,
     password_hash varchar(255) NOT NULL,
     full_name varchar(255) NOT NULL,
+    phone varchar(30),
+    employee_code varchar(50) UNIQUE,
+    department_id uuid,
     role user_role NOT NULL,
     status user_status NOT NULL DEFAULT 'ACTIVE',
     last_login_at timestamptz,
@@ -978,6 +991,7 @@ CREATE TABLE policy_acknowledgements (
 -- ============================================================
 
 ALTER TABLE auth_sessions ADD CONSTRAINT fk_auth_sessions_user FOREIGN KEY (user_id) REFERENCES users(id);
+ALTER TABLE users ADD CONSTRAINT fk_users_department FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE SET NULL;
 ALTER TABLE password_reset_tokens ADD CONSTRAINT fk_password_reset_user FOREIGN KEY (user_id) REFERENCES users(id);
 
 ALTER TABLE business_services ADD CONSTRAINT fk_business_service_owner FOREIGN KEY (owner_user_id) REFERENCES users(id);
