@@ -16,6 +16,7 @@ import {
   listEmployeePublishedPolicies,
   getEmployeePublishedPolicy,
   acknowledgeEmployeePublishedPolicy,
+  createPolicyDraft,
 } from './policy-compliance.controller.js';
 import {
   policyDraftReviewParamsSchema,
@@ -41,6 +42,7 @@ import {
   publishedPolicyListQuerySchema,
   publishedPolicyParamsSchema,
 } from './dto/view-published-policy.dto.js';
+import { createPolicyDraftBodySchema } from './dto/create-policy-draft.dto.js';
 import {
   assessControlEffectiveness,
   listControlEffectiveness,
@@ -52,6 +54,12 @@ import {
 } from './dto/assess-control-effectiveness.dto.js';
 
 export const policyComplianceRouter = Router();
+policyComplianceRouter.post(
+  '/policies',
+  authenticate,
+  validate({ body: createPolicyDraftBodySchema }),
+  asyncHandler(createPolicyDraft),
+);
 policyComplianceRouter.get(
   '/control-assessments',
   authenticate,

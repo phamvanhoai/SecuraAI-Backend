@@ -11,7 +11,9 @@ import {
   testEventSourceConnectionSchema,
   testExistingEventSourceConnectionSchema,
 } from './dto/test-event-source-connection.dto.js';
+import { importEventsBodySchema } from './dto/import-events.dto.js';
 import { eventSourcesService } from './event-sources.service.js';
+import { eventImportService } from './event-import.service.js';
 
 function authenticatedUserId(value: unknown): string {
   if (typeof value !== 'string') {
@@ -61,5 +63,13 @@ export const testEventSourceConnectionById: RequestHandler = async (req, res) =>
   const params = eventSourceIdParamsSchema.parse(req.params);
   const input = testExistingEventSourceConnectionSchema.parse(req.body);
   const data = await eventSourcesService.testConnectionById(userId, params.id, input);
+  res.status(200).json({ success: true, data });
+};
+
+export const importNormalizedEvents: RequestHandler = async (req, res) => {
+  const userId = authenticatedUserId(res.locals.authenticatedUserId);
+  const params = eventSourceIdParamsSchema.parse(req.params);
+  const input = importEventsBodySchema.parse(req.body);
+  const data = await eventImportService.importNormalizedEvents(params.id, input, userId);
   res.status(200).json({ success: true, data });
 };

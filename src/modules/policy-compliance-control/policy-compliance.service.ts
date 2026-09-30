@@ -6,6 +6,7 @@ import { Prisma } from '@prisma/client';
 import type { RequestPolicyRevisionBody } from './dto/request-policy-revision.dto.js';
 import type { RejectPolicyBody, RejectedPolicyQuery } from './dto/reject-policy.dto.js';
 import type { PublishedPolicyListQuery } from './dto/view-published-policy.dto.js';
+import type { CreatePolicyDraftBody } from './dto/create-policy-draft.dto.js';
 import {
   policyComplianceRepository,
   type PolicyReviewRecord,
@@ -135,6 +136,40 @@ function mapPolicyReview(version: PolicyReviewRecord) {
 }
 
 export const policyComplianceService = {
+  async createPolicyDraft(userId: string, input: CreatePolicyDraftBody) {
+    const actor = await policyComplianceRepository.findActor(userId);
+    if (!actor || actor.status !== 'ACTIVE')
+      throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+    if (actor.role !== 'SECURITY_OFFICER')
+      throw new AppError(403, 'FORBIDDEN', 'Security Officer role required');
+
+    try {
+      const { policy, version } = await policyComplianceRepository.createPolicyDraft(userId, input);
+      return {
+        id: policy.id,
+        policyCode: policy.policy_code,
+        title: policy.title,
+        description: policy.description,
+        ownerUserId: policy.owner_user_id,
+        status: policy.status,
+        currentVersion: {
+          id: version.id,
+          versionNumber: version.version_number,
+          content: version.content,
+          status: version.status,
+          createdAt: version.created_at,
+        },
+        createdAt: policy.created_at,
+        updatedAt: policy.updated_at,
+      };
+    } catch (error: unknown) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        throw new AppError(409, 'POLICY_CODE_EXISTS', 'Policy code already exists');
+      }
+      throw error;
+    }
+  },
+
   async listOwnedPublishedPolicies(userId: string) {
     const actor = await policyComplianceRepository.findActor(userId);
     if (!actor || actor.status !== 'ACTIVE')
