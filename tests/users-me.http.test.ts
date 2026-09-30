@@ -55,7 +55,6 @@ describe('GET /api/v1/users/me', () => {
         fullName: 'System Administrator',
         status: 'ACTIVE',
         mustChangePassword: false,
-        mfaEnabled: false,
         roles: [{ code: 'ADMIN', name: 'ADMIN' }],
       permissions: [
         'assets.read',

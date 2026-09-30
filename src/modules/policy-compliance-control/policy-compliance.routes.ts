@@ -15,6 +15,10 @@ import {
   listOwnedPublishedPolicies,
   listEmployeePublishedPolicies,
   getEmployeePublishedPolicy,
+  acknowledgeEmployeePublishedPolicy,
+  createPolicyDraft,
+  reviewPolicy,
+  publishPolicyVersion,
 } from './policy-compliance.controller.js';
 import {
   policyDraftReviewParamsSchema,
@@ -40,6 +44,7 @@ import {
   publishedPolicyListQuerySchema,
   publishedPolicyParamsSchema,
 } from './dto/view-published-policy.dto.js';
+import { createPolicyDraftBodySchema } from './dto/create-policy-draft.dto.js';
 import {
   assessControlEffectiveness,
   listControlEffectiveness,
@@ -51,6 +56,12 @@ import {
 } from './dto/assess-control-effectiveness.dto.js';
 
 export const policyComplianceRouter = Router();
+policyComplianceRouter.post(
+  '/policies',
+  authenticate,
+  validate({ body: createPolicyDraftBodySchema }),
+  asyncHandler(createPolicyDraft),
+);
 policyComplianceRouter.get(
   '/control-assessments',
   authenticate,
@@ -82,6 +93,12 @@ policyComplianceRouter.get(
   authenticate,
   validate({ params: publishedPolicyParamsSchema }),
   asyncHandler(getEmployeePublishedPolicy),
+);
+policyComplianceRouter.post(
+  '/policies/:policyId/versions/:versionId/acknowledgements',
+  authenticate,
+  validate({ params: publishedPolicyParamsSchema }),
+  asyncHandler(acknowledgeEmployeePublishedPolicy),
 );
 policyComplianceRouter.get(
   '/policies/rejected',
@@ -136,4 +153,16 @@ policyComplianceRouter.get(
   authenticate,
   validate({ params: policyDraftReviewParamsSchema }),
   asyncHandler(getPolicyDraftReview),
+);
+policyComplianceRouter.post(
+  '/policies/:policyId/versions/:versionId/publish',
+  authenticate,
+  validate({ params: approvePolicyForPublicationParamsSchema }),
+  asyncHandler(publishPolicyVersion),
+);
+policyComplianceRouter.post(
+  '/policies/:policyId/versions/:versionId/review',
+  authenticate,
+  validate({ params: policyDraftReviewParamsSchema }),
+  asyncHandler(reviewPolicy),
 );

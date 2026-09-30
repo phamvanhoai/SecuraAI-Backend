@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-vi.mock('../src/modules/policy-compliance-control/policy-compliance.repository.js', () => ({ policyComplianceRepository: { findActor: vi.fn(), listOwnedPublishedPolicies: vi.fn(), listPublishedPoliciesForEmployee: vi.fn(), findPublishedPolicyForEmployee: vi.fn() } }));
+vi.mock('../src/modules/policy-compliance-control/policy-compliance.repository.js', () => ({ policyComplianceRepository: { findActor: vi.fn(), listOwnedPublishedPolicies: vi.fn(), listPublishedPoliciesForEmployee: vi.fn(), findPublishedPolicyForEmployee: vi.fn(), createPolicyAcknowledgement: vi.fn() } }));
 import { policyComplianceRepository } from '../src/modules/policy-compliance-control/policy-compliance.repository.js';
 import { policyComplianceService } from '../src/modules/policy-compliance-control/policy-compliance.service.js';
 const userId = '9a9bf33a-02db-48e4-a8ad-90517278d7f2';
@@ -25,5 +25,29 @@ describe('view published policy service', () => {
   it('rejects roles outside the WBS actors', async () => {
     vi.mocked(policyComplianceRepository.findActor).mockResolvedValue({ id: userId, role: 'ADMIN', status: 'ACTIVE' });
     await expect(policyComplianceService.listOwnedPublishedPolicies(userId)).rejects.toMatchObject({ statusCode: 403 });
+  });
+  it('records an Employee acknowledgement for the current published version', async () => {
+    vi.mocked(policyComplianceRepository.findActor).mockResolvedValue({ id: userId, role: 'EMPLOYEE', status: 'ACTIVE' });
+    vi.mocked(policyComplianceRepository.findPublishedPolicyForEmployee).mockResolvedValue({ id: versionId } as never);
+    vi.mocked(policyComplianceRepository.createPolicyAcknowledgement).mockResolvedValue({ acknowledged_at: new Date('2026-09-30T00:00:00Z'), alreadyAcknowledged: false });
+    await expect(policyComplianceService.acknowledgePublishedPolicy(userId, policyId, versionId)).resolves.toEqual({
+      policyId,
+      versionId,
+      acknowledgedAt: new Date('2026-09-30T00:00:00Z'),
+      alreadyAcknowledged: false,
+    });
+    expect(policyComplianceRepository.createPolicyAcknowledgement).toHaveBeenCalledWith(versionId, userId);
+  });
+  it('returns an existing acknowledgement without duplicating it', async () => {
+    vi.mocked(policyComplianceRepository.findActor).mockResolvedValue({ id: userId, role: 'EMPLOYEE', status: 'ACTIVE' });
+    vi.mocked(policyComplianceRepository.findPublishedPolicyForEmployee).mockResolvedValue({ id: versionId } as never);
+    vi.mocked(policyComplianceRepository.createPolicyAcknowledgement).mockResolvedValue({ acknowledged_at: new Date('2026-09-29T00:00:00Z'), alreadyAcknowledged: true });
+    await expect(policyComplianceService.acknowledgePublishedPolicy(userId, policyId, versionId)).resolves.toMatchObject({ alreadyAcknowledged: true });
+  });
+  it('does not acknowledge a version that is not the current published policy', async () => {
+    vi.mocked(policyComplianceRepository.findActor).mockResolvedValue({ id: userId, role: 'EMPLOYEE', status: 'ACTIVE' });
+    vi.mocked(policyComplianceRepository.findPublishedPolicyForEmployee).mockResolvedValue(null);
+    await expect(policyComplianceService.acknowledgePublishedPolicy(userId, policyId, versionId)).rejects.toMatchObject({ statusCode: 404 });
+    expect(policyComplianceRepository.createPolicyAcknowledgement).not.toHaveBeenCalled();
   });
 });

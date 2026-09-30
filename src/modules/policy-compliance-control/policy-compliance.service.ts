@@ -6,6 +6,7 @@ import { Prisma } from '@prisma/client';
 import type { RequestPolicyRevisionBody } from './dto/request-policy-revision.dto.js';
 import type { RejectPolicyBody, RejectedPolicyQuery } from './dto/reject-policy.dto.js';
 import type { PublishedPolicyListQuery } from './dto/view-published-policy.dto.js';
+import type { CreatePolicyDraftBody } from './dto/create-policy-draft.dto.js';
 import {
   policyComplianceRepository,
   type PolicyReviewRecord,
@@ -135,6 +136,40 @@ function mapPolicyReview(version: PolicyReviewRecord) {
 }
 
 export const policyComplianceService = {
+  async createPolicyDraft(userId: string, input: CreatePolicyDraftBody) {
+    const actor = await policyComplianceRepository.findActor(userId);
+    if (!actor || actor.status !== 'ACTIVE')
+      throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+    if (actor.role !== 'SECURITY_OFFICER')
+      throw new AppError(403, 'FORBIDDEN', 'Security Officer role required');
+
+    try {
+      const { policy, version } = await policyComplianceRepository.createPolicyDraft(userId, input);
+      return {
+        id: policy.id,
+        policyCode: policy.policy_code,
+        title: policy.title,
+        description: policy.description,
+        ownerUserId: policy.owner_user_id,
+        status: policy.status,
+        currentVersion: {
+          id: version.id,
+          versionNumber: version.version_number,
+          content: version.content,
+          status: version.status,
+          createdAt: version.created_at,
+        },
+        createdAt: policy.created_at,
+        updatedAt: policy.updated_at,
+      };
+    } catch (error: unknown) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        throw new AppError(409, 'POLICY_CODE_EXISTS', 'Policy code already exists');
+      }
+      throw error;
+    }
+  },
+
   async listOwnedPublishedPolicies(userId: string) {
     const actor = await policyComplianceRepository.findActor(userId);
     if (!actor || actor.status !== 'ACTIVE')
@@ -225,6 +260,31 @@ export const policyComplianceService = {
     };
   },
 
+  async acknowledgePublishedPolicy(userId: string, policyId: string, versionId: string) {
+    const actor = await policyComplianceRepository.findActor(userId);
+    if (!actor || actor.status !== 'ACTIVE')
+      throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+    if (actor.role !== 'EMPLOYEE')
+      throw new AppError(403, 'FORBIDDEN', 'Employee role required');
+    const version = await policyComplianceRepository.findPublishedPolicyForEmployee(
+      policyId,
+      versionId,
+      userId,
+    );
+    if (!version)
+      throw new AppError(404, 'PUBLISHED_POLICY_NOT_FOUND', 'Published policy was not found');
+    const acknowledgement = await policyComplianceRepository.createPolicyAcknowledgement(
+      versionId,
+      userId,
+    );
+    return {
+      policyId,
+      versionId,
+      acknowledgedAt: acknowledgement.acknowledged_at,
+      alreadyAcknowledged: acknowledgement.alreadyAcknowledged,
+    };
+  },
+
   async listRejectedPolicies(userId: string, query: RejectedPolicyQuery) {
     const actor = await policyComplianceRepository.findActor(userId);
     if (!actor || actor.status !== 'ACTIVE') {
@@ -288,11 +348,73 @@ export const policyComplianceService = {
     await requireActiveAdmin(userId);
     const version = await policyComplianceRepository.findReviewableDraft(policyId, versionId);
     if (!version) throw new AppError(404, 'POLICY_DRAFT_NOT_FOUND', 'Submitted policy draft not found');
+    if (version.status !== 'WAITING_APPROVAL')
+      throw new AppError(
+        409,
+        'POLICY_REVIEW_REQUIRED',
+        'The policy draft must be reviewed before it can be approved',
+      );
     const result = await policyComplianceRepository.approveDraftForPublication(policyId, versionId, userId);
     if (!result) throw new AppError(409, 'POLICY_DRAFT_CHANGED', 'The policy draft changed before it could be approved');
     return {
       ...mapPolicyReview(result.version),
       decision: { id: result.decision.id, action: result.decision.action, comment: result.decision.comment, actorUserId: result.decision.actor_user_id, decidedAt: result.decision.decided_at },
+    };
+  },
+
+  async publishPolicyVersion(userId: string, policyId: string, versionId: string) {
+    await requireActiveAdmin(userId);
+    const version = await policyComplianceRepository.findPolicyVersionForPublication(
+      policyId,
+      versionId,
+    );
+    if (!version)
+      throw new AppError(
+        404,
+        'APPROVED_POLICY_VERSION_NOT_FOUND',
+        'Approved policy version not found',
+      );
+
+    const published = await policyComplianceRepository.publishApprovedVersion(policyId, versionId);
+    if (!published)
+      throw new AppError(
+        409,
+        'POLICY_VERSION_CHANGED',
+        'The approved policy version changed before it could be published',
+      );
+    const response = mapPolicyReview(published);
+    return {
+      ...response,
+      version: { ...response.version, effectiveDate: published.published_at },
+    };
+  },
+
+  async reviewPolicy(userId: string, policyId: string, versionId: string) {
+    await requireActiveAdmin(userId);
+    const version = await policyComplianceRepository.findReviewableDraft(policyId, versionId);
+    if (!version)
+      throw new AppError(404, 'POLICY_DRAFT_NOT_FOUND', 'Submitted policy draft not found');
+    if (version.status === 'WAITING_APPROVAL')
+      throw new AppError(409, 'POLICY_ALREADY_REVIEWED', 'Policy draft has already been reviewed');
+    if (version.status !== 'IN_REVIEW')
+      throw new AppError(409, 'POLICY_NOT_REVIEWABLE', 'Policy draft is not awaiting review');
+
+    const result = await policyComplianceRepository.reviewDraft(policyId, versionId, userId);
+    if (!result)
+      throw new AppError(
+        409,
+        'POLICY_DRAFT_CHANGED',
+        'The policy draft changed before the review could be completed',
+      );
+    return {
+      ...mapPolicyReview(result.version),
+      decision: {
+        id: result.decision.id,
+        action: result.decision.action,
+        comment: result.decision.comment,
+        actorUserId: result.decision.actor_user_id,
+        decidedAt: result.decision.decided_at,
+      },
     };
   },
 

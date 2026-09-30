@@ -25,6 +25,7 @@ import {
   publishedPolicyListQuerySchema,
   publishedPolicyParamsSchema,
 } from './dto/view-published-policy.dto.js';
+import { createPolicyDraftBodySchema } from './dto/create-policy-draft.dto.js';
 
 function authenticatedUserId(value: unknown): string {
   if (typeof value !== 'string') throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
@@ -39,9 +40,27 @@ export const listReviewablePolicyDrafts: RequestHandler = async (req, res) => {
   res.status(200).json({ success: true, data });
 };
 
+export const createPolicyDraft: RequestHandler = async (req, res) => {
+  const data = await policyComplianceService.createPolicyDraft(
+    authenticatedUserId(res.locals.authenticatedUserId),
+    createPolicyDraftBodySchema.parse(req.body),
+  );
+  res.status(201).json({ success: true, data });
+};
+
 export const getPolicyDraftReview: RequestHandler = async (req, res) => {
   const { policyId, versionId } = policyDraftReviewParamsSchema.parse(req.params);
   const data = await policyComplianceService.getReviewableDraft(
+    authenticatedUserId(res.locals.authenticatedUserId),
+    policyId,
+    versionId,
+  );
+  res.status(200).json({ success: true, data });
+};
+
+export const reviewPolicy: RequestHandler = async (req, res) => {
+  const { policyId, versionId } = policyDraftReviewParamsSchema.parse(req.params);
+  const data = await policyComplianceService.reviewPolicy(
     authenticatedUserId(res.locals.authenticatedUserId),
     policyId,
     versionId,
@@ -71,6 +90,16 @@ export const approvePolicyForPublication: RequestHandler = async (req, res) => {
   const { policyId, versionId } = approvePolicyForPublicationParamsSchema.parse(req.params);
   const data = await policyComplianceService.approveForPublication(
     authenticatedUserId(res.locals.authenticatedUserId), policyId, versionId,
+  );
+  res.status(200).json({ success: true, data });
+};
+
+export const publishPolicyVersion: RequestHandler = async (req, res) => {
+  const { policyId, versionId } = approvePolicyForPublicationParamsSchema.parse(req.params);
+  const data = await policyComplianceService.publishPolicyVersion(
+    authenticatedUserId(res.locals.authenticatedUserId),
+    policyId,
+    versionId,
   );
   res.status(200).json({ success: true, data });
 };
@@ -134,6 +163,16 @@ export const listEmployeePublishedPolicies: RequestHandler = async (req, res) =>
 export const getEmployeePublishedPolicy: RequestHandler = async (req, res) => {
   const { policyId, versionId } = publishedPolicyParamsSchema.parse(req.params);
   const data = await policyComplianceService.getPublishedPolicyForEmployee(
+    authenticatedUserId(res.locals.authenticatedUserId),
+    policyId,
+    versionId,
+  );
+  res.status(200).json({ success: true, data });
+};
+
+export const acknowledgeEmployeePublishedPolicy: RequestHandler = async (req, res) => {
+  const { policyId, versionId } = publishedPolicyParamsSchema.parse(req.params);
+  const data = await policyComplianceService.acknowledgePublishedPolicy(
     authenticatedUserId(res.locals.authenticatedUserId),
     policyId,
     versionId,
