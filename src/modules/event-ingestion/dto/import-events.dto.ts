@@ -33,6 +33,7 @@ export type ImportEventsBody = z.infer<typeof importEventsBodySchema>;
 
 export type InvalidEventRecord = {
   recordIndex: number;
+  eventFamily?: (typeof EVENT_FAMILIES)[number] | null | undefined;
   errorCode: string;
   errorMessage: string;
   receivedPayload: Record<string, unknown>;
