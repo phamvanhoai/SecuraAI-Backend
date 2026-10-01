@@ -10,6 +10,7 @@ vi.mock(
       findLinkedControl: vi.fn(),
       findOptions: vi.fn(),
       findOpenWeakness: vi.fn(),
+      listHistory: vi.fn(),
       create: vi.fn(),
     },
   }),
@@ -75,5 +76,50 @@ describe('controlWeaknessesService.record', () => {
     await expect(controlWeaknessesService.record(userId, incidentId, input)).rejects.toMatchObject({
       statusCode: 409,
     });
+  });
+});
+
+describe('controlWeaknessesService.history', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('returns the actor and timestamps for each historical finding', async () => {
+    vi.mocked(controlWeaknessesRepository.findActor).mockResolvedValue({
+      role: 'SECURITY_OFFICER',
+      status: 'ACTIVE',
+    });
+    vi.mocked(controlWeaknessesRepository.findIncident).mockResolvedValue({
+      id: incidentId,
+      incident_code: 'INC-1',
+      title: 'Login',
+      status: 'OPEN',
+    });
+    const identifiedAt = new Date('2026-10-01T02:00:00.000Z');
+    vi.mocked(controlWeaknessesRepository.listHistory).mockResolvedValue({
+      items: [
+        {
+          id: '44444444-4444-4444-8444-444444444444',
+          severity: 'high',
+          description: 'MFA was not enforced for the affected account.',
+          status: 'OPEN',
+          identified_at: identifiedAt,
+          resolved_at: null,
+          security_controls: { id: controlId, control_code: 'CTRL-1', name: 'MFA' },
+          users: { id: userId, full_name: 'Security Officer' },
+        },
+      ],
+      total: 1,
+    });
+
+    const result = await controlWeaknessesService.history(userId, incidentId, {
+      page: 1,
+      limit: 10,
+    });
+
+    expect(result.items[0]).toMatchObject({
+      status: 'open',
+      identifiedAt,
+      identifiedBy: { id: userId, fullName: 'Security Officer' },
+    });
+    expect(result.pagination).toEqual({ page: 1, limit: 10, total: 1, totalPages: 1 });
   });
 });

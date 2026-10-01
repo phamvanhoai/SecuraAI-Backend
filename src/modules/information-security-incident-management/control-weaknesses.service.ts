@@ -1,5 +1,6 @@
 import { AppError } from '../../common/errors/app-error.js';
 import type { RecordControlWeaknessInput } from './dto/record-control-weakness.dto.js';
+import type { ControlWeaknessHistoryQuery } from './dto/record-control-weakness.dto.js';
 import { controlWeaknessesRepository } from './control-weaknesses.repository.js';
 async function requireSecurityOfficer(userId: string) {
   const actor = await controlWeaknessesRepository.findActor(userId);
@@ -20,6 +21,46 @@ const controlResponse = (control: {
   implementationStatus: control.implementation_status.toLowerCase(),
 });
 export const controlWeaknessesService = {
+  async history(userId: string, incidentId: string, query: ControlWeaknessHistoryQuery) {
+    await requireSecurityOfficer(userId);
+    const incident = await controlWeaknessesRepository.findIncident(incidentId);
+    if (!incident) throw new AppError(404, 'INCIDENT_NOT_FOUND', 'Incident not found');
+    const { items, total } = await controlWeaknessesRepository.listHistory(
+      incidentId,
+      query.page,
+      query.limit,
+    );
+    return {
+      incident: {
+        id: incident.id,
+        incidentCode: incident.incident_code,
+        title: incident.title,
+      },
+      items: items.map((finding) => ({
+        id: finding.id,
+        severity: finding.severity,
+        description: finding.description,
+        status: finding.status.toLowerCase(),
+        identifiedAt: finding.identified_at,
+        resolvedAt: finding.resolved_at,
+        control: {
+          id: finding.security_controls.id,
+          controlCode: finding.security_controls.control_code,
+          name: finding.security_controls.name,
+        },
+        identifiedBy: {
+          id: finding.users.id,
+          fullName: finding.users.full_name,
+        },
+      })),
+      pagination: {
+        page: query.page,
+        limit: query.limit,
+        total,
+        totalPages: Math.ceil(total / query.limit),
+      },
+    };
+  },
   async options(userId: string, incidentId: string) {
     await requireSecurityOfficer(userId);
     const { incident, links } = await controlWeaknessesRepository.findOptions(incidentId);
