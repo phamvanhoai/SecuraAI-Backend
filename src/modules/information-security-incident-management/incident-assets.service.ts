@@ -1,5 +1,8 @@
 import { AppError } from '../../common/errors/app-error.js';
-import type { LinkIncidentAssetInput } from './dto/link-incident-asset.dto.js';
+import type {
+  IncidentAssetOptionsQuery,
+  LinkIncidentAssetInput,
+} from './dto/link-incident-asset.dto.js';
 import { incidentAssetsRepository } from './incident-assets.repository.js';
 
 async function requireSecurityOfficer(userId: string) {
@@ -11,9 +14,12 @@ async function requireSecurityOfficer(userId: string) {
 }
 
 export const incidentAssetsService = {
-  async options(userId: string, incidentId: string) {
+  async options(userId: string, incidentId: string, query: IncidentAssetOptionsQuery) {
     await requireSecurityOfficer(userId);
-    const { incident, assets } = await incidentAssetsRepository.findOptions(incidentId);
+    const { incident, assets, total } = await incidentAssetsRepository.findOptions(
+      incidentId,
+      query,
+    );
     if (!incident) throw new AppError(404, 'INCIDENT_NOT_FOUND', 'Incident not found');
     return {
       incident: {
@@ -30,6 +36,12 @@ export const incidentAssetsService = {
         criticality: asset.criticality,
         linked: asset.incident_assets.length > 0,
       })),
+      pagination: {
+        page: query.page,
+        limit: query.limit,
+        total,
+        totalPages: Math.max(1, Math.ceil(total / query.limit)),
+      },
     };
   },
 
@@ -67,5 +79,19 @@ export const incidentAssetsService = {
         );
       throw error;
     }
+  },
+
+  async unlink(userId: string, incidentId: string, assetId: string) {
+    await requireSecurityOfficer(userId);
+    const incident = await incidentAssetsRepository.findIncident(incidentId);
+    if (!incident) throw new AppError(404, 'INCIDENT_NOT_FOUND', 'Incident not found');
+
+    const result = await incidentAssetsRepository.unlink(incidentId, assetId);
+    if (result.count === 0)
+      throw new AppError(
+        404,
+        'INCIDENT_ASSET_LINK_NOT_FOUND',
+        'Asset is not linked to this incident',
+      );
   },
 };

@@ -567,6 +567,72 @@ export const openApiSpec = {
         },
       },
     },
+    '/incidents/{incidentId}/assets/{assetId}': {
+      delete: {
+        tags: ['Incident Management'],
+        summary: 'Unlink an asset from an incident',
+        description:
+          'Removes an existing incident-to-asset relationship. The incident and asset records are not deleted. Requires an active Security Officer.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'incidentId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+          {
+            name: 'assetId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          '204': { description: 'Asset unlinked from incident' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer role required' },
+          '404': { description: 'Incident or incident-asset link not found' },
+          '422': { description: 'Invalid identifier' },
+        },
+      },
+    },
+    '/incidents/{incidentId}/assets/options': {
+      get: {
+        tags: ['Incident Management'],
+        summary: 'Search incident asset options',
+        description:
+          'Returns a bounded, paginated list of linked or unlinked active assets. Search matches asset code or name. Requires an active Security Officer.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'incidentId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+          { name: 'q', in: 'query', schema: { type: 'string', minLength: 1, maxLength: 100 } },
+          {
+            name: 'scope',
+            in: 'query',
+            schema: { type: 'string', enum: ['linked', 'unlinked'], default: 'unlinked' },
+          },
+          { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
+          {
+            name: 'limit',
+            in: 'query',
+            schema: { type: 'integer', minimum: 1, maximum: 50, default: 10 },
+          },
+        ],
+        responses: {
+          '200': { description: 'Paginated incident asset options' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer role required' },
+          '404': { description: 'Incident not found' },
+          '422': { description: 'Invalid search or pagination parameters' },
+        },
+      },
+    },
     '/compliance/policies/version-history': {
       get: {
         tags: ['Policy Management'],
