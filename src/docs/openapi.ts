@@ -1919,6 +1919,49 @@ export const openApiSpec = {
         },
       },
     },
+    '/incidents/{incidentId}/risk-reassessment-requests': {
+      get: {
+        tags: ['Information Security Incident Management'],
+        summary: 'View risk reassessment request history for an incident',
+        description:
+          'Returns newest-first request history with risk ownership, related control weakness, requester, reviewer, status and timestamps. Requires an active Security Officer.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'incidentId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+          { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
+          {
+            name: 'limit',
+            in: 'query',
+            schema: { type: 'integer', minimum: 1, maximum: 100, default: 10 },
+          },
+        ],
+        responses: {
+          '200': { description: 'Paginated reassessment request history' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer role required' },
+          '404': { description: 'Incident not found' },
+          '422': { description: 'Invalid incident ID or pagination' },
+        },
+      },
+      post: {
+        tags: ['Information Security Incident Management'],
+        summary: 'Create a risk reassessment request from an incident',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          '201': { description: 'Pending reassessment request created' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer role required' },
+          '404': { description: 'Incident not found' },
+          '409': { description: 'An active request already exists' },
+          '422': { description: 'Invalid input or relationship' },
+        },
+      },
+    },
     '/incidents/{incidentId}/control-weaknesses': {
       get: {
         tags: ['Information Security Incident Management'],
