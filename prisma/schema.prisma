@@ -859,6 +859,7 @@ model risk_reassessment_requests {
   status                                               reassessment_status @default(PENDING)
   reviewed_by                                          String?             @db.Uuid
   reviewed_at                                          DateTime?           @db.Timestamptz(6)
+  review_comment                                       String?
   created_at                                           DateTime            @default(now()) @db.Timestamptz(6)
   updated_at                                           DateTime            @default(now()) @db.Timestamptz(6)
   risk_assessments                                     risk_assessments?
@@ -1044,6 +1045,16 @@ model user_access_scopes {
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model departments {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code       String   @unique @db.VarChar(50)
+  name       String   @db.VarChar(255)
+  status     String   @default("ACTIVE") @db.VarChar(20)
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_at DateTime @default(now()) @db.Timestamptz(6)
+  users      users[]
+}
+
 model users {
   id                                                                              String                           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   email                                                                           String                           @unique @db.VarChar(255)
@@ -1051,12 +1062,16 @@ model users {
   password_hash                                                                   String                           @db.VarChar(255)
   google_subject                                                                  String?                          @unique @db.VarChar(255)
   full_name                                                                       String                           @db.VarChar(255)
+  phone                                                                           String?                          @db.VarChar(30)
+  employee_code                                                                   String?                          @unique @db.VarChar(50)
+  department_id                                                                   String?                          @db.Uuid
   role                                                                            user_role
   status                                                                          user_status                      @default(ACTIVE)
   last_login_at                                                                   DateTime?                        @db.Timestamptz(6)
   password_changed_at                                                             DateTime?                        @db.Timestamptz(6)
   created_at                                                                      DateTime                         @default(now()) @db.Timestamptz(6)
   updated_at                                                                      DateTime                         @default(now()) @db.Timestamptz(6)
+  departments                                                                     departments?                     @relation(fields: [department_id], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "fk_users_department")
   alert_triage_records                                                            alert_triage_records[]
   anomaly_alerts                                                                  anomaly_alerts[]
   assets_assets_created_byTousers                                                 assets[]                         @relation("assets_created_byTousers")
@@ -1107,6 +1122,8 @@ model users {
   security_findings                                                               security_findings[]
   user_access_scopes_user_access_scopes_assigned_byTousers                        user_access_scopes[]             @relation("user_access_scopes_assigned_byTousers")
   user_access_scopes_user_access_scopes_user_idTousers                            user_access_scopes[]             @relation("user_access_scopes_user_idTousers")
+
+  @@index([department_id], map: "idx_users_department_id")
 }
 
 enum acceptance_decision {

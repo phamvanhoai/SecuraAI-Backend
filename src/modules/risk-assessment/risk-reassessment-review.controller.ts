@@ -4,6 +4,7 @@ import {
   listOwnedReassessmentRequestsQuerySchema,
   reviewRiskReassessmentRequestParamsSchema,
   completeRiskReassessmentBodySchema,
+  rejectRiskReassessmentRequestBodySchema,
 } from './dto/review-risk-reassessment-request.dto.js';
 import { riskReassessmentReviewService } from './risk-reassessment-review.service.js';
 
@@ -34,5 +35,25 @@ export const startRiskReassessmentReview: RequestHandler = async (req, res) => {
 };
 export const completeRiskReassessment: RequestHandler = async (req, res) => {
   const { requestId } = reviewRiskReassessmentRequestParamsSchema.parse(req.params);
-  res.status(200).json({ success: true, data: await riskReassessmentReviewService.complete(userId(res.locals.authenticatedUserId), requestId, completeRiskReassessmentBodySchema.parse(req.body)) });
+  res
+    .status(200)
+    .json({
+      success: true,
+      data: await riskReassessmentReviewService.complete(
+        userId(res.locals.authenticatedUserId),
+        requestId,
+        completeRiskReassessmentBodySchema.parse(req.body),
+      ),
+    });
+};
+export const rejectRiskReassessmentRequest: RequestHandler = async (req, res) => {
+  const { requestId } = reviewRiskReassessmentRequestParamsSchema.parse(req.params);
+  res.status(200).json({
+    success: true,
+    data: await riskReassessmentReviewService.reject(
+      userId(res.locals.authenticatedUserId),
+      requestId,
+      rejectRiskReassessmentRequestBodySchema.parse(req.body),
+    ),
+  });
 };

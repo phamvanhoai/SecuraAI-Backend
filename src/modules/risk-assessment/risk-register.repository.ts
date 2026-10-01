@@ -1,4 +1,4 @@
-import type { Prisma, risk_status } from '@prisma/client';
+import { Prisma, type risk_status, type treatment_status } from '@prisma/client';
 import { prisma } from '../../database/prisma.js';
 import type { ListRiskRegisterQuery } from './dto/view-risk-register.dto.js';
 import type {
@@ -54,6 +54,12 @@ const listSelect = {
     select: assessmentSelect,
     orderBy: { assessed_at: 'desc' as const },
     take: 1,
+  },
+  risk_treatment_plans: {
+    where: { status: { in: ['DRAFT', 'ACTIVE'] as treatment_status[] } },
+    orderBy: { updated_at: 'desc' as const },
+    take: 1,
+    select: { id: true, title: true, status: true },
   },
   _count: {
     select: { control_risk_links: true, risk_treatment_plans: true, incident_risks: true },
@@ -228,6 +234,7 @@ export const riskRegisterRepository = {
   listCreateOptions(query: CreateRiskOptionsQuery) {
     const userWhere: Prisma.usersWhereInput = {
       status: 'ACTIVE',
+      role: 'EMPLOYEE',
       ...(query.q ? { full_name: { contains: query.q, mode: 'insensitive' } } : {}),
     };
     const assetWhere: Prisma.assetsWhereInput = {
@@ -272,10 +279,6 @@ export const riskRegisterRepository = {
     ]);
   },
   create(actorId: string, input: CreateRiskAssessmentBody, assetIds: string[], riskCode: string) {
-    const rating = (likelihood: number, impact: number) => {
-      const score = likelihood * impact;
-      return score <= 4 ? 'LOW' : score <= 9 ? 'MEDIUM' : score <= 16 ? 'HIGH' : 'CRITICAL';
-    };
     return prisma.risks.create({
       data: {
         risk_code: riskCode,
@@ -285,47 +288,13 @@ export const riskRegisterRepository = {
         review_date: new Date(`${input.reviewDate}T00:00:00.000Z`),
         created_by: actorId,
         risk_assets: { create: assetIds.map((asset_id) => ({ asset_id })) },
-        risk_threats: {
-          create: input.threats.map((item) => ({
-            name: item.name,
-            description: item.description ?? null,
-          })),
-        },
-        risk_vulnerabilities: {
-          create: input.vulnerabilities.map((item) => ({
-            name: item.name,
-            description: item.description ?? null,
-          })),
-        },
-        risk_assessments: {
-          create: {
-            assessment_type: 'INITIAL',
-            inherent_likelihood: input.inherentLikelihood,
-            inherent_impact: input.inherentImpact,
-            inherent_rating: rating(input.inherentLikelihood, input.inherentImpact),
-            control_effectiveness: input.controlEffectiveness,
-            residual_likelihood: input.residualLikelihood,
-            residual_impact: input.residualImpact,
-            residual_rating: rating(input.residualLikelihood, input.residualImpact),
-            target_risk: input.targetRisk.toUpperCase() as 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL',
-            risk_appetite: input.riskAppetite
-              ? (input.riskAppetite.toUpperCase() as 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL')
-              : null,
-            risk_tolerance: input.riskTolerance
-              ? (input.riskTolerance.toUpperCase() as 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL')
-              : null,
-            assessment_reason: input.assessmentReason,
-            assessed_by: actorId,
-            review_date: new Date(`${input.reviewDate}T00:00:00.000Z`),
-          },
-        },
       },
       select: { id: true, risk_code: true, title: true, status: true, created_at: true },
     });
   },
   findOwner(userId: string) {
     return prisma.users.findFirst({
-      where: { id: userId, status: 'ACTIVE' },
+      where: { id: userId, status: 'ACTIVE', role: 'EMPLOYEE' },
       select: { id: true },
     });
   },
@@ -383,7 +352,7 @@ export const riskRegisterRepository = {
         },
       });
       return { kind: 'created' as const, threat };
-    });
+    }, { timeout: 15_000 });
   },
   identifyVulnerability(riskId: string, input: IdentifyVulnerabilityBody) {
     return prisma.$transaction(async (database) => {
@@ -426,7 +395,7 @@ export const riskRegisterRepository = {
         },
       });
       return { kind: 'created' as const, vulnerability };
-    });
+    }, { timeout: 15_000 });
   },
   assessInherentRisk(riskId: string, actorId: string, input: AssessInherentRiskBody) {
     return prisma.$transaction(async (database) => {
@@ -611,10 +580,11 @@ export const riskRegisterRepository = {
   },
   createTreatmentPlan(actorId: string, input: CreateTreatmentPlanBody) {
     return prisma.$transaction(async (database) => {
-      const risk = await database.risks.findUnique({ where: { id: input.riskId }, select: { id: true, risk_code: true, owner_user_id: true, review_date: true, risk_assessments: { orderBy: { assessed_at: 'desc' }, take: 1 } } });
+      const risk = await database.risks.findUnique({ where: { id: input.riskId }, select: { id: true, risk_code: true, owner_user_id: true, review_date: true, risk_assessments: { orderBy: { assessed_at: 'desc' }, take: 1 }, risk_treatment_plans: { where: { status: { in: ['DRAFT', 'ACTIVE'] } }, select: { id: true }, take: 1 } } });
       if (!risk) return { kind: 'risk_not_found' as const };
       const actor = await database.users.findUnique({ where: { id: actorId }, select: { role: true } });
       if (actor?.role !== 'SECURITY_OFFICER' && risk.owner_user_id !== actorId) return { kind: 'forbidden' as const };
+      if (risk.risk_treatment_plans.length) return { kind: 'active_plan_exists' as const };
       const users = await database.users.count({ where: { id: { in: [input.ownerUserId, ...input.actions.map((item) => item.assignedToUserId)] }, status: 'ACTIVE' } });
       if (users !== new Set([input.ownerUserId, ...input.actions.map((item) => item.assignedToUserId)]).size) return { kind: 'invalid_users' as const };
       const controls = await database.security_controls.findMany({ where: { id: { in: input.controlIds } }, select: { id: true } });
@@ -624,15 +594,21 @@ export const riskRegisterRepository = {
       await database.control_risk_links.createMany({ data: input.controlIds.map((control_id) => ({ control_id, risk_id: risk.id })), skipDuplicates: true });
       const plan = await database.risk_treatment_plans.create({ data: { risk_id: risk.id, source_assessment_id: source.id, title: input.title, strategy: input.strategy.toUpperCase() as 'AVOID' | 'MITIGATE' | 'TRANSFER' | 'ACCEPT', owner_user_id: input.ownerUserId, target_completion_date: new Date(`${input.targetDate}T00:00:00.000Z`), created_by: actorId, risk_treatment_actions: { create: input.actions.map((item) => ({ action_description: item.description ? `${item.title}: ${item.description}` : item.title, owner_user_id: item.assignedToUserId, due_date: new Date(`${item.dueDate}T00:00:00.000Z`) })) } }, select: { id: true, title: true, strategy: true, status: true, target_completion_date: true, created_at: true } });
       return { kind: 'created' as const, plan, riskCode: risk.risk_code, actionCount: input.actions.length, controlCount: controls.length, targetRisk: input.targetRisk };
+    }, { maxWait: 10_000, timeout: 15_000 }).catch((error: unknown) => {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002')
+        return { kind: 'active_plan_exists' as const };
+      throw error;
     });
   },
   updateTreatmentPlan(planId: string, actorId: string, input: UpdateTreatmentPlanBody) {
     return prisma.$transaction(async (database) => {
       const plan = await database.risk_treatment_plans.findUnique({ where: { id: planId }, include: { risks: { select: { owner_user_id: true, risk_code: true } }, risk_treatment_actions: true } });
       if (!plan) return { kind: 'not_found' as const };
+      if (['COMPLETED', 'CANCELLED'].includes(plan.status)) return { kind: 'terminal_plan' as const };
       const actor = await database.users.findUnique({ where: { id: actorId }, select: { role: true } });
       if (actor?.role !== 'SECURITY_OFFICER' && plan.risks.owner_user_id !== actorId) return { kind: 'forbidden' as const };
       if (plan.updated_at.toISOString() !== input.expectedUpdatedAt) return { kind: 'conflict' as const };
+      if (input.status === 'completed' && input.actions.some((item) => !['completed', 'cancelled'].includes(item.status))) return { kind: 'incomplete_actions' as const };
       const userIds = [...new Set([input.ownerUserId, ...input.actions.map((item) => item.assignedToUserId)])];
       if (await database.users.count({ where: { id: { in: userIds }, status: 'ACTIVE' } }) !== userIds.length) return { kind: 'invalid_users' as const };
       const existing = new Map(plan.risk_treatment_actions.map((item) => [item.id, item]));
@@ -647,21 +623,24 @@ export const riskRegisterRepository = {
       }
       const updated = await database.risk_treatment_plans.update({ where: { id: planId }, data: { title: input.title, strategy: input.strategy.toUpperCase() as 'AVOID' | 'MITIGATE' | 'TRANSFER' | 'ACCEPT', owner_user_id: input.ownerUserId, target_completion_date: new Date(`${input.targetDate}T00:00:00.000Z`), status: input.status.toUpperCase() as 'DRAFT' | 'ACTIVE' | 'COMPLETED' | 'CANCELLED', updated_at: new Date() }, include: { risk_treatment_actions: { orderBy: { created_at: 'asc' } } } });
       return { kind: 'updated' as const, updated, riskCode: plan.risks.risk_code };
-    });
+    }, { maxWait: 10_000, timeout: 15_000 });
   },
   submitAcceptance(riskId: string, actorId: string, input: SubmitRiskAcceptanceBody) {
     return prisma.$transaction(async (database) => {
-      const risk = await database.risks.findUnique({ where: { id: riskId }, select: { id: true, risk_code: true, owner_user_id: true, review_date: true, risk_assessments: { orderBy: { assessed_at: 'desc' }, take: 1 }, risk_treatment_plans: { where: { id: input.treatmentPlanId }, select: { id: true } }, risk_acceptances: { where: { decision: 'PENDING' }, select: { id: true }, take: 1 } } });
+      const risk = await database.risks.findUnique({ where: { id: riskId }, select: { id: true, risk_code: true, owner_user_id: true, review_date: true, risk_assessments: { orderBy: { assessed_at: 'desc' }, take: 1 }, risk_treatment_plans: { where: { id: input.treatmentPlanId, status: { in: ['DRAFT', 'ACTIVE', 'COMPLETED'] } }, select: { id: true, status: true, risk_treatment_actions: { select: { status: true } } } }, risk_acceptances: { where: { decision: 'PENDING' }, select: { id: true }, take: 1 } } });
       if (!risk) return { kind: 'not_found' as const };
       if (risk.owner_user_id !== actorId) return { kind: 'not_owner' as const };
       if (!risk.risk_treatment_plans[0]) return { kind: 'invalid_plan' as const };
+      const selectedPlan = risk.risk_treatment_plans[0];
+      if (selectedPlan.status === 'COMPLETED' && input.treatmentPlanStatus !== 'completed') return { kind: 'invalid_plan_status' as const };
+      if (input.treatmentPlanStatus === 'completed' && selectedPlan.risk_treatment_actions.some((item) => !['COMPLETED', 'CANCELLED'].includes(item.status))) return { kind: 'incomplete_actions' as const };
       if (risk.risk_acceptances[0]) return { kind: 'pending_exists' as const };
       const latest = risk.risk_assessments[0]; const score = input.residualLikelihood * input.residualImpact; const rating = score <= 4 ? 'LOW' : score <= 9 ? 'MEDIUM' : score <= 16 ? 'HIGH' : 'CRITICAL';
       const assessment = await database.risk_assessments.create({ data: { risk_id: riskId, assessment_type: 'PERIODIC_REVIEW', inherent_likelihood: latest?.inherent_likelihood ?? null, inherent_impact: latest?.inherent_impact ?? null, inherent_rating: latest?.inherent_rating ?? null, control_effectiveness: latest?.control_effectiveness ?? null, residual_likelihood: input.residualLikelihood, residual_impact: input.residualImpact, residual_rating: rating, target_risk: latest?.target_risk ?? null, risk_appetite: latest?.risk_appetite ?? null, risk_tolerance: latest?.risk_tolerance ?? null, assessment_reason: input.assessmentReason, assessed_by: actorId, review_date: risk.review_date }, select: { id: true, assessed_at: true } });
       await database.risk_treatment_plans.update({ where: { id: input.treatmentPlanId }, data: { status: input.treatmentPlanStatus.toUpperCase() as 'DRAFT' | 'ACTIVE' | 'COMPLETED', source_assessment_id: assessment.id, updated_at: new Date() } });
       const acceptance = await database.risk_acceptances.create({ data: { risk_id: riskId, requested_by: actorId, reason: input.acceptanceReason, valid_until: new Date(`${input.validUntil}T00:00:00.000Z`) }, select: { id: true, decision: true, requested_at: true, valid_until: true } });
       return { kind: 'submitted' as const, riskCode: risk.risk_code, assessment, acceptance, rating, score };
-    });
+    }, { maxWait: 10_000, timeout: 15_000 });
   },
   decideAcceptance(acceptanceId: string, actorId: string, input: DecideRiskAcceptanceBody) {
     return prisma.$transaction(async (database) => {
@@ -675,6 +654,6 @@ export const riskRegisterRepository = {
       const updated = await database.risk_acceptances.update({ where: { id: acceptanceId }, data: { decision, reason: input.reason, decided_by: actorId, decided_at: new Date() } });
       if (decision === 'APPROVED') await database.risks.update({ where: { id: acceptance.risk_id }, data: { status: 'ACCEPTED', updated_at: new Date() } });
       return { kind: 'decided' as const, updated, riskCode: acceptance.risks.risk_code };
-    });
+    }, { maxWait: 10_000, timeout: 15_000 });
   },
 };

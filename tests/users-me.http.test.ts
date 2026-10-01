@@ -41,6 +41,7 @@ describe('GET /api/v1/users/me', () => {
       full_name: 'System Administrator',
       role: user_role.ADMIN,
       status: user_status.ACTIVE,
+      _count: { risks_risks_owner_user_idTousers: 0 },
     });
     const response = await request(app)
       .get('/api/v1/users/me')
@@ -55,11 +56,10 @@ describe('GET /api/v1/users/me', () => {
         fullName: 'System Administrator',
         status: 'ACTIVE',
         mustChangePassword: false,
-        mfaEnabled: false,
         roles: [{ code: 'ADMIN', name: 'ADMIN' }],
-      permissions: [
-        'assets.read',
-        'users.read',
+        permissions: [
+          'assets.read',
+          'users.read',
           'users.create',
           'users.update',
           'users.assign-role',
@@ -101,11 +101,54 @@ describe('GET /api/v1/users/me', () => {
       full_name: 'System Administrator',
       role: user_role.ADMIN,
       status: user_status.LOCKED,
+      _count: { risks_risks_owner_user_idTousers: 0 },
     });
     const response = await request(app)
       .get('/api/v1/users/me')
       .set('Authorization', `Bearer ${accessToken()}`);
     expect(response.status).toBe(401);
     expect(response.body.error.code).toBe('UNAUTHORIZED');
+  });
+
+  it('adds contextual risk capabilities for an Employee who owns a risk', async () => {
+    vi.mocked(usersRepository.findCurrentUser).mockResolvedValue({
+      id: userId,
+      email: 'risk-owner@example.test',
+      full_name: 'Risk Owner',
+      role: user_role.EMPLOYEE,
+      status: user_status.ACTIVE,
+      _count: { risks_risks_owner_user_idTousers: 2 },
+    });
+
+    const response = await request(app)
+      .get('/api/v1/users/me')
+      .set('Authorization', `Bearer ${accessToken()}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.permissions).toEqual([
+      'assets.read',
+      'policies.acknowledge',
+      'risks.read',
+      'risks.review-reassessment',
+      'risks.update-treatment-plan',
+    ]);
+  });
+
+  it('does not add risk capabilities for an Employee without owned risks', async () => {
+    vi.mocked(usersRepository.findCurrentUser).mockResolvedValue({
+      id: userId,
+      email: 'employee@example.test',
+      full_name: 'Employee',
+      role: user_role.EMPLOYEE,
+      status: user_status.ACTIVE,
+      _count: { risks_risks_owner_user_idTousers: 0 },
+    });
+
+    const response = await request(app)
+      .get('/api/v1/users/me')
+      .set('Authorization', `Bearer ${accessToken()}`);
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.permissions).toEqual(['assets.read', 'policies.acknowledge']);
   });
 });

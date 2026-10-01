@@ -1,5 +1,6 @@
 import { AppError } from '../../common/errors/app-error.js';
 import type { CreateRiskReassessmentRequestInput } from './dto/create-risk-reassessment-request.dto.js';
+import type { RiskReassessmentRequestHistoryQuery } from './dto/create-risk-reassessment-request.dto.js';
 import { riskReassessmentRequestsRepository } from './risk-reassessment-requests.repository.js';
 
 async function requireSecurityOfficer(userId: string) {
@@ -36,6 +37,59 @@ const findingResponse = (finding: {
 });
 
 export const riskReassessmentRequestsService = {
+  async history(userId: string, incidentId: string, query: RiskReassessmentRequestHistoryQuery) {
+    await requireSecurityOfficer(userId);
+    const incident = await riskReassessmentRequestsRepository.findIncident(incidentId);
+    if (!incident) throw new AppError(404, 'INCIDENT_NOT_FOUND', 'Incident not found');
+    const { items, total } = await riskReassessmentRequestsRepository.listHistory(
+      incidentId,
+      query.page,
+      query.limit,
+    );
+    return {
+      incident: {
+        id: incident.id,
+        incidentCode: incident.incident_code,
+        title: incident.title,
+      },
+      items: items.map((request) => ({
+        id: request.id,
+        reason: request.reason,
+        status: request.status.toLowerCase(),
+        requestedAt: request.requested_at,
+        reviewedAt: request.reviewed_at,
+        reviewComment: request.review_comment,
+        risk: {
+          ...riskResponse(request.risks),
+          owner: request.risks.users_risks_owner_user_idTousers
+            ? {
+                id: request.risks.users_risks_owner_user_idTousers.id,
+                fullName: request.risks.users_risks_owner_user_idTousers.full_name,
+              }
+            : null,
+        },
+        controlWeakness: request.control_findings
+          ? findingResponse(request.control_findings)
+          : null,
+        requestedBy: {
+          id: request.users_risk_reassessment_requests_requested_byTousers.id,
+          fullName: request.users_risk_reassessment_requests_requested_byTousers.full_name,
+        },
+        reviewedBy: request.users_risk_reassessment_requests_reviewed_byTousers
+          ? {
+              id: request.users_risk_reassessment_requests_reviewed_byTousers.id,
+              fullName: request.users_risk_reassessment_requests_reviewed_byTousers.full_name,
+            }
+          : null,
+      })),
+      pagination: {
+        page: query.page,
+        limit: query.limit,
+        total,
+        totalPages: Math.ceil(total / query.limit),
+      },
+    };
+  },
   async options(userId: string, incidentId: string) {
     await requireSecurityOfficer(userId);
     const { incident, riskLinks, findings } =
@@ -57,11 +111,7 @@ export const riskReassessmentRequestsService = {
       controlWeaknesses: findings.map(findingResponse),
     };
   },
-  async create(
-    userId: string,
-    incidentId: string,
-    input: CreateRiskReassessmentRequestInput,
-  ) {
+  async create(userId: string, incidentId: string, input: CreateRiskReassessmentRequestInput) {
     await requireSecurityOfficer(userId);
     const [incident, riskLink, activeRequest, controlFinding] = await Promise.all([
       riskReassessmentRequestsRepository.findIncident(incidentId),
@@ -102,9 +152,7 @@ export const riskReassessmentRequestsService = {
         title: request.incidents.title,
       },
       risk: riskResponse(request.risks),
-      controlWeakness: request.control_findings
-        ? findingResponse(request.control_findings)
-        : null,
+      controlWeakness: request.control_findings ? findingResponse(request.control_findings) : null,
     };
   },
 };

@@ -1,4 +1,5 @@
 import { prisma } from '../../database/prisma.js';
+import type { IncidentAssetOptionsQuery } from './dto/link-incident-asset.dto.js';
 
 export const incidentAssetsRepository = {
   findActor(userId: string) {
@@ -22,11 +23,27 @@ export const incidentAssetsRepository = {
     });
   },
 
-  async findOptions(incidentId: string) {
-    const [incident, assets] = await Promise.all([
+  async findOptions(incidentId: string, query: IncidentAssetOptionsQuery) {
+    const relationshipFilter =
+      query.scope === 'linked'
+        ? { some: { incident_id: incidentId } }
+        : { none: { incident_id: incidentId } };
+    const where = {
+      status: 'ACTIVE' as const,
+      incident_assets: relationshipFilter,
+      ...(query.q
+        ? {
+            OR: [
+              { asset_code: { contains: query.q, mode: 'insensitive' as const } },
+              { name: { contains: query.q, mode: 'insensitive' as const } },
+            ],
+          }
+        : {}),
+    };
+    const [incident, assets, total] = await Promise.all([
       this.findIncident(incidentId),
       prisma.assets.findMany({
-        where: { status: 'ACTIVE' },
+        where,
         select: {
           id: true,
           asset_code: true,
@@ -39,10 +56,12 @@ export const incidentAssetsRepository = {
           },
         },
         orderBy: [{ asset_code: 'asc' }, { id: 'asc' }],
-        take: 200,
+        skip: (query.page - 1) * query.limit,
+        take: query.limit,
       }),
+      prisma.assets.count({ where }),
     ]);
-    return { incident, assets };
+    return { incident, assets, total };
   },
 
   link(incidentId: string, assetId: string, linkedBy: string) {
@@ -53,6 +72,12 @@ export const incidentAssetsRepository = {
         incidents: { select: { id: true, incident_code: true, title: true } },
         assets: { select: { id: true, asset_code: true, name: true, criticality: true } },
       },
+    });
+  },
+
+  unlink(incidentId: string, assetId: string) {
+    return prisma.incident_assets.deleteMany({
+      where: { incident_id: incidentId, asset_id: assetId },
     });
   },
 };

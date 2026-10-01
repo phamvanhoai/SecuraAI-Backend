@@ -172,6 +172,49 @@ async function seedRiskRegisterDemo(transaction: Prisma.TransactionClient): Prom
     },
   });
 
+  const controlEvidence = await transaction.evidence_items.upsert({
+    where: { id: '00000000-0000-4000-8000-000000000153' },
+    update: {
+      status: 'ACTIVE',
+      owner_user_id: officer.id,
+      reviewed_by: officer.id,
+      reviewed_at: new Date('2026-09-30T00:00:00.000Z'),
+      valid_until: new Date('2027-09-30T00:00:00.000Z'),
+    },
+    create: {
+      id: '00000000-0000-4000-8000-000000000153',
+      name: 'Q3 2026 privileged access review report',
+      description:
+        'Sample evidence showing the quarterly review of privileged accounts, identified exceptions, and remediation follow-up.',
+      source: 'Identity and Access Management team',
+      owner_user_id: officer.id,
+      storage_uri: 'demo://evidence/q3-2026-privileged-access-review.pdf',
+      mime_type: 'application/pdf',
+      file_size: 245760n,
+      collected_at: new Date('2026-09-29T00:00:00.000Z'),
+      valid_from: new Date('2026-09-29T00:00:00.000Z'),
+      valid_until: new Date('2027-09-30T00:00:00.000Z'),
+      status: 'ACTIVE',
+      integrity_hash: 'demo-q3-2026-privileged-access-review',
+      reviewed_by: officer.id,
+      reviewed_at: new Date('2026-09-30T00:00:00.000Z'),
+    },
+  });
+  await transaction.control_evidence_links.upsert({
+    where: {
+      control_id_evidence_id: {
+        control_id: control.id,
+        evidence_id: controlEvidence.id,
+      },
+    },
+    update: { linked_by: officer.id },
+    create: {
+      control_id: control.id,
+      evidence_id: controlEvidence.id,
+      linked_by: officer.id,
+    },
+  });
+
   const risks = [
     {
       id: '00000000-0000-4000-8000-000000000142',
@@ -292,7 +335,7 @@ async function seedRiskRegisterDemo(transaction: Prisma.TransactionClient): Prom
 
   const plan = await transaction.risk_treatment_plans.upsert({
     where: { id: '00000000-0000-4000-8000-000000000150' },
-    update: { status: 'ACTIVE' },
+    update: {},
     create: {
       id: '00000000-0000-4000-8000-000000000150',
       risk_id: primaryRiskId,

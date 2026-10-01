@@ -10,6 +10,7 @@ import type {
 import type { Prisma, triage_decision } from '@prisma/client';
 import type { ConfirmAiAlert } from './dto/confirm-ai-alert.dto.js';
 import type { MarkAiAlertFalsePositive } from './dto/mark-ai-alert-false-positive.dto.js';
+import type { MarkAiAlertFurtherInvestigation } from './dto/mark-ai-alert-further-investigation.dto.js';
 import type { ListAlertThresholdsQuery, SetAlertThresholdBody } from './dto/alert-threshold.dto.js';
 import type { ListModelVersionsQuery } from './dto/list-model-versions.dto.js';
 import type { ConfigureDetectionThreshold } from './dto/detection-threshold.dto.js';
@@ -62,7 +63,8 @@ function thresholdResponse(record: {
 
 function responseStatus(status: AiAlertRecord['status']) {
   if (status === 'NEW') return 'new' as const;
-  if (status === 'IN_TRIAGE' || status === 'NEED_INVESTIGATION') return 'reviewing' as const;
+  if (status === 'IN_TRIAGE') return 'reviewing' as const;
+  if (status === 'NEED_INVESTIGATION') return 'needs_investigation' as const;
   if (status === 'CONFIRMED') return 'confirmed' as const;
   return 'dismissed' as const;
 }
@@ -103,9 +105,36 @@ function toResponse(alert: AiAlertRecord) {
 }
 
 export const aiAlertsService = {
-  async listActiveAssetOptions(userId: string) {
+  async startTriage(userId: string, alertId: string) {
     await requireSecurityOfficer(userId);
-    const assets = await aiAlertsRepository.listActiveAssetOptions();
+    const result = await aiAlertsRepository.startTriage({
+      alertId,
+      analystUserId: userId,
+    });
+    if (result.outcome === 'not_found') {
+      throw new AppError(404, 'AI_ALERT_NOT_FOUND', 'AI alert not found');
+    }
+    if (result.outcome === 'conflict') {
+      throw new AppError(
+        409,
+        'AI_ALERT_TRIAGE_CONFLICT',
+        result.alert.status === 'IN_TRIAGE'
+          ? 'This AI alert is already being reviewed by another analyst'
+          : 'This AI alert can no longer enter triage from its current status',
+      );
+    }
+    return {
+      id: result.alert.id,
+      alertCode: `ALT-${result.alert.id.slice(0, 8).toUpperCase()}`,
+      status: 'reviewing' as const,
+      assignedToUserId: result.alert.assigned_to,
+      triageStartedAt: result.startedAt,
+      changed: result.outcome === 'started',
+    };
+  },
+  async listActiveAssetOptions(userId: string, q?: string) {
+    await requireSecurityOfficer(userId);
+    const assets = await aiAlertsRepository.listActiveAssetOptions(q);
     return assets.map((asset) => ({
       id: asset.id,
       assetCode: asset.asset_code,
@@ -340,7 +369,26 @@ export const aiAlertsService = {
       userId,
       ...(input.comment ? { comment: input.comment } : {}),
     });
-    if (!result) throw new AppError(404, 'AI_ALERT_NOT_FOUND', 'AI alert not found');
+    if (result.outcome === 'not_found')
+      throw new AppError(404, 'AI_ALERT_NOT_FOUND', 'AI alert not found');
+    if (result.outcome === 'invalid_status')
+      throw new AppError(
+        409,
+        'AI_ALERT_TRIAGE_REQUIRED',
+        'Start analyst triage before confirming this alert as a true positive',
+      );
+    if (result.outcome === 'not_owner')
+      throw new AppError(
+        409,
+        'AI_ALERT_TRIAGE_OWNERSHIP_CONFLICT',
+        'Only the analyst assigned to this alert can confirm it as a true positive',
+      );
+    if (result.outcome === 'conflict')
+      throw new AppError(
+        409,
+        'AI_ALERT_STATUS_CONFLICT',
+        'The alert status changed while it was being confirmed; refresh and try again',
+      );
     return {
       id: result.alert.id,
       alertCode: `ALT-${result.alert.id.slice(0, 8).toUpperCase()}`,
@@ -371,10 +419,68 @@ export const aiAlertsService = {
         'AI_ALERT_ALREADY_CONFIRMED',
         'A confirmed security incident cannot be marked as a false positive',
       );
+    if (result.outcome === 'invalid_status')
+      throw new AppError(
+        409,
+        'AI_ALERT_TRIAGE_REQUIRED',
+        'Start analyst triage before dismissing this alert as a false positive',
+      );
+    if (result.outcome === 'not_owner')
+      throw new AppError(
+        409,
+        'AI_ALERT_TRIAGE_OWNERSHIP_CONFLICT',
+        'Only the analyst assigned to this alert can dismiss it as a false positive',
+      );
+    if (result.outcome === 'conflict')
+      throw new AppError(
+        409,
+        'AI_ALERT_STATUS_CONFLICT',
+        'The alert status changed while it was being dismissed; refresh and try again',
+      );
     return {
       id: result.alert.id,
       alertCode: `ALT-${result.alert.id.slice(0, 8).toUpperCase()}`,
       status: 'false_positive' as const,
+      reviewedByUserId: result.triage.analyst_user_id,
+      reviewedAt: result.triage.completed_at ?? result.triage.created_at,
+      changed: result.outcome === 'changed',
+    };
+  },
+  async markFurtherInvestigation(
+    userId: string,
+    alertId: string,
+    input: MarkAiAlertFurtherInvestigation,
+  ) {
+    await requireSecurityOfficer(userId);
+    const result = await aiAlertsRepository.markFurtherInvestigation({
+      alertId,
+      userId,
+      reason: input.reason,
+    });
+    if (result.outcome === 'not_found')
+      throw new AppError(404, 'AI_ALERT_NOT_FOUND', 'AI alert not found');
+    if (result.outcome === 'invalid_status')
+      throw new AppError(
+        409,
+        'AI_ALERT_TRIAGE_REQUIRED',
+        'Start analyst triage before requesting further investigation',
+      );
+    if (result.outcome === 'not_owner')
+      throw new AppError(
+        409,
+        'AI_ALERT_TRIAGE_OWNERSHIP_CONFLICT',
+        'Only the analyst assigned to this alert can request further investigation',
+      );
+    if (result.outcome === 'conflict')
+      throw new AppError(
+        409,
+        'AI_ALERT_STATUS_CONFLICT',
+        'The alert status changed while it was being updated; refresh and try again',
+      );
+    return {
+      id: result.alert.id,
+      alertCode: `ALT-${result.alert.id.slice(0, 8).toUpperCase()}`,
+      status: 'needs_investigation' as const,
       reviewedByUserId: result.triage.analyst_user_id,
       reviewedAt: result.triage.completed_at ?? result.triage.created_at,
       changed: result.outcome === 'changed',
@@ -448,14 +554,29 @@ function feedbackResponse(record: {
   analyst_user_id: string;
   decision: triage_decision;
   reason: string;
+  completed_at: Date | null;
   created_at: Date;
+  users: { id: string; full_name: string; email: string };
+  ai_model_versions: { id: string; model_name: string; version: string };
 }) {
   return {
     id: record.id,
     alertId: record.alert_id,
     reviewedByUserId: record.analyst_user_id,
+    analyst: {
+      id: record.users.id,
+      name: record.users.full_name,
+      email: record.users.email,
+    },
     feedbackLabel: feedbackLabel(record.decision),
     comment: record.reason,
+    reason: record.reason,
+    recordedAt: record.completed_at ?? record.created_at,
+    modelVersion: {
+      id: record.ai_model_versions.id,
+      modelName: record.ai_model_versions.model_name,
+      version: record.ai_model_versions.version,
+    },
     createdAt: record.created_at,
   };
 }
