@@ -6,11 +6,13 @@ import {
   listOwnedRiskReassessmentRequests,
   startRiskReassessmentReview,
   completeRiskReassessment,
+  rejectRiskReassessmentRequest,
 } from './risk-reassessment-review.controller.js';
 import {
   listOwnedReassessmentRequestsQuerySchema,
   reviewRiskReassessmentRequestParamsSchema,
   completeRiskReassessmentBodySchema,
+  rejectRiskReassessmentRequestBodySchema,
 } from './dto/review-risk-reassessment-request.dto.js';
 
 export const riskReassessmentReviewRouter = Router();
@@ -26,4 +28,21 @@ riskReassessmentReviewRouter.post(
   validate({ params: reviewRiskReassessmentRequestParamsSchema }),
   asyncHandler(startRiskReassessmentReview),
 );
-riskReassessmentReviewRouter.post('/reassessment-requests/:requestId/complete', authenticate, validate({ params: reviewRiskReassessmentRequestParamsSchema, body: completeRiskReassessmentBodySchema }), asyncHandler(completeRiskReassessment));
+riskReassessmentReviewRouter.post(
+  '/reassessment-requests/:requestId/complete',
+  authenticate,
+  validate({
+    params: reviewRiskReassessmentRequestParamsSchema,
+    body: completeRiskReassessmentBodySchema,
+  }),
+  asyncHandler(completeRiskReassessment),
+);
+riskReassessmentReviewRouter.post(
+  '/reassessment-requests/:requestId/reject',
+  authenticate,
+  validate({
+    params: reviewRiskReassessmentRequestParamsSchema,
+    body: rejectRiskReassessmentRequestBodySchema,
+  }),
+  asyncHandler(rejectRiskReassessmentRequest),
+);

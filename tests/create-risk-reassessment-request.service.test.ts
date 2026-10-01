@@ -102,6 +102,7 @@ describe('riskReassessmentRequestsService.history', () => {
           status: 'PENDING',
           requested_at: requestedAt,
           reviewed_at: null,
+          review_comment: null,
           risks: {
             id: riskId,
             risk_code: 'RISK-1',

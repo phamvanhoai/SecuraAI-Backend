@@ -261,6 +261,10 @@ export const usersService = {
     if (!user || user.status !== 'ACTIVE') {
       throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
     }
+    const permissions = [...capabilitiesForRole(user.role)];
+    if (user.role === 'EMPLOYEE' && user._count.risks_risks_owner_user_idTousers > 0) {
+      permissions.push('risks.read', 'risks.review-reassessment', 'risks.update-treatment-plan');
+    }
     return {
       id: user.id,
       email: user.email,
@@ -268,7 +272,7 @@ export const usersService = {
       status: user.status,
       mustChangePassword: false,
       roles: [{ code: user.role, name: user.role }],
-      permissions: capabilitiesForRole(user.role),
+      permissions,
     };
   },
 };

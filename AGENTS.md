@@ -19,7 +19,7 @@ Current stack:
 Current database baseline:
 
 - Online database: Supabase-managed PostgreSQL 17 in the Singapore region.
-- The V2 baseline contains 56 tables, 36 enum types and 120 active foreign-key constraints defined by `project-docs/new/database.sql`.
+- The original V2 baseline contains 56 tables. The current evolved schema contains 59 tables, 36 enum types and 125 active foreign-key constraints defined by `project-docs/new/database.sql` plus applied migrations.
 - `prisma/migrations/00000000000000_baseline_v2/migration.sql` is the deployable V2 baseline.
 - Legacy migrations are retained under `prisma/migrations-legacy/` for reference only.
 - `npm run db:verify` compares the live `public` schema with the approved database design.
@@ -152,7 +152,7 @@ Do not weaken existing authentication, CORS, Helmet, rate limiting, request-size
 - Do not run destructive resets, drops or production migrations without explicit user authorization.
 - The Supabase `public` schema must match the V2 baseline in `project-docs/new/database.sql` plus Prisma's `_prisma_migrations` table. Do not modify Supabase-managed schemas such as `auth`, `storage`, `realtime`, `extensions` or `vault`.
 - Prisma does not fully represent PostgreSQL comments, deferred foreign keys or all check-constraint metadata. Preserve these in SQL migrations; do not assume `prisma db pull` captures every database feature.
-- Run `npm run db:verify` after schema changes. It must report 56 tables, 120 foreign keys, 160 checks, and empty `missing`/`unexpected` lists.
+- Run `npm run db:verify` after schema changes. It must report 59 tables, 125 foreign keys, 161 checks, and empty `missing`/`unexpected` lists.
 
 Repository example:
 

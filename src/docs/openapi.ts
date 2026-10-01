@@ -1962,6 +1962,46 @@ export const openApiSpec = {
         },
       },
     },
+    '/risks/reassessment-requests/{requestId}/reject': {
+      post: {
+        tags: ['Risk Assessment'],
+        summary: 'Reject a risk reassessment request',
+        description:
+          'Allows the assigned Risk Owner to close a pending or under-review request without changing the risk assessment or treatment plan. The decision rationale is retained for audit.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'requestId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['reason'],
+                additionalProperties: false,
+                properties: {
+                  reason: { type: 'string', minLength: 20, maxLength: 2000 },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'Reassessment request rejected' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Assigned Risk Owner required' },
+          '404': { description: 'Reassessment request not found' },
+          '409': { description: 'Request is no longer pending or under review' },
+          '422': { description: 'Invalid request ID or decision rationale' },
+        },
+      },
+    },
     '/incidents/{incidentId}/control-weaknesses': {
       get: {
         tags: ['Information Security Incident Management'],

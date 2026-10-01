@@ -58,6 +58,7 @@ export const riskReassessmentRequestsService = {
         status: request.status.toLowerCase(),
         requestedAt: request.requested_at,
         reviewedAt: request.reviewed_at,
+        reviewComment: request.review_comment,
         risk: {
           ...riskResponse(request.risks),
           owner: request.risks.users_risks_owner_user_idTousers

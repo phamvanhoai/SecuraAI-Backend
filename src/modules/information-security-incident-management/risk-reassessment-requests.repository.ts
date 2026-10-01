@@ -55,6 +55,7 @@ export const riskReassessmentRequestsRepository = {
           status: true,
           requested_at: true,
           reviewed_at: true,
+          review_comment: true,
           risks: {
             select: {
               id: true,

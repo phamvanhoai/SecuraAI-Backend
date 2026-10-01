@@ -351,7 +351,8 @@ export const riskRegisterService = {
       riskRegisterRepository.findOwner(input.ownerUserId),
       riskRegisterRepository.findScopeAssets(input.scope),
     ]);
-    if (!owner) throw new AppError(422, 'INVALID_RISK_OWNER', 'Risk owner must be an active user');
+    if (!owner)
+      throw new AppError(422, 'INVALID_RISK_OWNER', 'Risk owner must be an active Employee');
     if (scopeAssets.length === 0)
       throw new AppError(
         422,

@@ -234,6 +234,7 @@ export const riskRegisterRepository = {
   listCreateOptions(query: CreateRiskOptionsQuery) {
     const userWhere: Prisma.usersWhereInput = {
       status: 'ACTIVE',
+      role: 'EMPLOYEE',
       ...(query.q ? { full_name: { contains: query.q, mode: 'insensitive' } } : {}),
     };
     const assetWhere: Prisma.assetsWhereInput = {
@@ -293,7 +294,7 @@ export const riskRegisterRepository = {
   },
   findOwner(userId: string) {
     return prisma.users.findFirst({
-      where: { id: userId, status: 'ACTIVE' },
+      where: { id: userId, status: 'ACTIVE', role: 'EMPLOYEE' },
       select: { id: true },
     });
   },

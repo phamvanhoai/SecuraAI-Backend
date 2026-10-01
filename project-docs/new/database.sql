@@ -221,6 +221,20 @@ CREATE TABLE risk_vulnerabilities (
     CONSTRAINT chk_risk_vulnerability_name CHECK (char_length(trim(name)) > 0)
 );
 
+CREATE TABLE risk_threat_vulnerabilities (
+    threat_id uuid NOT NULL,
+    vulnerability_id uuid NOT NULL,
+    linked_at timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (threat_id, vulnerability_id)
+);
+
+CREATE TABLE risk_vulnerability_controls (
+    vulnerability_id uuid NOT NULL,
+    control_id uuid NOT NULL,
+    linked_at timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (vulnerability_id, control_id)
+);
+
 -- Created before referenced incident/control finding tables; FKs added later.
 CREATE TABLE risk_reassessment_requests (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -1011,6 +1025,10 @@ ALTER TABLE risk_assets ADD CONSTRAINT fk_risk_assets_risk FOREIGN KEY (risk_id)
 ALTER TABLE risk_assets ADD CONSTRAINT fk_risk_assets_asset FOREIGN KEY (asset_id) REFERENCES assets(id);
 ALTER TABLE risk_threats ADD CONSTRAINT fk_risk_threat_risk FOREIGN KEY (risk_id) REFERENCES risks(id);
 ALTER TABLE risk_vulnerabilities ADD CONSTRAINT fk_risk_vulnerability_risk FOREIGN KEY (risk_id) REFERENCES risks(id);
+ALTER TABLE risk_threat_vulnerabilities ADD CONSTRAINT fk_risk_threat_vulnerability_threat FOREIGN KEY (threat_id) REFERENCES risk_threats(id) ON DELETE CASCADE;
+ALTER TABLE risk_threat_vulnerabilities ADD CONSTRAINT fk_risk_threat_vulnerability_vulnerability FOREIGN KEY (vulnerability_id) REFERENCES risk_vulnerabilities(id) ON DELETE CASCADE;
+ALTER TABLE risk_vulnerability_controls ADD CONSTRAINT fk_risk_vulnerability_control_vulnerability FOREIGN KEY (vulnerability_id) REFERENCES risk_vulnerabilities(id) ON DELETE CASCADE;
+ALTER TABLE risk_vulnerability_controls ADD CONSTRAINT fk_risk_vulnerability_control_control FOREIGN KEY (control_id) REFERENCES security_controls(id) ON DELETE CASCADE;
 ALTER TABLE risk_assessments ADD CONSTRAINT fk_risk_assessment_risk FOREIGN KEY (risk_id) REFERENCES risks(id);
 ALTER TABLE risk_assessments ADD CONSTRAINT fk_risk_assessment_assessed_by FOREIGN KEY (assessed_by) REFERENCES users(id);
 ALTER TABLE risk_assessments ADD CONSTRAINT fk_risk_assessment_reassessment FOREIGN KEY (reassessment_request_id) REFERENCES risk_reassessment_requests(id);
@@ -1135,6 +1153,8 @@ CREATE INDEX idx_assets_owner ON assets(owner_user_id);
 CREATE INDEX idx_assets_business_service ON assets(business_service_id);
 CREATE INDEX idx_risks_owner ON risks(owner_user_id);
 CREATE INDEX idx_risk_assets_asset ON risk_assets(asset_id);
+CREATE INDEX idx_risk_threat_vulnerabilities_vulnerability ON risk_threat_vulnerabilities(vulnerability_id);
+CREATE INDEX idx_risk_vulnerability_controls_control ON risk_vulnerability_controls(control_id);
 CREATE INDEX idx_risk_assessments_risk ON risk_assessments(risk_id, assessed_at DESC);
 CREATE INDEX idx_risk_treatment_plans_risk ON risk_treatment_plans(risk_id);
 CREATE INDEX idx_control_risk_links_risk ON control_risk_links(risk_id);
