@@ -444,7 +444,7 @@ export const aiAlertsRepository = {
   },
   listFeedback(alertId: string, query: ListAiAlertFeedbackQuery) {
     const where = { alert_id: alertId };
-    return prisma.$transaction([
+    return Promise.all([
       prisma.alert_triage_records.count({ where }),
       prisma.alert_triage_records.findMany({
         where,
