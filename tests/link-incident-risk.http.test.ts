@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('../src/database/prisma.js', () => ({ prisma: { $queryRaw: vi.fn() } }));
 vi.mock(
   '../src/modules/information-security-incident-management/incident-risks.service.js',
-  () => ({ incidentRisksService: { options: vi.fn(), link: vi.fn() } }),
+  () => ({ incidentRisksService: { options: vi.fn(), link: vi.fn(), unlink: vi.fn() } }),
 );
 import { createApp } from '../src/app.js';
 import { env } from '../src/config/env.js';
@@ -51,5 +51,13 @@ describe('incident risk routes', () => {
       .set('Authorization', `Bearer ${token}`)
       .send({ riskId: 'invalid' });
     expect(response.status).toBe(422);
+  });
+  it('unlinks a risk and returns 204', async () => {
+    vi.mocked(incidentRisksService.unlink).mockResolvedValue(undefined);
+    const response = await request(app)
+      .delete(`/api/v1/incidents/${incidentId}/risks/${riskId}`)
+      .set('Authorization', `Bearer ${token}`);
+    expect(response.status).toBe(204);
+    expect(incidentRisksService.unlink).toHaveBeenCalledWith(userId, incidentId, riskId);
   });
 });

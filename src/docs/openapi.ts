@@ -699,6 +699,63 @@ export const openApiSpec = {
         },
       },
     },
+    '/incidents/{incidentId}/risks/options': {
+      get: {
+        tags: ['Incident Management'],
+        summary: 'Search incident risk options',
+        description:
+          'Returns paginated linked or unlinked non-archived risks matching risk code or title.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'incidentId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+          { name: 'q', in: 'query', schema: { type: 'string', maxLength: 100 } },
+          { name: 'scope', in: 'query', schema: { type: 'string', enum: ['linked', 'unlinked'] } },
+          { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1 } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 50 } },
+        ],
+        responses: {
+          '200': { description: 'Paginated incident risk options' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer required' },
+          '404': { description: 'Incident not found' },
+          '422': { description: 'Invalid parameters' },
+        },
+      },
+    },
+    '/incidents/{incidentId}/risks/{riskId}': {
+      delete: {
+        tags: ['Incident Management'],
+        summary: 'Unlink a risk from an incident',
+        description: 'Removes the relationship without deleting the incident or risk.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'incidentId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+          {
+            name: 'riskId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          '204': { description: 'Risk unlinked' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer required' },
+          '404': { description: 'Link not found' },
+          '422': { description: 'Invalid identifier' },
+        },
+      },
+    },
     '/compliance/policies/version-history': {
       get: {
         tags: ['Policy Management'],

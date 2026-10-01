@@ -1,5 +1,8 @@
 import { AppError } from '../../common/errors/app-error.js';
-import type { LinkIncidentRiskInput } from './dto/link-incident-risk.dto.js';
+import type {
+  IncidentRiskOptionsQuery,
+  LinkIncidentRiskInput,
+} from './dto/link-incident-risk.dto.js';
 import { incidentRisksRepository } from './incident-risks.repository.js';
 async function requireSecurityOfficer(userId: string) {
   const actor = await incidentRisksRepository.findActor(userId);
@@ -22,9 +25,9 @@ const riskResponse = (risk: {
   reviewDate: risk.review_date,
 });
 export const incidentRisksService = {
-  async options(userId: string, incidentId: string) {
+  async options(userId: string, incidentId: string, query: IncidentRiskOptionsQuery) {
     await requireSecurityOfficer(userId);
-    const { incident, risks } = await incidentRisksRepository.findOptions(incidentId);
+    const { incident, risks, total } = await incidentRisksRepository.findOptions(incidentId, query);
     if (!incident) throw new AppError(404, 'INCIDENT_NOT_FOUND', 'Incident not found');
     return {
       incident: {
@@ -37,6 +40,12 @@ export const incidentRisksService = {
         ...riskResponse(risk),
         linked: risk.incident_risks.length > 0,
       })),
+      pagination: {
+        page: query.page,
+        limit: query.limit,
+        total,
+        totalPages: Math.max(1, Math.ceil(total / query.limit)),
+      },
     };
   },
   async link(userId: string, incidentId: string, input: LinkIncidentRiskInput) {
@@ -67,5 +76,17 @@ export const incidentRisksService = {
         );
       throw error;
     }
+  },
+  async unlink(userId: string, incidentId: string, riskId: string) {
+    await requireSecurityOfficer(userId);
+    const incident = await incidentRisksRepository.findIncident(incidentId);
+    if (!incident) throw new AppError(404, 'INCIDENT_NOT_FOUND', 'Incident not found');
+    const result = await incidentRisksRepository.unlink(incidentId, riskId);
+    if (result.count === 0)
+      throw new AppError(
+        404,
+        'INCIDENT_RISK_LINK_NOT_FOUND',
+        'Risk is not linked to this incident',
+      );
   },
 };
