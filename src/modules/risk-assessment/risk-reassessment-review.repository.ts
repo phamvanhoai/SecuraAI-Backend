@@ -102,6 +102,7 @@ export const riskReassessmentReviewRepository = {
       prisma.risk_reassessment_requests.findMany({
         where,
         select: requestSelect,
+        relationLoadStrategy: 'join',
         orderBy:
           query.status === 'closed'
             ? [{ reviewed_at: 'desc' }, { id: 'desc' }]

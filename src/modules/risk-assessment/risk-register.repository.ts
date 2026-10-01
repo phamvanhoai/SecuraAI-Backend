@@ -217,11 +217,12 @@ export const riskRegisterRepository = {
   },
   list(query: ListRiskRegisterQuery) {
     const where = whereFor(query);
-    return prisma.$transaction([
+    return Promise.all([
       prisma.risks.count({ where }),
       prisma.risks.findMany({
         where,
         select: listSelect,
+        relationLoadStrategy: 'join',
         orderBy: orderBy(query),
         skip: (query.page - 1) * query.limit,
         take: query.limit,
