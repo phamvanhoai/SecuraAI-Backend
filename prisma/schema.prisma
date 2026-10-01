@@ -859,6 +859,7 @@ model risk_reassessment_requests {
   status                                               reassessment_status @default(PENDING)
   reviewed_by                                          String?             @db.Uuid
   reviewed_at                                          DateTime?           @db.Timestamptz(6)
+  review_comment                                       String?
   created_at                                           DateTime            @default(now()) @db.Timestamptz(6)
   updated_at                                           DateTime            @default(now()) @db.Timestamptz(6)
   risk_assessments                                     risk_assessments?

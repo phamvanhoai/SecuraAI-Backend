@@ -383,6 +383,7 @@ export const usersRepository = {
         full_name: true,
         role: true,
         status: true,
+        _count: { select: { risks_risks_owner_user_idTousers: true } },
       },
     });
   },
