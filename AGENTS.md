@@ -138,6 +138,30 @@ Most domain folders contain only explicit unimplemented markers so team members 
 
 Do not weaken existing authentication, CORS, Helmet, rate limiting, request-size limits, token verification or secret validation for convenience.
 
+### Fixed roles and contextual business actors
+
+The only fixed database roles are `ADMIN`, `SECURITY_OFFICER`, `EXECUTIVE` and `EMPLOYEE`. Project Tracking actor names such as **Risk Owner**, **Control Owner**, **Asset Owner** and **Authorized Approver** describe responsibility in the context of a resource or workflow; they are not additional values of `user_role`.
+
+- A Risk Owner is normally an active Employee referenced by `risks.owner_user_id`.
+- A Control Owner is normally an active Employee referenced by `security_controls.owner_user_id`.
+- An Asset Owner is normally an active Employee referenced by `assets.owner_user_id`.
+- An Authorized Approver is the active user made eligible by the specific workflow contract. Eligibility may come from a workflow step, an explicit assignment, an ownership relation, or an allowed fixed role. There is no global `AUTHORIZED_APPROVER` role or ownership table in the current baseline.
+
+Do not add `RISK_OWNER`, `CONTROL_OWNER`, `ASSET_OWNER` or `AUTHORIZED_APPROVER` to the role enum, and do not create a generic actor-assignment table merely because an actor column in Project Tracking uses one of these labels. A single Employee may hold several contextual responsibilities for different records. If an assigned owner must be restricted to Employee accounts, validate that rule when assigning ownership; never infer it from a display label alone.
+
+When implementing a use case with a contextual actor, use this sequence:
+
+1. Identify the fixed roles allowed to enter the module from Project Tracking.
+2. Identify the exact resource/workflow relation that makes the current user the actor. Use the existing foreign key named by the schema; do not invent a parallel relation.
+3. Fetch the authenticated user and target record in the service/repository path, including status and the relevant owner/assignee/approver fields.
+4. Require an active account, an allowed fixed role and the contextual relation. Return `403` when the account is valid but lacks responsibility for that record; use `404` only according to the endpoint's disclosure policy.
+5. Re-check status and ownership inside conditional writes or transactions so reassignment and concurrent decisions cannot bypass authorization.
+6. Record the acting user, decision time, reason and resulting status where the workflow schema supports them. Security-sensitive workflows should also append an audit record when that use case's audit integration exists.
+7. Expose only the minimum capability needed for navigation. Capabilities returned by `/users/me` may be derived from the existence of owned/assigned work, but they never replace resource-level backend checks.
+8. Add tests for the owner/assignee, another Employee, an allowed elevated role, an inactive account, reassignment/concurrency and terminal workflow states.
+
+Example for a Risk Owner review: the account remains `EMPLOYEE`; `/users/me` may expose risk navigation when the user owns at least one risk, while the review service must still require `request.risks.owner_user_id === userId` for the specific request. Reassignment immediately changes who may act, regardless of a previously issued frontend capability.
+
 ## 8. Database rules
 
 - Put normal queries in a module repository using Prisma.
