@@ -8,7 +8,12 @@ import { createUser, getCurrentUser, listDepartments, listUsers } from './users.
 import { getUser, updateUser } from './users.controller.js';
 import { userParamsSchema } from './dto/user-params.dto.js';
 import { updateUserBodySchema } from './dto/update-user.dto.js';
-import { AppError } from '../../common/errors/app-error.js';
+import { assignUserAccessBodySchema } from './dto/assign-user-access.dto.js';
+import {
+  assignUserAccess,
+  getUserAccessAssignment,
+  getUserAccessAssignmentOptions,
+} from './users.controller.js';
 
 export const usersRouter = Router();
 usersRouter.get(
@@ -25,17 +30,23 @@ usersRouter.post(
 );
 usersRouter.get('/me', authenticate, asyncHandler(getCurrentUser));
 usersRouter.get('/create-options', authenticate, asyncHandler(listDepartments));
-for (const pendingPath of ['/assignable-roles']) {
-  usersRouter.get(pendingPath, (_req, _res, next) => {
-    next(
-      new AppError(
-        501,
-        'ENDPOINT_NOT_IMPLEMENTED',
-        'This endpoint is pending migration to the V2 database',
-      ),
-    );
-  });
-}
+usersRouter.get(
+  '/access-assignment-options',
+  authenticate,
+  asyncHandler(getUserAccessAssignmentOptions),
+);
+usersRouter.get(
+  '/:userId/access-assignment',
+  authenticate,
+  validate({ params: userParamsSchema }),
+  asyncHandler(getUserAccessAssignment),
+);
+usersRouter.put(
+  '/:userId/access-assignment',
+  authenticate,
+  validate({ params: userParamsSchema, body: assignUserAccessBodySchema }),
+  asyncHandler(assignUserAccess),
+);
 usersRouter.get(
   '/:userId',
   authenticate,

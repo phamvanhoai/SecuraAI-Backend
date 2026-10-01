@@ -5,6 +5,7 @@ import type { CreateUserBody } from './dto/create-user.dto.js';
 import { listUsersQuerySchema } from './dto/list-users-query.dto.js';
 import type { UserParams } from './dto/user-params.dto.js';
 import type { UpdateUserBody } from './dto/update-user.dto.js';
+import type { AssignUserAccessBody } from './dto/assign-user-access.dto.js';
 
 function authenticatedUserId(value: unknown): string {
   if (typeof value !== 'string') throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
@@ -55,6 +56,32 @@ export const updateUser: RequestHandler = async (req, res) => {
     authenticatedUserId(res.locals.authenticatedUserId),
     userId,
     req.body as UpdateUserBody,
+  );
+  res.status(200).json({ success: true, data });
+};
+
+export const getUserAccessAssignment: RequestHandler = async (req, res) => {
+  const { userId } = req.params as UserParams;
+  const data = await usersService.getUserAccessAssignment(
+    authenticatedUserId(res.locals.authenticatedUserId),
+    userId,
+  );
+  res.status(200).json({ success: true, data });
+};
+
+export const getUserAccessAssignmentOptions: RequestHandler = async (_req, res) => {
+  const data = await usersService.getUserAccessAssignmentOptions(
+    authenticatedUserId(res.locals.authenticatedUserId),
+  );
+  res.status(200).json({ success: true, data });
+};
+
+export const assignUserAccess: RequestHandler = async (req, res) => {
+  const { userId } = req.params as UserParams;
+  const data = await usersService.assignUserAccess(
+    authenticatedUserId(res.locals.authenticatedUserId),
+    userId,
+    req.body as AssignUserAccessBody,
   );
   res.status(200).json({ success: true, data });
 };

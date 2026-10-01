@@ -17,6 +17,76 @@ export const openApiSpec = {
   },
   paths: {
     ...pendingV2Paths,
+    '/users/access-assignment-options': {
+      get: {
+        tags: ['Users'],
+        summary: 'List role and access-scope assignment options',
+        description:
+          'Returns the four V2 roles, allow-listed supplemental permission codes, and active business services and assets that may target a scope. Active Admin account required.',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          '200': { description: 'Assignment options' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Administrator required' },
+        },
+      },
+    },
+    '/users/{userId}/access-assignment': {
+      get: {
+        tags: ['Users'],
+        summary: 'View a user role, scopes, and ownership summary',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'userId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          '200': { description: 'Current access assignment' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Administrator required' },
+          '404': { description: 'User not found' },
+        },
+      },
+      put: {
+        tags: ['Users'],
+        summary: 'Replace a user role and supplemental access scopes',
+        description:
+          'Atomically replaces the single V2 role and supplemental permission scopes. Ownership remains managed by its business module. Role changes revoke active refresh sessions.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'userId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['role', 'scopes'],
+                additionalProperties: false,
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'Assignment saved' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Administrator required' },
+          '404': { description: 'User not found' },
+          '409': { description: 'Protected administrator invariant' },
+          '422': { description: 'Invalid assignment or target' },
+        },
+      },
+    },
     '/assets': {
       ...pendingV2Paths['/assets'],
       get: {
