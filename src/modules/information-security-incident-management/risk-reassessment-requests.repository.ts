@@ -36,9 +36,59 @@ export const riskReassessmentRequestsRepository = {
   },
   findActiveRequest(incidentId: string, riskId: string) {
     return prisma.risk_reassessment_requests.findFirst({
-      where: { incident_id: incidentId, risk_id: riskId, status: { in: ['PENDING', 'UNDER_REVIEW'] } },
+      where: {
+        incident_id: incidentId,
+        risk_id: riskId,
+        status: { in: ['PENDING', 'UNDER_REVIEW'] },
+      },
       select: { id: true, status: true },
     });
+  },
+  async listHistory(incidentId: string, page: number, limit: number) {
+    const where = { incident_id: incidentId };
+    const [items, total] = await Promise.all([
+      prisma.risk_reassessment_requests.findMany({
+        where,
+        select: {
+          id: true,
+          reason: true,
+          status: true,
+          requested_at: true,
+          reviewed_at: true,
+          risks: {
+            select: {
+              id: true,
+              risk_code: true,
+              title: true,
+              status: true,
+              users_risks_owner_user_idTousers: {
+                select: { id: true, full_name: true },
+              },
+            },
+          },
+          control_findings: {
+            select: {
+              id: true,
+              severity: true,
+              description: true,
+              status: true,
+              security_controls: { select: { id: true, control_code: true, name: true } },
+            },
+          },
+          users_risk_reassessment_requests_requested_byTousers: {
+            select: { id: true, full_name: true },
+          },
+          users_risk_reassessment_requests_reviewed_byTousers: {
+            select: { id: true, full_name: true },
+          },
+        },
+        orderBy: [{ requested_at: 'desc' }, { id: 'desc' }],
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      prisma.risk_reassessment_requests.count({ where }),
+    ]);
+    return { items, total };
   },
   async findOptions(incidentId: string) {
     const [incident, riskLinks, findings] = await Promise.all([
