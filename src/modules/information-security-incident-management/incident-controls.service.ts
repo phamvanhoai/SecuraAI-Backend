@@ -1,5 +1,8 @@
 import { AppError } from '../../common/errors/app-error.js';
-import type { LinkIncidentControlInput } from './dto/link-incident-control.dto.js';
+import type {
+  IncidentControlOptionsQuery,
+  LinkIncidentControlInput,
+} from './dto/link-incident-control.dto.js';
 import { incidentControlsRepository } from './incident-controls.repository.js';
 
 async function requireSecurityOfficer(userId: string) {
@@ -25,9 +28,12 @@ const controlResponse = (control: {
 });
 
 export const incidentControlsService = {
-  async options(userId: string, incidentId: string) {
+  async options(userId: string, incidentId: string, query: IncidentControlOptionsQuery) {
     await requireSecurityOfficer(userId);
-    const { incident, controls } = await incidentControlsRepository.findOptions(incidentId);
+    const { incident, controls, total } = await incidentControlsRepository.findOptions(
+      incidentId,
+      query,
+    );
     if (!incident) throw new AppError(404, 'INCIDENT_NOT_FOUND', 'Incident not found');
     return {
       incident: {
@@ -40,6 +46,12 @@ export const incidentControlsService = {
         ...controlResponse(control),
         linked: control.incident_controls.length > 0,
       })),
+      pagination: {
+        page: query.page,
+        limit: query.limit,
+        total,
+        totalPages: Math.max(1, Math.ceil(total / query.limit)),
+      },
     };
   },
   async link(userId: string, incidentId: string, input: LinkIncidentControlInput) {
@@ -70,5 +82,17 @@ export const incidentControlsService = {
         );
       throw error;
     }
+  },
+  async unlink(userId: string, incidentId: string, controlId: string) {
+    await requireSecurityOfficer(userId);
+    const incident = await incidentControlsRepository.findIncident(incidentId);
+    if (!incident) throw new AppError(404, 'INCIDENT_NOT_FOUND', 'Incident not found');
+    const result = await incidentControlsRepository.unlink(incidentId, controlId);
+    if (result.count === 0)
+      throw new AppError(
+        404,
+        'INCIDENT_CONTROL_LINK_NOT_FOUND',
+        'Control is not linked to this incident',
+      );
   },
 };

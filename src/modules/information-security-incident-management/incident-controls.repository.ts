@@ -1,4 +1,5 @@
 import { prisma } from '../../database/prisma.js';
+import type { IncidentControlOptionsQuery } from './dto/link-incident-control.dto.js';
 
 export const incidentControlsRepository = {
   findActor(userId: string) {
@@ -25,10 +26,26 @@ export const incidentControlsRepository = {
       },
     });
   },
-  async findOptions(incidentId: string) {
-    const [incident, controls] = await Promise.all([
+  async findOptions(incidentId: string, query: IncidentControlOptionsQuery) {
+    const relationshipFilter =
+      query.scope === 'linked'
+        ? { some: { incident_id: incidentId } }
+        : { none: { incident_id: incidentId } };
+    const where = {
+      incident_controls: relationshipFilter,
+      ...(query.q
+        ? {
+            OR: [
+              { control_code: { contains: query.q, mode: 'insensitive' as const } },
+              { name: { contains: query.q, mode: 'insensitive' as const } },
+            ],
+          }
+        : {}),
+    };
+    const [incident, controls, total] = await Promise.all([
       this.findIncident(incidentId),
       prisma.security_controls.findMany({
+        where,
         select: {
           id: true,
           control_code: true,
@@ -41,10 +58,12 @@ export const incidentControlsRepository = {
           },
         },
         orderBy: [{ control_code: 'asc' }, { id: 'asc' }],
-        take: 200,
+        skip: (query.page - 1) * query.limit,
+        take: query.limit,
       }),
+      prisma.security_controls.count({ where }),
     ]);
-    return { incident, controls };
+    return { incident, controls, total };
   },
   link(incidentId: string, controlId: string, linkedBy: string) {
     return prisma.incident_controls.create({
@@ -62,6 +81,11 @@ export const incidentControlsRepository = {
           },
         },
       },
+    });
+  },
+  unlink(incidentId: string, controlId: string) {
+    return prisma.incident_controls.deleteMany({
+      where: { incident_id: incidentId, control_id: controlId },
     });
   },
 };
