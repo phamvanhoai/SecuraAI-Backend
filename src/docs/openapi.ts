@@ -1919,6 +1919,76 @@ export const openApiSpec = {
         },
       },
     },
+    '/incidents/{incidentId}/control-weaknesses': {
+      get: {
+        tags: ['Information Security Incident Management'],
+        summary: 'View control weakness history for an incident',
+        description:
+          'Returns a newest-first paginated history of control weaknesses recorded from the incident, including the affected control, severity, status, analyst and timestamps. Requires an active Security Officer.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'incidentId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+          { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
+          {
+            name: 'limit',
+            in: 'query',
+            schema: { type: 'integer', minimum: 1, maximum: 100, default: 10 },
+          },
+        ],
+        responses: {
+          '200': { description: 'Paginated control weakness history' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer role required' },
+          '404': { description: 'Incident not found' },
+          '422': { description: 'Invalid incident ID or pagination' },
+        },
+      },
+      post: {
+        tags: ['Information Security Incident Management'],
+        summary: 'Record a control weakness from an incident',
+        description:
+          'Records a control weakness against a control already linked to the incident. Requires an active Security Officer.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'incidentId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['controlId', 'severity', 'description'],
+                additionalProperties: false,
+                properties: {
+                  controlId: { type: 'string', format: 'uuid' },
+                  severity: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] },
+                  description: { type: 'string', minLength: 20, maxLength: 5000 },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '201': { description: 'Control weakness recorded' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer role required' },
+          '404': { description: 'Incident not found' },
+          '409': { description: 'An open weakness already exists for this incident and control' },
+          '422': { description: 'Invalid input or the control is not linked to the incident' },
+        },
+      },
+    },
     '/auth/login': {
       post: {
         tags: ['Authentication'],

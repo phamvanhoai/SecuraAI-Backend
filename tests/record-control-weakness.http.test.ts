@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('../src/database/prisma.js', () => ({ prisma: { $queryRaw: vi.fn() } }));
 vi.mock(
   '../src/modules/information-security-incident-management/control-weaknesses.service.js',
-  () => ({ controlWeaknessesService: { options: vi.fn(), record: vi.fn() } }),
+  () => ({ controlWeaknessesService: { history: vi.fn(), options: vi.fn(), record: vi.fn() } }),
 );
 import { createApp } from '../src/app.js';
 import { env } from '../src/config/env.js';
@@ -24,13 +24,11 @@ describe('control weakness routes', () => {
   it('requires authentication', async () => {
     expect(
       (
-        await request(app)
-          .post(`/api/v1/incidents/${incidentId}/control-weaknesses`)
-          .send({
-            controlId,
-            severity: 'high',
-            description: 'A sufficiently detailed weakness description.',
-          })
+        await request(app).post(`/api/v1/incidents/${incidentId}/control-weaknesses`).send({
+          controlId,
+          severity: 'high',
+          description: 'A sufficiently detailed weakness description.',
+        })
       ).status,
     ).toBe(401);
   });
@@ -61,5 +59,21 @@ describe('control weakness routes', () => {
       });
     expect(response.status).toBe(201);
     expect(response.body.data.findingType).toBe('control_weakness');
+  });
+  it('returns paginated control weakness history', async () => {
+    vi.mocked(controlWeaknessesService.history).mockResolvedValue({
+      incident: { id: incidentId, incidentCode: 'INC-1', title: 'Login' },
+      items: [],
+      pagination: { page: 1, limit: 10, total: 0, totalPages: 0 },
+    });
+    const response = await request(app)
+      .get(`/api/v1/incidents/${incidentId}/control-weaknesses?page=1&limit=10`)
+      .set('Authorization', `Bearer ${token}`);
+    expect(response.status).toBe(200);
+    expect(response.body.data.pagination.total).toBe(0);
+    expect(controlWeaknessesService.history).toHaveBeenCalledWith(userId, incidentId, {
+      page: 1,
+      limit: 10,
+    });
   });
 });

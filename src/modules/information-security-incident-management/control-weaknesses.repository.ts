@@ -57,6 +57,29 @@ export const controlWeaknessesRepository = {
       select: { id: true },
     });
   },
+  async listHistory(incidentId: string, page: number, limit: number) {
+    const where = { incident_id: incidentId, finding_type: 'CONTROL_WEAKNESS' as const };
+    const [items, total] = await Promise.all([
+      prisma.control_findings.findMany({
+        where,
+        select: {
+          id: true,
+          severity: true,
+          description: true,
+          status: true,
+          identified_at: true,
+          resolved_at: true,
+          security_controls: { select: { id: true, control_code: true, name: true } },
+          users: { select: { id: true, full_name: true } },
+        },
+        orderBy: [{ identified_at: 'desc' }, { id: 'desc' }],
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+      prisma.control_findings.count({ where }),
+    ]);
+    return { items, total };
+  },
   create(
     incidentId: string,
     actorId: string,
