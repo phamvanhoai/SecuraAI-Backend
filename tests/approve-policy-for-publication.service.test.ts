@@ -17,7 +17,7 @@ const policyId = 'cc641a6e-6c63-4cf0-b626-34307fb36a88';
 const versionId = 'c82662ff-8cb7-4e97-b5f6-b0b1d9cb54c8';
 const decidedAt = new Date('2026-09-26T00:00:00Z');
 
-function version(status: 'IN_REVIEW' | 'APPROVED' = 'IN_REVIEW') {
+function version(status: 'IN_REVIEW' | 'WAITING_APPROVAL' | 'APPROVED' = 'WAITING_APPROVAL') {
   return {
     id: versionId,
     policy_id: policyId,
@@ -94,6 +94,16 @@ describe('approve policy for publication service', () => {
     await expect(
       policyComplianceService.approveForPublication(adminId, policyId, versionId),
     ).rejects.toMatchObject({ statusCode: 404, code: 'POLICY_DRAFT_NOT_FOUND' });
+  });
+
+  it('requires the review step before approval', async () => {
+    vi.mocked(policyComplianceRepository.findReviewableDraft).mockResolvedValue(
+      version('IN_REVIEW'),
+    );
+    await expect(
+      policyComplianceService.approveForPublication(adminId, policyId, versionId),
+    ).rejects.toMatchObject({ statusCode: 409, code: 'POLICY_REVIEW_REQUIRED' });
+    expect(policyComplianceRepository.approveDraftForPublication).not.toHaveBeenCalled();
   });
 
   it('rejects a concurrent decision', async () => {

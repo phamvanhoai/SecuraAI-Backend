@@ -3,6 +3,8 @@ import { prisma } from '../../database/prisma.js';
 import type { ListAssetsQuery } from './dto/list-assets.dto.js';
 import type { CreateAssetInput } from './dto/create-asset.dto.js';
 import type { UpdateAssetInput } from './dto/update-asset.dto.js';
+import type { ClassifyAssetInput } from './dto/classify-asset.dto.js';
+import type { LinkAssetContextInput } from './dto/link-asset-context.dto.js';
 const select = {
   id: true,
   asset_code: true,
@@ -203,12 +205,35 @@ export const assetsRepository = {
   },
   update(assetId: string, input: UpdateAssetInput) {
     return prisma.assets.update({ where: { id: assetId }, data: {
-      name: input.name, asset_type: input.assetType, owner_user_id: input.ownerUserId,
-      business_service_id: input.businessServiceId, criticality: input.criticality,
-      data_classification: input.dataClassification, description: input.description,
-      asset_dependencies_asset_dependencies_asset_idToassets: { deleteMany: {}, create: input.dependencyIds.map((id) => ({ assets_asset_dependencies_depends_on_asset_idToassets: { connect: { id } } })) },
-      asset_event_sources: { deleteMany: {}, create: input.eventSourceIds.map((id) => ({ event_source_id: id })) },
+      name: input.name, asset_type: input.assetType, description: input.description,
     }, select });
   },
   archive(assetId: string) { return prisma.assets.update({ where: { id: assetId }, data: { status: 'ARCHIVED', archived_at: new Date() }, select: { id: true } }); },
+  assignOwner(assetId: string, ownerUserId: string | null) { return prisma.assets.update({ where: { id: assetId }, data: { owner_user_id: ownerUserId }, select: { id: true, updated_at: true, users_assets_owner_user_idTousers: { select: { id: true, full_name: true, status: true } } } }); },
+  classify(assetId: string, criticality: string, input: ClassifyAssetInput) {
+    return prisma.assets.update({
+      where: { id: assetId },
+      data: { criticality, data_classification: input.dataClassification },
+      select: { id: true, criticality: true, data_classification: true, updated_at: true },
+    });
+  },
+  linkContext(assetId: string, input: LinkAssetContextInput) {
+    return prisma.assets.update({
+      where: { id: assetId },
+      data: {
+        business_service_id: input.businessServiceId,
+        asset_dependencies_asset_dependencies_asset_idToassets: {
+          deleteMany: {},
+          create: input.dependencyIds.map((id) => ({
+            assets_asset_dependencies_depends_on_asset_idToassets: { connect: { id } },
+          })),
+        },
+        asset_event_sources: {
+          deleteMany: {},
+          create: input.eventSourceIds.map((id) => ({ event_source_id: id })),
+        },
+      },
+      select: { id: true, updated_at: true },
+    });
+  },
 };

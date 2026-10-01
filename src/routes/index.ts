@@ -19,6 +19,7 @@ import {
   incidentRisksRouter,
   controlWeaknessesRouter,
   riskReassessmentRequestsRouter,
+  incidentsRouter,
 } from '../modules/information-security-incident-management/index.js';
 import { pendingV2Router } from './pending-v2.routes.js';
 
@@ -36,6 +37,7 @@ apiRouter.use('/incidents', incidentControlsRouter);
 apiRouter.use('/incidents', incidentRisksRouter);
 apiRouter.use('/incidents', controlWeaknessesRouter);
 apiRouter.use('/incidents', riskReassessmentRequestsRouter);
+apiRouter.use('/incidents', incidentsRouter);
 apiRouter.use('/compliance', policyComplianceRouter);
 apiRouter.use('/event-sources', eventSourcesRouter);
 apiRouter.use('/integrations/wazuh', wazuhIngestionRouter);

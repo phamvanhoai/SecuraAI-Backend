@@ -6,19 +6,29 @@ const scopeCodeSchema = z.string().refine(isUserAccessScopeCode, 'Unsupported ac
 const expirationSchema = z.iso.datetime().nullable().optional();
 
 export const userAccessScopeSchema = z.discriminatedUnion('targetType', [
-  z.object({ scopeCode: scopeCodeSchema, targetType: z.literal('GLOBAL'), expiresAt: expirationSchema }).strict(),
-  z.object({
-    scopeCode: scopeCodeSchema,
-    targetType: z.literal('BUSINESS_SERVICE'),
-    targetId: z.uuid(),
-    expiresAt: expirationSchema,
-  }).strict(),
-  z.object({
-    scopeCode: scopeCodeSchema,
-    targetType: z.literal('ASSET'),
-    targetId: z.uuid(),
-    expiresAt: expirationSchema,
-  }).strict(),
+  z
+    .object({
+      scopeCode: scopeCodeSchema,
+      targetType: z.literal('GLOBAL'),
+      expiresAt: expirationSchema,
+    })
+    .strict(),
+  z
+    .object({
+      scopeCode: scopeCodeSchema,
+      targetType: z.literal('BUSINESS_SERVICE'),
+      targetId: z.uuid(),
+      expiresAt: expirationSchema,
+    })
+    .strict(),
+  z
+    .object({
+      scopeCode: scopeCodeSchema,
+      targetType: z.literal('ASSET'),
+      targetId: z.uuid(),
+      expiresAt: expirationSchema,
+    })
+    .strict(),
 ]);
 
 export const assignUserAccessBodySchema = z
@@ -28,16 +38,25 @@ export const assignUserAccessBodySchema = z
   })
   .strict()
   .superRefine((value, context) => {
-    const keys = value.scopes.map((scope) =>
-      `${scope.scopeCode}:${scope.targetType}:${'targetId' in scope ? scope.targetId : ''}`,
+    const keys = value.scopes.map(
+      (scope) =>
+        `${scope.scopeCode}:${scope.targetType}:${'targetId' in scope ? scope.targetId : ''}`,
     );
     if (new Set(keys).size !== keys.length) {
-      context.addIssue({ code: 'custom', path: ['scopes'], message: 'Access scopes must be unique' });
+      context.addIssue({
+        code: 'custom',
+        path: ['scopes'],
+        message: 'Access scopes must be unique',
+      });
     }
     const now = Date.now();
     value.scopes.forEach((scope, index) => {
       if (scope.expiresAt && Date.parse(scope.expiresAt) <= now) {
-        context.addIssue({ code: 'custom', path: ['scopes', index, 'expiresAt'], message: 'Expiration must be in the future' });
+        context.addIssue({
+          code: 'custom',
+          path: ['scopes', index, 'expiresAt'],
+          message: 'Expiration must be in the future',
+        });
       }
     });
   });

@@ -114,10 +114,18 @@ export const usersService = {
         throw new AppError(422, 'INVALID_SCOPE_TARGET', 'One or more scope targets are invalid');
       }
       if (result.kind === 'self_role_change') {
-        throw new AppError(409, 'SELF_ROLE_CHANGE_FORBIDDEN', 'Administrators cannot change their own role');
+        throw new AppError(
+          409,
+          'SELF_ROLE_CHANGE_FORBIDDEN',
+          'Administrators cannot change their own role',
+        );
       }
       if (result.kind === 'last_admin') {
-        throw new AppError(409, 'LAST_ADMIN_REQUIRED', 'The last active administrator cannot be demoted');
+        throw new AppError(
+          409,
+          'LAST_ADMIN_REQUIRED',
+          'The last active administrator cannot be demoted',
+        );
       }
       return requireAdminResult(result, 'manage user access');
     }

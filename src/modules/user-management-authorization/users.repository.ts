@@ -72,7 +72,17 @@ export const usersRepository = {
       select: { id: true, full_name: true, email: true, role: true, status: true },
     });
     if (!user) return { kind: 'not_found' } as const;
-    const [scopes, businessServices, assets, risks, treatmentPlans, treatmentActions, securityControls, evidenceItems, policies] = await Promise.all([
+    const [
+      scopes,
+      businessServices,
+      assets,
+      risks,
+      treatmentPlans,
+      treatmentActions,
+      securityControls,
+      evidenceItems,
+      policies,
+    ] = await Promise.all([
       prisma.user_access_scopes.findMany({
         where: { user_id: userId },
         select: {
@@ -95,114 +105,141 @@ export const usersRepository = {
       prisma.policies.count({ where: { owner_user_id: userId } }),
     ]);
     return {
-      kind: 'found', user, scopes,
+      kind: 'found',
+      user,
+      scopes,
       ownershipSummary: {
-        businessServices, assets, risks, treatmentPlans, treatmentActions,
-        securityControls, evidenceItems, policies,
+        businessServices,
+        assets,
+        risks,
+        treatmentPlans,
+        treatmentActions,
+        securityControls,
+        evidenceItems,
+        policies,
       },
     } as const;
   },
   assignUserAccess(actorUserId: string, userId: string, input: AssignUserAccessBody) {
-    return prisma.$transaction(async (transaction) => {
-      const actor = await transaction.users.findUnique({
-        where: { id: actorUserId },
-        select: { id: true, role: true, status: true },
-      });
-      if (!actor || actor.status !== 'ACTIVE') return { kind: 'unauthorized' } as const;
-      if (actor.role !== 'ADMIN') return { kind: 'forbidden' } as const;
-      const user = await transaction.users.findUnique({
-        where: { id: userId },
-        select: { id: true, role: true, status: true },
-      });
-      if (!user) return { kind: 'not_found' } as const;
-      if (actorUserId === userId && input.role !== user.role) return { kind: 'self_role_change' } as const;
-      if (user.role === 'ADMIN' && input.role !== 'ADMIN') {
-        const activeAdmins = await transaction.users.count({ where: { role: 'ADMIN', status: 'ACTIVE' } });
-        if (activeAdmins <= 1) return { kind: 'last_admin' } as const;
-      }
-
-      const businessServiceIds = input.scopes.flatMap((scope) =>
-        scope.targetType === 'BUSINESS_SERVICE' ? [scope.targetId] : [],
-      );
-      const assetIds = input.scopes.flatMap((scope) =>
-        scope.targetType === 'ASSET' ? [scope.targetId] : [],
-      );
-      const [businessServiceCount, assetCount] = await Promise.all([
-        transaction.business_services.count({ where: { id: { in: businessServiceIds }, status: 'ACTIVE' } }),
-        transaction.assets.count({ where: { id: { in: assetIds }, status: 'ACTIVE' } }),
-      ]);
-      const uniqueBusinessServiceIds = new Set(businessServiceIds);
-      const uniqueAssetIds = new Set(assetIds);
-      if (businessServiceCount !== uniqueBusinessServiceIds.size || assetCount !== uniqueAssetIds.size) {
-        return { kind: 'invalid_scope_target' } as const;
-      }
-
-      const beforeScopes = await transaction.user_access_scopes.findMany({
-        where: { user_id: userId },
-        select: { scope_code: true, business_service_id: true, asset_id: true, expires_at: true },
-      });
-      await transaction.user_access_scopes.deleteMany({ where: { user_id: userId } });
-      if (input.scopes.length > 0) {
-        await transaction.user_access_scopes.createMany({
-          data: input.scopes.map((scope) => ({
-            user_id: userId,
-            scope_code: scope.scopeCode,
-            assigned_by: actor.id,
-            expires_at: scope.expiresAt ? new Date(scope.expiresAt) : null,
-            ...(scope.targetType === 'BUSINESS_SERVICE' ? { business_service_id: scope.targetId } : {}),
-            ...(scope.targetType === 'ASSET' ? { asset_id: scope.targetId } : {}),
-          })),
+    return prisma.$transaction(
+      async (transaction) => {
+        const actor = await transaction.users.findUnique({
+          where: { id: actorUserId },
+          select: { id: true, role: true, status: true },
         });
-      }
-      const updated = await transaction.users.update({
-        where: { id: userId },
-        data: { role: input.role },
-        select: { id: true, role: true },
-      });
-      const previousScopeKeys = beforeScopes.map((scope) =>
-        `${scope.scope_code}:${scope.business_service_id ?? ''}:${scope.asset_id ?? ''}:${scope.expires_at?.toISOString() ?? ''}`,
-      ).sort();
-      const requestedScopeKeys = input.scopes.map((scope) =>
-        `${scope.scopeCode}:${scope.targetType === 'BUSINESS_SERVICE' ? scope.targetId : ''}:${scope.targetType === 'ASSET' ? scope.targetId : ''}:${scope.expiresAt ?? ''}`,
-      ).sort();
-      const changed =
-        user.role !== input.role ||
-        JSON.stringify(previousScopeKeys) !== JSON.stringify(requestedScopeKeys);
-      if (user.role !== input.role) {
-        await transaction.auth_sessions.updateMany({
-          where: { user_id: userId, revoked_at: null },
-          data: { revoked_at: new Date() },
+        if (!actor || actor.status !== 'ACTIVE') return { kind: 'unauthorized' } as const;
+        if (actor.role !== 'ADMIN') return { kind: 'forbidden' } as const;
+        const user = await transaction.users.findUnique({
+          where: { id: userId },
+          select: { id: true, role: true, status: true },
         });
-      }
-      await transaction.audit_logs.create({
-        data: {
-          actor_user_id: actor.id,
-          actor_type: 'USER',
-          action: 'USER_ACCESS_ASSIGNED',
-          resource_type: 'USER',
-          resource_id: userId,
-          source: 'API',
-          before_data: {
-            role: user.role,
-            scopes: beforeScopes,
+        if (!user) return { kind: 'not_found' } as const;
+        if (actorUserId === userId && input.role !== user.role)
+          return { kind: 'self_role_change' } as const;
+        if (user.role === 'ADMIN' && input.role !== 'ADMIN') {
+          const activeAdmins = await transaction.users.count({
+            where: { role: 'ADMIN', status: 'ACTIVE' },
+          });
+          if (activeAdmins <= 1) return { kind: 'last_admin' } as const;
+        }
+
+        const businessServiceIds = input.scopes.flatMap((scope) =>
+          scope.targetType === 'BUSINESS_SERVICE' ? [scope.targetId] : [],
+        );
+        const assetIds = input.scopes.flatMap((scope) =>
+          scope.targetType === 'ASSET' ? [scope.targetId] : [],
+        );
+        const [businessServiceCount, assetCount] = await Promise.all([
+          transaction.business_services.count({
+            where: { id: { in: businessServiceIds }, status: 'ACTIVE' },
+          }),
+          transaction.assets.count({ where: { id: { in: assetIds }, status: 'ACTIVE' } }),
+        ]);
+        const uniqueBusinessServiceIds = new Set(businessServiceIds);
+        const uniqueAssetIds = new Set(assetIds);
+        if (
+          businessServiceCount !== uniqueBusinessServiceIds.size ||
+          assetCount !== uniqueAssetIds.size
+        ) {
+          return { kind: 'invalid_scope_target' } as const;
+        }
+
+        const beforeScopes = await transaction.user_access_scopes.findMany({
+          where: { user_id: userId },
+          select: { scope_code: true, business_service_id: true, asset_id: true, expires_at: true },
+        });
+        await transaction.user_access_scopes.deleteMany({ where: { user_id: userId } });
+        if (input.scopes.length > 0) {
+          await transaction.user_access_scopes.createMany({
+            data: input.scopes.map((scope) => ({
+              user_id: userId,
+              scope_code: scope.scopeCode,
+              assigned_by: actor.id,
+              expires_at: scope.expiresAt ? new Date(scope.expiresAt) : null,
+              ...(scope.targetType === 'BUSINESS_SERVICE'
+                ? { business_service_id: scope.targetId }
+                : {}),
+              ...(scope.targetType === 'ASSET' ? { asset_id: scope.targetId } : {}),
+            })),
+          });
+        }
+        const updated = await transaction.users.update({
+          where: { id: userId },
+          data: { role: input.role },
+          select: { id: true, role: true },
+        });
+        const previousScopeKeys = beforeScopes
+          .map(
+            (scope) =>
+              `${scope.scope_code}:${scope.business_service_id ?? ''}:${scope.asset_id ?? ''}:${scope.expires_at?.toISOString() ?? ''}`,
+          )
+          .sort();
+        const requestedScopeKeys = input.scopes
+          .map(
+            (scope) =>
+              `${scope.scopeCode}:${scope.targetType === 'BUSINESS_SERVICE' ? scope.targetId : ''}:${scope.targetType === 'ASSET' ? scope.targetId : ''}:${scope.expiresAt ?? ''}`,
+          )
+          .sort();
+        const changed =
+          user.role !== input.role ||
+          JSON.stringify(previousScopeKeys) !== JSON.stringify(requestedScopeKeys);
+        if (user.role !== input.role) {
+          await transaction.auth_sessions.updateMany({
+            where: { user_id: userId, revoked_at: null },
+            data: { revoked_at: new Date() },
+          });
+        }
+        await transaction.audit_logs.create({
+          data: {
+            actor_user_id: actor.id,
+            actor_type: 'USER',
+            action: 'USER_ACCESS_ASSIGNED',
+            resource_type: 'USER',
+            resource_id: userId,
+            source: 'API',
+            before_data: {
+              role: user.role,
+              scopes: beforeScopes,
+            },
+            after_data: input,
+            record_hash: `USER_ACCESS_ASSIGNED:${userId}:${actor.id}:${Date.now()}`,
           },
-          after_data: input,
-          record_hash: `USER_ACCESS_ASSIGNED:${userId}:${actor.id}:${Date.now()}`,
-        },
-      });
-      return {
-        kind: 'updated',
-        changed,
-        user: updated,
-        scopeCount: input.scopes.length,
-      } as const;
-    }, {
-      // This authorization update performs several dependent reads and writes.
-      // Supabase's remote pooled connection can exceed Prisma's 5-second default
-      // interactive-transaction timeout even though every query succeeds.
-      maxWait: 5_000,
-      timeout: 20_000,
-    });
+        });
+        return {
+          kind: 'updated',
+          changed,
+          user: updated,
+          scopeCount: input.scopes.length,
+        } as const;
+      },
+      {
+        // This authorization update performs several dependent reads and writes.
+        // Supabase's remote pooled connection can exceed Prisma's 5-second default
+        // interactive-transaction timeout even though every query succeeds.
+        maxWait: 5_000,
+        timeout: 20_000,
+      },
+    );
   },
   async listDepartments(actorUserId: string) {
     const actor = await findActor(actorUserId);

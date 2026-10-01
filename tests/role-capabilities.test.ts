@@ -87,6 +87,7 @@ describe('WBS role capability compatibility', () => {
   it('limits Executive and Employee to functions explicitly listed for them', () => {
     expect(capabilitiesForRole(user_role.EXECUTIVE)).toEqual([
       'assets.read',
+      'risks.read',
       'ai-alerts.thresholds.manage',
       'incidents.read',
       'reports.read',
