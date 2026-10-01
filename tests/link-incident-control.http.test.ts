@@ -6,7 +6,7 @@ vi.mock('../src/database/prisma.js', () => ({ prisma: { $queryRaw: vi.fn() } }))
 vi.mock(
   '../src/modules/information-security-incident-management/incident-controls.service.js',
   () => ({
-    incidentControlsService: { options: vi.fn(), link: vi.fn() },
+    incidentControlsService: { options: vi.fn(), link: vi.fn(), unlink: vi.fn() },
   }),
 );
 
@@ -63,5 +63,13 @@ describe('incident control routes', () => {
       .send({ controlId: 'invalid' });
     expect(response.status).toBe(422);
     expect(incidentControlsService.link).not.toHaveBeenCalled();
+  });
+  it('unlinks a control and returns 204', async () => {
+    vi.mocked(incidentControlsService.unlink).mockResolvedValue(undefined);
+    const response = await request(app)
+      .delete(`/api/v1/incidents/${incidentId}/controls/${controlId}`)
+      .set('Authorization', `Bearer ${token}`);
+    expect(response.status).toBe(204);
+    expect(incidentControlsService.unlink).toHaveBeenCalledWith(userId, incidentId, controlId);
   });
 });

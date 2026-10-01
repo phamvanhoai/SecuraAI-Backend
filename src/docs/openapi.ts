@@ -633,6 +633,72 @@ export const openApiSpec = {
         },
       },
     },
+    '/incidents/{incidentId}/controls/options': {
+      get: {
+        tags: ['Incident Management'],
+        summary: 'Search incident control options',
+        description:
+          'Returns a bounded, paginated list of linked or unlinked controls. Search matches control code or name. Requires an active Security Officer.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'incidentId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+          { name: 'q', in: 'query', schema: { type: 'string', minLength: 1, maxLength: 100 } },
+          {
+            name: 'scope',
+            in: 'query',
+            schema: { type: 'string', enum: ['linked', 'unlinked'], default: 'unlinked' },
+          },
+          { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
+          {
+            name: 'limit',
+            in: 'query',
+            schema: { type: 'integer', minimum: 1, maximum: 50, default: 10 },
+          },
+        ],
+        responses: {
+          '200': { description: 'Paginated incident control options' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer role required' },
+          '404': { description: 'Incident not found' },
+          '422': { description: 'Invalid search or pagination parameters' },
+        },
+      },
+    },
+    '/incidents/{incidentId}/controls/{controlId}': {
+      delete: {
+        tags: ['Incident Management'],
+        summary: 'Unlink a control from an incident',
+        description:
+          'Removes an existing incident-to-control relationship without deleting either record. Requires an active Security Officer.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'incidentId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+          {
+            name: 'controlId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          '204': { description: 'Control unlinked from incident' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer role required' },
+          '404': { description: 'Incident or incident-control link not found' },
+          '422': { description: 'Invalid identifier' },
+        },
+      },
+    },
     '/compliance/policies/version-history': {
       get: {
         tags: ['Policy Management'],
