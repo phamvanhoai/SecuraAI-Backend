@@ -348,8 +348,10 @@ export const aiAlertsService = {
     return feedbackResponse(created);
   },
   async listFeedback(userId: string, alertId: string, query: ListAiAlertFeedbackQuery) {
-    await requireSecurityOfficer(userId);
-    const alert = await aiAlertsRepository.findForFeedback(alertId);
+    const [, alert] = await Promise.all([
+      requireSecurityOfficer(userId),
+      aiAlertsRepository.findForFeedback(alertId),
+    ]);
     if (!alert) throw new AppError(404, 'AI_ALERT_NOT_FOUND', 'AI alert not found');
     const [total, records] = await aiAlertsRepository.listFeedback(alertId, query);
     return {
