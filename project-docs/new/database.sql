@@ -56,12 +56,25 @@ CREATE TYPE audit_actor_type AS ENUM ('USER','SYSTEM','API_KEY');
 -- 1. AUTHENTICATION & AUTHORIZATION
 -- ============================================================
 
+CREATE TABLE departments (
+    id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+    code varchar(50) NOT NULL UNIQUE,
+    name varchar(255) NOT NULL,
+    status varchar(20) NOT NULL DEFAULT 'ACTIVE',
+    created_at timestamptz NOT NULL DEFAULT now(),
+    updated_at timestamptz NOT NULL DEFAULT now(),
+    CONSTRAINT chk_departments_status CHECK (status IN ('ACTIVE','INACTIVE'))
+);
+
 CREATE TABLE users (
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     email varchar(255) NOT NULL UNIQUE,
     username varchar(100) NOT NULL UNIQUE,
     password_hash varchar(255) NOT NULL,
     full_name varchar(255) NOT NULL,
+    phone varchar(30),
+    employee_code varchar(50) UNIQUE,
+    department_id uuid,
     role user_role NOT NULL,
     status user_status NOT NULL DEFAULT 'ACTIVE',
     last_login_at timestamptz,
@@ -125,6 +138,8 @@ CREATE TABLE assets (
     description text,
     status asset_status NOT NULL DEFAULT 'ACTIVE',
     archived_at timestamptz,
+    archive_reason text,
+    archived_by uuid,
     created_by uuid NOT NULL,
     created_at timestamptz NOT NULL DEFAULT now(),
     updated_at timestamptz NOT NULL DEFAULT now(),
@@ -206,6 +221,20 @@ CREATE TABLE risk_vulnerabilities (
     description text,
     created_at timestamptz NOT NULL DEFAULT now(),
     CONSTRAINT chk_risk_vulnerability_name CHECK (char_length(trim(name)) > 0)
+);
+
+CREATE TABLE risk_threat_vulnerabilities (
+    threat_id uuid NOT NULL,
+    vulnerability_id uuid NOT NULL,
+    linked_at timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (threat_id, vulnerability_id)
+);
+
+CREATE TABLE risk_vulnerability_controls (
+    vulnerability_id uuid NOT NULL,
+    control_id uuid NOT NULL,
+    linked_at timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (vulnerability_id, control_id)
 );
 
 -- Created before referenced incident/control finding tables; FKs added later.
@@ -978,6 +1007,7 @@ CREATE TABLE policy_acknowledgements (
 -- ============================================================
 
 ALTER TABLE auth_sessions ADD CONSTRAINT fk_auth_sessions_user FOREIGN KEY (user_id) REFERENCES users(id);
+ALTER TABLE users ADD CONSTRAINT fk_users_department FOREIGN KEY (department_id) REFERENCES departments(id) ON DELETE SET NULL;
 ALTER TABLE password_reset_tokens ADD CONSTRAINT fk_password_reset_user FOREIGN KEY (user_id) REFERENCES users(id);
 
 ALTER TABLE business_services ADD CONSTRAINT fk_business_service_owner FOREIGN KEY (owner_user_id) REFERENCES users(id);
@@ -997,6 +1027,10 @@ ALTER TABLE risk_assets ADD CONSTRAINT fk_risk_assets_risk FOREIGN KEY (risk_id)
 ALTER TABLE risk_assets ADD CONSTRAINT fk_risk_assets_asset FOREIGN KEY (asset_id) REFERENCES assets(id);
 ALTER TABLE risk_threats ADD CONSTRAINT fk_risk_threat_risk FOREIGN KEY (risk_id) REFERENCES risks(id);
 ALTER TABLE risk_vulnerabilities ADD CONSTRAINT fk_risk_vulnerability_risk FOREIGN KEY (risk_id) REFERENCES risks(id);
+ALTER TABLE risk_threat_vulnerabilities ADD CONSTRAINT fk_risk_threat_vulnerability_threat FOREIGN KEY (threat_id) REFERENCES risk_threats(id) ON DELETE CASCADE;
+ALTER TABLE risk_threat_vulnerabilities ADD CONSTRAINT fk_risk_threat_vulnerability_vulnerability FOREIGN KEY (vulnerability_id) REFERENCES risk_vulnerabilities(id) ON DELETE CASCADE;
+ALTER TABLE risk_vulnerability_controls ADD CONSTRAINT fk_risk_vulnerability_control_vulnerability FOREIGN KEY (vulnerability_id) REFERENCES risk_vulnerabilities(id) ON DELETE CASCADE;
+ALTER TABLE risk_vulnerability_controls ADD CONSTRAINT fk_risk_vulnerability_control_control FOREIGN KEY (control_id) REFERENCES security_controls(id) ON DELETE CASCADE;
 ALTER TABLE risk_assessments ADD CONSTRAINT fk_risk_assessment_risk FOREIGN KEY (risk_id) REFERENCES risks(id);
 ALTER TABLE risk_assessments ADD CONSTRAINT fk_risk_assessment_assessed_by FOREIGN KEY (assessed_by) REFERENCES users(id);
 ALTER TABLE risk_assessments ADD CONSTRAINT fk_risk_assessment_reassessment FOREIGN KEY (reassessment_request_id) REFERENCES risk_reassessment_requests(id);
@@ -1094,6 +1128,14 @@ ALTER TABLE integration_api_keys ADD CONSTRAINT fk_api_key_revoked_by FOREIGN KE
 ALTER TABLE integration_api_keys ADD CONSTRAINT fk_api_key_replacement FOREIGN KEY (replacement_key_id) REFERENCES integration_api_keys(id);
 ALTER TABLE api_key_scopes ADD CONSTRAINT fk_api_scope_key FOREIGN KEY (api_key_id) REFERENCES integration_api_keys(id);
 ALTER TABLE audit_logs ADD CONSTRAINT fk_audit_actor_user FOREIGN KEY (actor_user_id) REFERENCES users(id);
+ALTER TABLE assets ADD CONSTRAINT fk_asset_archived_by FOREIGN KEY (archived_by) REFERENCES users(id);
+CREATE INDEX idx_assets_archived_by ON assets(archived_by);
+CREATE INDEX idx_asset_dependency_parent ON asset_dependencies(depends_on_asset_id);
+ALTER TABLE assets ADD CONSTRAINT ck_asset_archive_metadata CHECK (
+    (archive_reason IS NULL AND archived_by IS NULL)
+    OR (status = 'ARCHIVED' AND archived_at IS NOT NULL AND archived_by IS NOT NULL
+        AND archive_reason IS NOT NULL AND char_length(btrim(archive_reason)) BETWEEN 1 AND 1000)
+);
 ALTER TABLE audit_logs ADD CONSTRAINT fk_audit_actor_api_key FOREIGN KEY (actor_api_key_id) REFERENCES integration_api_keys(id);
 ALTER TABLE event_data_governance_policies ADD CONSTRAINT fk_governance_created_by FOREIGN KEY (created_by) REFERENCES users(id);
 ALTER TABLE event_data_governance_policies ADD CONSTRAINT fk_governance_updated_by FOREIGN KEY (updated_by) REFERENCES users(id);
@@ -1121,6 +1163,8 @@ CREATE INDEX idx_assets_owner ON assets(owner_user_id);
 CREATE INDEX idx_assets_business_service ON assets(business_service_id);
 CREATE INDEX idx_risks_owner ON risks(owner_user_id);
 CREATE INDEX idx_risk_assets_asset ON risk_assets(asset_id);
+CREATE INDEX idx_risk_threat_vulnerabilities_vulnerability ON risk_threat_vulnerabilities(vulnerability_id);
+CREATE INDEX idx_risk_vulnerability_controls_control ON risk_vulnerability_controls(control_id);
 CREATE INDEX idx_risk_assessments_risk ON risk_assessments(risk_id, assessed_at DESC);
 CREATE INDEX idx_risk_treatment_plans_risk ON risk_treatment_plans(risk_id);
 CREATE INDEX idx_control_risk_links_risk ON control_risk_links(risk_id);
@@ -1293,4 +1337,32 @@ FOR EACH ROW EXECUTE FUNCTION prevent_audit_log_mutation();
 --    trusted service logic (or a dedicated serialization mechanism).
 -- ============================================================
 
+-- Latest classification only: preserve legacy rows and do not recompute existing assets.
+ALTER TABLE public.assets
+  ADD COLUMN classification_confidentiality_impact integer,
+  ADD COLUMN classification_integrity_impact integer,
+  ADD COLUMN classification_availability_impact integer,
+  ADD COLUMN classification_business_impact integer,
+  ADD COLUMN classification_rationale text,
+  ADD COLUMN classification_method_version varchar(100),
+  ADD COLUMN classified_at timestamptz,
+  ADD COLUMN classified_by uuid;
+ALTER TABLE public.assets ADD CONSTRAINT fk_asset_classification_assessor FOREIGN KEY (classified_by) REFERENCES public.users(id) ON DELETE NO ACTION ON UPDATE NO ACTION;
+CREATE INDEX idx_assets_classified_by ON public.assets(classified_by);
+ALTER TABLE public.assets ADD CONSTRAINT ck_asset_classification_complete CHECK (
+  (classification_confidentiality_impact IS NULL AND classification_integrity_impact IS NULL AND classification_availability_impact IS NULL AND classification_business_impact IS NULL AND classification_rationale IS NULL AND classification_method_version IS NULL AND classified_at IS NULL AND classified_by IS NULL)
+  OR (classification_confidentiality_impact IS NOT NULL AND classification_integrity_impact IS NOT NULL AND classification_availability_impact IS NOT NULL AND classification_business_impact IS NOT NULL AND classification_rationale IS NOT NULL AND classification_method_version IS NOT NULL AND classified_at IS NOT NULL AND classified_by IS NOT NULL
+    AND classification_confidentiality_impact BETWEEN 1 AND 5 AND classification_integrity_impact BETWEEN 1 AND 5 AND classification_availability_impact BETWEEN 1 AND 5 AND classification_business_impact BETWEEN 1 AND 5
+    AND length(trim(classification_rationale)) BETWEEN 20 AND 2000
+    AND classification_method_version = 'SECURAAI-ASSET-IMPACT-v1'
+    AND lower(criticality) = CASE greatest(classification_confidentiality_impact, classification_integrity_impact, classification_availability_impact, classification_business_impact) WHEN 5 THEN 'critical' WHEN 4 THEN 'high' WHEN 1 THEN 'low' ELSE 'medium' END
+    AND lower(data_classification) IN ('public', 'internal', 'confidential', 'restricted'))
+);
+
+ALTER TABLE public.assets ADD COLUMN data_classification_basis text;
+ALTER TABLE public.assets ADD COLUMN data_classification_method_version varchar(100);
+ALTER TABLE public.assets ADD CONSTRAINT ck_asset_data_classification_basis CHECK (
+  (data_classification_basis IS NULL AND data_classification_method_version IS NULL)
+  OR (data_classification_basis IS NOT NULL AND data_classification_method_version IS NOT NULL AND classified_at IS NOT NULL AND length(trim(data_classification_basis)) BETWEEN 20 AND 2000 AND data_classification_method_version = 'SECURAAI-DATA-CLASSIFICATION-v1')
+);
 COMMIT;

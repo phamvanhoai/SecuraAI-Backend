@@ -6,7 +6,15 @@ export const listAiAlertsQuerySchema = z
     limit: z.coerce.number().int().min(1).max(100).default(20),
     q: z.string().trim().min(1).max(100).optional(),
     status: z
-      .enum(['new', 'reviewing', 'confirmed', 'false_positive', 'resolved', 'dismissed'])
+      .enum([
+        'new',
+        'reviewing',
+        'needs_investigation',
+        'confirmed',
+        'false_positive',
+        'resolved',
+        'dismissed',
+      ])
       .optional(),
     detectedAfter: z.iso
       .datetime({ offset: true })

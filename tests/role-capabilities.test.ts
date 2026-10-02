@@ -16,7 +16,7 @@ describe('WBS role capability compatibility', () => {
     const admin = capabilitiesForRole(user_role.ADMIN);
     const officer = capabilitiesForRole(user_role.SECURITY_OFFICER);
     expect(admin).toContain('users.read');
-    expect(admin).not.toContain('assets.read');
+    expect(admin).toContain('assets.read');
     expect(officer).toContain('assets.read');
     expect(officer).not.toContain('users.assign-role');
   });
@@ -44,12 +44,57 @@ describe('WBS role capability compatibility', () => {
     }
   });
 
+  it('allows only Security Officer to link incidents to assets', () => {
+    for (const role of Object.values(user_role)) {
+      expect(capabilitiesForRole(role).includes('incidents.link-assets')).toBe(
+        role === user_role.SECURITY_OFFICER,
+      );
+    }
+  });
+
+  it('allows only Security Officer to link incidents to controls', () => {
+    for (const role of Object.values(user_role)) {
+      expect(capabilitiesForRole(role).includes('incidents.link-controls')).toBe(
+        role === user_role.SECURITY_OFFICER,
+      );
+    }
+  });
+
+  it('allows only Security Officer to link incidents to existing risks', () => {
+    for (const role of Object.values(user_role)) {
+      expect(capabilitiesForRole(role).includes('incidents.link-risks')).toBe(
+        role === user_role.SECURITY_OFFICER,
+      );
+    }
+  });
+
+  it('allows only Security Officer to record incident control weaknesses', () => {
+    for (const role of Object.values(user_role)) {
+      expect(capabilitiesForRole(role).includes('incidents.record-control-weakness')).toBe(
+        role === user_role.SECURITY_OFFICER,
+      );
+    }
+  });
+
+  it('allows only Security Officer to request risk reassessment', () => {
+    for (const role of Object.values(user_role)) {
+      expect(capabilitiesForRole(role).includes('incidents.request-risk-reassessment')).toBe(
+        role === user_role.SECURITY_OFFICER,
+      );
+    }
+  });
+
   it('limits Executive and Employee to functions explicitly listed for them', () => {
     expect(capabilitiesForRole(user_role.EXECUTIVE)).toEqual([
+      'assets.read',
+      'risks.read',
       'ai-alerts.thresholds.manage',
       'incidents.read',
       'reports.read',
     ]);
-    expect(capabilitiesForRole(user_role.EMPLOYEE)).toEqual(['policies.acknowledge']);
+    expect(capabilitiesForRole(user_role.EMPLOYEE)).toEqual([
+      'assets.read',
+      'policies.acknowledge',
+    ]);
   });
 });
