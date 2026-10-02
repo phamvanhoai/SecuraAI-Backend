@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { listNormalizedEventsQuerySchema } from '../src/modules/event-ingestion/dto/list-normalized-events.dto.js';
+import {
+  eventIdParamSchema,
+  listNormalizedEventsQuerySchema,
+} from '../src/modules/event-ingestion/dto/list-normalized-events.dto.js';
 
 describe('listNormalizedEventsQuerySchema', () => {
   it('applies default pagination and sorting parameters', () => {
@@ -34,6 +37,22 @@ describe('listNormalizedEventsQuerySchema', () => {
   it('rejects invalid sort order', () => {
     const result = listNormalizedEventsQuerySchema.safeParse({
       sortOrder: 'invalid',
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe('eventIdParamSchema', () => {
+  it('accepts valid UUID', () => {
+    const result = eventIdParamSchema.safeParse({
+      id: '550e8400-e29b-41d4-a716-446655440000',
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it('rejects invalid UUID format', () => {
+    const result = eventIdParamSchema.safeParse({
+      id: 'not-a-uuid',
     });
     expect(result.success).toBe(false);
   });
