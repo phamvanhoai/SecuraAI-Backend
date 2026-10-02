@@ -71,12 +71,12 @@ export const assetsService = {
     const updated = result.asset;
     return {
       assetId,
-      previousCriticality: result.previous.criticality.toLowerCase(),
+      previousCriticality: result.previous.criticality?.toLowerCase() ?? null,
       criticality: updated.criticality,
-      previousDataClassification: result.previous.data_classification.toLowerCase(),
+      previousDataClassification: result.previous.data_classification?.toLowerCase() ?? null,
       dataClassification: updated.data_classification,
       score,
-      changed: result.previous.criticality.toLowerCase() !== updated.criticality || result.previous.data_classification.toLowerCase() !== updated.data_classification,
+      changed: result.previous.criticality?.toLowerCase() !== updated.criticality || result.previous.data_classification?.toLowerCase() !== updated.data_classification,
       methodVersion: ASSET_CLASSIFICATION_METHOD,
       classifiedAt: updated.classified_at,
     };
@@ -132,7 +132,6 @@ export const assetsService = {
       throw new AppError(403, 'FORBIDDEN', 'Security Officer role required');
     const references = await assetsRepository.validateCreateReferences({
       ...(input.ownerUserId ? { ownerUserId: input.ownerUserId } : {}),
-      ...(input.businessServiceId ? { businessServiceId: input.businessServiceId } : {}),
       dependencyIds: input.dependencies.map((item) => item.assetId),
       eventSourceIds: input.eventSourceIds,
     });
@@ -159,8 +158,8 @@ export const assetsService = {
         assetCode: item.asset_code,
         name: item.name,
         assetType: item.asset_type,
-        criticality: item.criticality.toLowerCase(),
-        dataClassification: item.data_classification.toLowerCase(),
+        criticality: item.criticality?.toLowerCase() ?? null,
+        dataClassification: item.data_classification?.toLowerCase() ?? null,
         description: item.description,
         status: item.status.toLowerCase(),
         owner: person(item.users_assets_owner_user_idTousers),
@@ -191,8 +190,8 @@ export const assetsService = {
         assetCode: item.asset_code,
         name: item.name,
         assetType: item.asset_type,
-        criticality: item.criticality.toLowerCase(),
-        dataClassification: item.data_classification.toLowerCase(),
+        criticality: item.criticality?.toLowerCase() ?? null,
+        dataClassification: item.data_classification?.toLowerCase() ?? null,
         description: item.description,
         status: item.status.toLowerCase(),
         owner: person(item.users_assets_owner_user_idTousers),

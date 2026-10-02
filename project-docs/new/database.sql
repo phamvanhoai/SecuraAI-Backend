@@ -133,8 +133,8 @@ CREATE TABLE assets (
     asset_type varchar(100) NOT NULL,
     owner_user_id uuid,
     business_service_id uuid,
-    criticality varchar(50) NOT NULL,
-    data_classification varchar(50) NOT NULL,
+    criticality varchar(50),
+    data_classification varchar(50),
     description text,
     status asset_status NOT NULL DEFAULT 'ACTIVE',
     archived_at timestamptz,
@@ -1360,6 +1360,9 @@ ALTER TABLE public.assets ADD CONSTRAINT ck_asset_classification_complete CHECK 
 );
 
 ALTER TABLE public.assets ADD COLUMN data_classification_basis text;
+ALTER TABLE public.assets ADD CONSTRAINT ck_asset_saved_classification_values CHECK (
+  classified_at IS NULL OR (criticality IS NOT NULL AND data_classification IS NOT NULL)
+);
 ALTER TABLE public.assets ADD COLUMN data_classification_method_version varchar(100);
 ALTER TABLE public.assets ADD CONSTRAINT ck_asset_data_classification_basis CHECK (
   (data_classification_basis IS NULL AND data_classification_method_version IS NULL)

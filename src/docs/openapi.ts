@@ -117,7 +117,7 @@ export const openApiSpec = {
         tags: ['IT Asset Management'],
         summary: 'Create an IT asset',
         description:
-          'Registers an IT asset and optionally links its owner, business service, dependencies, and event sources. Requires an active Security Officer.',
+          'Registers an IT asset with an optional owner. Business service, criticality and data classification start as null; use context and classification operations afterwards. No default classification is assigned. Requires an active Security Officer.',
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
@@ -125,15 +125,13 @@ export const openApiSpec = {
             'application/json': {
               schema: {
                 type: 'object',
-                required: ['assetCode', 'name', 'assetType', 'criticality', 'dataClassification'],
+                required: ['assetCode', 'name', 'assetType'],
+                additionalProperties: false,
                 properties: {
                   assetCode: { type: 'string', maxLength: 100 },
                   name: { type: 'string', maxLength: 255 },
                   assetType: { type: 'string', maxLength: 100 },
                   ownerUserId: { type: 'string', format: 'uuid' },
-                  businessServiceId: { type: 'string', format: 'uuid' },
-                  criticality: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] },
-                  dataClassification: { type: 'string', enum: ['public', 'internal', 'confidential', 'restricted'], description: 'Highest sensitivity of data stored or processed by the asset; independent of asset criticality.' },
                   description: { type: 'string', maxLength: 10000 },
                   dependencies: { type: 'array', maxItems: 50 },
                   eventSourceIds: {
@@ -147,7 +145,7 @@ export const openApiSpec = {
           },
         },
         responses: {
-          '201': { description: 'IT asset created' },
+          '201': { description: 'IT asset created with null criticality, dataClassification and businessService' },
           '401': { description: 'Authentication required' },
           '403': { description: 'Security Officer role required' },
           '409': { description: 'Asset code already exists' },

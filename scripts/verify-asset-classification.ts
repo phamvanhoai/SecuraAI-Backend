@@ -11,21 +11,19 @@ async function verifyClassification(): Promise<void> {
     select: { id: true },
   });
   if (!officer) throw new Error('An active development Security Officer is required');
-  const id = randomUUID();
-  let created = false;
+  let id: string | null = null;
   try {
-    await prisma.assets.create({
-      data: {
-        id,
-        asset_code: `TEST-CLASS-${id}`,
-        name: 'Temporary classification integration test',
-        asset_type: 'SERVER',
-        criticality: 'low',
-        data_classification: 'public',
-        created_by: officer.id,
-      },
+    const created = await assetsService.create(officer.id, {
+      assetCode: `TEST-CLASS-${randomUUID()}`,
+      name: 'Temporary classification integration test',
+      assetType: 'SERVER',
+      dependencies: [],
+      eventSourceIds: [],
     });
-    created = true;
+    id = created.id;
+    assert.equal(created.criticality, null);
+    assert.equal(created.dataClassification, null);
+    assert.equal(created.businessService, null);
     assert.equal((await assetsService.get(officer.id, id)).classification, null);
     const input = {
       confidentialityImpact: 1,
@@ -37,6 +35,8 @@ async function verifyClassification(): Promise<void> {
       rationale: 'An outage stops essential public services and prevents primary operations.',
     };
     const result = await assetsService.classify(officer.id, id, input);
+    assert.equal(result.previousCriticality, null);
+    assert.equal(result.previousDataClassification, null);
     assert.equal(result.criticality, 'critical');
     assert.equal(result.score, 5);
     const basis = (await assetsService.get(officer.id, id)).classification;
@@ -57,7 +57,7 @@ async function verifyClassification(): Promise<void> {
       'PASS: initial state, maximum score, saved basis, reassessment, archived rejection',
     );
   } finally {
-    if (created) await prisma.assets.delete({ where: { id } });
+    if (id) await prisma.assets.delete({ where: { id } });
     await prisma.$disconnect();
   }
 }
