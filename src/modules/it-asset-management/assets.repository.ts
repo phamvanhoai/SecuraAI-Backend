@@ -194,12 +194,12 @@ export const assetsRepository = {
         asset_code: input.assetCode,
         name: input.name,
         asset_type: input.assetType,
-        criticality: input.criticality,
-        data_classification: input.dataClassification,
+        criticality: null,
+        data_classification: null,
         created_by: actorUserId,
         ...(input.description ? { description: input.description } : {}),
         ...(input.ownerUserId ? { owner_user_id: input.ownerUserId } : {}),
-        ...(input.businessServiceId ? { business_service_id: input.businessServiceId } : {}),
+        business_service_id: null,
         asset_dependencies_asset_dependencies_asset_idToassets: {
           create: input.dependencies.map((dependency) => ({
             assets_asset_dependencies_depends_on_asset_idToassets: {
