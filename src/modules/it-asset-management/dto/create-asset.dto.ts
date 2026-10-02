@@ -17,7 +17,7 @@ export const createAssetBodySchema = z
     ownerUserId: optionalUuid,
   criticality: z
     .enum(['low', 'medium', 'high', 'critical']),
-    dataClassification: z.string().trim().min(1).max(50),
+    dataClassification: z.enum(['public', 'internal', 'confidential', 'restricted']),
     description: z.string().trim().max(10_000).optional(),
     dependencies: z
       .array(

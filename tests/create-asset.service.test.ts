@@ -16,7 +16,7 @@ const input = {
   name: 'App Server',
   assetType: 'server',
   criticality: 'high' as const,
-  dataClassification: 'confidential',
+  dataClassification: 'confidential' as const,
   dependencies: [],
   eventSourceIds: [],
 };

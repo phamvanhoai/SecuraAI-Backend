@@ -1,4 +1,5 @@
-import type { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
+import { createHash, randomUUID } from 'node:crypto';
 import { prisma } from '../../database/prisma.js';
 import type { ListAssetsQuery } from './dto/list-assets.dto.js';
 import type { CreateAssetInput } from './dto/create-asset.dto.js';
@@ -82,6 +83,18 @@ export const assetsRepository = {
       select: {
         ...select,
         archived_at: true,
+        archive_reason: true,
+        archive_actor: { select: { id: true, full_name: true, status: true } },
+        classification_confidentiality_impact: true,
+        classification_integrity_impact: true,
+        classification_availability_impact: true,
+        classification_business_impact: true,
+        classification_rationale: true,
+        data_classification_basis: true,
+        data_classification_method_version: true,
+        classification_method_version: true,
+        classified_at: true,
+        classification_assessor: { select: { id: true, full_name: true, status: true } },
         users_assets_created_byTousers: { select: { id: true, full_name: true, status: true } },
         asset_dependencies_asset_dependencies_asset_idToassets: {
           select: {
@@ -208,32 +221,110 @@ export const assetsRepository = {
       name: input.name, asset_type: input.assetType, description: input.description,
     }, select });
   },
-  archive(assetId: string) { return prisma.assets.update({ where: { id: assetId }, data: { status: 'ARCHIVED', archived_at: new Date() }, select: { id: true } }); },
-  assignOwner(assetId: string, ownerUserId: string | null) { return prisma.assets.update({ where: { id: assetId }, data: { owner_user_id: ownerUserId }, select: { id: true, updated_at: true, users_assets_owner_user_idTousers: { select: { id: true, full_name: true, status: true } } } }); },
-  classify(assetId: string, criticality: string, input: ClassifyAssetInput) {
-    return prisma.assets.update({
-      where: { id: assetId },
-      data: { criticality, data_classification: input.dataClassification },
-      select: { id: true, criticality: true, data_classification: true, updated_at: true },
-    });
+  archive(assetId: string, userId: string, reason: string, correlationId: string | null) {
+    return prisma.$transaction(async (tx) => {
+      const actor = await tx.users.findUnique({ where: { id: userId }, select: { role: true, status: true } });
+      if (!actor || actor.status !== 'ACTIVE' || actor.role !== 'SECURITY_OFFICER') return { kind: 'forbidden' } as const;
+      const asset = await tx.assets.findUnique({ where: { id: assetId }, select: { status: true, archived_at: true } });
+      if (!asset) return { kind: 'not_found' } as const;
+      if (asset.status !== 'ACTIVE') return { kind: 'archived' } as const;
+      const dependencyWhere = { depends_on_asset_id: assetId, assets_asset_dependencies_asset_idToassets: { status: 'ACTIVE' as const } };
+      const count = await tx.asset_dependencies.count({ where: dependencyWhere });
+      if (count) {
+        const dependencies = await tx.asset_dependencies.findMany({
+          where: dependencyWhere, take: 20, orderBy: { asset_id: 'asc' },
+          select: { assets_asset_dependencies_asset_idToassets: { select: { asset_code: true, name: true } } },
+        });
+        return { kind: 'dependencies', count, dependencies } as const;
+      }
+      // Use the same database clock as the existing updated_at trigger.
+      const [clock] = await tx.$queryRaw<Array<{ at: Date }>>`SELECT transaction_timestamp() AS at`;
+      if (!clock) throw new Error('Database archive timestamp unavailable');
+      const at = clock.at;
+      await tx.assets.update({ where: { id: assetId }, data: { status: 'ARCHIVED', archived_at: at, archived_by: userId, archive_reason: reason, updated_at: at }, select: { id: true } });
+      const id = randomUUID();
+      const before = { status: asset.status, archivedAt: asset.archived_at?.toISOString() ?? null };
+      const after = { status: 'ARCHIVED', archivedAt: at.toISOString(), archivedBy: userId, archiveReason: reason };
+      await tx.audit_logs.create({ data: {
+        id, actor_type: 'USER', actor_user_id: userId, action: 'ASSET_ARCHIVED',
+        resource_type: 'ASSET', resource_id: assetId, occurred_at: at, source: 'API',
+        correlation_id: correlationId, before_data: before, after_data: after,
+        record_hash: createHash('sha256').update(JSON.stringify({ id, actor: userId, assetId, at: at.toISOString(), before, after, correlationId })).digest('hex'),
+      } });
+      return { kind: 'updated' } as const;
+    }, { isolationLevel: 'Serializable', maxWait: 5000, timeout: 15000 });
   },
-  linkContext(assetId: string, input: LinkAssetContextInput) {
-    return prisma.assets.update({
+  assignOwner(assetId: string, ownerUserId: string | null) { return prisma.assets.update({ where: { id: assetId }, data: { owner_user_id: ownerUserId }, select: { id: true, updated_at: true, users_assets_owner_user_idTousers: { select: { id: true, full_name: true, status: true } } } }); },
+  classify(assetId: string, criticality: string, input: ClassifyAssetInput, userId: string, methodVersion: string) {
+    return prisma.$transaction(async (tx) => {
+      const actor = await tx.users.findUnique({ where: { id: userId }, select: { role: true, status: true } });
+      if (!actor || actor.status !== 'ACTIVE' || actor.role !== 'SECURITY_OFFICER') return { kind: 'forbidden' } as const;
+      const current = await tx.assets.findUnique({ where: { id: assetId }, select: { status: true, criticality: true, data_classification: true } });
+      if (!current) return { kind: 'not_found' } as const;
+      if (current.status !== 'ACTIVE') return { kind: 'archived' } as const;
+      const asset = await tx.assets.update({
+        where: { id: assetId },
+        data: { criticality, data_classification: input.dataClassification,
+          classification_confidentiality_impact: input.confidentialityImpact,
+          classification_integrity_impact: input.integrityImpact,
+          classification_availability_impact: input.availabilityImpact,
+          classification_business_impact: input.businessImpact,
+          classification_rationale: input.rationale, classification_method_version: methodVersion,
+          data_classification_basis: input.dataClassificationBasis,
+          data_classification_method_version: 'SECURAAI-DATA-CLASSIFICATION-v1',
+          classified_by: userId, classified_at: new Date(), updated_at: new Date(),
+        },
+        select: { id: true, criticality: true, data_classification: true, classified_at: true },
+      });
+      return { kind: 'updated', asset, previous: current } as const;
+    }, { isolationLevel: 'Serializable', maxWait: 5000, timeout: 15000 });
+  },
+  linkContext(assetId: string, input: LinkAssetContextInput, userId: string) {
+    return prisma.$transaction(async (tx) => {
+      const actor = await tx.users.findUnique({ where: { id: userId }, select: { role: true, status: true } });
+      if (!actor || actor.status !== 'ACTIVE' || actor.role !== 'SECURITY_OFFICER') return { kind: 'forbidden' } as const;
+      const current = await tx.assets.findUnique({ where: { id: assetId }, select: { status: true, business_service_id: true, asset_dependencies_asset_dependencies_asset_idToassets: { select: { depends_on_asset_id: true } }, asset_event_sources: { select: { event_source_id: true } } } });
+      if (!current) return { kind: 'not_found' } as const;
+      if (current.status !== 'ACTIVE') return { kind: 'archived' } as const;
+      const oldDependencies = current.asset_dependencies_asset_dependencies_asset_idToassets.map((link) => link.depends_on_asset_id);
+      const oldSources = current.asset_event_sources.map((link) => link.event_source_id);
+      const addedDependencies = input.dependencyIds.filter((id) => !oldDependencies.includes(id));
+      const addedSources = input.eventSourceIds.filter((id) => !oldSources.includes(id));
+      if (input.businessServiceId && input.businessServiceId !== current.business_service_id && !await tx.business_services.findFirst({ where: { id: input.businessServiceId, status: 'ACTIVE' }, select: { id: true } })) return { kind: 'invalid_service' } as const;
+      if (addedDependencies.length && await tx.assets.count({ where: { id: { in: addedDependencies }, status: 'ACTIVE' } }) !== addedDependencies.length) return { kind: 'invalid_dependency' } as const;
+      if (addedSources.length && await tx.event_sources.count({ where: { id: { in: addedSources }, status: 'ACTIVE' } }) !== addedSources.length) return { kind: 'invalid_source' } as const;
+      // UNION deduplicates visited nodes, so pre-existing cycles cannot recurse forever.
+      if (input.dependencyIds.length) {
+        const [cycle] = await tx.$queryRaw<Array<{ has_cycle: boolean }>>(Prisma.sql`
+          WITH RECURSIVE reachable(id) AS (
+            SELECT unnest(ARRAY[${Prisma.join(input.dependencyIds)}]::uuid[])
+            UNION
+            SELECT dependency.depends_on_asset_id
+            FROM public.asset_dependencies AS dependency
+            JOIN reachable ON dependency.asset_id = reachable.id
+          )
+          SELECT EXISTS(SELECT 1 FROM reachable WHERE id = ${assetId}::uuid) AS has_cycle
+        `);
+        if (cycle?.has_cycle) return { kind: 'cycle' } as const;
+      }
+      const asset = await tx.assets.update({
       where: { id: assetId },
       data: {
         business_service_id: input.businessServiceId,
         asset_dependencies_asset_dependencies_asset_idToassets: {
-          deleteMany: {},
-          create: input.dependencyIds.map((id) => ({
+          deleteMany: { depends_on_asset_id: { notIn: input.dependencyIds } },
+          create: addedDependencies.map((id) => ({
             assets_asset_dependencies_depends_on_asset_idToassets: { connect: { id } },
           })),
         },
         asset_event_sources: {
-          deleteMany: {},
-          create: input.eventSourceIds.map((id) => ({ event_source_id: id })),
+          deleteMany: { event_source_id: { notIn: input.eventSourceIds } },
+          create: addedSources.map((id) => ({ event_source_id: id })),
         },
       },
       select: { id: true, updated_at: true },
-    });
+      });
+      return { kind: 'updated', asset } as const;
+    }, { isolationLevel: 'Serializable', maxWait: 5000, timeout: 15000 });
   },
 };
