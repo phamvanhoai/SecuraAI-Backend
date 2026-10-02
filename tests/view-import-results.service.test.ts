@@ -37,7 +37,7 @@ describe('eventImportService - view import results', () => {
         },
       };
 
-      vi.spyOn(eventImportRepository, 'findBatchById').mockResolvedValue(mockBatch as never);
+      vi.spyOn(eventImportRepository, 'findBatchById').mockResolvedValue(mockBatch);
 
       const result = await eventImportService.getBatchDetail('550e8400-e29b-41d4-a716-446655440000');
 
@@ -64,9 +64,29 @@ describe('eventImportService - view import results', () => {
       const mockBatch = {
         id: '550e8400-e29b-41d4-a716-446655440000',
         event_source_id: 'src-123',
-        event_sources: { name: 'Corporate Wazuh' },
+        ingestion_method: 'FILE' as const,
+        event_family: 'AUTHENTICATION' as const,
+        file_name: 'test_events.json',
+        file_format: 'JSON',
+        total_records: 10,
+        accepted_records: 8,
+        rejected_records: 2,
+        status: 'PARTIALLY_COMPLETED' as const,
+        started_at: new Date('2026-09-30T10:00:00Z'),
+        completed_at: new Date('2026-09-30T10:00:02Z'),
+        created_by: 'usr-1',
+        created_at: new Date('2026-09-30T10:00:00Z'),
+        event_sources: {
+          id: 'src-123',
+          name: 'Corporate Wazuh',
+        },
+        users: {
+          id: 'usr-1',
+          email: 'admin@secura.ai',
+          full_name: 'System Admin',
+        },
       };
-      vi.spyOn(eventImportRepository, 'findBatchById').mockResolvedValue(mockBatch as never);
+      vi.spyOn(eventImportRepository, 'findBatchById').mockResolvedValue(mockBatch);
 
       const mockInvalidEvents = [
         {
@@ -83,7 +103,7 @@ describe('eventImportService - view import results', () => {
       ];
 
       vi.spyOn(eventImportRepository, 'findInvalidEventsByBatchId').mockResolvedValue({
-        items: mockInvalidEvents as never,
+        items: mockInvalidEvents,
         total: 1,
       });
 

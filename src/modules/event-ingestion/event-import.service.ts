@@ -155,8 +155,7 @@ export const eventImportService = {
       totalRecords: batch.total_records,
       acceptedRecords: batch.accepted_records,
       rejectedRecords: batch.rejected_records,
-      status: batch.status as
-        'PENDING' | 'PROCESSING' | 'COMPLETED' | 'PARTIALLY_COMPLETED' | 'FAILED',
+      status: batch.status,
       startedAt: batch.started_at,
       completedAt: batch.completed_at,
       createdBy: batch.created_by,
@@ -220,8 +219,7 @@ export const eventImportService = {
         totalRecords: batch.total_records,
         acceptedRecords: batch.accepted_records,
         rejectedRecords: batch.rejected_records,
-        status: batch.status as
-          'PENDING' | 'PROCESSING' | 'COMPLETED' | 'PARTIALLY_COMPLETED' | 'FAILED',
+        status: batch.status,
         startedAt: batch.started_at,
         completedAt: batch.completed_at,
         createdBy: batch.created_by,

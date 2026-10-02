@@ -1468,6 +1468,65 @@ export const openApiSpec = {
         },
       },
     },
+    '/events': {
+      get: {
+        tags: ['Event Ingestion'],
+        summary: 'View centralized list of normalized security events',
+        description:
+          'Returns a paginated list of ingested security events with associated source, event family, account/user, asset/device, and mapping status.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 } },
+          { name: 'eventSourceId', in: 'query', schema: { type: 'string', format: 'uuid' } },
+          { name: 'eventFamily', in: 'query', schema: { type: 'string', enum: ['AUTHENTICATION', 'VPN_SSO', 'APPLICATION_ACCESS'] } },
+          { name: 'mappingStatus', in: 'query', schema: { type: 'string', enum: ['UNMAPPED', 'PARTIALLY_MAPPED', 'MAPPED', 'NEEDS_REVIEW'] } },
+          { name: 'severity', in: 'query', schema: { type: 'string' } },
+          { name: 'eventType', in: 'query', schema: { type: 'string' } },
+          { name: 'account', in: 'query', schema: { type: 'string' } },
+          { name: 'sourceIp', in: 'query', schema: { type: 'string' } },
+          { name: 'from', in: 'query', schema: { type: 'string', format: 'date-time' } },
+          { name: 'to', in: 'query', schema: { type: 'string', format: 'date-time' } },
+          { name: 'q', in: 'query', schema: { type: 'string' } },
+          { name: 'sortBy', in: 'query', schema: { type: 'string', enum: ['occurredAt', 'ingestedAt', 'eventType', 'eventFamily', 'severity', 'mappingStatus'], default: 'occurredAt' } },
+          { name: 'sortOrder', in: 'query', schema: { type: 'string', enum: ['asc', 'desc'], default: 'desc' } },
+        ],
+        responses: {
+          '200': { description: 'Paginated normalized security events' },
+          '401': { description: 'Authentication required' },
+          '422': { description: 'Invalid query parameters' },
+        },
+      },
+    },
+    '/events/metrics': {
+      get: {
+        tags: ['Event Ingestion'],
+        summary: 'Get event ingestion overview metrics',
+        description: 'Returns total events count, mapped/unmapped counts, 24h count, and counts by event family.',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          '200': { description: 'Normalized security event metrics' },
+          '401': { description: 'Authentication required' },
+        },
+      },
+    },
+    '/events/{id}': {
+      get: {
+        tags: ['Event Ingestion'],
+        summary: 'Get normalized event details',
+        description: 'Returns full normalized event details including payload, source metadata, and entity mappings.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+        ],
+        responses: {
+          '200': { description: 'Normalized event detail' },
+          '401': { description: 'Authentication required' },
+          '404': { description: 'Normalized security event not found' },
+          '422': { description: 'Invalid event ID' },
+        },
+      },
+    },
     '/anomaly-detections/runs': {
       post: {
         tags: ['AI Anomaly Detection & Alerts'],
