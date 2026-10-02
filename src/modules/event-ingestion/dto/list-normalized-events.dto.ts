@@ -12,6 +12,12 @@ export const listNormalizedEventsQuerySchema = z.object({
 
 export type ListNormalizedEventsQuery = z.infer<typeof listNormalizedEventsQuerySchema>;
 
+export const eventIdParamSchema = z.object({
+  id: z.string().uuid('Invalid event ID format'),
+});
+
+export type EventIdParam = z.infer<typeof eventIdParamSchema>;
+
 export type MappedUserDto = {
   id: string;
   email: string;
@@ -48,6 +54,17 @@ export type NormalizedEventItemDto = {
   mappedAsset: MappedAssetDto | null;
   anomalyCount: number;
   createdAt: Date;
+};
+
+export type NormalizedEventDetailDto = NormalizedEventItemDto & {
+  normalizedPayload: Record<string, unknown>;
+  anomalyDetections?: Array<{
+    id: string;
+    anomalyScore: number;
+    threshold: number;
+    isAnomaly: boolean;
+    detectedAt: Date;
+  }>;
 };
 
 export type PaginatedNormalizedEventsDto = {

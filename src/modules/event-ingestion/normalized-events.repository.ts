@@ -85,6 +85,74 @@ export const normalizedEventsRepository = {
     return { items, total };
   },
 
+  async findById(id: string) {
+    return prisma.normalized_events.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        event_source_id: true,
+        ingestion_batch_id: true,
+        external_event_id: true,
+        event_family: true,
+        event_type: true,
+        schema_version: true,
+        occurred_at: true,
+        ingested_at: true,
+        account_identifier: true,
+        source_ip: true,
+        destination_ip: true,
+        device_identifier: true,
+        severity: true,
+        mapping_status: true,
+        normalized_payload: true,
+        created_at: true,
+        event_sources: {
+          select: {
+            id: true,
+            name: true,
+            source_type: true,
+          },
+        },
+        event_entity_mappings: {
+          where: { is_active: true },
+          take: 1,
+          select: {
+            assets: {
+              select: {
+                id: true,
+                name: true,
+                asset_code: true,
+                asset_type: true,
+                criticality: true,
+              },
+            },
+            users_event_entity_mappings_user_idTousers: {
+              select: {
+                id: true,
+                email: true,
+                full_name: true,
+              },
+            },
+          },
+        },
+        anomaly_detections: {
+          select: {
+            id: true,
+            anomaly_score: true,
+            threshold: true,
+            is_anomaly: true,
+            detected_at: true,
+          },
+        },
+        _count: {
+          select: {
+            anomaly_detections: true,
+          },
+        },
+      },
+    });
+  },
+
   async getMetrics() {
     const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
 

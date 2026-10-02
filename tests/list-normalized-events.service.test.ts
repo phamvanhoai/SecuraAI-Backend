@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { describe, expect, it, vi } from 'vitest';
 import { normalizedEventsRepository } from '../src/modules/event-ingestion/normalized-events.repository.js';
 import { normalizedEventsService } from '../src/modules/event-ingestion/normalized-events.service.js';
@@ -68,6 +69,63 @@ describe('normalizedEventsService', () => {
     expect(result.items[0]?.mappedAsset?.assetCode).toBe('AST-SRV-01');
     expect(result.items[0]?.anomalyCount).toBe(1);
     expect(result.pagination.total).toBe(1);
+  });
+
+  it('throws 404 when normalized event is not found', async () => {
+    vi.spyOn(normalizedEventsRepository, 'findById').mockResolvedValue(null);
+
+    await expect(
+      normalizedEventsService.getEventDetail('user-admin-1', '550e8400-e29b-41d4-a716-446655440099'),
+    ).rejects.toThrow('Normalized security event not found');
+  });
+
+  it('returns event detail with payload and anomaly detections', async () => {
+    const mockDetail = {
+      id: '550e8400-e29b-41d4-a716-446655440002',
+      event_source_id: 'src-001',
+      ingestion_batch_id: 'batch-001',
+      external_event_id: 'ext-002',
+      event_family: 'VPN_SSO' as const,
+      event_type: 'VPN_CONNECT',
+      schema_version: '1.0',
+      occurred_at: new Date('2026-03-30T11:00:00Z'),
+      ingested_at: new Date('2026-03-30T11:00:01Z'),
+      account_identifier: 'alice',
+      source_ip: '203.0.113.195',
+      destination_ip: '10.0.0.2',
+      device_identifier: 'VPN-GW01',
+      severity: 'MEDIUM',
+      mapping_status: 'UNMAPPED' as const,
+      normalized_payload: { raw_event: 'VPN Connection Established' },
+      created_at: new Date('2026-03-30T11:00:01Z'),
+      event_sources: {
+        id: 'src-001',
+        name: 'Wazuh Production',
+        source_type: 'WAZUH',
+      },
+      event_entity_mappings: [],
+      anomaly_detections: [
+        {
+          id: 'anom-001',
+          anomaly_score: new Prisma.Decimal(0.85),
+          threshold: new Prisma.Decimal(0.75),
+          is_anomaly: true,
+          detected_at: new Date('2026-03-30T11:05:00Z'),
+        },
+      ],
+      _count: {
+        anomaly_detections: 1,
+      },
+    };
+
+    vi.spyOn(normalizedEventsRepository, 'findById').mockResolvedValue(mockDetail);
+
+    const result = await normalizedEventsService.getEventDetail('user-admin-1', '550e8400-e29b-41d4-a716-446655440002');
+
+    expect(result.id).toBe('550e8400-e29b-41d4-a716-446655440002');
+    expect(result.normalizedPayload).toEqual({ raw_event: 'VPN Connection Established' });
+    expect(result.anomalyDetections).toHaveLength(1);
+    expect(result.anomalyDetections?.[0]?.anomalyScore).toBe(0.85);
   });
 
   it('returns overview metrics', async () => {

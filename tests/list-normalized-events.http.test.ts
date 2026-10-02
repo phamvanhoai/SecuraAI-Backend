@@ -6,6 +6,7 @@ vi.mock('../src/database/prisma.js', () => ({ prisma: { $queryRaw: vi.fn() } }))
 vi.mock('../src/modules/event-ingestion/normalized-events.service.js', () => ({
   normalizedEventsService: {
     listEvents: vi.fn(),
+    getEventDetail: vi.fn(),
     getMetrics: vi.fn(),
   },
 }));
@@ -140,6 +141,62 @@ describe('Normalized Security Events HTTP Endpoints', () => {
       expect(response.status).toBe(200);
       expect(response.body.success).toBe(true);
       expect(response.body.data.totalEvents).toBe(5000);
+    });
+  });
+
+  describe('GET /api/v1/events/:id', () => {
+    it('requires authentication', async () => {
+      const response = await request(app).get(`/api/v1/events/${eventId}`);
+      expect(response.status).toBe(401);
+    });
+
+    it('returns 200 with detailed normalized event information', async () => {
+      const mockDetail = {
+        id: eventId,
+        eventSourceId: 'src-001',
+        eventSourceName: 'Wazuh SIEM Production',
+        eventSourceType: 'WAZUH',
+        ingestionBatchId: 'batch-001',
+        externalEventId: 'ext-001',
+        eventFamily: 'AUTHENTICATION' as const,
+        eventType: 'USER_LOGON',
+        schemaVersion: '1.0',
+        occurredAt: new Date('2026-03-30T10:00:00Z'),
+        ingestedAt: new Date('2026-03-30T10:00:01Z'),
+        accountIdentifier: 'administrator',
+        sourceIp: '192.168.1.10',
+        destinationIp: '10.0.0.1',
+        deviceIdentifier: 'DC-01',
+        severity: 'LOW',
+        mappingStatus: 'MAPPED' as const,
+        mappedUser: null,
+        mappedAsset: null,
+        anomalyCount: 0,
+        createdAt: new Date('2026-03-30T10:00:01Z'),
+        normalizedPayload: {
+          agent: { id: '001', name: 'wazuh-agent-dc' },
+          data: { win: { eventdata: { targetUserName: 'administrator' } } },
+        },
+        anomalyDetections: [],
+      };
+
+      vi.mocked(normalizedEventsService.getEventDetail).mockResolvedValue(mockDetail);
+
+      const response = await request(app)
+        .get(`/api/v1/events/${eventId}`)
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(response.body.data.normalizedPayload.agent.name).toBe('wazuh-agent-dc');
+    });
+
+    it('rejects invalid event ID with 422', async () => {
+      const response = await request(app)
+        .get('/api/v1/events/invalid-uuid')
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(response.status).toBe(422);
     });
   });
 });
