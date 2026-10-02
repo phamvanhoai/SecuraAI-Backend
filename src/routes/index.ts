@@ -7,7 +7,11 @@ import {
   anomalyDetectionRouter,
 } from '../modules/ai-anomaly-detection-alerts/index.js';
 import { policyComplianceRouter } from '../modules/policy-compliance-control/index.js';
-import { eventSourcesRouter, wazuhIngestionRouter } from '../modules/event-ingestion/index.js';
+import {
+  eventSourcesRouter,
+  normalizedEventsRouter,
+  wazuhIngestionRouter,
+} from '../modules/event-ingestion/index.js';
 import { pendingV2Router } from './pending-v2.routes.js';
 
 export const apiRouter = Router();
@@ -18,6 +22,8 @@ apiRouter.use('/anomaly-detections', anomalyDetectionRouter);
 apiRouter.use('/ai-alerts', aiAlertsRouter);
 apiRouter.use('/compliance', policyComplianceRouter);
 apiRouter.use('/event-sources', eventSourcesRouter);
+apiRouter.use('/events', normalizedEventsRouter);
+apiRouter.use('/event-ingestion/events', normalizedEventsRouter);
 apiRouter.use('/integrations/wazuh', wazuhIngestionRouter);
 apiRouter.use('/event-ingestion/wazuh', wazuhIngestionRouter);
 apiRouter.use(pendingV2Router);
