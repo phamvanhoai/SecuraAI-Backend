@@ -2,6 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { createAssetBodySchema } from '../src/modules/it-asset-management/dto/create-asset.dto.js';
 
 describe('createAssetBodySchema', () => {
+  it.each(['', 'secret', 'Internal'])('rejects unsupported classification %s', (dataClassification) => {
+    expect(createAssetBodySchema.safeParse({ assetCode: 'AST-002', name: 'Server', assetType: 'server', criticality: 'high', dataClassification }).success).toBe(false);
+  });
   it('normalizes a valid asset and supplies bounded relationship defaults', () => {
     expect(
       createAssetBodySchema.parse({

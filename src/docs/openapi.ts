@@ -133,7 +133,7 @@ export const openApiSpec = {
                   ownerUserId: { type: 'string', format: 'uuid' },
                   businessServiceId: { type: 'string', format: 'uuid' },
                   criticality: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] },
-                  dataClassification: { type: 'string', maxLength: 50 },
+                  dataClassification: { type: 'string', enum: ['public', 'internal', 'confidential', 'restricted'], description: 'Highest sensitivity of data stored or processed by the asset; independent of asset criticality.' },
                   description: { type: 'string', maxLength: 10000 },
                   dependencies: { type: 'array', maxItems: 50 },
                   eventSourceIds: {
@@ -175,7 +175,7 @@ export const openApiSpec = {
         tags: ['IT Asset Management'],
         summary: 'Archive an IT asset',
         description:
-          'Marks an asset as archived without deleting its details or relationships. Requires an active Security Officer.',
+          'Requires an active Security Officer and reason (1–1000 trimmed characters). Rejects incoming dependencies from active assets. Atomically preserves relationships, saves archivedAt/archivedBy/archiveReason and appends an audit record. Detail returns those metadata fields; legacy archives have null actor/reason. Does not stop infrastructure or ingestion.',
         security: [{ bearerAuth: [] }],
         parameters: [
           {
@@ -185,12 +185,18 @@ export const openApiSpec = {
             schema: { type: 'string', format: 'uuid' },
           },
         ],
+        requestBody: { required: true, content: { 'application/json': { schema: {
+          type: 'object', additionalProperties: false, required: ['reason'],
+          properties: { reason: { type: 'string', minLength: 1, maxLength: 1000 } },
+        } } } },
         responses: {
-          '204': { description: 'Asset archived' },
+          '204': { description: 'Asset archived and audit appended atomically' },
           '401': { description: 'Authentication required' },
           '403': { description: 'Security Officer role required' },
           '404': { description: 'Asset not found' },
-          '409': { description: 'Asset is already archived' },
+          '409': { description: 'Already archived, active dependent assets, or concurrent changes. Dependency message lists up to 20 asset codes/names.' },
+          '422': { description: 'Missing or invalid archive reason' },
+          '503': { description: 'Transaction timeout; retry' },
         },
       },
       patch: {
@@ -237,7 +243,7 @@ export const openApiSpec = {
         tags: ['IT Asset Management'],
         summary: 'View IT asset details',
         description:
-          'Returns asset identity, ownership, business service, dependencies, controls, event sources, risks, and incidents. Security Officers can view any asset; an Asset Owner can view only assets assigned to them.',
+          'Returns asset identity, ownership, business service, dependencies, controls, event sources, risks, incidents and classification (null for initial/legacy values, otherwise confidentialityImpact, integrityImpact, availabilityImpact, businessImpact, rationale, methodVersion, assessedAt, assessedBy). Security Officers can view any asset; an Asset Owner can view only assets assigned to them.',
         security: [{ bearerAuth: [] }],
         parameters: [
           {
@@ -286,7 +292,7 @@ export const openApiSpec = {
         tags: ['IT Asset Management'],
         summary: 'Classify asset criticality and data sensitivity',
         description:
-          'Calculates business criticality from CIA and business-impact scores and records the selected data classification. Requires an active Security Officer.',
+          'SECURAAI-ASSET-IMPACT-v1: max(C,I,A,Business), 1=low, 2-3=medium, 4=high, 5=critical. Internal method informed by FIPS PUB 199 (2004), Section 3, not a FIPS categorization. Saves latest scores, rationale, actor, time and method version; data sensitivity is independent. Requires an active Security Officer and active asset.',
         security: [{ bearerAuth: [] }],
         parameters: [
           {
@@ -308,6 +314,8 @@ export const openApiSpec = {
                   'integrityImpact',
                   'availabilityImpact',
                   'businessImpact',
+                  'rationale',
+                  'dataClassificationBasis',
                   'dataClassification',
                 ],
                 properties: {
@@ -315,6 +323,8 @@ export const openApiSpec = {
                   integrityImpact: { type: 'integer', minimum: 1, maximum: 5 },
                   availabilityImpact: { type: 'integer', minimum: 1, maximum: 5 },
                   businessImpact: { type: 'integer', minimum: 1, maximum: 5 },
+                  dataClassificationBasis: { type: 'string', minLength: 20, maxLength: 2000, description: 'Information sensitivity basis. Internal labels informed by ISO/IEC 27002:2022 control 5.12, not automatic access enforcement.' },
+                  rationale: { type: 'string', minLength: 20, maxLength: 2000, description: 'Basis covering the four impact criteria and asset business context; trimmed before validation.' },
                   dataClassification: {
                     type: 'string',
                     enum: ['public', 'internal', 'confidential', 'restricted'],
@@ -339,7 +349,7 @@ export const openApiSpec = {
         tags: ['IT Asset Management'],
         summary: 'Link asset business context',
         description:
-          'Replaces the active asset business service, dependencies, and event-source links. Requires an active Security Officer.',
+          'Updates the desired asset context atomically. Preserves retained links and their metadata, permits retaining existing inactive links, requires active records for new links, and rejects circular dependencies. Requires an active Security Officer.',
         security: [{ bearerAuth: [] }],
         parameters: [
           {
@@ -379,7 +389,8 @@ export const openApiSpec = {
           '401': { description: 'Authentication required' },
           '403': { description: 'Security Officer role required' },
           '404': { description: 'Asset not found' },
-          '409': { description: 'Archived asset cannot be linked' },
+          '409': { description: 'Archived asset or concurrent context change; reload and retry' },
+          '503': { description: 'Context transaction unavailable or expired; try again' },
           '422': { description: 'Invalid or unavailable relationship' },
         },
       },
