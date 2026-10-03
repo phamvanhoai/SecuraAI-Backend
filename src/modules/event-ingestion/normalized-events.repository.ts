@@ -21,8 +21,141 @@ export const normalizedEventsRepository = {
     const skip = (params.page - 1) * params.limit;
     const take = params.limit;
 
+    const where: Prisma.normalized_eventsWhereInput = {};
+    const andConditions: Prisma.normalized_eventsWhereInput[] = [];
+
+    // Time range filter
+    const fromStr = params.from ?? params.startDate;
+    const toStr = params.to ?? params.endDate;
+    if (fromStr || toStr) {
+      const occurredAtFilter: Prisma.DateTimeFilter = {};
+      if (fromStr) {
+        const fromDate = new Date(fromStr);
+        if (!isNaN(fromDate.getTime())) {
+          occurredAtFilter.gte = fromDate;
+        }
+      }
+      if (toStr) {
+        const toDate = new Date(toStr);
+        if (!isNaN(toDate.getTime())) {
+          if (/^\d{4}-\d{2}-\d{2}$/.test(toStr.trim())) {
+            toDate.setUTCHours(23, 59, 59, 999);
+          }
+          occurredAtFilter.lte = toDate;
+        }
+      }
+      if (Object.keys(occurredAtFilter).length > 0) {
+        andConditions.push({ occurred_at: occurredAtFilter });
+      }
+    }
+
+    // Event Family filter
+    if (params.eventFamily) {
+      andConditions.push({ event_family: params.eventFamily });
+    }
+
+    // Event Source ID filter
+    if (params.eventSourceId) {
+      andConditions.push({ event_source_id: params.eventSourceId });
+    }
+
+    // Mapping Status filter
+    if (params.mappingStatus) {
+      andConditions.push({ mapping_status: params.mappingStatus });
+    }
+
+    // Severity filter
+    if (params.severity) {
+      andConditions.push({
+        severity: { equals: params.severity, mode: 'insensitive' },
+      });
+    }
+
+    // Event Type filter
+    if (params.eventType) {
+      andConditions.push({
+        event_type: { contains: params.eventType, mode: 'insensitive' },
+      });
+    }
+
+    // Source IP filter
+    if (params.sourceIp) {
+      andConditions.push({
+        source_ip: { contains: params.sourceIp, mode: 'insensitive' },
+      });
+    }
+
+    // User Account filter
+    if (params.account) {
+      andConditions.push({
+        OR: [
+          { account_identifier: { contains: params.account, mode: 'insensitive' } },
+          {
+            event_entity_mappings: {
+              some: {
+                is_active: true,
+                users_event_entity_mappings_user_idTousers: {
+                  OR: [
+                    { email: { contains: params.account, mode: 'insensitive' } },
+                    { full_name: { contains: params.account, mode: 'insensitive' } },
+                  ],
+                },
+              },
+            },
+          },
+        ],
+      });
+    }
+
+    // Associated Asset filter
+    if (params.assetId) {
+      andConditions.push({
+        event_entity_mappings: {
+          some: {
+            is_active: true,
+            asset_id: params.assetId,
+          },
+        },
+      });
+    } else if (params.asset) {
+      andConditions.push({
+        event_entity_mappings: {
+          some: {
+            is_active: true,
+            assets: {
+              OR: [
+                { name: { contains: params.asset, mode: 'insensitive' } },
+                { asset_code: { contains: params.asset, mode: 'insensitive' } },
+              ],
+            },
+          },
+        },
+      });
+    }
+
+    // General Search (q)
+    if (params.q) {
+      const q = params.q.trim();
+      andConditions.push({
+        OR: [
+          { event_type: { contains: q, mode: 'insensitive' } },
+          { account_identifier: { contains: q, mode: 'insensitive' } },
+          { source_ip: { contains: q, mode: 'insensitive' } },
+          { destination_ip: { contains: q, mode: 'insensitive' } },
+          { device_identifier: { contains: q, mode: 'insensitive' } },
+          { external_event_id: { contains: q, mode: 'insensitive' } },
+          { event_sources: { name: { contains: q, mode: 'insensitive' } } },
+        ],
+      });
+    }
+
+    if (andConditions.length > 0) {
+      where.AND = andConditions;
+    }
+
     const [items, total] = await Promise.all([
       prisma.normalized_events.findMany({
+        where,
         orderBy,
         skip,
         take,
@@ -79,7 +212,7 @@ export const normalizedEventsRepository = {
           },
         },
       }),
-      prisma.normalized_events.count(),
+      prisma.normalized_events.count({ where }),
     ]);
 
     return { items, total };

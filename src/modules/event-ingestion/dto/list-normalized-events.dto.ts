@@ -6,8 +6,31 @@ export const mappingStatuses = ['UNMAPPED', 'PARTIALLY_MAPPED', 'MAPPED', 'NEEDS
 export const listNormalizedEventsQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(20),
-  sortBy: z.enum(['occurredAt', 'ingestedAt', 'eventType', 'eventFamily', 'severity', 'mappingStatus']).default('occurredAt'),
+  sortBy: z
+    .enum([
+      'occurredAt',
+      'ingestedAt',
+      'eventType',
+      'eventFamily',
+      'severity',
+      'mappingStatus',
+    ])
+    .default('occurredAt'),
   sortOrder: z.enum(['asc', 'desc']).default('desc'),
+  q: z.string().trim().min(1).optional(),
+  eventSourceId: z.string().uuid().optional(),
+  eventFamily: z.enum(eventFamilies).optional(),
+  mappingStatus: z.enum(mappingStatuses).optional(),
+  severity: z.string().trim().min(1).optional(),
+  eventType: z.string().trim().min(1).optional(),
+  sourceIp: z.string().trim().min(1).optional(),
+  account: z.string().trim().min(1).optional(),
+  assetId: z.string().uuid().optional(),
+  asset: z.string().trim().min(1).optional(),
+  from: z.string().trim().min(1).optional(),
+  to: z.string().trim().min(1).optional(),
+  startDate: z.string().trim().min(1).optional(),
+  endDate: z.string().trim().min(1).optional(),
 });
 
 export type ListNormalizedEventsQuery = z.infer<typeof listNormalizedEventsQuerySchema>;
