@@ -17,6 +17,199 @@ export const openApiSpec = {
   },
   paths: {
     ...pendingV2Paths,
+    '/risks/{riskId}/vulnerabilities': {
+      post: {
+        tags: ['Risks'],
+        summary: 'Identify a vulnerability',
+        security: [{ bearerAuth: [] }],
+        description:
+          'Active Security Officer required. Only OPEN/UNDER_TREATMENT risks without PENDING acceptance may change vulnerability context. Checks and writes are serialized with acceptance submission/decision. Controls are optional and must already belong to the risk. History and ratings are preserved; newer vulnerabilities require reassessment.',
+        parameters: [
+          {
+            name: 'riskId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['name', 'description', 'controlIds'],
+                properties: {
+                  name: { type: 'string', minLength: 2, maxLength: 255 },
+                  description: { type: 'string', minLength: 3, maxLength: 3000 },
+                  controlIds: {
+                    type: 'array',
+                    maxItems: 50,
+                    uniqueItems: true,
+                    items: { type: 'string', format: 'uuid' },
+                  },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '201': { description: '{success:true,data:{id,name,description,controls,createdAt}}' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer required' },
+          '404': { description: 'Risk not found' },
+          '409': {
+            description:
+              'RISK_CONTEXT_LOCKED or VULNERABILITY_ALREADY_EXISTS; reload risk and review the reason',
+          },
+          '422': { description: 'Invalid input or controls not linked to risk' },
+        },
+      },
+    },
+    '/risks/{riskId}/acceptance': {
+      post: {
+        tags: ['Risks'],
+        summary: 'Submit risk acceptance',
+        security: [{ bearerAuth: [] }],
+        description:
+          'Assigned Risk Owner required. OPEN/UNDER_TREATMENT risk, eligible plan, no pending decision and a residual assessment newer than every vulnerability are required. Existing endpoint request body is unchanged. A copied target assessment cannot bypass review of stale context.',
+        parameters: [
+          {
+            name: 'riskId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: [
+                  'residualLikelihood',
+                  'residualImpact',
+                  'assessmentReason',
+                  'treatmentPlanId',
+                  'treatmentPlanStatus',
+                  'validUntil',
+                  'acceptanceReason',
+                ],
+                properties: {
+                  residualLikelihood: { type: 'integer', minimum: 1, maximum: 5 },
+                  residualImpact: { type: 'integer', minimum: 1, maximum: 5 },
+                  assessmentReason: { type: 'string' },
+                  treatmentPlanId: { type: 'string', format: 'uuid' },
+                  treatmentPlanStatus: { type: 'string', enum: ['draft', 'active', 'completed'] },
+                  validUntil: { type: 'string', format: 'date' },
+                  acceptanceReason: { type: 'string' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '201': { description: 'Acceptance submitted' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Assigned Risk Owner required' },
+          '404': { description: 'Risk not found' },
+          '409': {
+            description: 'RISK_REASSESSMENT_REQUIRED, RISK_CONTEXT_LOCKED or ACCEPTANCE_PENDING',
+          },
+          '422': { description: 'Invalid plan, actions, validity or input' },
+        },
+      },
+    },
+    '/risks': {
+      get: {
+        tags: ['Risks'],
+        summary: 'View the risk register',
+        security: [{ bearerAuth: [] }],
+        description:
+          'Security Officers and Executives read accessible risks; other actors are ownership-scoped. scope is null for historical unrecorded scope, {type:asset}, or {type:business_service,businessService:{id,name,status}}. assets are persisted risk links, not current service membership.',
+        responses: {
+          '200': { description: 'Bounded risk page including explicit scope' },
+          '401': { description: 'Authentication required' },
+          '422': { description: 'Invalid query' },
+        },
+      },
+      post: {
+        tags: ['Risks'],
+        summary: 'Create Risk',
+        security: [{ bearerAuth: [] }],
+        description:
+          'Active Security Officer required. Persists original scope and linked active assets atomically. Service membership never automatically changes saved risk scope. Active Employee owner and at least one active scope asset are required.',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['title', 'description', 'ownerUserId', 'reviewDate', 'scope'],
+                properties: {
+                  title: { type: 'string', minLength: 3, maxLength: 255 },
+                  description: { type: 'string', minLength: 3, maxLength: 5000 },
+                  ownerUserId: { type: 'string', format: 'uuid' },
+                  reviewDate: { type: 'string', format: 'date' },
+                  scope: {
+                    oneOf: [
+                      {
+                        type: 'object',
+                        required: ['type', 'assetId'],
+                        properties: {
+                          type: { type: 'string', enum: ['asset'] },
+                          assetId: { type: 'string', format: 'uuid' },
+                        },
+                      },
+                      {
+                        type: 'object',
+                        required: ['type', 'businessServiceId'],
+                        properties: {
+                          type: { type: 'string', enum: ['business_service'] },
+                          businessServiceId: { type: 'string', format: 'uuid' },
+                        },
+                      },
+                    ],
+                  },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '201': { description: 'Risk created (not yet assessed)' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer required' },
+          '409': { description: 'Scope changed; reload options' },
+          '422': { description: 'Invalid owner, date or scope' },
+        },
+      },
+    },
+    '/risks/{riskId}': {
+      get: {
+        tags: ['Risks'],
+        summary: 'View Risk detail',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'riskId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        description:
+          'Returns explicit original scope and recorded assets, assessments, controls, plans and acceptance. Historical scope is null; never inferred from current service membership. vulnerabilityWorkflow exposes canIdentify (actor-scoped), blockedReason and assessmentReviewRequired; vulnerabilities include createdAt. Existing ratings remain historical when review is required.',
+        responses: {
+          '200': { description: 'Risk detail including scope' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Risk access denied' },
+          '404': { description: 'Risk not found' },
+        },
+      },
+    },
     '/users/access-assignment-options': {
       get: {
         tags: ['Users'],
@@ -145,7 +338,10 @@ export const openApiSpec = {
           },
         },
         responses: {
-          '201': { description: 'IT asset created with null criticality, dataClassification and businessService' },
+          '201': {
+            description:
+              'IT asset created with null criticality, dataClassification and businessService',
+          },
           '401': { description: 'Authentication required' },
           '403': { description: 'Security Officer role required' },
           '409': { description: 'Asset code already exists' },
@@ -183,16 +379,28 @@ export const openApiSpec = {
             schema: { type: 'string', format: 'uuid' },
           },
         ],
-        requestBody: { required: true, content: { 'application/json': { schema: {
-          type: 'object', additionalProperties: false, required: ['reason'],
-          properties: { reason: { type: 'string', minLength: 1, maxLength: 1000 } },
-        } } } },
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['reason'],
+                properties: { reason: { type: 'string', minLength: 1, maxLength: 1000 } },
+              },
+            },
+          },
+        },
         responses: {
           '204': { description: 'Asset archived and audit appended atomically' },
           '401': { description: 'Authentication required' },
           '403': { description: 'Security Officer role required' },
           '404': { description: 'Asset not found' },
-          '409': { description: 'Already archived, active dependent assets, or concurrent changes. Dependency message lists up to 20 asset codes/names.' },
+          '409': {
+            description:
+              'Already archived, active dependent assets, or concurrent changes. Dependency message lists up to 20 asset codes/names.',
+          },
           '422': { description: 'Missing or invalid archive reason' },
           '503': { description: 'Transaction timeout; retry' },
         },
@@ -321,8 +529,20 @@ export const openApiSpec = {
                   integrityImpact: { type: 'integer', minimum: 1, maximum: 5 },
                   availabilityImpact: { type: 'integer', minimum: 1, maximum: 5 },
                   businessImpact: { type: 'integer', minimum: 1, maximum: 5 },
-                  dataClassificationBasis: { type: 'string', minLength: 20, maxLength: 2000, description: 'Information sensitivity basis. Internal labels informed by ISO/IEC 27002:2022 control 5.12, not automatic access enforcement.' },
-                  rationale: { type: 'string', minLength: 20, maxLength: 2000, description: 'Basis covering the four impact criteria and asset business context; trimmed before validation.' },
+                  dataClassificationBasis: {
+                    type: 'string',
+                    minLength: 20,
+                    maxLength: 2000,
+                    description:
+                      'Information sensitivity basis. Internal labels informed by ISO/IEC 27002:2022 control 5.12, not automatic access enforcement.',
+                  },
+                  rationale: {
+                    type: 'string',
+                    minLength: 20,
+                    maxLength: 2000,
+                    description:
+                      'Basis covering the four impact criteria and asset business context; trimmed before validation.',
+                  },
                   dataClassification: {
                     type: 'string',
                     enum: ['public', 'internal', 'confidential', 'restricted'],
@@ -1475,10 +1695,25 @@ export const openApiSpec = {
         security: [{ bearerAuth: [] }],
         parameters: [
           { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
-          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 } },
+          {
+            name: 'limit',
+            in: 'query',
+            schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
+          },
           { name: 'eventSourceId', in: 'query', schema: { type: 'string', format: 'uuid' } },
-          { name: 'eventFamily', in: 'query', schema: { type: 'string', enum: ['AUTHENTICATION', 'VPN_SSO', 'APPLICATION_ACCESS'] } },
-          { name: 'mappingStatus', in: 'query', schema: { type: 'string', enum: ['UNMAPPED', 'PARTIALLY_MAPPED', 'MAPPED', 'NEEDS_REVIEW'] } },
+          {
+            name: 'eventFamily',
+            in: 'query',
+            schema: { type: 'string', enum: ['AUTHENTICATION', 'VPN_SSO', 'APPLICATION_ACCESS'] },
+          },
+          {
+            name: 'mappingStatus',
+            in: 'query',
+            schema: {
+              type: 'string',
+              enum: ['UNMAPPED', 'PARTIALLY_MAPPED', 'MAPPED', 'NEEDS_REVIEW'],
+            },
+          },
           { name: 'severity', in: 'query', schema: { type: 'string' } },
           { name: 'eventType', in: 'query', schema: { type: 'string' } },
           { name: 'account', in: 'query', schema: { type: 'string' } },
@@ -1486,8 +1721,27 @@ export const openApiSpec = {
           { name: 'from', in: 'query', schema: { type: 'string', format: 'date-time' } },
           { name: 'to', in: 'query', schema: { type: 'string', format: 'date-time' } },
           { name: 'q', in: 'query', schema: { type: 'string' } },
-          { name: 'sortBy', in: 'query', schema: { type: 'string', enum: ['occurredAt', 'ingestedAt', 'eventType', 'eventFamily', 'severity', 'mappingStatus'], default: 'occurredAt' } },
-          { name: 'sortOrder', in: 'query', schema: { type: 'string', enum: ['asc', 'desc'], default: 'desc' } },
+          {
+            name: 'sortBy',
+            in: 'query',
+            schema: {
+              type: 'string',
+              enum: [
+                'occurredAt',
+                'ingestedAt',
+                'eventType',
+                'eventFamily',
+                'severity',
+                'mappingStatus',
+              ],
+              default: 'occurredAt',
+            },
+          },
+          {
+            name: 'sortOrder',
+            in: 'query',
+            schema: { type: 'string', enum: ['asc', 'desc'], default: 'desc' },
+          },
         ],
         responses: {
           '200': { description: 'Paginated normalized security events' },
@@ -1500,7 +1754,8 @@ export const openApiSpec = {
       get: {
         tags: ['Event Ingestion'],
         summary: 'Get event ingestion overview metrics',
-        description: 'Returns total events count, mapped/unmapped counts, 24h count, and counts by event family.',
+        description:
+          'Returns total events count, mapped/unmapped counts, 24h count, and counts by event family.',
         security: [{ bearerAuth: [] }],
         responses: {
           '200': { description: 'Normalized security event metrics' },
@@ -1512,7 +1767,8 @@ export const openApiSpec = {
       get: {
         tags: ['Event Ingestion'],
         summary: 'Get normalized event details',
-        description: 'Returns full normalized event details including payload, source metadata, and entity mappings.',
+        description:
+          'Returns full normalized event details including payload, source metadata, and entity mappings.',
         security: [{ bearerAuth: [] }],
         parameters: [
           { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
