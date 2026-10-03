@@ -1718,6 +1718,8 @@ export const openApiSpec = {
           { name: 'eventType', in: 'query', schema: { type: 'string' } },
           { name: 'account', in: 'query', schema: { type: 'string' } },
           { name: 'sourceIp', in: 'query', schema: { type: 'string' } },
+          { name: 'assetId', in: 'query', schema: { type: 'string', format: 'uuid' } },
+          { name: 'asset', in: 'query', schema: { type: 'string' } },
           { name: 'from', in: 'query', schema: { type: 'string', format: 'date-time' } },
           { name: 'to', in: 'query', schema: { type: 'string', format: 'date-time' } },
           { name: 'q', in: 'query', schema: { type: 'string' } },

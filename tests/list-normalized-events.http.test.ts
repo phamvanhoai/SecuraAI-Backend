@@ -104,6 +104,34 @@ describe('Normalized Security Events HTTP Endpoints', () => {
       );
     });
 
+    it('passes search and filter parameters to service', async () => {
+      vi.mocked(normalizedEventsService.listEvents).mockResolvedValue({
+        items: [],
+        pagination: { page: 1, limit: 10, total: 0, totalPages: 1 },
+      });
+
+      const response = await request(app)
+        .get(
+          '/api/v1/events?q=failed&eventFamily=AUTHENTICATION&mappingStatus=MAPPED&sourceIp=192.168.1.1&account=admin&from=2026-01-01T00:00:00Z&to=2026-01-02T23:59:59Z',
+        )
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(normalizedEventsService.listEvents).toHaveBeenCalledWith(
+        userId,
+        expect.objectContaining({
+          q: 'failed',
+          eventFamily: 'AUTHENTICATION',
+          mappingStatus: 'MAPPED',
+          sourceIp: '192.168.1.1',
+          account: 'admin',
+          from: '2026-01-01T00:00:00Z',
+          to: '2026-01-02T23:59:59Z',
+        }),
+      );
+    });
+
     it('rejects invalid query parameters with 422', async () => {
       const response = await request(app)
         .get('/api/v1/events?limit=5000')
