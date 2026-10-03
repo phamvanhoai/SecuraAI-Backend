@@ -2648,6 +2648,12 @@ export const openApiSpec = {
           },
           { name: 'q', in: 'query', schema: { type: 'string', minLength: 1, maxLength: 100 } },
           {
+            name: 'departmentId',
+            in: 'query',
+            description: 'Return only users assigned to this department.',
+            schema: { type: 'string', format: 'uuid' },
+          },
+          {
             name: 'roleCode',
             in: 'query',
             schema: {
@@ -2714,6 +2720,20 @@ export const openApiSpec = {
         security: [{ bearerAuth: [] }],
         responses: {
           '200': { description: 'Active department options' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Admin role required' },
+        },
+      },
+    },
+    '/users/departments': {
+      get: {
+        tags: ['Users'],
+        summary: 'List departments available to the user directory filter',
+        description:
+          'Active Admin only. Returns every active department, including departments that currently have no users.',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          '200': { description: 'Active departments ordered by name' },
           '401': { description: 'Authentication required' },
           '403': { description: 'Admin role required' },
         },
