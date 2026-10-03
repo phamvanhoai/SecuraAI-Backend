@@ -8,6 +8,7 @@ import type { RejectPolicyBody, RejectedPolicyQuery } from './dto/reject-policy.
 import type { PublishedPolicyListQuery } from './dto/view-published-policy.dto.js';
 import type { CreatePolicyDraftBody } from './dto/create-policy-draft.dto.js';
 import type { PolicyVersionHistoryQuery } from './dto/policy-version-history.dto.js';
+import type { DefinePolicyApplicabilityBody } from './dto/define-policy-applicability.dto.js';
 
 const currentPublishedVersionSelect = {
   id: true,
@@ -98,6 +99,7 @@ const draftForSubmissionSelect = {
   status: true,
   author_user_id: true,
   created_at: true,
+  policy_applicabilities: { select: { id: true } },
   policies_policy_versions_policy_idTopolicies: {
     select: {
       id: true,
@@ -259,6 +261,54 @@ export const policyComplianceRepository = {
     });
   },
 
+  findOwnedDraftApplicability(policyId: string, versionId: string) {
+    return prisma.policy_versions.findFirst({
+      where: { id: versionId, policy_id: policyId },
+      select: {
+        id: true,
+        policy_id: true,
+        status: true,
+        author_user_id: true,
+        policies_policy_versions_policy_idTopolicies: {
+          select: { owner_user_id: true, policy_code: true, title: true },
+        },
+        policy_applicabilities: true,
+      },
+    });
+  },
+
+  listActiveDepartments() {
+    return prisma.departments.findMany({
+      where: { status: 'ACTIVE' },
+      select: { id: true, code: true, name: true },
+      orderBy: [{ name: 'asc' }, { id: 'asc' }],
+      take: 200,
+    });
+  },
+
+  countActiveDepartments(ids: string[]) {
+    return prisma.departments.count({ where: { id: { in: ids }, status: 'ACTIVE' } });
+  },
+
+  upsertApplicability(versionId: string, userId: string, input: DefinePolicyApplicabilityBody) {
+    const data = {
+      department_ids: input.departmentIds,
+      role_codes: input.roleCodes,
+      user_groups: input.userGroups,
+      organizational_scope: input.organizationalScope,
+      rationale: input.rationale,
+      reference_basis: input.referenceBasis,
+      defined_by: userId,
+      updated_at: new Date(),
+    };
+    return prisma.policy_applicabilities.upsert({
+      where: { policy_version_id: versionId },
+      create: { policy_version_id: versionId, ...data },
+      update: data,
+      include: { users: { select: { id: true, full_name: true } } },
+    });
+  },
+
   listPolicyVersionHistory(query: PolicyVersionHistoryQuery) {
     const statuses: policy_version_status[] =
       query.status === 'published'
@@ -389,7 +439,12 @@ export const policyComplianceRepository = {
   approveDraftForPublication(policyId: string, versionId: string, actorUserId: string) {
     return prisma.$transaction(async (transaction) => {
       const updated = await transaction.policy_versions.updateMany({
-        where: { id: versionId, policy_id: policyId, status: 'WAITING_APPROVAL', policies_policy_versions_policy_idTopolicies: { status: { in: ['DRAFT', 'ACTIVE'] } } },
+        where: {
+          id: versionId,
+          policy_id: policyId,
+          status: 'WAITING_APPROVAL',
+          policies_policy_versions_policy_idTopolicies: { status: { in: ['DRAFT', 'ACTIVE'] } },
+        },
         data: { status: 'APPROVED' },
       });
       if (updated.count !== 1) return null;
@@ -397,8 +452,14 @@ export const policyComplianceRepository = {
         data: { policy_version_id: versionId, action: 'APPROVED', actor_user_id: actorUserId },
         select: { id: true, action: true, actor_user_id: true, comment: true, decided_at: true },
       });
-      await transaction.policies.update({ where: { id: policyId }, data: { updated_at: new Date() } });
-      const version = await transaction.policy_versions.findUniqueOrThrow({ where: { id: versionId }, select: policyReviewSelect });
+      await transaction.policies.update({
+        where: { id: policyId },
+        data: { updated_at: new Date() },
+      });
+      const version = await transaction.policy_versions.findUniqueOrThrow({
+        where: { id: versionId },
+        select: policyReviewSelect,
+      });
       return { version, decision };
     });
   },
@@ -430,7 +491,10 @@ export const policyComplianceRepository = {
       });
       if (published.count !== 1) return null;
 
-      if (policy.current_published_version_id && policy.current_published_version_id !== versionId) {
+      if (
+        policy.current_published_version_id &&
+        policy.current_published_version_id !== versionId
+      ) {
         await transaction.policy_versions.updateMany({
           where: {
             id: policy.current_published_version_id,
@@ -621,12 +685,7 @@ export const policyComplianceRepository = {
     ]);
   },
 
-  rejectDraft(
-    policyId: string,
-    versionId: string,
-    actorUserId: string,
-    input: RejectPolicyBody,
-  ) {
+  rejectDraft(policyId: string, versionId: string, actorUserId: string, input: RejectPolicyBody) {
     return prisma.$transaction(async (transaction) => {
       const updated = await transaction.policy_versions.updateMany({
         where: {

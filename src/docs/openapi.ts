@@ -145,7 +145,10 @@ export const openApiSpec = {
           },
         },
         responses: {
-          '201': { description: 'IT asset created with null criticality, dataClassification and businessService' },
+          '201': {
+            description:
+              'IT asset created with null criticality, dataClassification and businessService',
+          },
           '401': { description: 'Authentication required' },
           '403': { description: 'Security Officer role required' },
           '409': { description: 'Asset code already exists' },
@@ -183,16 +186,28 @@ export const openApiSpec = {
             schema: { type: 'string', format: 'uuid' },
           },
         ],
-        requestBody: { required: true, content: { 'application/json': { schema: {
-          type: 'object', additionalProperties: false, required: ['reason'],
-          properties: { reason: { type: 'string', minLength: 1, maxLength: 1000 } },
-        } } } },
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['reason'],
+                properties: { reason: { type: 'string', minLength: 1, maxLength: 1000 } },
+              },
+            },
+          },
+        },
         responses: {
           '204': { description: 'Asset archived and audit appended atomically' },
           '401': { description: 'Authentication required' },
           '403': { description: 'Security Officer role required' },
           '404': { description: 'Asset not found' },
-          '409': { description: 'Already archived, active dependent assets, or concurrent changes. Dependency message lists up to 20 asset codes/names.' },
+          '409': {
+            description:
+              'Already archived, active dependent assets, or concurrent changes. Dependency message lists up to 20 asset codes/names.',
+          },
           '422': { description: 'Missing or invalid archive reason' },
           '503': { description: 'Transaction timeout; retry' },
         },
@@ -321,8 +336,20 @@ export const openApiSpec = {
                   integrityImpact: { type: 'integer', minimum: 1, maximum: 5 },
                   availabilityImpact: { type: 'integer', minimum: 1, maximum: 5 },
                   businessImpact: { type: 'integer', minimum: 1, maximum: 5 },
-                  dataClassificationBasis: { type: 'string', minLength: 20, maxLength: 2000, description: 'Information sensitivity basis. Internal labels informed by ISO/IEC 27002:2022 control 5.12, not automatic access enforcement.' },
-                  rationale: { type: 'string', minLength: 20, maxLength: 2000, description: 'Basis covering the four impact criteria and asset business context; trimmed before validation.' },
+                  dataClassificationBasis: {
+                    type: 'string',
+                    minLength: 20,
+                    maxLength: 2000,
+                    description:
+                      'Information sensitivity basis. Internal labels informed by ISO/IEC 27002:2022 control 5.12, not automatic access enforcement.',
+                  },
+                  rationale: {
+                    type: 'string',
+                    minLength: 20,
+                    maxLength: 2000,
+                    description:
+                      'Basis covering the four impact criteria and asset business context; trimmed before validation.',
+                  },
                   dataClassification: {
                     type: 'string',
                     enum: ['public', 'internal', 'confidential', 'restricted'],
@@ -1278,12 +1305,107 @@ export const openApiSpec = {
         },
       },
     },
+    '/compliance/policies/{policyId}/versions/{versionId}/applicability': {
+      get: {
+        tags: ['Policies'],
+        summary: 'Get applicability for an owned policy draft',
+        description: 'Returns the saved scope plus active department and fixed-role options.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'policyId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+          {
+            name: 'versionId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          '200': { description: 'Policy applicability and available scope options' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer role and ownership required' },
+          '404': { description: 'Policy draft not found' },
+        },
+      },
+      put: {
+        tags: ['Policies'],
+        summary: 'Define applicability for an owned policy draft',
+        description:
+          'Records departments, fixed roles, user-group labels, organizational scope, rationale and reference basis before review.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'policyId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+          {
+            name: 'versionId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['rationale', 'referenceBasis'],
+                properties: {
+                  departmentIds: {
+                    type: 'array',
+                    maxItems: 200,
+                    uniqueItems: true,
+                    items: { type: 'string', format: 'uuid' },
+                  },
+                  roleCodes: {
+                    type: 'array',
+                    uniqueItems: true,
+                    items: {
+                      type: 'string',
+                      enum: ['ADMIN', 'SECURITY_OFFICER', 'EXECUTIVE', 'EMPLOYEE'],
+                    },
+                  },
+                  userGroups: {
+                    type: 'array',
+                    maxItems: 200,
+                    uniqueItems: true,
+                    items: { type: 'string', maxLength: 100 },
+                  },
+                  organizationalScope: { type: ['string', 'null'], maxLength: 2000 },
+                  rationale: { type: 'string', minLength: 20, maxLength: 2000 },
+                  referenceBasis: { type: 'string', minLength: 5, maxLength: 2000 },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'Policy applicability saved' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer role and ownership required' },
+          '404': { description: 'Policy draft not found' },
+          '409': { description: 'Policy version is no longer editable' },
+          '422': {
+            description: 'Invalid scope, inactive department, rationale or reference basis',
+          },
+        },
+      },
+    },
     '/compliance/policies/{policyId}/versions/{versionId}/submit': {
       post: {
         tags: ['Policies'],
         summary: 'Submit an owned policy draft for Admin review',
         description:
-          'Moves an owned V2 policy version from DRAFT to IN_REVIEW. Requires an active Security Officer account. Concurrent or repeated submissions are rejected.',
+          'Moves an owned V2 policy version from DRAFT to IN_REVIEW after applicability has been defined. Requires an active Security Officer account. Concurrent or repeated submissions are rejected.',
         security: [{ bearerAuth: [] }],
         parameters: [
           {
@@ -1475,10 +1597,25 @@ export const openApiSpec = {
         security: [{ bearerAuth: [] }],
         parameters: [
           { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
-          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 } },
+          {
+            name: 'limit',
+            in: 'query',
+            schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
+          },
           { name: 'eventSourceId', in: 'query', schema: { type: 'string', format: 'uuid' } },
-          { name: 'eventFamily', in: 'query', schema: { type: 'string', enum: ['AUTHENTICATION', 'VPN_SSO', 'APPLICATION_ACCESS'] } },
-          { name: 'mappingStatus', in: 'query', schema: { type: 'string', enum: ['UNMAPPED', 'PARTIALLY_MAPPED', 'MAPPED', 'NEEDS_REVIEW'] } },
+          {
+            name: 'eventFamily',
+            in: 'query',
+            schema: { type: 'string', enum: ['AUTHENTICATION', 'VPN_SSO', 'APPLICATION_ACCESS'] },
+          },
+          {
+            name: 'mappingStatus',
+            in: 'query',
+            schema: {
+              type: 'string',
+              enum: ['UNMAPPED', 'PARTIALLY_MAPPED', 'MAPPED', 'NEEDS_REVIEW'],
+            },
+          },
           { name: 'severity', in: 'query', schema: { type: 'string' } },
           { name: 'eventType', in: 'query', schema: { type: 'string' } },
           { name: 'account', in: 'query', schema: { type: 'string' } },
@@ -1486,8 +1623,27 @@ export const openApiSpec = {
           { name: 'from', in: 'query', schema: { type: 'string', format: 'date-time' } },
           { name: 'to', in: 'query', schema: { type: 'string', format: 'date-time' } },
           { name: 'q', in: 'query', schema: { type: 'string' } },
-          { name: 'sortBy', in: 'query', schema: { type: 'string', enum: ['occurredAt', 'ingestedAt', 'eventType', 'eventFamily', 'severity', 'mappingStatus'], default: 'occurredAt' } },
-          { name: 'sortOrder', in: 'query', schema: { type: 'string', enum: ['asc', 'desc'], default: 'desc' } },
+          {
+            name: 'sortBy',
+            in: 'query',
+            schema: {
+              type: 'string',
+              enum: [
+                'occurredAt',
+                'ingestedAt',
+                'eventType',
+                'eventFamily',
+                'severity',
+                'mappingStatus',
+              ],
+              default: 'occurredAt',
+            },
+          },
+          {
+            name: 'sortOrder',
+            in: 'query',
+            schema: { type: 'string', enum: ['asc', 'desc'], default: 'desc' },
+          },
         ],
         responses: {
           '200': { description: 'Paginated normalized security events' },
@@ -1500,7 +1656,8 @@ export const openApiSpec = {
       get: {
         tags: ['Event Ingestion'],
         summary: 'Get event ingestion overview metrics',
-        description: 'Returns total events count, mapped/unmapped counts, 24h count, and counts by event family.',
+        description:
+          'Returns total events count, mapped/unmapped counts, 24h count, and counts by event family.',
         security: [{ bearerAuth: [] }],
         responses: {
           '200': { description: 'Normalized security event metrics' },
@@ -1512,7 +1669,8 @@ export const openApiSpec = {
       get: {
         tags: ['Event Ingestion'],
         summary: 'Get normalized event details',
-        description: 'Returns full normalized event details including payload, source metadata, and entity mappings.',
+        description:
+          'Returns full normalized event details including payload, source metadata, and entity mappings.',
         security: [{ bearerAuth: [] }],
         parameters: [
           { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },

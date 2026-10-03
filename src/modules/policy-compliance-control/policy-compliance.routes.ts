@@ -21,6 +21,8 @@ import {
   publishPolicyVersion,
   listPolicyVersionHistory,
   getPolicyVersionHistory,
+  getPolicyApplicability,
+  definePolicyApplicability,
 } from './policy-compliance.controller.js';
 import {
   policyDraftReviewParamsSchema,
@@ -60,8 +62,24 @@ import {
   policyVersionHistoryParamsSchema,
   policyVersionHistoryQuerySchema,
 } from './dto/policy-version-history.dto.js';
+import {
+  definePolicyApplicabilityBodySchema,
+  policyApplicabilityParamsSchema,
+} from './dto/define-policy-applicability.dto.js';
 
 export const policyComplianceRouter = Router();
+policyComplianceRouter.get(
+  '/policies/:policyId/versions/:versionId/applicability',
+  authenticate,
+  validate({ params: policyApplicabilityParamsSchema }),
+  asyncHandler(getPolicyApplicability),
+);
+policyComplianceRouter.put(
+  '/policies/:policyId/versions/:versionId/applicability',
+  authenticate,
+  validate({ params: policyApplicabilityParamsSchema, body: definePolicyApplicabilityBodySchema }),
+  asyncHandler(definePolicyApplicability),
+);
 policyComplianceRouter.get(
   '/policies/version-history',
   authenticate,

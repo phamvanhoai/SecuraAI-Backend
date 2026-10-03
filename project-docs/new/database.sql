@@ -1368,4 +1368,18 @@ ALTER TABLE public.assets ADD CONSTRAINT ck_asset_data_classification_basis CHEC
   (data_classification_basis IS NULL AND data_classification_method_version IS NULL)
   OR (data_classification_basis IS NOT NULL AND data_classification_method_version IS NOT NULL AND classified_at IS NOT NULL AND length(trim(data_classification_basis)) BETWEEN 20 AND 2000 AND data_classification_method_version = 'SECURAAI-DATA-CLASSIFICATION-v1')
 );
+-- Policy applicability is version-specific and must be defined before review.
+CREATE TABLE policy_applicabilities (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), policy_version_id uuid NOT NULL UNIQUE,
+  department_ids uuid[] NOT NULL DEFAULT '{}', role_codes user_role[] NOT NULL DEFAULT '{}',
+  user_groups text[] NOT NULL DEFAULT '{}', organizational_scope text,
+  rationale text NOT NULL, reference_basis text NOT NULL, defined_by uuid NOT NULL,
+  defined_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT chk_policy_applicability_target CHECK (cardinality(department_ids) > 0 OR cardinality(role_codes) > 0 OR cardinality(user_groups) > 0 OR length(trim(organizational_scope)) > 0),
+  CONSTRAINT chk_policy_applicability_rationale CHECK (length(trim(rationale)) BETWEEN 20 AND 2000),
+  CONSTRAINT chk_policy_applicability_reference CHECK (length(trim(reference_basis)) BETWEEN 5 AND 2000)
+);
+ALTER TABLE policy_applicabilities ADD CONSTRAINT fk_policy_applicability_version FOREIGN KEY (policy_version_id) REFERENCES policy_versions(id) ON DELETE CASCADE;
+ALTER TABLE policy_applicabilities ADD CONSTRAINT fk_policy_applicability_defined_by FOREIGN KEY (defined_by) REFERENCES users(id);
+CREATE INDEX idx_policy_applicability_defined_by ON policy_applicabilities(defined_by);
 COMMIT;
