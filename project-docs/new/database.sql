@@ -182,6 +182,9 @@ CREATE TABLE user_access_scopes (
 -- ============================================================
 
 CREATE TABLE risks (
+    scope_type varchar(30),
+    business_service_id uuid,
+    CONSTRAINT chk_risk_scope CHECK ((scope_type IS NULL AND business_service_id IS NULL) OR (scope_type IS NOT NULL AND ((scope_type = 'ASSET' AND business_service_id IS NULL) OR (scope_type = 'BUSINESS_SERVICE' AND business_service_id IS NOT NULL)))),
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     risk_code varchar(100) NOT NULL UNIQUE,
     title varchar(255) NOT NULL,
@@ -1022,6 +1025,7 @@ ALTER TABLE user_access_scopes ADD CONSTRAINT fk_access_scope_asset FOREIGN KEY 
 ALTER TABLE user_access_scopes ADD CONSTRAINT fk_access_scope_assigned_by FOREIGN KEY (assigned_by) REFERENCES users(id);
 
 ALTER TABLE risks ADD CONSTRAINT fk_risk_owner FOREIGN KEY (owner_user_id) REFERENCES users(id);
+ALTER TABLE risks ADD CONSTRAINT fk_risk_business_service FOREIGN KEY (business_service_id) REFERENCES business_services(id);
 ALTER TABLE risks ADD CONSTRAINT fk_risk_created_by FOREIGN KEY (created_by) REFERENCES users(id);
 ALTER TABLE risk_assets ADD CONSTRAINT fk_risk_assets_risk FOREIGN KEY (risk_id) REFERENCES risks(id);
 ALTER TABLE risk_assets ADD CONSTRAINT fk_risk_assets_asset FOREIGN KEY (asset_id) REFERENCES assets(id);
@@ -1162,6 +1166,7 @@ CREATE INDEX idx_access_scopes_user ON user_access_scopes(user_id);
 CREATE INDEX idx_assets_owner ON assets(owner_user_id);
 CREATE INDEX idx_assets_business_service ON assets(business_service_id);
 CREATE INDEX idx_risks_owner ON risks(owner_user_id);
+CREATE INDEX idx_risks_business_service ON risks(business_service_id);
 CREATE INDEX idx_risk_assets_asset ON risk_assets(asset_id);
 CREATE INDEX idx_risk_threat_vulnerabilities_vulnerability ON risk_threat_vulnerabilities(vulnerability_id);
 CREATE INDEX idx_risk_vulnerability_controls_control ON risk_vulnerability_controls(control_id);

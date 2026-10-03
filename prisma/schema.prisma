@@ -269,6 +269,7 @@ model auth_sessions {
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model business_services {
+  risks              risks[]
   id                 String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   name               String               @db.VarChar(255)
   description        String?
@@ -975,6 +976,9 @@ model risk_vulnerabilities {
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model risks {
+  scope_type                       String?                      @db.VarChar(30)
+  business_service_id              String?                      @db.Uuid
+  business_services                business_services?           @relation(fields: [business_service_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_risk_business_service")
   id                               String                       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   risk_code                        String                       @unique @db.VarChar(100)
   title                            String                       @db.VarChar(255)
@@ -998,6 +1002,7 @@ model risks {
   users_risks_owner_user_idTousers users?                       @relation("risks_owner_user_idTousers", fields: [owner_user_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_risk_owner")
 
   @@index([owner_user_id], map: "idx_risks_owner")
+  @@index([business_service_id], map: "idx_risks_business_service")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
