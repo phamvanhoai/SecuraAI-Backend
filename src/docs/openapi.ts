@@ -23,7 +23,9 @@ export const openApiSpec = {
         summary: 'List the configurable permission catalog',
         security: [{ bearerAuth: [] }],
         responses: {
-          '200': { description: 'Paginated permission definitions grouped by module and operation' },
+          '200': {
+            description: 'Paginated permission definitions grouped by module and operation',
+          },
           '401': { description: 'Authentication required' },
           '403': { description: 'Detailed-permission read access required' },
         },
@@ -48,7 +50,14 @@ export const openApiSpec = {
         tags: ['Access Control'],
         summary: 'View one fixed role and its permission grants',
         security: [{ bearerAuth: [] }],
-        parameters: [{ name: 'roleId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+        parameters: [
+          {
+            name: 'roleId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
         responses: {
           '200': { description: 'Role permission details' },
           '404': { description: 'Role not found' },
@@ -59,12 +68,28 @@ export const openApiSpec = {
       put: {
         tags: ['Access Control'],
         summary: 'Replace detailed permissions for a non-administrator role',
-        description: 'Uses optimistic concurrency, records the reason in the audit log, and revokes active sessions for affected users.',
+        description:
+          'Uses optimistic concurrency, records the reason in the audit log, and revokes active sessions for affected users.',
         security: [{ bearerAuth: [] }],
-        parameters: [{ name: 'roleId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+        parameters: [
+          {
+            name: 'roleId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
         requestBody: {
           required: true,
-          content: { 'application/json': { schema: { type: 'object', required: ['permissionIds', 'expectedUpdatedAt', 'reason'], additionalProperties: false } } },
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['permissionIds', 'expectedUpdatedAt', 'reason'],
+                additionalProperties: false,
+              },
+            },
+          },
         },
         responses: {
           '200': { description: 'Updated role permissions' },
@@ -78,9 +103,17 @@ export const openApiSpec = {
       get: {
         tags: ['Access Control'],
         summary: 'View role grants, user overrides, and effective permissions',
-        description: 'Also returns whether the account is editable and the permission codes that may receive an explicit allow override for the target fixed role.',
+        description:
+          'Also returns whether the account is editable and the permission codes that may receive an explicit allow override for the target fixed role.',
         security: [{ bearerAuth: [] }],
-        parameters: [{ name: 'userId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+        parameters: [
+          {
+            name: 'userId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
         responses: {
           '200': { description: 'Effective user permissions' },
           '404': { description: 'User not found' },
@@ -89,17 +122,36 @@ export const openApiSpec = {
       put: {
         tags: ['Access Control'],
         summary: 'Replace allow and deny overrides for one user',
-        description: 'Deny overrides take precedence over role grants. Administrator accounts are immutable, and administrator-only permissions cannot be allowed for another fixed role. The operation is audited and revokes the user active sessions.',
+        description:
+          'Deny overrides take precedence over role grants. Administrator accounts are immutable, and administrator-only permissions cannot be allowed for another fixed role. The operation is audited and revokes the user active sessions.',
         security: [{ bearerAuth: [] }],
-        parameters: [{ name: 'userId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+        parameters: [
+          {
+            name: 'userId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
         requestBody: {
           required: true,
-          content: { 'application/json': { schema: { type: 'object', required: ['allow', 'deny', 'reason'], additionalProperties: false } } },
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['allow', 'deny', 'reason'],
+                additionalProperties: false,
+              },
+            },
+          },
         },
         responses: {
           '200': { description: 'Updated effective user permissions' },
           '403': { description: 'Administrator required' },
-          '422': { description: 'Invalid or conflicting permissions, immutable administrator account, or administrator-only permission not allowed for the target role' },
+          '422': {
+            description:
+              'Invalid or conflicting permissions, immutable administrator account, or administrator-only permission not allowed for the target role',
+          },
         },
       },
     },
@@ -2862,6 +2914,34 @@ export const openApiSpec = {
           '200': { description: 'Active department options' },
           '401': { description: 'Authentication required' },
           '403': { description: 'Admin role required' },
+        },
+      },
+    },
+    '/users/import': {
+      post: {
+        tags: ['Users'],
+        summary: 'Import user accounts from Excel',
+        description:
+          'Active Admin only. Accepts one .xlsx file up to 5 MB and 1000 data rows. Valid rows are created and invalid rows are returned with row-level errors.',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'multipart/form-data': {
+              schema: {
+                type: 'object',
+                required: ['file'],
+                properties: { file: { type: 'string', format: 'binary' } },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'Import totals and row-level errors' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Admin role required' },
+          '413': { description: 'File exceeds 5 MB' },
+          '422': { description: 'Invalid file, workbook template or row limit' },
         },
       },
     },
