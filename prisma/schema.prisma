@@ -1047,8 +1047,10 @@ model security_findings {
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model user_access_scopes {
   id                                          String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  user_id                                     String             @db.Uuid
+  user_id                                     String?            @db.Uuid
+  role                                        user_role?
   scope_code                                  String             @db.VarChar(100)
+  effect                                      String             @default("ALLOW") @db.VarChar(10)
   business_service_id                         String?            @db.Uuid
   asset_id                                    String?            @db.Uuid
   assigned_by                                 String             @db.Uuid
@@ -1057,9 +1059,10 @@ model user_access_scopes {
   assets                                      assets?            @relation(fields: [asset_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_access_scope_asset")
   users_user_access_scopes_assigned_byTousers users              @relation("user_access_scopes_assigned_byTousers", fields: [assigned_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_access_scope_assigned_by")
   business_services                           business_services? @relation(fields: [business_service_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_access_scope_business_service")
-  users_user_access_scopes_user_idTousers     users              @relation("user_access_scopes_user_idTousers", fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_access_scope_user")
+  users_user_access_scopes_user_idTousers     users?             @relation("user_access_scopes_user_idTousers", fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_access_scope_user")
 
   @@index([user_id], map: "idx_access_scopes_user")
+  @@index([role], map: "idx_access_scopes_role")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
