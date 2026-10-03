@@ -396,12 +396,12 @@ export const aiAlertsService = {
       alertCode: `ALT-${result.alert.id.slice(0, 8).toUpperCase()}`,
       status: 'confirmed' as const,
       reviewedByUserId: userId,
-      reviewedAt: result.incident.confirmed_at,
+      reviewedAt: result.finding.identified_at,
       changed: result.changed,
-      incident: {
-        id: result.incident.id,
-        code: result.incident.incident_code,
-        status: result.incident.status,
+      finding: {
+        id: result.finding.id,
+        title: result.finding.title,
+        status: result.finding.status.toLowerCase(),
         created: result.changed,
       },
     };
