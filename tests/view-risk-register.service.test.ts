@@ -10,6 +10,8 @@ import { riskRegisterService } from '../src/modules/risk-assessment/risk-registe
 const query = { page: 1, limit: 10, sortBy: 'updatedAt' as const, sortOrder: 'desc' as const };
 const now = new Date('2026-09-29T00:00:00.000Z');
 const record = {
+  scope_type: null,
+  business_services: null,
   id: '00000000-0000-4000-8000-000000000001',
   risk_code: 'RSK-001',
   title: 'Privileged access',
@@ -101,5 +103,12 @@ describe('view risk register service', () => {
     await expect(
       riskRegisterService.get('u', '00000000-0000-4000-8000-000000000001'),
     ).rejects.toMatchObject({ statusCode: 404, code: 'RISK_NOT_FOUND' });
+  });
+  it('returns the explicitly saved service without deriving it from assets', async () => {
+    vi.mocked(riskRegisterRepository.findActor).mockResolvedValue({ id: 'u', role: user_role.SECURITY_OFFICER, status: user_status.ACTIVE });
+    vi.mocked(riskRegisterRepository.list).mockResolvedValue([1, [{ ...record, scope_type: 'BUSINESS_SERVICE', business_services: { id: 'service', name: 'Customer service', status: 'INACTIVE' } }]]);
+    const result = await riskRegisterService.list('u', query);
+    expect(result.items[0]?.scope).toEqual({ type: 'business_service', businessService: { id: 'service', name: 'Customer service', status: 'inactive' } });
+    expect(result.items[0]?.assets).toHaveLength(1);
   });
 });

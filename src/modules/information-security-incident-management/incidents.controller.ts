@@ -1,5 +1,9 @@
 import type { RequestHandler } from 'express';
 import { AppError } from '../../common/errors/app-error.js';
+import {
+  createIncidentFromSourceSchema,
+  incidentSourceOptionsQuerySchema,
+} from './dto/create-incident-from-source.dto.js';
 import { incidentDetailParamsSchema, viewIncidentsQuerySchema } from './dto/view-incidents.dto.js';
 import { incidentsService } from './incidents.service.js';
 
@@ -23,4 +27,20 @@ export const getIncidentDetail: RequestHandler = async (req, res) => {
     incidentId,
   );
   res.status(200).json({ success: true, data });
+};
+
+export const listIncidentSourceOptions: RequestHandler = async (req, res) => {
+  const data = await incidentsService.listSourceOptions(
+    authenticatedUserId(res.locals.authenticatedUserId),
+    incidentSourceOptionsQuerySchema.parse(req.query),
+  );
+  res.status(200).json({ success: true, data });
+};
+
+export const createIncidentFromSource: RequestHandler = async (req, res) => {
+  const data = await incidentsService.createFromSource(
+    authenticatedUserId(res.locals.authenticatedUserId),
+    createIncidentFromSourceSchema.parse(req.body),
+  );
+  res.status(201).json({ success: true, data });
 };

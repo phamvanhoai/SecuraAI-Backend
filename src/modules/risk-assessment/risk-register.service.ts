@@ -7,12 +7,19 @@ import type {
 } from './dto/create-risk-assessment.dto.js';
 import type { IdentifyThreatBody } from './dto/identify-threat.dto.js';
 import type { IdentifyVulnerabilityBody } from './dto/identify-vulnerability.dto.js';
+import { assessmentRequiresReview, vulnerabilityBlockedReason } from './vulnerability-workflow.js';
 import type { AssessInherentRiskBody } from './dto/assess-inherent-risk.dto.js';
 import type { AssessResidualRiskBody } from './dto/assess-residual-risk.dto.js';
 import type { DefineTargetRiskBody } from './dto/define-target-risk.dto.js';
-import type { CreateTreatmentPlanBody, TreatmentPlanOptionsQuery } from './dto/create-treatment-plan.dto.js';
+import type {
+  CreateTreatmentPlanBody,
+  TreatmentPlanOptionsQuery,
+} from './dto/create-treatment-plan.dto.js';
 import type { UpdateTreatmentPlanBody } from './dto/update-treatment-plan.dto.js';
-import type { DecideRiskAcceptanceBody, SubmitRiskAcceptanceBody } from './dto/risk-acceptance.dto.js';
+import type {
+  DecideRiskAcceptanceBody,
+  SubmitRiskAcceptanceBody,
+} from './dto/risk-acceptance.dto.js';
 import {
   riskRegisterRepository,
   type RiskRegisterDetailRecord,
@@ -53,6 +60,19 @@ function listItem(risk: RiskRegisterRecord) {
   return {
     id: risk.id,
     riskCode: risk.risk_code,
+    scope:
+      risk.scope_type === 'BUSINESS_SERVICE' && risk.business_services
+        ? {
+            type: 'business_service' as const,
+            businessService: {
+              id: risk.business_services.id,
+              name: risk.business_services.name,
+              status: lower(risk.business_services.status),
+            },
+          }
+        : risk.scope_type === 'ASSET'
+          ? { type: 'asset' as const }
+          : null,
     title: risk.title,
     description: risk.description,
     status: lower(risk.status),
@@ -93,70 +113,247 @@ async function requireSecurityOfficer(userId: string): Promise<void> {
 
 export const riskRegisterService = {
   async submitAcceptance(userId: string, riskId: string, input: SubmitRiskAcceptanceBody) {
-    const actor = await riskRegisterRepository.findActor(userId); if (!actor || actor.status !== 'ACTIVE') throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
-    if (new Date(`${input.validUntil}T23:59:59.999Z`) <= new Date()) throw new AppError(422, 'INVALID_VALID_UNTIL', 'Acceptance validity must be in the future');
+    const actor = await riskRegisterRepository.findActor(userId);
+    if (!actor || actor.status !== 'ACTIVE')
+      throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+    if (new Date(`${input.validUntil}T23:59:59.999Z`) <= new Date())
+      throw new AppError(422, 'INVALID_VALID_UNTIL', 'Acceptance validity must be in the future');
     const result = await riskRegisterRepository.submitAcceptance(riskId, userId, input);
-    if (result.kind === 'not_found') throw new AppError(404, 'RISK_NOT_FOUND', 'Risk record not found');
-    if (result.kind === 'not_owner') throw new AppError(403, 'RISK_OWNER_REQUIRED', 'Only the assigned Risk Owner may submit acceptance');
-    if (result.kind === 'invalid_plan') throw new AppError(422, 'INVALID_TREATMENT_PLAN', 'Select a treatment plan belonging to this risk');
-    if (result.kind === 'invalid_plan_status') throw new AppError(422, 'INVALID_TREATMENT_PLAN_STATUS', 'A completed treatment plan cannot be reopened');
-    if (result.kind === 'incomplete_actions') throw new AppError(422, 'INCOMPLETE_TREATMENT_ACTIONS', 'Complete or cancel every treatment action before completing the plan');
-    if (result.kind === 'pending_exists') throw new AppError(409, 'ACCEPTANCE_PENDING', 'This risk already has a pending acceptance decision');
-    return { acceptanceId: result.acceptance.id, riskCode: result.riskCode, decision: lower(result.acceptance.decision), residualRating: lower(result.rating), residualScore: result.score, validUntil: result.acceptance.valid_until, requestedAt: result.acceptance.requested_at };
+    if (result.kind === 'context_locked')
+      throw new AppError(
+        409,
+        'RISK_CONTEXT_LOCKED',
+        'Accepted, closed or archived risks cannot submit acceptance directly. Review the risk first.',
+      );
+    if (result.kind === 'context_changed')
+      throw new AppError(
+        409,
+        'RISK_REASSESSMENT_REQUIRED',
+        'Complete an up-to-date inherent and residual assessment before submitting acceptance.',
+      );
+    if (result.kind === 'not_found')
+      throw new AppError(404, 'RISK_NOT_FOUND', 'Risk record not found');
+    if (result.kind === 'not_owner')
+      throw new AppError(
+        403,
+        'RISK_OWNER_REQUIRED',
+        'Only the assigned Risk Owner may submit acceptance',
+      );
+    if (result.kind === 'invalid_plan')
+      throw new AppError(
+        422,
+        'INVALID_TREATMENT_PLAN',
+        'Select a treatment plan belonging to this risk',
+      );
+    if (result.kind === 'invalid_plan_status')
+      throw new AppError(
+        422,
+        'INVALID_TREATMENT_PLAN_STATUS',
+        'A completed treatment plan cannot be reopened',
+      );
+    if (result.kind === 'incomplete_actions')
+      throw new AppError(
+        422,
+        'INCOMPLETE_TREATMENT_ACTIONS',
+        'Complete or cancel every treatment action before completing the plan',
+      );
+    if (result.kind === 'pending_exists')
+      throw new AppError(
+        409,
+        'ACCEPTANCE_PENDING',
+        'This risk already has a pending acceptance decision',
+      );
+    return {
+      acceptanceId: result.acceptance.id,
+      riskCode: result.riskCode,
+      decision: lower(result.acceptance.decision),
+      residualRating: lower(result.rating),
+      residualScore: result.score,
+      validUntil: result.acceptance.valid_until,
+      requestedAt: result.acceptance.requested_at,
+    };
   },
   async decideAcceptance(userId: string, acceptanceId: string, input: DecideRiskAcceptanceBody) {
-    const actor = await riskRegisterRepository.findActor(userId); if (!actor || actor.status !== 'ACTIVE') throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+    const actor = await riskRegisterRepository.findActor(userId);
+    if (!actor || actor.status !== 'ACTIVE')
+      throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
     const result = await riskRegisterRepository.decideAcceptance(acceptanceId, userId, input);
-    if (result.kind === 'forbidden') throw new AppError(403, 'AUTHORIZED_APPROVER_REQUIRED', 'Security Officer or Executive approver required');
-    if (result.kind === 'not_found') throw new AppError(404, 'ACCEPTANCE_NOT_FOUND', 'Risk acceptance request not found');
-    if (result.kind === 'already_decided') throw new AppError(409, 'ACCEPTANCE_ALREADY_DECIDED', 'Risk acceptance has already been decided');
-    if (result.kind === 'self_approval') throw new AppError(403, 'SELF_APPROVAL_FORBIDDEN', 'The requester cannot approve their own acceptance');
-    return { id: result.updated.id, riskCode: result.riskCode, decision: lower(result.updated.decision), reason: result.updated.reason, decidedAt: result.updated.decided_at };
+    if (result.kind === 'context_changed')
+      throw new AppError(
+        409,
+        'RISK_REASSESSMENT_REQUIRED',
+        'Risk context changed after this request. Reject the outdated request and reassess before submitting a new request.',
+      );
+    if (result.kind === 'forbidden')
+      throw new AppError(
+        403,
+        'AUTHORIZED_APPROVER_REQUIRED',
+        'Security Officer or Executive approver required',
+      );
+    if (result.kind === 'not_found')
+      throw new AppError(404, 'ACCEPTANCE_NOT_FOUND', 'Risk acceptance request not found');
+    if (result.kind === 'already_decided')
+      throw new AppError(
+        409,
+        'ACCEPTANCE_ALREADY_DECIDED',
+        'Risk acceptance has already been decided',
+      );
+    if (result.kind === 'self_approval')
+      throw new AppError(
+        403,
+        'SELF_APPROVAL_FORBIDDEN',
+        'The requester cannot approve their own acceptance',
+      );
+    return {
+      id: result.updated.id,
+      riskCode: result.riskCode,
+      decision: lower(result.updated.decision),
+      reason: result.updated.reason,
+      decidedAt: result.updated.decided_at,
+    };
   },
   async updateTreatmentPlan(userId: string, planId: string, input: UpdateTreatmentPlanBody) {
     const actor = await riskRegisterRepository.findActor(userId);
-    if (!actor || actor.status !== 'ACTIVE') throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+    if (!actor || actor.status !== 'ACTIVE')
+      throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
     const today = new Date().toISOString().slice(0, 10);
-    if (input.targetDate <= today || input.actions.some((item) => item.dueDate <= today && item.status !== 'completed')) throw new AppError(422, 'INVALID_DUE_DATE', 'Open action and plan due dates must be in the future');
+    if (
+      input.targetDate <= today ||
+      input.actions.some((item) => item.dueDate <= today && item.status !== 'completed')
+    )
+      throw new AppError(
+        422,
+        'INVALID_DUE_DATE',
+        'Open action and plan due dates must be in the future',
+      );
     const result = await riskRegisterRepository.updateTreatmentPlan(planId, userId, input);
-    if (result.kind === 'not_found') throw new AppError(404, 'TREATMENT_PLAN_NOT_FOUND', 'Treatment plan not found');
-    if (result.kind === 'forbidden') throw new AppError(403, 'FORBIDDEN', 'Security Officer or assigned Risk Owner access required');
-    if (result.kind === 'terminal_plan') throw new AppError(409, 'TREATMENT_PLAN_FINALIZED', 'Completed or cancelled treatment plans are read-only');
-    if (result.kind === 'conflict') throw new AppError(409, 'TREATMENT_PLAN_CHANGED', 'The treatment plan changed; reload before saving');
-    if (result.kind === 'invalid_users') throw new AppError(422, 'INVALID_PLAN_OWNER', 'Plan and action owners must be active users');
-    if (result.kind === 'invalid_actions') throw new AppError(422, 'INVALID_ACTIONS', 'Every existing action must belong to this plan');
-    if (result.kind === 'started_action_removed') throw new AppError(422, 'STARTED_ACTION_REMOVAL', 'Started or completed actions cannot be removed');
-    if (result.kind === 'incomplete_actions') throw new AppError(422, 'INCOMPLETE_TREATMENT_ACTIONS', 'Complete or cancel every treatment action before completing the plan');
-    return { id: result.updated.id, riskCode: result.riskCode, title: result.updated.title, strategy: lower(result.updated.strategy), status: lower(result.updated.status), ownerUserId: result.updated.owner_user_id, targetDate: result.updated.target_completion_date, progress: calculateTreatmentPlanProgress(result.updated.risk_treatment_actions), actions: result.updated.risk_treatment_actions.map((item) => ({ id: item.id, title: item.action_description, assignedToUserId: item.owner_user_id, dueDate: item.due_date, status: lower(item.status) })), updatedAt: result.updated.updated_at };
+    if (result.kind === 'not_found')
+      throw new AppError(404, 'TREATMENT_PLAN_NOT_FOUND', 'Treatment plan not found');
+    if (result.kind === 'forbidden')
+      throw new AppError(
+        403,
+        'FORBIDDEN',
+        'Security Officer or assigned Risk Owner access required',
+      );
+    if (result.kind === 'terminal_plan')
+      throw new AppError(
+        409,
+        'TREATMENT_PLAN_FINALIZED',
+        'Completed or cancelled treatment plans are read-only',
+      );
+    if (result.kind === 'conflict')
+      throw new AppError(
+        409,
+        'TREATMENT_PLAN_CHANGED',
+        'The treatment plan changed; reload before saving',
+      );
+    if (result.kind === 'invalid_users')
+      throw new AppError(422, 'INVALID_PLAN_OWNER', 'Plan and action owners must be active users');
+    if (result.kind === 'invalid_actions')
+      throw new AppError(422, 'INVALID_ACTIONS', 'Every existing action must belong to this plan');
+    if (result.kind === 'started_action_removed')
+      throw new AppError(
+        422,
+        'STARTED_ACTION_REMOVAL',
+        'Started or completed actions cannot be removed',
+      );
+    if (result.kind === 'incomplete_actions')
+      throw new AppError(
+        422,
+        'INCOMPLETE_TREATMENT_ACTIONS',
+        'Complete or cancel every treatment action before completing the plan',
+      );
+    return {
+      id: result.updated.id,
+      riskCode: result.riskCode,
+      title: result.updated.title,
+      strategy: lower(result.updated.strategy),
+      status: lower(result.updated.status),
+      ownerUserId: result.updated.owner_user_id,
+      targetDate: result.updated.target_completion_date,
+      progress: calculateTreatmentPlanProgress(result.updated.risk_treatment_actions),
+      actions: result.updated.risk_treatment_actions.map((item) => ({
+        id: item.id,
+        title: item.action_description,
+        assignedToUserId: item.owner_user_id,
+        dueDate: item.due_date,
+        status: lower(item.status),
+      })),
+      updatedAt: result.updated.updated_at,
+    };
   },
   async treatmentPlanOptions(userId: string, query: TreatmentPlanOptionsQuery) {
     const actor = await riskRegisterRepository.findActor(userId);
-    if (!actor || actor.status !== 'ACTIVE') throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
-    const [users, controls] = await riskRegisterRepository.treatmentPlanOptions(query.q, query.limit);
+    if (!actor || actor.status !== 'ACTIVE')
+      throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+    const [users, controls] = await riskRegisterRepository.treatmentPlanOptions(
+      query.q,
+      query.limit,
+    );
     return {
       users: users.map((item) => ({ id: item.id, fullName: item.full_name, email: item.email })),
-      controls: controls.map((item) => ({ id: item.id, code: item.control_code, name: item.name, implementationStatus: lower(item.implementation_status) })),
+      controls: controls.map((item) => ({
+        id: item.id,
+        code: item.control_code,
+        name: item.name,
+        implementationStatus: lower(item.implementation_status),
+      })),
     };
   },
   async createTreatmentPlan(userId: string, input: CreateTreatmentPlanBody) {
     const actor = await riskRegisterRepository.findActor(userId);
-    if (!actor || actor.status !== 'ACTIVE') throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+    if (!actor || actor.status !== 'ACTIVE')
+      throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
     const today = new Date().toISOString().slice(0, 10);
     if (input.targetDate <= today || input.actions.some((item) => item.dueDate <= today))
-      throw new AppError(422, 'INVALID_DUE_DATE', 'Plan and action due dates must be in the future');
+      throw new AppError(
+        422,
+        'INVALID_DUE_DATE',
+        'Plan and action due dates must be in the future',
+      );
     const result = await riskRegisterRepository.createTreatmentPlan(userId, input);
-    if (result.kind === 'risk_not_found') throw new AppError(404, 'RISK_NOT_FOUND', 'Risk record not found');
-    if (result.kind === 'forbidden') throw new AppError(403, 'FORBIDDEN', 'Security Officer or assigned Risk Owner access required');
-    if (result.kind === 'active_plan_exists') throw new AppError(409, 'ACTIVE_TREATMENT_PLAN_EXISTS', 'This risk already has an active treatment plan');
-    if (result.kind === 'invalid_users') throw new AppError(422, 'INVALID_PLAN_OWNER', 'Plan and action owners must be active users');
-    if (result.kind === 'invalid_controls') throw new AppError(422, 'INVALID_CONTROLS', 'All selected controls must exist');
-    return { id: result.plan.id, title: result.plan.title, riskCode: result.riskCode, strategy: lower(result.plan.strategy), status: lower(result.plan.status), targetRisk: result.targetRisk, targetDate: result.plan.target_completion_date, actionCount: result.actionCount, controlCount: result.controlCount, createdAt: result.plan.created_at };
+    if (result.kind === 'risk_not_found')
+      throw new AppError(404, 'RISK_NOT_FOUND', 'Risk record not found');
+    if (result.kind === 'forbidden')
+      throw new AppError(
+        403,
+        'FORBIDDEN',
+        'Security Officer or assigned Risk Owner access required',
+      );
+    if (result.kind === 'active_plan_exists')
+      throw new AppError(
+        409,
+        'ACTIVE_TREATMENT_PLAN_EXISTS',
+        'This risk already has an active treatment plan',
+      );
+    if (result.kind === 'invalid_users')
+      throw new AppError(422, 'INVALID_PLAN_OWNER', 'Plan and action owners must be active users');
+    if (result.kind === 'invalid_controls')
+      throw new AppError(422, 'INVALID_CONTROLS', 'All selected controls must exist');
+    return {
+      id: result.plan.id,
+      title: result.plan.title,
+      riskCode: result.riskCode,
+      strategy: lower(result.plan.strategy),
+      status: lower(result.plan.status),
+      targetRisk: result.targetRisk,
+      targetDate: result.plan.target_completion_date,
+      actionCount: result.actionCount,
+      controlCount: result.controlCount,
+      createdAt: result.plan.created_at,
+    };
   },
   async defineTargetRisk(userId: string, riskId: string, input: DefineTargetRiskBody) {
     const foundActor = await riskRegisterRepository.findActor(userId);
     if (!foundActor || foundActor.status !== 'ACTIVE')
       throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
     const result = await riskRegisterRepository.defineTargetRisk(riskId, userId, input);
+    if (result.kind === 'context_changed')
+      throw new AppError(
+        409,
+        'RISK_REASSESSMENT_REQUIRED',
+        'New vulnerabilities were recorded. Reassess inherent and residual risk before defining target risk.',
+      );
     if (result.kind === 'risk_not_found')
       throw new AppError(404, 'RISK_NOT_FOUND', 'Risk record not found');
     if (result.kind === 'not_owner')
@@ -205,6 +402,12 @@ export const riskRegisterService = {
     if (!foundActor || foundActor.status !== 'ACTIVE')
       throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
     const result = await riskRegisterRepository.assessResidualRisk(riskId, userId, input);
+    if (result.kind === 'context_changed')
+      throw new AppError(
+        409,
+        'RISK_REASSESSMENT_REQUIRED',
+        'New vulnerabilities were recorded. Reassess inherent risk before assessing residual risk.',
+      );
     if (result.kind === 'risk_not_found')
       throw new AppError(404, 'RISK_NOT_FOUND', 'Risk record not found');
     if (result.kind === 'not_owner')
@@ -265,6 +468,8 @@ export const riskRegisterService = {
   async identifyVulnerability(userId: string, riskId: string, input: IdentifyVulnerabilityBody) {
     await requireSecurityOfficer(userId);
     const result = await riskRegisterRepository.identifyVulnerability(riskId, input);
+    if (result.kind === 'context_locked')
+      throw new AppError(409, 'RISK_CONTEXT_LOCKED', result.blockedReason);
     if (result.kind === 'risk_not_found')
       throw new AppError(404, 'RISK_NOT_FOUND', 'Risk record not found');
     if (result.kind === 'duplicate')
@@ -378,7 +583,9 @@ export const riskRegisterService = {
     const actor = await riskRegisterRepository.findActor(userId);
     if (!actor || actor.status !== 'ACTIVE')
       throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
-    const scopedQuery = ['SECURITY_OFFICER', 'EXECUTIVE'].includes(actor.role) ? query : { ...query, ownerId: userId };
+    const scopedQuery = ['SECURITY_OFFICER', 'EXECUTIVE'].includes(actor.role)
+      ? query
+      : { ...query, ownerId: userId };
     const [total, records] = await riskRegisterRepository.list(scopedQuery);
     return {
       items: records.map(listItem),
@@ -396,11 +603,27 @@ export const riskRegisterService = {
       throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
     const found = await riskRegisterRepository.findById(riskId);
     if (!found) throw new AppError(404, 'RISK_NOT_FOUND', 'Risk record not found');
-    if (!['SECURITY_OFFICER', 'EXECUTIVE'].includes(actor.role) && found.users_risks_owner_user_idTousers?.id !== userId)
+    if (
+      !['SECURITY_OFFICER', 'EXECUTIVE'].includes(actor.role) &&
+      found.users_risks_owner_user_idTousers?.id !== userId
+    )
       throw new AppError(403, 'FORBIDDEN', 'Risk Owner or Security Officer access required');
     const risk: RiskRegisterDetailRecord = found;
+    const blockedReason = vulnerabilityBlockedReason(
+      risk.status,
+      risk.risk_acceptances.some((item) => item.decision === 'PENDING'),
+    );
     return {
       ...listItem(risk),
+      vulnerabilityWorkflow: {
+        canIdentify: actor.role === 'SECURITY_OFFICER' && !blockedReason,
+        blockedReason:
+          actor.role === 'SECURITY_OFFICER' ? blockedReason : 'Security Officer role required.',
+        assessmentReviewRequired: assessmentRequiresReview(
+          risk.risk_assessments[0]?.assessed_at,
+          risk.risk_vulnerabilities,
+        ),
+      },
       createdBy: person(risk.users_risks_created_byTousers),
       assessments: risk.risk_assessments.map(assessment),
       threats: risk.risk_threats.map((item) => ({
@@ -415,6 +638,7 @@ export const riskRegisterService = {
         id: item.id,
         name: item.name,
         description: item.description,
+        createdAt: item.created_at,
         controls: item.risk_vulnerability_controls.map(({ security_controls }) => ({
           id: security_controls.id,
           code: security_controls.control_code,
@@ -440,7 +664,13 @@ export const riskRegisterService = {
         actionCount: item._count.risk_treatment_actions,
         progress: calculateTreatmentPlanProgress(item.risk_treatment_actions),
         updatedAt: item.updated_at,
-        actions: item.risk_treatment_actions.map((action) => ({ id: action.id, title: action.action_description, assignedToUserId: action.owner_user_id, status: lower(action.status), dueDate: action.due_date })),
+        actions: item.risk_treatment_actions.map((action) => ({
+          id: action.id,
+          title: action.action_description,
+          assignedToUserId: action.owner_user_id,
+          status: lower(action.status),
+          dueDate: action.due_date,
+        })),
       })),
       incidents: risk.incident_risks.map(({ incidents: item }) => ({
         id: item.id,
@@ -450,7 +680,16 @@ export const riskRegisterService = {
         status: lower(item.status),
         createdAt: item.created_at,
       })),
-      acceptances: risk.risk_acceptances.map((item) => ({ id: item.id, decision: lower(item.decision), reason: item.reason, requestedAt: item.requested_at, validUntil: item.valid_until, requestedBy: item.requested_by, decidedBy: item.decided_by, decidedAt: item.decided_at })),
+      acceptances: risk.risk_acceptances.map((item) => ({
+        id: item.id,
+        decision: lower(item.decision),
+        reason: item.reason,
+        requestedAt: item.requested_at,
+        validUntil: item.valid_until,
+        requestedBy: item.requested_by,
+        decidedBy: item.decided_by,
+        decidedAt: item.decided_at,
+      })),
     };
   },
 };

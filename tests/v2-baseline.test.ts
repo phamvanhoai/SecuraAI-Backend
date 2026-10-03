@@ -21,18 +21,19 @@ describe('V2 database baseline', () => {
       .map((match) => match[1])
       .sort();
 
-    expect(sqlTables).toHaveLength(57);
-    expect(prismaModels).toHaveLength(59);
+    expect(sqlTables).toHaveLength(60);
+    expect(prismaModels).toHaveLength(60);
     expect(prismaModels).toEqual(expect.arrayContaining(sqlTables));
     expect(prismaModels).toContain('risk_threat_vulnerabilities');
     expect(prismaModels).toContain('risk_vulnerability_controls');
+    expect(prismaModels).toContain('policy_applicabilities');
     expect(prismaModels).not.toContain('training_courses');
   });
 
   it('keeps post-baseline organization changes in a separate migration', () => {
-    const baselineTables = [...migration.matchAll(/^CREATE TABLE\s+([a-z_][a-z0-9_]*)\s*\(/gim)].map(
-      (match) => match[1],
-    );
+    const baselineTables = [
+      ...migration.matchAll(/^CREATE TABLE\s+([a-z_][a-z0-9_]*)\s*\(/gim),
+    ].map((match) => match[1]);
     expect(baselineTables).toHaveLength(56);
     expect(baselineTables).not.toContain('departments');
     expect(organizationMigration).toContain('CREATE TABLE departments');

@@ -182,6 +182,9 @@ CREATE TABLE user_access_scopes (
 -- ============================================================
 
 CREATE TABLE risks (
+    scope_type varchar(30),
+    business_service_id uuid,
+    CONSTRAINT chk_risk_scope CHECK ((scope_type IS NULL AND business_service_id IS NULL) OR (scope_type IS NOT NULL AND ((scope_type = 'ASSET' AND business_service_id IS NULL) OR (scope_type = 'BUSINESS_SERVICE' AND business_service_id IS NOT NULL)))),
     id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     risk_code varchar(100) NOT NULL UNIQUE,
     title varchar(255) NOT NULL,
@@ -1022,6 +1025,7 @@ ALTER TABLE user_access_scopes ADD CONSTRAINT fk_access_scope_asset FOREIGN KEY 
 ALTER TABLE user_access_scopes ADD CONSTRAINT fk_access_scope_assigned_by FOREIGN KEY (assigned_by) REFERENCES users(id);
 
 ALTER TABLE risks ADD CONSTRAINT fk_risk_owner FOREIGN KEY (owner_user_id) REFERENCES users(id);
+ALTER TABLE risks ADD CONSTRAINT fk_risk_business_service FOREIGN KEY (business_service_id) REFERENCES business_services(id);
 ALTER TABLE risks ADD CONSTRAINT fk_risk_created_by FOREIGN KEY (created_by) REFERENCES users(id);
 ALTER TABLE risk_assets ADD CONSTRAINT fk_risk_assets_risk FOREIGN KEY (risk_id) REFERENCES risks(id);
 ALTER TABLE risk_assets ADD CONSTRAINT fk_risk_assets_asset FOREIGN KEY (asset_id) REFERENCES assets(id);
@@ -1162,6 +1166,7 @@ CREATE INDEX idx_access_scopes_user ON user_access_scopes(user_id);
 CREATE INDEX idx_assets_owner ON assets(owner_user_id);
 CREATE INDEX idx_assets_business_service ON assets(business_service_id);
 CREATE INDEX idx_risks_owner ON risks(owner_user_id);
+CREATE INDEX idx_risks_business_service ON risks(business_service_id);
 CREATE INDEX idx_risk_assets_asset ON risk_assets(asset_id);
 CREATE INDEX idx_risk_threat_vulnerabilities_vulnerability ON risk_threat_vulnerabilities(vulnerability_id);
 CREATE INDEX idx_risk_vulnerability_controls_control ON risk_vulnerability_controls(control_id);
@@ -1368,4 +1373,18 @@ ALTER TABLE public.assets ADD CONSTRAINT ck_asset_data_classification_basis CHEC
   (data_classification_basis IS NULL AND data_classification_method_version IS NULL)
   OR (data_classification_basis IS NOT NULL AND data_classification_method_version IS NOT NULL AND classified_at IS NOT NULL AND length(trim(data_classification_basis)) BETWEEN 20 AND 2000 AND data_classification_method_version = 'SECURAAI-DATA-CLASSIFICATION-v1')
 );
+-- Policy applicability is version-specific and must be defined before review.
+CREATE TABLE policy_applicabilities (
+  id uuid PRIMARY KEY DEFAULT gen_random_uuid(), policy_version_id uuid NOT NULL UNIQUE,
+  department_ids uuid[] NOT NULL DEFAULT '{}', role_codes user_role[] NOT NULL DEFAULT '{}',
+  user_groups text[] NOT NULL DEFAULT '{}', organizational_scope text,
+  rationale text NOT NULL, reference_basis text NOT NULL, defined_by uuid NOT NULL,
+  defined_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT chk_policy_applicability_target CHECK (cardinality(department_ids) > 0 OR cardinality(role_codes) > 0 OR cardinality(user_groups) > 0 OR length(trim(organizational_scope)) > 0),
+  CONSTRAINT chk_policy_applicability_rationale CHECK (length(trim(rationale)) BETWEEN 20 AND 2000),
+  CONSTRAINT chk_policy_applicability_reference CHECK (length(trim(reference_basis)) BETWEEN 5 AND 2000)
+);
+ALTER TABLE policy_applicabilities ADD CONSTRAINT fk_policy_applicability_version FOREIGN KEY (policy_version_id) REFERENCES policy_versions(id) ON DELETE CASCADE;
+ALTER TABLE policy_applicabilities ADD CONSTRAINT fk_policy_applicability_defined_by FOREIGN KEY (defined_by) REFERENCES users(id);
+CREATE INDEX idx_policy_applicability_defined_by ON policy_applicabilities(defined_by);
 COMMIT;
