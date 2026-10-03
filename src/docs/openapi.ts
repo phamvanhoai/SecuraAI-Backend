@@ -1498,12 +1498,107 @@ export const openApiSpec = {
         },
       },
     },
+    '/compliance/policies/{policyId}/versions/{versionId}/applicability': {
+      get: {
+        tags: ['Policies'],
+        summary: 'Get applicability for an owned policy draft',
+        description: 'Returns the saved scope plus active department and fixed-role options.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'policyId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+          {
+            name: 'versionId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          '200': { description: 'Policy applicability and available scope options' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer role and ownership required' },
+          '404': { description: 'Policy draft not found' },
+        },
+      },
+      put: {
+        tags: ['Policies'],
+        summary: 'Define applicability for an owned policy draft',
+        description:
+          'Records departments, fixed roles, user-group labels, organizational scope, rationale and reference basis before review.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'policyId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+          {
+            name: 'versionId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['rationale', 'referenceBasis'],
+                properties: {
+                  departmentIds: {
+                    type: 'array',
+                    maxItems: 200,
+                    uniqueItems: true,
+                    items: { type: 'string', format: 'uuid' },
+                  },
+                  roleCodes: {
+                    type: 'array',
+                    uniqueItems: true,
+                    items: {
+                      type: 'string',
+                      enum: ['ADMIN', 'SECURITY_OFFICER', 'EXECUTIVE', 'EMPLOYEE'],
+                    },
+                  },
+                  userGroups: {
+                    type: 'array',
+                    maxItems: 200,
+                    uniqueItems: true,
+                    items: { type: 'string', maxLength: 100 },
+                  },
+                  organizationalScope: { type: ['string', 'null'], maxLength: 2000 },
+                  rationale: { type: 'string', minLength: 20, maxLength: 2000 },
+                  referenceBasis: { type: 'string', minLength: 5, maxLength: 2000 },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'Policy applicability saved' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer role and ownership required' },
+          '404': { description: 'Policy draft not found' },
+          '409': { description: 'Policy version is no longer editable' },
+          '422': {
+            description: 'Invalid scope, inactive department, rationale or reference basis',
+          },
+        },
+      },
+    },
     '/compliance/policies/{policyId}/versions/{versionId}/submit': {
       post: {
         tags: ['Policies'],
         summary: 'Submit an owned policy draft for Admin review',
         description:
-          'Moves an owned V2 policy version from DRAFT to IN_REVIEW. Requires an active Security Officer account. Concurrent or repeated submissions are rejected.',
+          'Moves an owned V2 policy version from DRAFT to IN_REVIEW after applicability has been defined. Requires an active Security Officer account. Concurrent or repeated submissions are rejected.',
         security: [{ bearerAuth: [] }],
         parameters: [
           {

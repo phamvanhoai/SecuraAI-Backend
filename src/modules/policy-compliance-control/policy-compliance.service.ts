@@ -8,6 +8,7 @@ import type { RejectPolicyBody, RejectedPolicyQuery } from './dto/reject-policy.
 import type { PublishedPolicyListQuery } from './dto/view-published-policy.dto.js';
 import type { CreatePolicyDraftBody } from './dto/create-policy-draft.dto.js';
 import type { PolicyVersionHistoryQuery } from './dto/policy-version-history.dto.js';
+import type { DefinePolicyApplicabilityBody } from './dto/define-policy-applicability.dto.js';
 import {
   policyComplianceRepository,
   type PolicyReviewRecord,
@@ -168,6 +169,70 @@ function mapPolicyReview(version: PolicyReviewRecord) {
 }
 
 export const policyComplianceService = {
+  async getApplicability(userId: string, policyId: string, versionId: string) {
+    const actor = await policyComplianceRepository.findActor(userId);
+    if (!actor || actor.status !== 'ACTIVE')
+      throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+    if (actor.role !== 'SECURITY_OFFICER')
+      throw new AppError(403, 'FORBIDDEN', 'Security Officer role required');
+    const draft = await policyComplianceRepository.findOwnedDraftApplicability(policyId, versionId);
+    if (!draft) throw new AppError(404, 'POLICY_DRAFT_NOT_FOUND', 'Policy draft not found');
+    const policy = draft.policies_policy_versions_policy_idTopolicies;
+    if (draft.author_user_id !== userId && policy.owner_user_id !== userId)
+      throw new AppError(403, 'FORBIDDEN', 'You can only define applicability for drafts you own');
+    const departments = await policyComplianceRepository.listActiveDepartments();
+    const value = draft.policy_applicabilities;
+    return {
+      policyId,
+      versionId,
+      policyCode: policy.policy_code,
+      title: policy.title,
+      editable: draft.status === 'DRAFT',
+      applicability: value
+        ? {
+            departmentIds: value.department_ids,
+            roleCodes: value.role_codes,
+            userGroups: value.user_groups,
+            organizationalScope: value.organizational_scope,
+            rationale: value.rationale,
+            referenceBasis: value.reference_basis,
+            definedByUserId: value.defined_by,
+            definedAt: value.defined_at,
+            updatedAt: value.updated_at,
+          }
+        : null,
+      options: {
+        departments,
+        roles: ['ADMIN', 'SECURITY_OFFICER', 'EXECUTIVE', 'EMPLOYEE'],
+      },
+    };
+  },
+
+  async defineApplicability(
+    userId: string,
+    policyId: string,
+    versionId: string,
+    input: DefinePolicyApplicabilityBody,
+  ) {
+    const current = await this.getApplicability(userId, policyId, versionId);
+    if (!current.editable)
+      throw new AppError(
+        409,
+        'POLICY_DRAFT_NOT_EDITABLE',
+        'Applicability can only be changed while the version is a draft',
+      );
+    if (input.departmentIds.length > 0) {
+      const count = await policyComplianceRepository.countActiveDepartments(input.departmentIds);
+      if (count !== input.departmentIds.length)
+        throw new AppError(
+          422,
+          'INVALID_DEPARTMENTS',
+          'Every selected department must exist and be active',
+        );
+    }
+    await policyComplianceRepository.upsertApplicability(versionId, userId, input);
+    return this.getApplicability(userId, policyId, versionId);
+  },
   async listPolicyVersionHistory(userId: string, query: PolicyVersionHistoryQuery) {
     await requirePolicyHistoryViewer(userId);
     const [total, versions] = await policyComplianceRepository.listPolicyVersionHistory(query);
@@ -274,13 +339,15 @@ export const policyComplianceService = {
     const actor = await policyComplianceRepository.findActor(userId);
     if (!actor || actor.status !== 'ACTIVE')
       throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
-    if (actor.role !== 'EMPLOYEE')
-      throw new AppError(403, 'FORBIDDEN', 'Employee role required');
-    const [total, policies] =
-      await policyComplianceRepository.listPublishedPoliciesForEmployee(userId, query);
+    if (actor.role !== 'EMPLOYEE') throw new AppError(403, 'FORBIDDEN', 'Employee role required');
+    const [total, policies] = await policyComplianceRepository.listPublishedPoliciesForEmployee(
+      userId,
+      query,
+    );
     return {
       items: policies.map((policy) => {
-        const version = policy.policy_versions_policies_current_published_version_idTopolicy_versions;
+        const version =
+          policy.policy_versions_policies_current_published_version_idTopolicy_versions;
         if (!version) throw new Error('Published policy has no current published version');
         return {
           policyId: policy.id,
@@ -307,8 +374,7 @@ export const policyComplianceService = {
     const actor = await policyComplianceRepository.findActor(userId);
     if (!actor || actor.status !== 'ACTIVE')
       throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
-    if (actor.role !== 'EMPLOYEE')
-      throw new AppError(403, 'FORBIDDEN', 'Employee role required');
+    if (actor.role !== 'EMPLOYEE') throw new AppError(403, 'FORBIDDEN', 'Employee role required');
     const version = await policyComplianceRepository.findPublishedPolicyForEmployee(
       policyId,
       versionId,
@@ -338,8 +404,7 @@ export const policyComplianceService = {
     const actor = await policyComplianceRepository.findActor(userId);
     if (!actor || actor.status !== 'ACTIVE')
       throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
-    if (actor.role !== 'EMPLOYEE')
-      throw new AppError(403, 'FORBIDDEN', 'Employee role required');
+    if (actor.role !== 'EMPLOYEE') throw new AppError(403, 'FORBIDDEN', 'Employee role required');
     const version = await policyComplianceRepository.findPublishedPolicyForEmployee(
       policyId,
       versionId,
@@ -382,23 +447,13 @@ export const policyComplianceService = {
     };
   },
 
-  async rejectPolicy(
-    userId: string,
-    policyId: string,
-    versionId: string,
-    input: RejectPolicyBody,
-  ) {
+  async rejectPolicy(userId: string, policyId: string, versionId: string, input: RejectPolicyBody) {
     await requireActiveAdmin(userId);
     const version = await policyComplianceRepository.findReviewableDraft(policyId, versionId);
     if (!version) {
       throw new AppError(404, 'POLICY_DRAFT_NOT_FOUND', 'Submitted policy draft not found');
     }
-    const result = await policyComplianceRepository.rejectDraft(
-      policyId,
-      versionId,
-      userId,
-      input,
-    );
+    const result = await policyComplianceRepository.rejectDraft(policyId, versionId, userId, input);
     if (!result) {
       throw new AppError(
         409,
@@ -421,18 +476,34 @@ export const policyComplianceService = {
   async approveForPublication(userId: string, policyId: string, versionId: string) {
     await requireActiveAdmin(userId);
     const version = await policyComplianceRepository.findReviewableDraft(policyId, versionId);
-    if (!version) throw new AppError(404, 'POLICY_DRAFT_NOT_FOUND', 'Submitted policy draft not found');
+    if (!version)
+      throw new AppError(404, 'POLICY_DRAFT_NOT_FOUND', 'Submitted policy draft not found');
     if (version.status !== 'WAITING_APPROVAL')
       throw new AppError(
         409,
         'POLICY_REVIEW_REQUIRED',
         'The policy draft must be reviewed before it can be approved',
       );
-    const result = await policyComplianceRepository.approveDraftForPublication(policyId, versionId, userId);
-    if (!result) throw new AppError(409, 'POLICY_DRAFT_CHANGED', 'The policy draft changed before it could be approved');
+    const result = await policyComplianceRepository.approveDraftForPublication(
+      policyId,
+      versionId,
+      userId,
+    );
+    if (!result)
+      throw new AppError(
+        409,
+        'POLICY_DRAFT_CHANGED',
+        'The policy draft changed before it could be approved',
+      );
     return {
       ...mapPolicyReview(result.version),
-      decision: { id: result.decision.id, action: result.decision.action, comment: result.decision.comment, actorUserId: result.decision.actor_user_id, decidedAt: result.decision.decided_at },
+      decision: {
+        id: result.decision.id,
+        action: result.decision.action,
+        comment: result.decision.comment,
+        actorUserId: result.decision.actor_user_id,
+        decidedAt: result.decision.decided_at,
+      },
     };
   },
 
@@ -593,6 +664,12 @@ export const policyComplianceService = {
         409,
         'POLICY_DRAFT_NOT_SUBMITTABLE',
         'Only an active draft policy version can be submitted for review',
+      );
+    if (!draft.policy_applicabilities)
+      throw new AppError(
+        409,
+        'POLICY_APPLICABILITY_REQUIRED',
+        'Define policy applicability before submitting the draft for review',
       );
     const submitted = await policyComplianceRepository.submitDraft(policyId, versionId, userId);
     if (!submitted)
