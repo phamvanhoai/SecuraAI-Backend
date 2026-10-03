@@ -8,8 +8,10 @@ import type { user_role } from '@prisma/client';
  * `assets.read` grants entry to the asset directory; the asset API still
  * enforces contextual Asset Owner scope for non-Security-Officer accounts.
  */
-const capabilitiesByRole = {
+export const capabilitiesByRole = {
   ADMIN: [
+    'roles.read',
+    'roles.update',
     'assets.read',
     'users.read',
     'users.create',

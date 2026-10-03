@@ -17,6 +17,92 @@ export const openApiSpec = {
   },
   paths: {
     ...pendingV2Paths,
+    '/access-control/permissions': {
+      get: {
+        tags: ['Access Control'],
+        summary: 'List the configurable permission catalog',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          '200': { description: 'Paginated permission definitions grouped by module and operation' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Detailed-permission read access required' },
+        },
+      },
+    },
+    '/access-control/roles': {
+      ...pendingV2Paths['/access-control/roles'],
+      get: {
+        tags: ['Access Control'],
+        summary: 'List fixed roles and their effective permission grants',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          '200': { description: 'Paginated fixed-role permission configuration' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Administrator required' },
+        },
+      },
+    },
+    '/access-control/roles/{roleId}': {
+      ...pendingV2Paths['/access-control/roles/{roleId}'],
+      get: {
+        tags: ['Access Control'],
+        summary: 'View one fixed role and its permission grants',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'roleId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+        responses: {
+          '200': { description: 'Role permission details' },
+          '404': { description: 'Role not found' },
+        },
+      },
+    },
+    '/access-control/roles/{roleId}/permissions': {
+      put: {
+        tags: ['Access Control'],
+        summary: 'Replace detailed permissions for a non-administrator role',
+        description: 'Uses optimistic concurrency, records the reason in the audit log, and revokes active sessions for affected users.',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'roleId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: { type: 'object', required: ['permissionIds', 'expectedUpdatedAt', 'reason'], additionalProperties: false } } },
+        },
+        responses: {
+          '200': { description: 'Updated role permissions' },
+          '403': { description: 'Administrator required' },
+          '409': { description: 'Role configuration changed since it was loaded' },
+          '422': { description: 'Invalid permission or immutable administrator role' },
+        },
+      },
+    },
+    '/access-control/users/{userId}/permissions': {
+      get: {
+        tags: ['Access Control'],
+        summary: 'View role grants, user overrides, and effective permissions',
+        description: 'Also returns whether the account is editable and the permission codes that may receive an explicit allow override for the target fixed role.',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'userId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+        responses: {
+          '200': { description: 'Effective user permissions' },
+          '404': { description: 'User not found' },
+        },
+      },
+      put: {
+        tags: ['Access Control'],
+        summary: 'Replace allow and deny overrides for one user',
+        description: 'Deny overrides take precedence over role grants. Administrator accounts are immutable, and administrator-only permissions cannot be allowed for another fixed role. The operation is audited and revokes the user active sessions.',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'userId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: { type: 'object', required: ['allow', 'deny', 'reason'], additionalProperties: false } } },
+        },
+        responses: {
+          '200': { description: 'Updated effective user permissions' },
+          '403': { description: 'Administrator required' },
+          '422': { description: 'Invalid or conflicting permissions, immutable administrator account, or administrator-only permission not allowed for the target role' },
+        },
+      },
+    },
     '/risks/{riskId}/vulnerabilities': {
       post: {
         tags: ['Risks'],
