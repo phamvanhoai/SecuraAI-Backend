@@ -1,4 +1,5 @@
 import type { Prisma } from '@prisma/client';
+import { randomUUID } from 'node:crypto';
 import { prisma } from '../../database/prisma.js';
 import type { ViewIncidentsQuery } from './dto/view-incidents.dto.js';
 import type {
@@ -127,6 +128,22 @@ export const incidentsRepository = {
   },
 
   createFromSource(userId: string, input: CreateIncidentFromSource) {
+    if (input.sourceType === 'manual') {
+      return prisma.incidents
+        .create({
+          data: {
+            incident_code: `INC-${randomUUID().replaceAll('-', '').slice(0, 16).toUpperCase()}`,
+            title: input.title,
+            description: input.description,
+            severity: input.severity.toUpperCase(),
+            status: 'OPEN',
+            detected_at: input.detectedAt ?? new Date(),
+            created_by: userId,
+          },
+          select: incidentViewSelect,
+        })
+        .then((incident) => ({ outcome: 'created' as const, incident }));
+    }
     return prisma.$transaction(async (transaction) => {
       const finding = await transaction.security_findings.findFirst({
         where: input.sourceType === 'alert' ? { alert_id: input.sourceId } : { id: input.sourceId },

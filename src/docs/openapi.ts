@@ -23,7 +23,9 @@ export const openApiSpec = {
         summary: 'List the configurable permission catalog',
         security: [{ bearerAuth: [] }],
         responses: {
-          '200': { description: 'Paginated permission definitions grouped by module and operation' },
+          '200': {
+            description: 'Paginated permission definitions grouped by module and operation',
+          },
           '401': { description: 'Authentication required' },
           '403': { description: 'Detailed-permission read access required' },
         },
@@ -48,7 +50,14 @@ export const openApiSpec = {
         tags: ['Access Control'],
         summary: 'View one fixed role and its permission grants',
         security: [{ bearerAuth: [] }],
-        parameters: [{ name: 'roleId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+        parameters: [
+          {
+            name: 'roleId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
         responses: {
           '200': { description: 'Role permission details' },
           '404': { description: 'Role not found' },
@@ -59,12 +68,28 @@ export const openApiSpec = {
       put: {
         tags: ['Access Control'],
         summary: 'Replace detailed permissions for a non-administrator role',
-        description: 'Uses optimistic concurrency, records the reason in the audit log, and revokes active sessions for affected users.',
+        description:
+          'Uses optimistic concurrency, records the reason in the audit log, and revokes active sessions for affected users.',
         security: [{ bearerAuth: [] }],
-        parameters: [{ name: 'roleId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+        parameters: [
+          {
+            name: 'roleId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
         requestBody: {
           required: true,
-          content: { 'application/json': { schema: { type: 'object', required: ['permissionIds', 'expectedUpdatedAt', 'reason'], additionalProperties: false } } },
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['permissionIds', 'expectedUpdatedAt', 'reason'],
+                additionalProperties: false,
+              },
+            },
+          },
         },
         responses: {
           '200': { description: 'Updated role permissions' },
@@ -78,9 +103,17 @@ export const openApiSpec = {
       get: {
         tags: ['Access Control'],
         summary: 'View role grants, user overrides, and effective permissions',
-        description: 'Also returns whether the account is editable and the permission codes that may receive an explicit allow override for the target fixed role.',
+        description:
+          'Also returns whether the account is editable and the permission codes that may receive an explicit allow override for the target fixed role.',
         security: [{ bearerAuth: [] }],
-        parameters: [{ name: 'userId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+        parameters: [
+          {
+            name: 'userId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
         responses: {
           '200': { description: 'Effective user permissions' },
           '404': { description: 'User not found' },
@@ -89,17 +122,36 @@ export const openApiSpec = {
       put: {
         tags: ['Access Control'],
         summary: 'Replace allow and deny overrides for one user',
-        description: 'Deny overrides take precedence over role grants. Administrator accounts are immutable, and administrator-only permissions cannot be allowed for another fixed role. The operation is audited and revokes the user active sessions.',
+        description:
+          'Deny overrides take precedence over role grants. Administrator accounts are immutable, and administrator-only permissions cannot be allowed for another fixed role. The operation is audited and revokes the user active sessions.',
         security: [{ bearerAuth: [] }],
-        parameters: [{ name: 'userId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+        parameters: [
+          {
+            name: 'userId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
         requestBody: {
           required: true,
-          content: { 'application/json': { schema: { type: 'object', required: ['allow', 'deny', 'reason'], additionalProperties: false } } },
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['allow', 'deny', 'reason'],
+                additionalProperties: false,
+              },
+            },
+          },
         },
         responses: {
           '200': { description: 'Updated effective user permissions' },
           '403': { description: 'Administrator required' },
-          '422': { description: 'Invalid or conflicting permissions, immutable administrator account, or administrator-only permission not allowed for the target role' },
+          '422': {
+            description:
+              'Invalid or conflicting permissions, immutable administrator account, or administrator-only permission not allowed for the target role',
+          },
         },
       },
     },
@@ -816,31 +868,46 @@ export const openApiSpec = {
       ...pendingV2Paths['/incidents'],
       post: {
         tags: ['Incident Management'],
-        summary: 'Create an incident from a confirmed alert or finding',
+        summary: 'Create an incident manually or from a confirmed source',
         description:
-          'Creates one V2 incident from an eligible confirmed alert or its security finding. The incident retains a unique finding link for traceability. Requires an active Security Officer.',
+          'Creates a V2 incident manually or from an eligible confirmed alert/security finding. Source-backed incidents retain a unique finding link; manual incidents have no finding link. Requires an active Security Officer.',
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
           content: {
             'application/json': {
               schema: {
-                type: 'object',
-                required: ['sourceType', 'sourceId', 'title', 'description', 'severity'],
-                properties: {
-                  sourceType: { type: 'string', enum: ['alert', 'finding'] },
-                  sourceId: { type: 'string', format: 'uuid' },
-                  title: { type: 'string', minLength: 5, maxLength: 255 },
-                  description: { type: 'string', minLength: 20, maxLength: 10000 },
-                  severity: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] },
-                  detectedAt: { type: 'string', format: 'date-time' },
-                },
+                oneOf: [
+                  {
+                    type: 'object',
+                    required: ['sourceType', 'sourceId', 'title', 'description', 'severity'],
+                    properties: {
+                      sourceType: { type: 'string', enum: ['alert', 'finding'] },
+                      sourceId: { type: 'string', format: 'uuid' },
+                      title: { type: 'string', minLength: 5, maxLength: 255 },
+                      description: { type: 'string', minLength: 20, maxLength: 10000 },
+                      severity: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] },
+                      detectedAt: { type: 'string', format: 'date-time' },
+                    },
+                  },
+                  {
+                    type: 'object',
+                    required: ['sourceType', 'title', 'description', 'severity'],
+                    properties: {
+                      sourceType: { type: 'string', enum: ['manual'] },
+                      title: { type: 'string', minLength: 5, maxLength: 255 },
+                      description: { type: 'string', minLength: 20, maxLength: 10000 },
+                      severity: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] },
+                      detectedAt: { type: 'string', format: 'date-time' },
+                    },
+                  },
+                ],
               },
             },
           },
         },
         responses: {
-          '201': { description: 'Incident created and linked to its source finding' },
+          '201': { description: 'Incident created, with a source link when supplied' },
           '401': { description: 'Authentication required' },
           '403': { description: 'Security Officer role required' },
           '404': { description: 'Source alert or finding not found' },

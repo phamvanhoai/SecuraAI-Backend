@@ -27,7 +27,7 @@ const token = jwt.sign({ type: 'access' }, env.JWT_ACCESS_SECRET, {
 });
 const app = createApp();
 
-describe('incident creation from confirmed source routes', () => {
+describe('incident creation routes', () => {
   beforeEach(() => vi.clearAllMocks());
 
   it('requires authentication', async () => {
@@ -77,6 +77,52 @@ describe('incident creation from confirmed source routes', () => {
       id: sourceId,
       incidentCode: 'INC-B23CAE8A9C5C42A1',
     });
+  });
+
+  it('creates a manual incident without a source', async () => {
+    vi.mocked(incidentsService.createFromSource).mockResolvedValue({
+      id: sourceId,
+      incidentCode: 'INC-MANUAL00000001',
+      title: 'Unauthorized visitor reported at server room',
+      description: 'A security officer reported an unauthorized visitor without an existing alert.',
+      category: null,
+      severity: 'medium',
+      status: 'open',
+      occurredAt: null,
+      detectedAt: new Date('2026-10-04T00:00:00Z'),
+      confirmedAt: null,
+      closedAt: null,
+      createdAt: new Date('2026-10-04T00:00:00Z'),
+      updatedAt: new Date('2026-10-04T00:00:00Z'),
+      classified: true,
+      classificationCount: 0,
+      lastClassification: null,
+      currentAssignment: null,
+      createdBy: null,
+      source: null,
+      relatedCounts: { actions: 0, assets: 0, controls: 0, evidence: 0, risks: 0 },
+    });
+
+    const response = await request(app)
+      .post('/api/v1/incidents')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        sourceType: 'manual',
+        title: 'Unauthorized visitor reported at server room',
+        description:
+          'A security officer reported an unauthorized visitor without an existing alert.',
+        severity: 'medium',
+      });
+
+    expect(response.status).toBe(201);
+    expect(response.body.data).toMatchObject({
+      incidentCode: 'INC-MANUAL00000001',
+      source: null,
+    });
+    expect(incidentsService.createFromSource).toHaveBeenCalledWith(
+      userId,
+      expect.objectContaining({ sourceType: 'manual' }),
+    );
   });
 
   it('rejects malformed input before the service', async () => {
