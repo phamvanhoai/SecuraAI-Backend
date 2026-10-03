@@ -728,6 +728,42 @@ export const openApiSpec = {
     },
     '/incidents': {
       ...pendingV2Paths['/incidents'],
+      post: {
+        tags: ['Incident Management'],
+        summary: 'Create an incident from a confirmed alert or finding',
+        description:
+          'Creates one V2 incident from an eligible confirmed alert or its security finding. The incident retains a unique finding link for traceability. Requires an active Security Officer.',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['sourceType', 'sourceId', 'title', 'description', 'severity'],
+                properties: {
+                  sourceType: { type: 'string', enum: ['alert', 'finding'] },
+                  sourceId: { type: 'string', format: 'uuid' },
+                  title: { type: 'string', minLength: 5, maxLength: 255 },
+                  description: { type: 'string', minLength: 20, maxLength: 10000 },
+                  severity: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] },
+                  detectedAt: { type: 'string', format: 'date-time' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '201': { description: 'Incident created and linked to its source finding' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer role required' },
+          '404': { description: 'Source alert or finding not found' },
+          '409': {
+            description: 'Source is unconfirmed, already converted, or changed concurrently',
+          },
+          '422': { description: 'Invalid incident details' },
+        },
+      },
       get: {
         tags: ['Incident Management'],
         summary: 'List security incidents',
@@ -768,6 +804,30 @@ export const openApiSpec = {
           '200': { description: 'Paginated incident list' },
           '401': { description: 'Authentication required' },
           '403': { description: 'Security Officer or Executive role required' },
+          '422': { description: 'Invalid query parameters' },
+        },
+      },
+    },
+    '/incidents/source-options': {
+      get: {
+        tags: ['Incident Management'],
+        summary: 'List confirmed sources eligible for incident creation',
+        description:
+          'Returns confirmed alert findings that are not already linked to an incident. Requires an active Security Officer.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
+          {
+            name: 'limit',
+            in: 'query',
+            schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
+          },
+          { name: 'search', in: 'query', schema: { type: 'string', minLength: 1, maxLength: 100 } },
+        ],
+        responses: {
+          '200': { description: 'Paginated eligible source list' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer role required' },
           '422': { description: 'Invalid query parameters' },
         },
       },
@@ -2151,7 +2211,7 @@ export const openApiSpec = {
         tags: ['AI Anomaly Detection & Alerts'],
         summary: 'Confirm an AI alert as a security incident',
         description:
-          'Confirms an assigned alert under triage or further investigation as a true positive, then atomically records the decision, creates a linked finding and incident, and marks the alert confirmed. Repeated calls by the assigned analyst return the existing incident.',
+          'Confirms an assigned alert under triage or further investigation as a true positive, atomically records the decision, creates a linked security finding, and marks the alert confirmed. Incident creation is a separate Incident Management workflow. Repeated calls by the assigned analyst return the existing finding.',
         security: [{ bearerAuth: [] }],
         parameters: [
           {
@@ -2174,7 +2234,7 @@ export const openApiSpec = {
           },
         },
         responses: {
-          '200': { description: 'Alert confirmed and linked incident returned' },
+          '200': { description: 'Alert confirmed and linked security finding returned' },
           '401': { description: 'Authentication required' },
           '403': { description: 'Security Officer role required' },
           '404': { description: 'AI alert not found' },

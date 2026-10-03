@@ -483,21 +483,22 @@ export const aiAlertsRepository = {
           },
           security_findings: {
             select: {
-              incidents: {
-                select: { id: true, incident_code: true, status: true, confirmed_at: true },
-              },
+              id: true,
+              title: true,
+              status: true,
+              identified_at: true,
             },
           },
         },
       });
       if (!alert) return { outcome: 'not_found' as const };
-      const existingIncident = alert.security_findings?.incidents;
-      if (existingIncident) {
+      const existingFinding = alert.security_findings;
+      if (existingFinding) {
         if (alert.assigned_to !== input.userId) return { outcome: 'not_owner' as const };
         return {
           outcome: 'unchanged' as const,
           alert,
-          incident: existingIncident,
+          finding: existingFinding,
           changed: false,
         };
       }
@@ -541,23 +542,9 @@ export const aiAlertsRepository = {
           identified_by: input.userId,
           identified_at: now,
         },
-        select: { id: true },
+        select: { id: true, title: true, status: true, identified_at: true },
       });
-      const incident = await transaction.incidents.create({
-        data: {
-          incident_code: `INC-${alert.id.replaceAll('-', '').slice(0, 16).toUpperCase()}`,
-          finding_id: finding.id,
-          title: eventTitle,
-          description: input.comment || `${eventTitle} confirmed from an AI-generated alert.`,
-          severity: alert.severity || 'MEDIUM',
-          status: 'OPEN',
-          detected_at: alert.anomaly_detections.detected_at,
-          confirmed_at: now,
-          created_by: input.userId,
-        },
-        select: { id: true, incident_code: true, status: true, confirmed_at: true },
-      });
-      return { outcome: 'confirmed' as const, alert, incident, changed: true };
+      return { outcome: 'confirmed' as const, alert, finding, changed: true };
     });
   },
   markFalsePositive(input: { alertId: string; userId: string; comment?: string }) {

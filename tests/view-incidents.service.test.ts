@@ -37,6 +37,7 @@ const record = {
     full_name: 'Security Officer',
     email: 'officer@example.com',
   },
+  security_findings: null,
   _count: {
     incident_actions: 1,
     incident_assets: 2,
