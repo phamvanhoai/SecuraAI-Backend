@@ -29,7 +29,7 @@ export type MappedAssetDto = {
   name: string;
   assetCode: string;
   assetType: string;
-  criticality: string;
+  criticality: string | null;
 };
 
 export type NormalizedEventItemDto = {
