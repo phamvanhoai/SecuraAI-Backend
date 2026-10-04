@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   eventIdParamSchema,
   listNormalizedEventsQuerySchema,
+  updateEntityMappingSchema,
 } from '../src/modules/event-ingestion/dto/list-normalized-events.dto.js';
 
 describe('listNormalizedEventsQuerySchema', () => {
@@ -97,6 +98,52 @@ describe('eventIdParamSchema', () => {
   it('rejects invalid UUID format', () => {
     const result = eventIdParamSchema.safeParse({
       id: 'not-a-uuid',
+    });
+    expect(result.success).toBe(false);
+  });
+});
+
+describe('updateEntityMappingSchema', () => {
+  it('accepts valid mapping correction payload', () => {
+    const parsed = updateEntityMappingSchema.parse({
+      userId: '550e8400-e29b-41d4-a716-446655440001',
+      assetId: '550e8400-e29b-41d4-a716-446655440002',
+      reason: 'Corrected user and server association based on IP allocation logs',
+      confidence: 0.95,
+    });
+
+    expect(parsed.userId).toBe('550e8400-e29b-41d4-a716-446655440001');
+    expect(parsed.assetId).toBe('550e8400-e29b-41d4-a716-446655440002');
+    expect(parsed.reason).toBe(
+      'Corrected user and server association based on IP allocation logs',
+    );
+    expect(parsed.confidence).toBe(0.95);
+  });
+
+  it('allows null userId and assetId for unmapping', () => {
+    const parsed = updateEntityMappingSchema.parse({
+      userId: null,
+      assetId: null,
+      reason: 'Unmapped false positive entity link',
+    });
+
+    expect(parsed.userId).toBeNull();
+    expect(parsed.assetId).toBeNull();
+    expect(parsed.confidence).toBe(1.0);
+  });
+
+  it('rejects empty reason', () => {
+    const result = updateEntityMappingSchema.safeParse({
+      userId: '550e8400-e29b-41d4-a716-446655440001',
+      reason: '   ',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects invalid UUIDs', () => {
+    const result = updateEntityMappingSchema.safeParse({
+      userId: 'not-a-uuid',
+      reason: 'Invalid UUID test',
     });
     expect(result.success).toBe(false);
   });

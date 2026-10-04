@@ -632,6 +632,18 @@ export const openApiSpec = {
         },
       },
     },
+    '/events/mapping-options': {
+      get: {
+        tags: ['Event Ingestion'],
+        summary: 'Get entity mapping options for review and correction',
+        description: 'Returns available users, assets, and monitored accounts for event mapping correction.',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          '200': { description: 'Mapping options list' },
+          '401': { description: 'Authentication required' },
+        },
+      },
+    },
     '/events/{id}': {
       get: {
         tags: ['Event Ingestion'],
@@ -646,6 +658,41 @@ export const openApiSpec = {
           '401': { description: 'Authentication required' },
           '404': { description: 'Normalized security event not found' },
           '422': { description: 'Invalid event ID' },
+        },
+      },
+    },
+    '/events/{id}/mappings': {
+      put: {
+        tags: ['Event Ingestion'],
+        summary: 'Review and correct event entity mappings',
+        description: 'Allows Security Officers to correct inaccurate system-generated mappings between security events and users, accounts, or assets.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['reason'],
+                properties: {
+                  userId: { type: 'string', format: 'uuid', nullable: true },
+                  assetId: { type: 'string', format: 'uuid', nullable: true },
+                  monitoredAccountId: { type: 'string', format: 'uuid', nullable: true },
+                  reason: { type: 'string', minLength: 1, maxLength: 500 },
+                  confidence: { type: 'number', minimum: 0, maximum: 1, default: 1.0 },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'Updated entity mapping' },
+          '401': { description: 'Authentication required' },
+          '404': { description: 'Event, target user, or target asset not found' },
+          '422': { description: 'Validation failed' },
         },
       },
     },

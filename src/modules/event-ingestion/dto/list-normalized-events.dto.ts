@@ -55,6 +55,67 @@ export type MappedAssetDto = {
   criticality: string;
 };
 
+export type MonitoredAccountSummaryDto = {
+  id: string;
+  accountIdentifier: string;
+  sourceSystem: string;
+  displayName?: string | null;
+};
+
+export type EntityMappingDto = {
+  id: string;
+  eventId: string;
+  userId: string | null;
+  monitoredAccountId: string | null;
+  assetId: string | null;
+  mappingMethod: 'AUTO' | 'MANUAL';
+  confidence: number | null;
+  reason: string | null;
+  mappedBy: {
+    id: string;
+    email: string;
+    fullName: string | null;
+  } | null;
+  mappedAt: Date;
+  isActive: boolean;
+  supersedesMappingId: string | null;
+  mappedUser: MappedUserDto | null;
+  mappedAsset: MappedAssetDto | null;
+  monitoredAccount: MonitoredAccountSummaryDto | null;
+  createdAt: Date;
+};
+
+export const updateEntityMappingSchema = z.object({
+  userId: z.string().uuid().nullable().optional(),
+  assetId: z.string().uuid().nullable().optional(),
+  monitoredAccountId: z.string().uuid().nullable().optional(),
+  reason: z.string().trim().min(1, 'Reason for correction is required').max(500),
+  confidence: z.coerce.number().min(0).max(1).optional().default(1.0),
+});
+
+export type UpdateEntityMappingDto = z.infer<typeof updateEntityMappingSchema>;
+
+export type MappingOptionsDto = {
+  users: Array<{
+    id: string;
+    email: string;
+    fullName: string | null;
+  }>;
+  assets: Array<{
+    id: string;
+    name: string;
+    assetCode: string;
+    assetType: string;
+    criticality: string | null;
+  }>;
+  monitoredAccounts: Array<{
+    id: string;
+    accountIdentifier: string;
+    sourceSystem: string;
+    displayName: string | null;
+  }>;
+};
+
 export type NormalizedEventItemDto = {
   id: string;
   eventSourceId: string;
@@ -81,6 +142,8 @@ export type NormalizedEventItemDto = {
 
 export type NormalizedEventDetailDto = NormalizedEventItemDto & {
   normalizedPayload: Record<string, unknown>;
+  activeMapping: EntityMappingDto | null;
+  mappingHistory: EntityMappingDto[];
   anomalyDetections?: Array<{
     id: string;
     anomalyScore: number;
