@@ -2938,6 +2938,34 @@ export const openApiSpec = {
         },
       },
     },
+    '/users/import': {
+      post: {
+        tags: ['Users'],
+        summary: 'Import user accounts from Excel',
+        description:
+          'Active Admin only. Accepts one .xlsx file up to 5 MB and 1000 data rows. Valid rows are created and invalid rows are returned with row-level errors.',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'multipart/form-data': {
+              schema: {
+                type: 'object',
+                required: ['file'],
+                properties: { file: { type: 'string', format: 'binary' } },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'Import totals and row-level errors' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Admin role required' },
+          '413': { description: 'File exceeds 5 MB' },
+          '422': { description: 'Invalid file, workbook template or row limit' },
+        },
+      },
+    },
     '/users/departments': {
       get: {
         tags: ['Users'],
