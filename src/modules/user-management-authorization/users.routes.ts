@@ -37,6 +37,7 @@ usersRouter.post(
 );
 usersRouter.post('/import', authenticate, uploadUserWorkbook, asyncHandler(importUsers));
 usersRouter.get('/me', authenticate, asyncHandler(getCurrentUser));
+usersRouter.get('/departments', authenticate, asyncHandler(listDepartments));
 usersRouter.get('/create-options', authenticate, asyncHandler(listDepartments));
 usersRouter.get(
   '/access-assignment-options',
