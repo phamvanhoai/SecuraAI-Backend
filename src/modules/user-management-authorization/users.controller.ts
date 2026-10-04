@@ -28,6 +28,16 @@ export const listUsers: RequestHandler = async (req, res) => {
   res.status(200).json({ success: true, data });
 };
 
+export const importUsers: RequestHandler = async (req, res) => {
+  if (!req.file) throw new AppError(422, 'INVALID_IMPORT_FILE', 'An Excel file is required');
+  const data = await usersService.importUsers(authenticatedUserId(res.locals.authenticatedUserId), {
+    originalName: req.file.originalname,
+    mimeType: req.file.mimetype,
+    buffer: req.file.buffer,
+  });
+  res.status(200).json({ success: true, data });
+};
+
 export const getCurrentUser: RequestHandler = async (_req, res) => {
   const userId = authenticatedUserId(res.locals.authenticatedUserId);
   const data = await usersService.getCurrentUser(userId);

@@ -10,6 +10,8 @@ import { capabilitiesForRole } from './role-capabilities.js';
 import { userAccessScopeCatalog } from './user-access-scope-catalog.js';
 import type { UpdateUserBody } from './dto/update-user.dto.js';
 import type { AssignUserAccessBody } from './dto/assign-user-access.dto.js';
+import { createUserBodySchema } from './dto/create-user.dto.js';
+import { parseUserWorkbook } from './user-import.parser.js';
 
 const roleNames = {
   ADMIN: 'Administrator',
@@ -70,6 +72,88 @@ function requireAdminResult(
 }
 
 export const usersService = {
+  async importUsers(
+    actorUserId: string,
+    file: { originalName: string; mimeType: string; buffer: Buffer },
+  ) {
+    const allowedMimeTypes = new Set([
+      'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      'application/octet-stream',
+    ]);
+    if (file.buffer.length > 5 * 1024 * 1024) {
+      throw new AppError(413, 'IMPORT_FILE_TOO_LARGE', 'Excel files may not exceed 5 MB');
+    }
+    if (
+      !file.originalName.toLowerCase().endsWith('.xlsx') ||
+      !allowedMimeTypes.has(file.mimeType)
+    ) {
+      throw new AppError(422, 'INVALID_IMPORT_FILE', 'Only .xlsx files are supported');
+    }
+    const departmentResult = await usersRepository.listDepartments(actorUserId);
+    if (departmentResult.kind === 'unauthorized') {
+      throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+    }
+    if (departmentResult.kind === 'forbidden') {
+      throw new AppError(403, 'ADMIN_REQUIRED', 'Only administrators can import users');
+    }
+    const departments = new Map(
+      departmentResult.departments.map((department) => [
+        department.code.toUpperCase(),
+        department.id,
+      ]),
+    );
+    const rows = await parseUserWorkbook(file.buffer);
+    const errors: Array<{ row: number; code: string; message: string }> = [];
+    let imported = 0;
+    for (const row of rows) {
+      if (row.formulaFields.length > 0) {
+        errors.push({
+          row: row.rowNumber,
+          code: 'FORMULA_NOT_ALLOWED',
+          message: 'Excel formulas are not allowed',
+        });
+        continue;
+      }
+      const departmentId = row.values.departmentCode
+        ? departments.get(row.values.departmentCode.toUpperCase())
+        : undefined;
+      if (row.values.departmentCode && !departmentId) {
+        errors.push({
+          row: row.rowNumber,
+          code: 'INVALID_DEPARTMENT',
+          message: 'Department code is not active or does not exist',
+        });
+        continue;
+      }
+      const parsed = createUserBodySchema.safeParse({
+        email: row.values.email,
+        fullName: row.values.fullName,
+        role: row.values.role.toUpperCase(),
+        ...(row.values.phone ? { phone: row.values.phone } : {}),
+        ...(row.values.employeeCode ? { employeeCode: row.values.employeeCode } : {}),
+        ...(departmentId ? { departmentId } : {}),
+      });
+      if (!parsed.success) {
+        errors.push({
+          row: row.rowNumber,
+          code: 'VALIDATION_ERROR',
+          message: parsed.error.issues.map((issue) => issue.message).join('; '),
+        });
+        continue;
+      }
+      try {
+        await this.createUser(actorUserId, parsed.data);
+        imported += 1;
+      } catch (error: unknown) {
+        if (error instanceof AppError) {
+          errors.push({ row: row.rowNumber, code: error.code, message: error.message });
+          continue;
+        }
+        throw error;
+      }
+    }
+    return { totalRows: rows.length, imported, failed: errors.length, errors };
+  },
   async getUserAccessAssignmentOptions(actorUserId: string) {
     const result = await usersRepository.getUserAccessAssignmentOptions(actorUserId);
     if (result.kind !== 'found') return requireAdminResult(result, 'manage user access');

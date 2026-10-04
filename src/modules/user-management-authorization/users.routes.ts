@@ -4,7 +4,14 @@ import { asyncHandler } from '../../common/utils/async-handler.js';
 import { validate } from '../../common/middleware/validate.js';
 import { createUserBodySchema } from './dto/create-user.dto.js';
 import { listUsersQuerySchema } from './dto/list-users-query.dto.js';
-import { createUser, getCurrentUser, listDepartments, listUsers } from './users.controller.js';
+import {
+  createUser,
+  getCurrentUser,
+  importUsers,
+  listDepartments,
+  listUsers,
+} from './users.controller.js';
+import { uploadUserWorkbook } from './user-import.upload.js';
 import { getUser, updateUser } from './users.controller.js';
 import { userParamsSchema } from './dto/user-params.dto.js';
 import { updateUserBodySchema } from './dto/update-user.dto.js';
@@ -28,7 +35,9 @@ usersRouter.post(
   validate({ body: createUserBodySchema }),
   asyncHandler(createUser),
 );
+usersRouter.post('/import', authenticate, uploadUserWorkbook, asyncHandler(importUsers));
 usersRouter.get('/me', authenticate, asyncHandler(getCurrentUser));
+usersRouter.get('/departments', authenticate, asyncHandler(listDepartments));
 usersRouter.get('/create-options', authenticate, asyncHandler(listDepartments));
 usersRouter.get(
   '/access-assignment-options',

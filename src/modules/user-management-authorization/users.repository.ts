@@ -3,6 +3,9 @@ import type { CreateUserBody } from './dto/create-user.dto.js';
 import type { ListUsersQuery } from './dto/list-users-query.dto.js';
 import type { UpdateUserBody } from './dto/update-user.dto.js';
 import type { AssignUserAccessBody } from './dto/assign-user-access.dto.js';
+import { userAccessScopeCatalog } from './user-access-scope-catalog.js';
+
+const supplementalScopeCodes = userAccessScopeCatalog.map(({ code }) => code);
 
 const userDetailSelect = {
   id: true,
@@ -84,7 +87,10 @@ export const usersRepository = {
       policies,
     ] = await Promise.all([
       prisma.user_access_scopes.findMany({
-        where: { user_id: userId },
+        where: {
+          user_id: userId,
+          scope_code: { in: supplementalScopeCodes },
+        },
         select: {
           id: true,
           scope_code: true,
@@ -165,10 +171,18 @@ export const usersRepository = {
         }
 
         const beforeScopes = await transaction.user_access_scopes.findMany({
-          where: { user_id: userId },
+          where: {
+            user_id: userId,
+            scope_code: { in: supplementalScopeCodes },
+          },
           select: { scope_code: true, business_service_id: true, asset_id: true, expires_at: true },
         });
-        await transaction.user_access_scopes.deleteMany({ where: { user_id: userId } });
+        await transaction.user_access_scopes.deleteMany({
+          where: {
+            user_id: userId,
+            scope_code: { in: supplementalScopeCodes },
+          },
+        });
         if (input.scopes.length > 0) {
           await transaction.user_access_scopes.createMany({
             data: input.scopes.map((scope) => ({

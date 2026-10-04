@@ -13,11 +13,7 @@ export const createAssetBodySchema = z
       .transform((value) => value.toUpperCase()),
     name: z.string().trim().min(1).max(255),
     assetType: z.string().trim().min(1).max(100),
-    businessServiceId: optionalUuid,
     ownerUserId: optionalUuid,
-  criticality: z
-    .enum(['low', 'medium', 'high', 'critical']),
-    dataClassification: z.string().trim().min(1).max(50),
     description: z.string().trim().max(10_000).optional(),
     dependencies: z
       .array(

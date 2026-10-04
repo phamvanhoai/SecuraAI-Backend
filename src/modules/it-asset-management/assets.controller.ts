@@ -7,6 +7,7 @@ import { assignAssetOwnerBodySchema } from './dto/assign-asset-owner.dto.js';
 import { classifyAssetBodySchema } from './dto/classify-asset.dto.js';
 import { linkAssetContextBodySchema } from './dto/link-asset-context.dto.js';
 import { assetsService } from './assets.service.js';
+import { archiveAssetBodySchema } from './dto/archive-asset.dto.js';
 function authenticatedUserId(value: unknown): string {
   if (typeof value !== 'string') throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
   return value;
@@ -40,7 +41,13 @@ export const createAsset: RequestHandler = async (req, res) => {
   res.status(201).json({ success: true, data });
 };
 export const updateAsset: RequestHandler = async (req, res) => { const { assetId } = assetIdParamsSchema.parse(req.params); const data = await assetsService.update(authenticatedUserId(res.locals.authenticatedUserId), assetId, updateAssetBodySchema.parse(req.body)); res.status(200).json({ success: true, data }); };
-export const archiveAsset: RequestHandler = async (req, res) => { const { assetId } = assetIdParamsSchema.parse(req.params); await assetsService.archive(authenticatedUserId(res.locals.authenticatedUserId), assetId); res.status(204).send(); };
+export const archiveAsset: RequestHandler = async (req, res) => {
+  const { assetId } = assetIdParamsSchema.parse(req.params);
+  const requestId: unknown = req.id;
+  await assetsService.archive(authenticatedUserId(res.locals.authenticatedUserId), assetId,
+    archiveAssetBodySchema.parse(req.body), typeof requestId === 'string' ? requestId.slice(0, 255) : null);
+  res.status(204).send();
+};
 export const assignAssetOwner: RequestHandler = async (req, res) => { const { assetId } = assetIdParamsSchema.parse(req.params); const data = await assetsService.assignOwner(authenticatedUserId(res.locals.authenticatedUserId), assetId, assignAssetOwnerBodySchema.parse(req.body)); res.status(200).json({ success: true, data }); };
 export const classifyAsset: RequestHandler = async (req, res) => {
   const { assetId } = assetIdParamsSchema.parse(req.params);

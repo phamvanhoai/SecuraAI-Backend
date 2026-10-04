@@ -348,8 +348,10 @@ export const aiAlertsService = {
     return feedbackResponse(created);
   },
   async listFeedback(userId: string, alertId: string, query: ListAiAlertFeedbackQuery) {
-    await requireSecurityOfficer(userId);
-    const alert = await aiAlertsRepository.findForFeedback(alertId);
+    const [, alert] = await Promise.all([
+      requireSecurityOfficer(userId),
+      aiAlertsRepository.findForFeedback(alertId),
+    ]);
     if (!alert) throw new AppError(404, 'AI_ALERT_NOT_FOUND', 'AI alert not found');
     const [total, records] = await aiAlertsRepository.listFeedback(alertId, query);
     return {
@@ -394,12 +396,12 @@ export const aiAlertsService = {
       alertCode: `ALT-${result.alert.id.slice(0, 8).toUpperCase()}`,
       status: 'confirmed' as const,
       reviewedByUserId: userId,
-      reviewedAt: result.incident.confirmed_at,
+      reviewedAt: result.finding.identified_at,
       changed: result.changed,
-      incident: {
-        id: result.incident.id,
-        code: result.incident.incident_code,
-        status: result.incident.status,
+      finding: {
+        id: result.finding.id,
+        title: result.finding.title,
+        status: result.finding.status.toLowerCase(),
         created: result.changed,
       },
     };

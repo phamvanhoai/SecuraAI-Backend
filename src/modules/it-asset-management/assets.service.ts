@@ -1,9 +1,11 @@
 import { AppError } from '../../common/errors/app-error.js';
 import { assetsRepository } from './assets.repository.js';
+import { ASSET_CLASSIFICATION_METHOD, calculateAssetCriticality } from './asset-classification-method.js';
 import type { ListAssetsQuery } from './dto/list-assets.dto.js';
 import type { CreateAssetInput } from './dto/create-asset.dto.js';
 import type { UpdateAssetInput } from './dto/update-asset.dto.js';
 import type { AssignAssetOwnerInput } from './dto/assign-asset-owner.dto.js';
+import type { ArchiveAssetInput } from './dto/archive-asset.dto.js';
 import type { ClassifyAssetInput } from './dto/classify-asset.dto.js';
 import type { LinkAssetContextInput } from './dto/link-asset-context.dto.js';
 async function activeActor(userId: string) {
@@ -25,19 +27,24 @@ export const assetsService = {
       throw new AppError(409, 'ASSET_ARCHIVED', 'Archived assets cannot be linked');
     if (input.dependencyIds.includes(assetId))
       throw new AppError(422, 'INVALID_ASSET_DEPENDENCY', 'An asset cannot depend on itself');
-    const references = await assetsRepository.validateCreateReferences({
-      ...(input.businessServiceId ? { businessServiceId: input.businessServiceId } : {}),
-      dependencyIds: input.dependencyIds,
-      eventSourceIds: input.eventSourceIds,
-    });
-    if (!references.serviceValid)
-      throw new AppError(422, 'INVALID_BUSINESS_SERVICE', 'Selected business service is unavailable');
-    if (!references.dependenciesValid)
-      throw new AppError(422, 'INVALID_ASSET_DEPENDENCY', 'One or more dependencies are unavailable');
-    if (!references.eventSourcesValid)
-      throw new AppError(422, 'INVALID_EVENT_SOURCE', 'One or more event sources are unavailable');
-    const updated = await assetsRepository.linkContext(assetId, input);
-    return { assetId: updated.id, businessServiceId: input.businessServiceId, dependencyIds: input.dependencyIds, eventSourceIds: input.eventSourceIds, linkedAt: updated.updated_at };
+    let result;
+    try {
+      result = await assetsRepository.linkContext(assetId, input, userId);
+    } catch (error: unknown) {
+      if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2028')
+        throw new AppError(503, 'ASSET_CONTEXT_TRANSACTION_UNAVAILABLE', 'Saving asset links could not complete in time. Please try again.');
+      if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2034')
+        throw new AppError(409, 'ASSET_CONTEXT_CONFLICT', 'Asset context changed concurrently. Reload and try again.');
+      throw error;
+    }
+    if (result.kind === 'forbidden') throw new AppError(403, 'FORBIDDEN', 'Active Security Officer required');
+    if (result.kind === 'not_found') throw new AppError(404, 'ASSET_NOT_FOUND', 'Asset not found');
+    if (result.kind === 'archived') throw new AppError(409, 'ASSET_ARCHIVED', 'Archived assets cannot be linked');
+    if (result.kind === 'invalid_service') throw new AppError(422, 'INVALID_BUSINESS_SERVICE', 'New business service must be active');
+    if (result.kind === 'invalid_dependency') throw new AppError(422, 'INVALID_ASSET_DEPENDENCY', 'New dependencies must be active');
+    if (result.kind === 'invalid_source') throw new AppError(422, 'INVALID_EVENT_SOURCE', 'New event sources must be active');
+    if (result.kind === 'cycle') throw new AppError(422, 'ASSET_DEPENDENCY_CYCLE', 'These dependencies create a cycle back to this asset. Remove the circular dependency and try again.');
+    return { assetId: result.asset.id, businessServiceId: input.businessServiceId, dependencyIds: input.dependencyIds, eventSourceIds: input.eventSourceIds, linkedAt: result.asset.updated_at };
   },
   async classify(userId: string, assetId: string, input: ClassifyAssetInput) {
     const actor = await activeActor(userId);
@@ -47,27 +54,52 @@ export const assetsService = {
     if (!item) throw new AppError(404, 'ASSET_NOT_FOUND', 'Asset not found');
     if (item.status === 'ARCHIVED')
       throw new AppError(409, 'ASSET_ARCHIVED', 'Archived assets cannot be classified');
-    const rawScore =
-      input.confidentialityImpact * 0.25 +
-      input.integrityImpact * 0.25 +
-      input.availabilityImpact * 0.3 +
-      input.businessImpact * 0.2;
-    const score = Math.round((rawScore + Number.EPSILON) * 100) / 100;
-    const criticality = score >= 4.5 ? 'critical' : score >= 3.5 ? 'high' : score >= 2.5 ? 'medium' : 'low';
-    const updated = await assetsRepository.classify(assetId, criticality, input);
+    const { score, criticality } = calculateAssetCriticality(input);
+    let result;
+    try {
+      result = await assetsRepository.classify(assetId, criticality, input, userId, ASSET_CLASSIFICATION_METHOD);
+    } catch (error: unknown) {
+      if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2034')
+        throw new AppError(409, 'ASSET_CLASSIFICATION_CONFLICT', 'Asset changed concurrently. Reload and try again.');
+      if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2028')
+        throw new AppError(503, 'ASSET_CLASSIFICATION_UNAVAILABLE', 'Classification could not complete in time. Please try again.');
+      throw error;
+    }
+    if (result.kind === 'forbidden') throw new AppError(403, 'FORBIDDEN', 'Active Security Officer required');
+    if (result.kind === 'not_found') throw new AppError(404, 'ASSET_NOT_FOUND', 'Asset not found');
+    if (result.kind === 'archived') throw new AppError(409, 'ASSET_ARCHIVED', 'Archived assets cannot be classified');
+    const updated = result.asset;
     return {
       assetId,
-      previousCriticality: item.criticality,
+      previousCriticality: result.previous.criticality?.toLowerCase() ?? null,
       criticality: updated.criticality,
-      previousDataClassification: item.data_classification,
+      previousDataClassification: result.previous.data_classification?.toLowerCase() ?? null,
       dataClassification: updated.data_classification,
       score,
-      changed: item.criticality !== updated.criticality || item.data_classification !== updated.data_classification,
-      classifiedAt: updated.updated_at,
+      changed: result.previous.criticality?.toLowerCase() !== updated.criticality || result.previous.data_classification?.toLowerCase() !== updated.data_classification,
+      methodVersion: ASSET_CLASSIFICATION_METHOD,
+      classifiedAt: updated.classified_at,
     };
   },
   async assignOwner(userId: string, assetId: string, input: AssignAssetOwnerInput) { const actor = await activeActor(userId); if (actor.role !== 'SECURITY_OFFICER') throw new AppError(403, 'FORBIDDEN', 'Security Officer role required'); const item = await assetsRepository.findById(assetId); if (!item) throw new AppError(404, 'ASSET_NOT_FOUND', 'Asset not found'); if (item.status === 'ARCHIVED') throw new AppError(409, 'ASSET_ARCHIVED', 'Archived assets cannot be reassigned'); if (item.owner_user_id === input.ownerUserId) return { assetId, previousOwner: person(item.users_assets_owner_user_idTousers), owner: person(item.users_assets_owner_user_idTousers), changed: false, assignedAt: null }; if (input.ownerUserId) { const references = await assetsRepository.validateCreateReferences({ ownerUserId: input.ownerUserId, dependencyIds: [], eventSourceIds: [] }); if (!references.ownerValid) throw new AppError(422, 'INVALID_ASSET_OWNER', 'Selected asset owner is unavailable'); } const updated = await assetsRepository.assignOwner(assetId, input.ownerUserId); return { assetId, previousOwner: person(item.users_assets_owner_user_idTousers), owner: person(updated.users_assets_owner_user_idTousers), changed: true, assignedAt: updated.updated_at }; },
-  async archive(userId: string, assetId: string) { const actor = await activeActor(userId); if (actor.role !== 'SECURITY_OFFICER') throw new AppError(403, 'FORBIDDEN', 'Security Officer role required'); const item = await assetsRepository.findById(assetId); if (!item) throw new AppError(404, 'ASSET_NOT_FOUND', 'Asset not found'); if (item.status === 'ARCHIVED') throw new AppError(409, 'ASSET_ALREADY_ARCHIVED', 'Asset is already archived'); await assetsRepository.archive(assetId); },
+  async archive(userId: string, assetId: string, input: ArchiveAssetInput, correlationId: string | null = null) {
+    const actor = await activeActor(userId);
+    if (actor.role !== 'SECURITY_OFFICER') throw new AppError(403, 'FORBIDDEN', 'Security Officer role required');
+    let result;
+    try { result = await assetsRepository.archive(assetId, userId, input.reason, correlationId); }
+    catch (error: unknown) {
+      if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2034') throw new AppError(409, 'ASSET_ARCHIVE_CONFLICT', 'Asset or dependencies changed concurrently. Reload and try again.');
+      if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2028') throw new AppError(503, 'ASSET_ARCHIVE_UNAVAILABLE', 'Archiving could not complete in time. Please try again.');
+      throw error;
+    }
+    if (result.kind === 'forbidden') throw new AppError(403, 'FORBIDDEN', 'Active Security Officer required');
+    if (result.kind === 'not_found') throw new AppError(404, 'ASSET_NOT_FOUND', 'Asset not found');
+    if (result.kind === 'archived') throw new AppError(409, 'ASSET_ALREADY_ARCHIVED', 'Asset is already archived. Reload the list.');
+    if (result.kind === 'dependencies') {
+      const names = result.dependencies.map((link) => `${link.assets_asset_dependencies_asset_idToassets.asset_code} — ${link.assets_asset_dependencies_asset_idToassets.name}`).join('; ');
+      throw new AppError(409, 'ASSET_HAS_ACTIVE_DEPENDENCIES', `Cannot archive: ${result.count} active asset(s) depend on this asset: ${names}${result.count > 20 ? '; additional assets not shown' : ''}. Resolve or replace their dependencies first.`);
+    }
+  },
   async update(userId: string, assetId: string, input: UpdateAssetInput) {
     const actor = await activeActor(userId);
     if (actor.role !== 'SECURITY_OFFICER') throw new AppError(403, 'FORBIDDEN', 'Security Officer role required');
@@ -100,7 +132,6 @@ export const assetsService = {
       throw new AppError(403, 'FORBIDDEN', 'Security Officer role required');
     const references = await assetsRepository.validateCreateReferences({
       ...(input.ownerUserId ? { ownerUserId: input.ownerUserId } : {}),
-      ...(input.businessServiceId ? { businessServiceId: input.businessServiceId } : {}),
       dependencyIds: input.dependencies.map((item) => item.assetId),
       eventSourceIds: input.eventSourceIds,
     });
@@ -127,8 +158,8 @@ export const assetsService = {
         assetCode: item.asset_code,
         name: item.name,
         assetType: item.asset_type,
-        criticality: item.criticality.toLowerCase(),
-        dataClassification: item.data_classification.toLowerCase(),
+        criticality: item.criticality?.toLowerCase() ?? null,
+        dataClassification: item.data_classification?.toLowerCase() ?? null,
         description: item.description,
         status: item.status.toLowerCase(),
         owner: person(item.users_assets_owner_user_idTousers),
@@ -159,8 +190,8 @@ export const assetsService = {
         assetCode: item.asset_code,
         name: item.name,
         assetType: item.asset_type,
-        criticality: item.criticality.toLowerCase(),
-        dataClassification: item.data_classification.toLowerCase(),
+        criticality: item.criticality?.toLowerCase() ?? null,
+        dataClassification: item.data_classification?.toLowerCase() ?? null,
         description: item.description,
         status: item.status.toLowerCase(),
         owner: person(item.users_assets_owner_user_idTousers),
@@ -198,6 +229,20 @@ export const assetsService = {
       description: item.description,
       status: item.status.toLowerCase(),
       archivedAt: item.archived_at,
+      archivedBy: person(item.archive_actor),
+      archiveReason: item.archive_reason,
+      classification: item.classified_at ? {
+        confidentialityImpact: item.classification_confidentiality_impact,
+        integrityImpact: item.classification_integrity_impact,
+        availabilityImpact: item.classification_availability_impact,
+        businessImpact: item.classification_business_impact,
+        rationale: item.classification_rationale,
+        dataClassificationBasis: item.data_classification_basis,
+        dataClassificationMethodVersion: item.data_classification_method_version,
+        methodVersion: item.classification_method_version,
+        assessedAt: item.classified_at,
+        assessedBy: person(item.classification_assessor),
+      } : null,
       owner: person(item.users_assets_owner_user_idTousers),
       createdBy: person(item.users_assets_created_byTousers),
       businessService: item.business_services
