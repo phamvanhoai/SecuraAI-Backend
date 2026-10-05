@@ -8,6 +8,8 @@ vi.mock('../src/modules/event-ingestion/normalized-events.service.js', () => ({
     listEvents: vi.fn(),
     getEventDetail: vi.fn(),
     getMetrics: vi.fn(),
+    updateEventMapping: vi.fn(),
+    getMappingOptions: vi.fn(),
   },
 }));
 
@@ -199,6 +201,8 @@ describe('Normalized Security Events HTTP Endpoints', () => {
         mappingStatus: 'MAPPED' as const,
         mappedUser: null,
         mappedAsset: null,
+        activeMapping: null,
+        mappingHistory: [],
         anomalyCount: 0,
         createdAt: new Date('2026-03-30T10:00:01Z'),
         normalizedPayload: {
@@ -223,6 +227,99 @@ describe('Normalized Security Events HTTP Endpoints', () => {
       const response = await request(app)
         .get('/api/v1/events/invalid-uuid')
         .set('Authorization', `Bearer ${token}`);
+
+      expect(response.status).toBe(422);
+    });
+  });
+
+  describe('GET /api/v1/events/mapping-options', () => {
+    it('requires authentication', async () => {
+      const response = await request(app).get('/api/v1/events/mapping-options');
+      expect(response.status).toBe(401);
+    });
+
+    it('returns 200 with available users, assets, and accounts', async () => {
+      vi.mocked(normalizedEventsService.getMappingOptions).mockResolvedValue({
+        users: [{ id: 'user-001', email: 'user@company.com', fullName: 'User 1' }],
+        assets: [
+          {
+            id: 'asset-001',
+            name: 'Core Server',
+            assetCode: 'AST-01',
+            assetType: 'SERVER',
+            criticality: 'HIGH',
+          },
+        ],
+        monitoredAccounts: [],
+      });
+
+      const response = await request(app)
+        .get('/api/v1/events/mapping-options')
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(response.body.data.users).toHaveLength(1);
+      expect(response.body.data.assets).toHaveLength(1);
+    });
+  });
+
+  describe('PUT /api/v1/events/:id/mappings', () => {
+    it('requires authentication', async () => {
+      const response = await request(app).put(`/api/v1/events/${eventId}/mappings`);
+      expect(response.status).toBe(401);
+    });
+
+    it('returns 200 when updating mapping successfully', async () => {
+      const mockResult = {
+        id: 'map-002',
+        eventId,
+        userId: '550e8400-e29b-41d4-a716-446655440010',
+        monitoredAccountId: null,
+        assetId: '550e8400-e29b-41d4-a716-446655440020',
+        mappingMethod: 'MANUAL' as const,
+        confidence: 1.0,
+        reason: 'Correction verified by analyst',
+        mappedBy: { id: userId, email: 'admin@company.com', fullName: 'Admin' },
+        mappedAt: new Date(),
+        isActive: true,
+        supersedesMappingId: 'map-001',
+        mappedUser: { id: '550e8400-e29b-41d4-a716-446655440010', email: 'analyst@company.com', fullName: 'Analyst' },
+        mappedAsset: { id: '550e8400-e29b-41d4-a716-446655440020', name: 'Database', assetCode: 'AST-DB', assetType: 'DB', criticality: 'HIGH' },
+        monitoredAccount: null,
+        createdAt: new Date(),
+      };
+
+      vi.mocked(normalizedEventsService.updateEventMapping).mockResolvedValue(mockResult);
+
+      const response = await request(app)
+        .put(`/api/v1/events/${eventId}/mappings`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          userId: '550e8400-e29b-41d4-a716-446655440010',
+          assetId: '550e8400-e29b-41d4-a716-446655440020',
+          reason: 'Correction verified by analyst',
+        });
+
+      expect(response.status).toBe(200);
+      expect(response.body.success).toBe(true);
+      expect(response.body.data.mappingMethod).toBe('MANUAL');
+      expect(normalizedEventsService.updateEventMapping).toHaveBeenCalledWith(
+        userId,
+        eventId,
+        expect.objectContaining({
+          userId: '550e8400-e29b-41d4-a716-446655440010',
+          assetId: '550e8400-e29b-41d4-a716-446655440020',
+          reason: 'Correction verified by analyst',
+        }),
+      );
+    });
+
+    it('rejects invalid payload without reason with 422', async () => {
+      const response = await request(app)
+        .put(`/api/v1/events/${eventId}/mappings`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({});
 
       expect(response.status).toBe(422);
     });
