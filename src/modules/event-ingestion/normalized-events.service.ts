@@ -30,7 +30,7 @@ type RawMappingRecord = {
     name: string;
     asset_code: string;
     asset_type: string;
-    criticality: string;
+    criticality: string | null;
   } | null;
   users_event_entity_mappings_user_idTousers: {
     id: string;
