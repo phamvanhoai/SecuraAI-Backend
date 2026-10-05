@@ -24,12 +24,14 @@ describe('confirm AI alert service', () => {
     });
   });
 
-  it('returns the linked incident and changed state', async () => {
+  it('returns the linked finding and changed state', async () => {
     vi.mocked(aiAlertsRepository.confirmAsIncident).mockResolvedValue({
+      outcome: 'confirmed',
       alert: {
         id: alertId,
         severity: 'HIGH',
-        status: 'NEW',
+        status: 'IN_TRIAGE',
+        assigned_to: userId,
         security_findings: null,
         anomaly_detections: {
           model_version_id: userId,
@@ -37,11 +39,11 @@ describe('confirm AI alert service', () => {
           normalized_events: { event_type: 'LOGIN_FAILURE' },
         },
       },
-      incident: {
+      finding: {
         id: userId,
-        incident_code: 'INC-C82662FF8CB74E97',
+        title: 'Login failure',
         status: 'OPEN',
-        confirmed_at: new Date('2026-09-25T00:05:00Z'),
+        identified_at: new Date('2026-09-25T00:05:00Z'),
       },
       changed: true,
     });
@@ -49,13 +51,31 @@ describe('confirm AI alert service', () => {
       comment: 'Verified attack',
     });
     expect(result).toMatchObject({ status: 'confirmed', changed: true });
-    expect(result.incident).toMatchObject({ code: 'INC-C82662FF8CB74E97', created: true });
+    expect(result.finding).toMatchObject({ title: 'Login failure', created: true });
   });
 
   it('rejects a missing alert', async () => {
-    vi.mocked(aiAlertsRepository.confirmAsIncident).mockResolvedValue(null);
+    vi.mocked(aiAlertsRepository.confirmAsIncident).mockResolvedValue({ outcome: 'not_found' });
     await expect(aiAlertsService.confirmAsIncident(userId, alertId, {})).rejects.toMatchObject({
       statusCode: 404,
+    });
+  });
+
+  it('requires analyst triage before confirmation', async () => {
+    vi.mocked(aiAlertsRepository.confirmAsIncident).mockResolvedValue({
+      outcome: 'invalid_status',
+    });
+    await expect(aiAlertsService.confirmAsIncident(userId, alertId, {})).rejects.toMatchObject({
+      statusCode: 409,
+      code: 'AI_ALERT_TRIAGE_REQUIRED',
+    });
+  });
+
+  it('allows only the assigned analyst to confirm the alert', async () => {
+    vi.mocked(aiAlertsRepository.confirmAsIncident).mockResolvedValue({ outcome: 'not_owner' });
+    await expect(aiAlertsService.confirmAsIncident(userId, alertId, {})).rejects.toMatchObject({
+      statusCode: 409,
+      code: 'AI_ALERT_TRIAGE_OWNERSHIP_CONFLICT',
     });
   });
 });

@@ -19,12 +19,12 @@ Current stack:
 Current database baseline:
 
 - Online database: Supabase-managed PostgreSQL 17 in the Singapore region.
-- The V2 baseline contains 56 tables, 36 enum types and 120 active foreign-key constraints defined by `project-docs/new/database.sql`.
+- The original V2 baseline contains 56 tables. The current evolved schema contains 60 tables, 36 enum types and 129 active foreign-key constraints defined by `project-docs/new/database.sql` plus applied migrations.
 - `prisma/migrations/00000000000000_baseline_v2/migration.sql` is the deployable V2 baseline.
 - Legacy migrations are retained under `prisma/migrations-legacy/` for reference only.
 - `npm run db:verify` compares the live `public` schema with the approved database design.
 
-Health routes, V2-backed authentication login, refresh and logout, protected `GET /users/me`, Security Officer policy draft listing and submission, Admin viewing of submitted policy drafts, anomaly detection runs, the real-time AI alert feed and XAI explanation, AI alert reliability feedback, confirmation of alerts as incidents, false-positive alert marking, and deployed-model threshold configuration are currently implemented. Another 131 historical V1 method/URL contracts are registered in `src/routes/legacy-v1-route-contracts.ts` and return HTTP 501 until ported. Their V3 handlers and tests are in `reference/legacy-v3/` as non-running porting reference. Training is removed from both active code and the V3 porting reference; only immutable historical database snapshots may still mention it. Do not describe any pending business endpoint as implemented until its full route-to-repository path and tests exist.
+Health routes, V2-backed authentication login, refresh, logout, password reset and password change, protected `GET /users/me`, Security Officer policy draft listing and submission, Admin viewing of submitted policy drafts, anomaly detection runs, the real-time AI alert feed and XAI explanation, AI alert reliability feedback, confirmation of alerts as incidents, false-positive alert marking, and deployed-model threshold configuration are currently implemented. Another 123 historical V1 method/URL contracts are registered in `src/routes/legacy-v1-route-contracts.ts` and return HTTP 501 until ported. Their V3 handlers and tests are in `reference/legacy-v3/` as non-running porting reference. Training is removed from both active code and the V3 porting reference; only immutable historical database snapshots may still mention it. Do not describe any pending business endpoint as implemented until its full route-to-repository path and tests exist.
 
 `GET /users/me` returns role-derived frontend capability names from `src/modules/user-management-authorization/role-capabilities.ts`, based on the WBS actor column. These are not stored grants and must never be used as a substitute for server-side role, scope, ownership and status checks on future handlers.
 
@@ -138,6 +138,30 @@ Most domain folders contain only explicit unimplemented markers so team members 
 
 Do not weaken existing authentication, CORS, Helmet, rate limiting, request-size limits, token verification or secret validation for convenience.
 
+### Fixed roles and contextual business actors
+
+The only fixed database roles are `ADMIN`, `SECURITY_OFFICER`, `EXECUTIVE` and `EMPLOYEE`. Project Tracking actor names such as **Risk Owner**, **Control Owner**, **Asset Owner** and **Authorized Approver** describe responsibility in the context of a resource or workflow; they are not additional values of `user_role`.
+
+- A Risk Owner is normally an active Employee referenced by `risks.owner_user_id`.
+- A Control Owner is normally an active Employee referenced by `security_controls.owner_user_id`.
+- An Asset Owner is normally an active Employee referenced by `assets.owner_user_id`.
+- An Authorized Approver is the active user made eligible by the specific workflow contract. Eligibility may come from a workflow step, an explicit assignment, an ownership relation, or an allowed fixed role. There is no global `AUTHORIZED_APPROVER` role or ownership table in the current baseline.
+
+Do not add `RISK_OWNER`, `CONTROL_OWNER`, `ASSET_OWNER` or `AUTHORIZED_APPROVER` to the role enum, and do not create a generic actor-assignment table merely because an actor column in Project Tracking uses one of these labels. A single Employee may hold several contextual responsibilities for different records. If an assigned owner must be restricted to Employee accounts, validate that rule when assigning ownership; never infer it from a display label alone.
+
+When implementing a use case with a contextual actor, use this sequence:
+
+1. Identify the fixed roles allowed to enter the module from Project Tracking.
+2. Identify the exact resource/workflow relation that makes the current user the actor. Use the existing foreign key named by the schema; do not invent a parallel relation.
+3. Fetch the authenticated user and target record in the service/repository path, including status and the relevant owner/assignee/approver fields.
+4. Require an active account, an allowed fixed role and the contextual relation. Return `403` when the account is valid but lacks responsibility for that record; use `404` only according to the endpoint's disclosure policy.
+5. Re-check status and ownership inside conditional writes or transactions so reassignment and concurrent decisions cannot bypass authorization.
+6. Record the acting user, decision time, reason and resulting status where the workflow schema supports them. Security-sensitive workflows should also append an audit record when that use case's audit integration exists.
+7. Expose only the minimum capability needed for navigation. Capabilities returned by `/users/me` may be derived from the existence of owned/assigned work, but they never replace resource-level backend checks.
+8. Add tests for the owner/assignee, another Employee, an allowed elevated role, an inactive account, reassignment/concurrency and terminal workflow states.
+
+Example for a Risk Owner review: the account remains `EMPLOYEE`; `/users/me` may expose risk navigation when the user owns at least one risk, while the review service must still require `request.risks.owner_user_id === userId` for the specific request. Reassignment immediately changes who may act, regardless of a previously issued frontend capability.
+
 ## 8. Database rules
 
 - Put normal queries in a module repository using Prisma.
@@ -152,7 +176,7 @@ Do not weaken existing authentication, CORS, Helmet, rate limiting, request-size
 - Do not run destructive resets, drops or production migrations without explicit user authorization.
 - The Supabase `public` schema must match the V2 baseline in `project-docs/new/database.sql` plus Prisma's `_prisma_migrations` table. Do not modify Supabase-managed schemas such as `auth`, `storage`, `realtime`, `extensions` or `vault`.
 - Prisma does not fully represent PostgreSQL comments, deferred foreign keys or all check-constraint metadata. Preserve these in SQL migrations; do not assume `prisma db pull` captures every database feature.
-- Run `npm run db:verify` after schema changes. It must report 56 tables, 120 foreign keys, 160 checks, and empty `missing`/`unexpected` lists.
+- Run `npm run db:verify` after schema changes. It must report 60 tables, 129 foreign keys, 168 checks, and empty `missing`/`unexpected` lists.
 
 Repository example:
 
