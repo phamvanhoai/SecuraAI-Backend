@@ -16,7 +16,7 @@ import {
   riskRegisterRouter,
   riskReassessmentReviewRouter,
 } from '../modules/risk-assessment/index.js';
-import { assetsRouter } from '../modules/it-asset-management/index.js';
+import { assetsRouter, businessServicesRouter } from '../modules/it-asset-management/index.js';
 import {
   incidentAssetsRouter,
   incidentControlsRouter,
@@ -38,6 +38,7 @@ apiRouter.use('/ai-alerts', aiAlertsRouter);
 apiRouter.use('/risks', riskRegisterRouter);
 apiRouter.use('/risks', riskReassessmentReviewRouter);
 apiRouter.use('/assets', assetsRouter);
+apiRouter.use('/business-services', businessServicesRouter);
 apiRouter.use('/incidents', incidentAssetsRouter);
 apiRouter.use('/incidents', incidentControlsRouter);
 apiRouter.use('/incidents', incidentRisksRouter);
