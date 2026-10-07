@@ -45,7 +45,6 @@ export const legacyV1RouteContracts = [
   { method: 'delete', path: '/users/{userId}', tag: 'Users' },
   { method: 'post', path: '/users/{userId}/deactivate', tag: 'Users' },
   { method: 'post', path: '/users/{userId}/roles', tag: 'Users' },
-  { method: 'get', path: '/users/assignable-roles', tag: 'Users' },
   { method: 'get', path: '/compliance/policy-control-mappings', tag: 'Policies' },
   { method: 'get', path: '/compliance/frameworks', tag: 'Policies' },
   { method: 'get', path: '/compliance/frameworks/{frameworkId}/controls', tag: 'Policies' },
