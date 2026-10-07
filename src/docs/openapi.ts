@@ -1,5 +1,6 @@
 import { env } from '../config/env.js';
 import { pendingV2Paths } from './pending-v2.openapi.js';
+import { businessServicesPaths } from './business-services.openapi.js';
 
 export const openApiSpec = {
   openapi: '3.0.3',
@@ -17,6 +18,7 @@ export const openApiSpec = {
   },
   paths: {
     ...pendingV2Paths,
+    ...businessServicesPaths,
     '/access-control/permissions': {
       get: {
         tags: ['Access Control'],
