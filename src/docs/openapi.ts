@@ -2,6 +2,7 @@ import { env } from '../config/env.js';
 import { controlCatalogPaths } from './control-catalog.openapi.js';
 import { controlEvidencePaths } from './control-evidence.openapi.js';
 import { pendingV2Paths } from './pending-v2.openapi.js';
+import { businessServicesPaths } from './business-services.openapi.js';
 
 export const openApiSpec = {
   openapi: '3.0.3',
@@ -21,6 +22,7 @@ export const openApiSpec = {
     ...pendingV2Paths,
     ...controlCatalogPaths,
     ...controlEvidencePaths,
+    ...businessServicesPaths,
     '/access-control/permissions': {
       get: {
         tags: ['Access Control'],

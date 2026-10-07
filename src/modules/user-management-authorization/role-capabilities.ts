@@ -26,6 +26,10 @@ export const capabilitiesByRole = {
     'system-settings.read',
   ],
   SECURITY_OFFICER: [
+    'business-services.read',
+    'business-services.create',
+    'business-services.update',
+    'business-services.deactivate',
     'assets.read',
     'assets.create',
     'assets.update',
