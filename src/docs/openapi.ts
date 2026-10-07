@@ -1,4 +1,6 @@
 import { env } from '../config/env.js';
+import { controlCatalogPaths } from './control-catalog.openapi.js';
+import { controlEvidencePaths } from './control-evidence.openapi.js';
 import { pendingV2Paths } from './pending-v2.openapi.js';
 
 export const openApiSpec = {
@@ -17,6 +19,8 @@ export const openApiSpec = {
   },
   paths: {
     ...pendingV2Paths,
+    ...controlCatalogPaths,
+    ...controlEvidencePaths,
     '/access-control/permissions': {
       get: {
         tags: ['Access Control'],

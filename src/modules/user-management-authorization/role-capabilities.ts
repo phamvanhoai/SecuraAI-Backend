@@ -55,6 +55,8 @@ export const capabilitiesByRole = {
     'incidents.record-control-weakness',
     'incidents.request-risk-reassessment',
     'compliance.assess-controls',
+    'controls.create',
+    'controls.update',
     'login-history.read',
     'log-sources.read',
     'reports.read',
