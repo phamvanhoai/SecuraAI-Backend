@@ -322,131 +322,170 @@ export const normalizedEventsRepository = {
     confidence: number;
     mappedByUserId: string;
   }) {
-    return prisma.$transaction(async (tx) => {
-      const event = await tx.normalized_events.findUnique({
+    const [event, user, asset] = await Promise.all([
+      prisma.normalized_events.findUnique({
         where: { id: params.eventId },
         select: { id: true },
-      });
+      }),
+      params.userId
+        ? prisma.users.findUnique({
+            where: { id: params.userId },
+            select: { id: true },
+          })
+        : true,
+      params.assetId
+        ? prisma.assets.findUnique({
+            where: { id: params.assetId },
+            select: { id: true },
+          })
+        : true,
+    ]);
 
-      if (!event) {
-        return null;
-      }
+    if (!event) {
+      return null;
+    }
+    if (!user) {
+      throw new Error('TARGET_USER_NOT_FOUND');
+    }
+    if (!asset) {
+      throw new Error('TARGET_ASSET_NOT_FOUND');
+    }
 
-      if (params.userId) {
-        const user = await tx.users.findUnique({
-          where: { id: params.userId },
-          select: { id: true },
-        });
-        if (!user) {
-          throw new Error('TARGET_USER_NOT_FOUND');
-        }
-      }
-
-      if (params.assetId) {
-        const asset = await tx.assets.findUnique({
-          where: { id: params.assetId },
-          select: { id: true },
-        });
-        if (!asset) {
-          throw new Error('TARGET_ASSET_NOT_FOUND');
-        }
-      }
-
-      // Find current active mapping
-      const currentActive = await tx.event_entity_mappings.findFirst({
-        where: { event_id: params.eventId, is_active: true },
-        select: { id: true },
-      });
-
-      // Deactivate current active mapping(s)
-      if (currentActive) {
-        await tx.event_entity_mappings.updateMany({
+    return prisma.$transaction(
+      async (tx) => {
+        // Find current active mapping
+        const currentActive = await tx.event_entity_mappings.findFirst({
           where: { event_id: params.eventId, is_active: true },
-          data: { is_active: false },
+          select: { id: true },
         });
-      }
 
-      // Compute mapping status
-      let mappingStatus: 'MAPPED' | 'PARTIALLY_MAPPED' | 'UNMAPPED' = 'UNMAPPED';
-      if (params.userId && params.assetId) {
-        mappingStatus = 'MAPPED';
-      } else if (params.userId || params.assetId || params.monitoredAccountId) {
-        mappingStatus = 'PARTIALLY_MAPPED';
-      } else {
-        mappingStatus = 'UNMAPPED';
-      }
+        // Deactivate current active mapping(s)
+        if (currentActive) {
+          await tx.event_entity_mappings.updateMany({
+            where: { event_id: params.eventId, is_active: true },
+            data: { is_active: false },
+          });
+        }
 
-      // Create new mapping record
-      const newMapping = await tx.event_entity_mappings.create({
-        data: {
-          event_id: params.eventId,
-          user_id: params.userId,
-          asset_id: params.assetId,
-          monitored_account_id: params.monitoredAccountId,
-          mapping_method: 'MANUAL',
-          confidence: new Prisma.Decimal(params.confidence),
-          reason: params.reason,
-          mapped_by: params.mappedByUserId,
-          mapped_at: new Date(),
-          is_active: true,
-          supersedes_mapping_id: currentActive?.id ?? null,
-        },
-        select: {
-          id: true,
-          event_id: true,
-          user_id: true,
-          monitored_account_id: true,
-          asset_id: true,
-          mapping_method: true,
-          confidence: true,
-          reason: true,
-          mapped_by: true,
-          mapped_at: true,
-          is_active: true,
-          supersedes_mapping_id: true,
-          created_at: true,
-          assets: {
+        // Compute mapping status
+        let mappingStatus: 'MAPPED' | 'PARTIALLY_MAPPED' | 'UNMAPPED' = 'UNMAPPED';
+        if (params.userId && params.assetId) {
+          mappingStatus = 'MAPPED';
+        } else if (params.userId || params.assetId || params.monitoredAccountId) {
+          mappingStatus = 'PARTIALLY_MAPPED';
+        } else {
+          mappingStatus = 'UNMAPPED';
+        }
+
+        // Prepare individual entity entries to satisfy chk_event_mapping_single_entity
+        const mappingEntries: Array<{
+          userId: string | null;
+          assetId: string | null;
+          monitoredAccountId: string | null;
+        }> = [];
+
+        if (params.userId) {
+          mappingEntries.push({
+            userId: params.userId,
+            assetId: null,
+            monitoredAccountId: null,
+          });
+        }
+        if (params.assetId) {
+          mappingEntries.push({
+            userId: null,
+            assetId: params.assetId,
+            monitoredAccountId: null,
+          });
+        }
+        if (params.monitoredAccountId) {
+          mappingEntries.push({
+            userId: null,
+            assetId: null,
+            monitoredAccountId: params.monitoredAccountId,
+          });
+        }
+
+        let primaryMapping = null;
+
+        for (const entry of mappingEntries) {
+          const created = await tx.event_entity_mappings.create({
+            data: {
+              event_id: params.eventId,
+              user_id: entry.userId,
+              asset_id: entry.assetId,
+              monitored_account_id: entry.monitoredAccountId,
+              mapping_method: 'MANUAL',
+              confidence: new Prisma.Decimal(params.confidence),
+              reason: params.reason,
+              mapped_by: params.mappedByUserId,
+              mapped_at: new Date(),
+              is_active: true,
+              supersedes_mapping_id: currentActive?.id ?? null,
+            },
             select: {
               id: true,
-              name: true,
-              asset_code: true,
-              asset_type: true,
-              criticality: true,
+              event_id: true,
+              user_id: true,
+              monitored_account_id: true,
+              asset_id: true,
+              mapping_method: true,
+              confidence: true,
+              reason: true,
+              mapped_by: true,
+              mapped_at: true,
+              is_active: true,
+              supersedes_mapping_id: true,
+              created_at: true,
+              assets: {
+                select: {
+                  id: true,
+                  name: true,
+                  asset_code: true,
+                  asset_type: true,
+                  criticality: true,
+                },
+              },
+              users_event_entity_mappings_user_idTousers: {
+                select: {
+                  id: true,
+                  email: true,
+                  full_name: true,
+                },
+              },
+              users_event_entity_mappings_mapped_byTousers: {
+                select: {
+                  id: true,
+                  email: true,
+                  full_name: true,
+                },
+              },
+              monitored_accounts: {
+                select: {
+                  id: true,
+                  account_identifier: true,
+                  source_system: true,
+                  display_name: true,
+                },
+              },
             },
-          },
-          users_event_entity_mappings_user_idTousers: {
-            select: {
-              id: true,
-              email: true,
-              full_name: true,
-            },
-          },
-          users_event_entity_mappings_mapped_byTousers: {
-            select: {
-              id: true,
-              email: true,
-              full_name: true,
-            },
-          },
-          monitored_accounts: {
-            select: {
-              id: true,
-              account_identifier: true,
-              source_system: true,
-              display_name: true,
-            },
-          },
-        },
-      });
+          });
 
-      // Update mapping status on normalized event
-      await tx.normalized_events.update({
-        where: { id: params.eventId },
-        data: { mapping_status: mappingStatus },
-      });
+          if (!primaryMapping) {
+            primaryMapping = created;
+          }
+        }
 
-      return newMapping;
-    });
+        // Update mapping status on normalized event
+        await tx.normalized_events.update({
+          where: { id: params.eventId },
+          data: { mapping_status: mappingStatus },
+        });
+
+        return primaryMapping;
+      },
+      { maxWait: 10000, timeout: 20000 },
+    );
   },
 
   async getMappingOptions() {
