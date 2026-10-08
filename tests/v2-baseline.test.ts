@@ -11,6 +11,10 @@ const organizationMigration = readFileSync(
   'prisma/migrations/20260929210000_add_user_organization_fields/migration.sql',
   'utf8',
 );
+const notificationMigration = readFileSync(
+  'prisma/migrations/20261008130000_send_in_system_notifications/migration.sql',
+  'utf8',
+);
 
 describe('V2 database baseline', () => {
   it('keeps every approved baseline table and tracks additive V2 migrations in Prisma', () => {
@@ -22,12 +26,24 @@ describe('V2 database baseline', () => {
       .sort();
 
     expect(sqlTables).toHaveLength(60);
-    expect(prismaModels).toHaveLength(60);
+    expect(prismaModels).toHaveLength(64);
     expect(prismaModels).toEqual(expect.arrayContaining(sqlTables));
     expect(prismaModels).toContain('risk_threat_vulnerabilities');
     expect(prismaModels).toContain('risk_vulnerability_controls');
     expect(prismaModels).toContain('policy_applicabilities');
+    expect(prismaModels).toContain('notifications');
+    expect(prismaModels).toContain('notification_recipients');
+    expect(prismaModels).toContain('notification_deliveries');
+    expect(prismaModels).toContain('notification_preferences');
     expect(prismaModels).not.toContain('training_courses');
+  });
+
+  it('keeps notification storage in an additive migration', () => {
+    expect(notificationMigration).toContain('CREATE TABLE "notifications"');
+    expect(notificationMigration).toContain('CREATE TABLE "notification_recipients"');
+    expect(notificationMigration).toContain('CREATE TABLE "notification_deliveries"');
+    expect(notificationMigration).toContain('CREATE TABLE "notification_preferences"');
+    expect(notificationMigration).toContain('uq_notification_recipients_notification_user');
   });
 
   it('keeps post-baseline organization changes in a separate migration', () => {
