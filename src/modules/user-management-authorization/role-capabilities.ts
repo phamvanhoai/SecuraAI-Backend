@@ -28,6 +28,7 @@ export const capabilitiesByRole = {
     'notifications.send-email',
     'notifications.preferences',
     'system-logs.search',
+    'system-logs.export',
   ],
   SECURITY_OFFICER: [
     'business-services.read',
@@ -70,6 +71,7 @@ export const capabilitiesByRole = {
     'reports.read',
     'notifications.preferences',
     'system-logs.search',
+    'system-logs.export',
   ],
   EXECUTIVE: [
     'assets.read',

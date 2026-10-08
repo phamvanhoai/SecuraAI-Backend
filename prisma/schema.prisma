@@ -1535,4 +1535,5 @@ enum report_export_format {
   CSV
   JSON
   XLSX
+  PDF
 }
