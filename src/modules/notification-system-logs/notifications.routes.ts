@@ -11,9 +11,15 @@ import {
   sendEmailNotification,
   sendInSystemNotification,
   updateNotificationPreferences,
+  getNotificationInbox, markNotificationRead, markAllNotificationsRead,
+  getNotificationHistory,
 } from './notifications.controller.js';
 
 export const notificationsRouter = Router();
+notificationsRouter.get('/inbox', authenticate, asyncHandler(getNotificationInbox));
+notificationsRouter.patch('/inbox/read-all', authenticate, asyncHandler(markAllNotificationsRead));
+notificationsRouter.patch('/inbox/:id/read', authenticate, asyncHandler(markNotificationRead));
+notificationsRouter.get('/history', authenticate, asyncHandler(getNotificationHistory));
 notificationsRouter.get(
   '/preferences',
   authenticate,

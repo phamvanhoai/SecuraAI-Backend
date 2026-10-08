@@ -5,6 +5,8 @@ import { notificationsRepository } from './notifications.repository.js';
 import type { SendEmailNotificationInput } from './dto/send-email-notification.dto.js';
 import { notificationEmailService } from './notification-email.service.js';
 import type { UpdateNotificationPreferencesInput } from './dto/update-notification-preferences.dto.js';
+import type { NotificationInboxQuery } from './dto/notification-inbox.dto.js';
+import type { NotificationHistoryQuery } from './dto/notification-history.dto.js';
 
 type SmtpFailure = { code: string; message: string; retryable: boolean };
 
@@ -52,6 +54,10 @@ function classifySmtpFailure(error: unknown): SmtpFailure {
 }
 
 export const notificationsService = {
+  async history(userId: string, query: NotificationHistoryQuery) { const actor = await notificationsRepository.findActor(userId); if (!actor || actor.status !== 'ACTIVE') throw new AppError(401, 'UNAUTHORIZED', 'Authentication required'); if (actor.role !== 'ADMIN') throw new AppError(403, 'FORBIDDEN', 'Administrator access required'); const result = await notificationsRepository.history(query); return { items: result.items.map((item) => { const deliveries = item.notification_recipients.flatMap((recipient) => recipient.notification_deliveries); return { id: item.id, title: item.title, message: item.message, priority: item.priority, channel: [...new Set(deliveries.map((delivery) => delivery.channel))], createdAt: item.created_at.toISOString(), sender: item.sender.full_name ?? item.sender.email, recipientCount: item.notification_recipients.length, sentCount: deliveries.filter((delivery) => delivery.status === 'SENT' || delivery.status === 'DELIVERED').length, failedCount: deliveries.filter((delivery) => delivery.status === 'FAILED').length, recipients: item.notification_recipients.map((recipient) => ({ name: recipient.user.full_name, email: recipient.user.email, deliveries: recipient.notification_deliveries })) }; }), pagination: { page: query.page, limit: query.limit, total: result.total, pageCount: Math.max(1, Math.ceil(result.total / query.limit)) } }; },
+  async inbox(userId: string, query: NotificationInboxQuery) { const actor = await notificationsRepository.findActor(userId); if (!actor || actor.status !== 'ACTIVE') throw new AppError(401, 'UNAUTHORIZED', 'Authentication required'); const result = await notificationsRepository.inbox(userId, query); return { ...result, items: result.items.map((item) => ({ id: item.id, notificationId: item.notification.id, title: item.notification.title, message: item.notification.message, priority: item.notification.priority, sender: item.notification.sender.full_name ?? item.notification.sender.email, senderEmail: item.notification.sender.email, createdAt: item.notification.created_at.toISOString(), readAt: item.read_at?.toISOString() ?? null })) }; },
+  async markRead(userId: string, id: string) { await notificationsRepository.markRead(userId, id); return { id, read: true }; },
+  async markAllRead(userId: string) { const result = await notificationsRepository.markAllRead(userId); return { updatedCount: result.count }; },
   async getPreferences(userId: string) {
     const actor = await notificationsRepository.findActor(userId);
     if (!actor || actor.status !== 'ACTIVE')
