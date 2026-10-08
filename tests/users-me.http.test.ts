@@ -112,6 +112,7 @@ describe('GET /api/v1/users/me', () => {
           'notifications.send',
           'notifications.send-email',
           'notifications.preferences',
+          'system-logs.search',
         ],
       },
     });
