@@ -27,12 +27,14 @@ import {
 } from '../modules/information-security-incident-management/index.js';
 import { pendingV2Router } from './pending-v2.routes.js';
 import { accessControlRouter } from '../modules/access-control/index.js';
+import { notificationsRouter } from '../modules/notification-system-logs/index.js';
 
 export const apiRouter = Router();
 apiRouter.use('/health', healthRouter);
 apiRouter.use('/auth', authRouter);
 apiRouter.use('/users', usersRouter);
 apiRouter.use('/access-control', accessControlRouter);
+apiRouter.use('/notifications', notificationsRouter);
 apiRouter.use('/anomaly-detections', anomalyDetectionRouter);
 apiRouter.use('/ai-alerts', aiAlertsRouter);
 apiRouter.use('/risks', riskRegisterRouter);
