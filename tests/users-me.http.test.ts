@@ -110,6 +110,7 @@ describe('GET /api/v1/users/me', () => {
           'audit.read',
           'system-settings.read',
           'notifications.send',
+          'notifications.send-email',
         ],
       },
     });
