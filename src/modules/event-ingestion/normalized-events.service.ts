@@ -98,6 +98,42 @@ function formatEntityMapping(m: RawMappingRecord): EntityMappingDto {
   };
 }
 
+function groupMappingHistory(mappings: EntityMappingDto[]): EntityMappingDto[] {
+  const grouped: EntityMappingDto[] = [];
+
+  for (const m of mappings) {
+    const existing = grouped.find((g) => {
+      const timeDiff = Math.abs(new Date(g.mappedAt).getTime() - new Date(m.mappedAt).getTime());
+      return (
+        timeDiff < 5000 &&
+        g.reason === m.reason &&
+        g.mappingMethod === m.mappingMethod &&
+        g.isActive === m.isActive &&
+        g.mappedBy?.id === m.mappedBy?.id
+      );
+    });
+
+    if (existing) {
+      if (m.mappedUser) {
+        existing.mappedUser = m.mappedUser;
+        existing.userId = m.userId;
+      }
+      if (m.mappedAsset) {
+        existing.mappedAsset = m.mappedAsset;
+        existing.assetId = m.assetId;
+      }
+      if (m.monitoredAccount) {
+        existing.monitoredAccount = m.monitoredAccount;
+        existing.monitoredAccountId = m.monitoredAccountId;
+      }
+    } else {
+      grouped.push({ ...m });
+    }
+  }
+
+  return grouped;
+}
+
 export const normalizedEventsService = {
   async listEvents(
     _userId: string,
@@ -106,22 +142,25 @@ export const normalizedEventsService = {
     const { items, total } = await normalizedEventsRepository.findEvents(query);
 
     const formattedItems: NormalizedEventItemDto[] = items.map((event) => {
-      const activeMapping = event.event_entity_mappings[0];
-      const mappedUser = activeMapping?.users_event_entity_mappings_user_idTousers
+      const activeUser = event.event_entity_mappings.find(
+        (m) => m.users_event_entity_mappings_user_idTousers,
+      )?.users_event_entity_mappings_user_idTousers;
+      const mappedUser = activeUser
         ? {
-            id: activeMapping.users_event_entity_mappings_user_idTousers.id,
-            email: activeMapping.users_event_entity_mappings_user_idTousers.email,
-            fullName: activeMapping.users_event_entity_mappings_user_idTousers.full_name,
+            id: activeUser.id,
+            email: activeUser.email,
+            fullName: activeUser.full_name,
           }
         : null;
 
-      const mappedAsset = activeMapping?.assets
+      const activeAsset = event.event_entity_mappings.find((m) => m.assets)?.assets;
+      const mappedAsset = activeAsset
         ? {
-            id: activeMapping.assets.id,
-            name: activeMapping.assets.name,
-            assetCode: activeMapping.assets.asset_code,
-            assetType: activeMapping.assets.asset_type,
-            criticality: activeMapping.assets.criticality,
+            id: activeAsset.id,
+            name: activeAsset.name,
+            assetCode: activeAsset.asset_code,
+            assetType: activeAsset.asset_type,
+            criticality: activeAsset.criticality,
           }
         : null;
 
@@ -170,11 +209,27 @@ export const normalizedEventsService = {
       throw new AppError(404, 'NOT_FOUND', 'Normalized security event not found');
     }
 
-    const mappingHistory = event.event_entity_mappings.map(formatEntityMapping);
-    const activeMapping = mappingHistory.find((m) => m.isActive) ?? mappingHistory[0] ?? null;
+    const rawMappingHistory = event.event_entity_mappings.map(formatEntityMapping);
+    const activeMappings = rawMappingHistory.filter((m) => m.isActive);
 
-    const mappedUser = activeMapping?.mappedUser ?? null;
-    const mappedAsset = activeMapping?.mappedAsset ?? null;
+    const mappedUser = activeMappings.find((m) => m.mappedUser)?.mappedUser ?? null;
+    const mappedAsset = activeMappings.find((m) => m.mappedAsset)?.mappedAsset ?? null;
+    const monitoredAccount = activeMappings.find((m) => m.monitoredAccount)?.monitoredAccount ?? null;
+
+    const baseActive = activeMappings[0] ?? rawMappingHistory[0] ?? null;
+    const activeMapping = baseActive
+      ? {
+          ...baseActive,
+          mappedUser,
+          mappedAsset,
+          monitoredAccount,
+          userId: mappedUser?.id ?? null,
+          assetId: mappedAsset?.id ?? null,
+          monitoredAccountId: monitoredAccount?.id ?? null,
+        }
+      : null;
+
+    const mappingHistory = groupMappingHistory(rawMappingHistory);
 
     return {
       id: event.id,
