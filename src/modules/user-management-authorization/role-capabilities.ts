@@ -25,6 +25,7 @@ export const capabilitiesByRole = {
     'audit.read',
     'system-settings.read',
     'notifications.send',
+    'notifications.send-email',
   ],
   SECURITY_OFFICER: [
     'business-services.read',
