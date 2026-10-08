@@ -1,4 +1,54 @@
 export const notificationPaths = {
+  '/notifications/preferences': {
+    get: {
+      tags: ['Notification & System Logs'],
+      summary: 'Get personal notification channel preferences',
+      description:
+        'Returns the authenticated active user preferences for the supported in-system and email channels. Channels default to enabled until explicitly configured.',
+      security: [{ bearerAuth: [] }],
+      responses: {
+        '200': { description: 'Personal notification preferences' },
+        '401': { description: 'Authentication required' },
+        '403': { description: 'Notification preference capability required' },
+      },
+    },
+    patch: {
+      tags: ['Notification & System Logs'],
+      summary: 'Update personal notification channel preferences',
+      description:
+        'Replaces the authenticated active user preferences for all currently supported channels. At least one channel must remain enabled.',
+      security: [{ bearerAuth: [] }],
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              additionalProperties: false,
+              required: ['channels'],
+              properties: {
+                channels: {
+                  type: 'object',
+                  additionalProperties: false,
+                  required: ['inSystem', 'email'],
+                  properties: {
+                    inSystem: { type: 'boolean' },
+                    email: { type: 'boolean' },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        '200': { description: 'Personal notification preferences updated' },
+        '401': { description: 'Authentication required' },
+        '403': { description: 'Notification preference capability required' },
+        '422': { description: 'Invalid channel selection' },
+      },
+    },
+  },
   '/notifications/email': {
     post: {
       tags: ['Notification & System Logs'],

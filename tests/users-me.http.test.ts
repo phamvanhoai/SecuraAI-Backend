@@ -111,6 +111,7 @@ describe('GET /api/v1/users/me', () => {
           'system-settings.read',
           'notifications.send',
           'notifications.send-email',
+          'notifications.preferences',
         ],
       },
     });
@@ -175,6 +176,7 @@ describe('GET /api/v1/users/me', () => {
     expect(response.body.data.permissions).toEqual([
       'assets.read',
       'policies.acknowledge',
+      'notifications.preferences',
       'risks.read',
       'risks.review-reassessment',
       'risks.update-treatment-plan',
@@ -199,6 +201,10 @@ describe('GET /api/v1/users/me', () => {
       .set('Authorization', `Bearer ${accessToken()}`);
 
     expect(response.status).toBe(200);
-    expect(response.body.data.permissions).toEqual(['assets.read', 'policies.acknowledge']);
+    expect(response.body.data.permissions).toEqual([
+      'assets.read',
+      'policies.acknowledge',
+      'notifications.preferences',
+    ]);
   });
 });

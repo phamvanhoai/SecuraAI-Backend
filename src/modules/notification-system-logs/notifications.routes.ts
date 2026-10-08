@@ -5,9 +5,28 @@ import { validate } from '../../common/middleware/validate.js';
 import { asyncHandler } from '../../common/utils/async-handler.js';
 import { sendEmailNotificationSchema } from './dto/send-email-notification.dto.js';
 import { sendInSystemNotificationSchema } from './dto/send-in-system-notification.dto.js';
-import { sendEmailNotification, sendInSystemNotification } from './notifications.controller.js';
+import { updateNotificationPreferencesSchema } from './dto/update-notification-preferences.dto.js';
+import {
+  getNotificationPreferences,
+  sendEmailNotification,
+  sendInSystemNotification,
+  updateNotificationPreferences,
+} from './notifications.controller.js';
 
 export const notificationsRouter = Router();
+notificationsRouter.get(
+  '/preferences',
+  authenticate,
+  authorizePermission('notifications.preferences'),
+  asyncHandler(getNotificationPreferences),
+);
+notificationsRouter.patch(
+  '/preferences',
+  authenticate,
+  authorizePermission('notifications.preferences'),
+  validate({ body: updateNotificationPreferencesSchema }),
+  asyncHandler(updateNotificationPreferences),
+);
 notificationsRouter.post(
   '/email',
   authenticate,
