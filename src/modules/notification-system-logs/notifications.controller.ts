@@ -4,6 +4,14 @@ import { sendInSystemNotificationSchema } from './dto/send-in-system-notificatio
 import { notificationsService } from './notifications.service.js';
 import { sendEmailNotificationSchema } from './dto/send-email-notification.dto.js';
 import { updateNotificationPreferencesSchema } from './dto/update-notification-preferences.dto.js';
+import { notificationInboxQuerySchema } from './dto/notification-inbox.dto.js';
+import { z } from 'zod';
+import { notificationHistoryQuerySchema } from './dto/notification-history.dto.js';
+export const getNotificationHistory: RequestHandler = async (req, res) => { const userId: unknown = res.locals.authenticatedUserId; if (typeof userId !== 'string') throw new AppError(401, 'UNAUTHORIZED', 'Authentication required'); const data = await notificationsService.history(userId, notificationHistoryQuerySchema.parse(req.query)); res.json({ success: true, data }); };
+
+export const getNotificationInbox: RequestHandler = async (req, res) => { const userId: unknown = res.locals.authenticatedUserId; if (typeof userId !== 'string') throw new AppError(401, 'UNAUTHORIZED', 'Authentication required'); const data = await notificationsService.inbox(userId, notificationInboxQuerySchema.parse(req.query)); res.json({ success: true, data }); };
+export const markNotificationRead: RequestHandler = async (req, res) => { const userId: unknown = res.locals.authenticatedUserId; if (typeof userId !== 'string') throw new AppError(401, 'UNAUTHORIZED', 'Authentication required'); const data = await notificationsService.markRead(userId, z.string().uuid().parse(req.params.id)); res.json({ success: true, data }); };
+export const markAllNotificationsRead: RequestHandler = async (_req, res) => { const userId: unknown = res.locals.authenticatedUserId; if (typeof userId !== 'string') throw new AppError(401, 'UNAUTHORIZED', 'Authentication required'); const data = await notificationsService.markAllRead(userId); res.json({ success: true, data }); };
 
 export const getNotificationPreferences: RequestHandler = async (_req, res) => {
   const userId: unknown = res.locals.authenticatedUserId;
