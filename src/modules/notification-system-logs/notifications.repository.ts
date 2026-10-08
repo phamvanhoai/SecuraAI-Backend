@@ -3,6 +3,7 @@ import { AppError } from '../../common/errors/app-error.js';
 import { prisma } from '../../database/prisma.js';
 import type { SendInSystemNotificationInput } from './dto/send-in-system-notification.dto.js';
 import type { SendEmailNotificationInput } from './dto/send-email-notification.dto.js';
+import type { UpdateNotificationPreferencesInput } from './dto/update-notification-preferences.dto.js';
 
 const transactionOptions = {
   maxWait: 10_000,
@@ -15,6 +16,71 @@ export const notificationsRepository = {
       where: { id: userId },
       select: { id: true, role: true, status: true },
     });
+  },
+
+  findPreferences(userId: string) {
+    return prisma.notification_preferences.findMany({
+      where: { user_id: userId, event_type: 'ALL' },
+      select: { channel: true, enabled: true, updated_at: true },
+      orderBy: { channel: 'asc' },
+    });
+  },
+
+  updatePreferences(userId: string, input: UpdateNotificationPreferencesInput) {
+    return prisma.$transaction(async (tx) => {
+      const actor = await tx.users.findUnique({
+        where: { id: userId },
+        select: { status: true },
+      });
+      if (!actor || actor.status !== 'ACTIVE') return { kind: 'unauthorized' } as const;
+
+      const updatedAt = new Date();
+      const preferences = [
+        { channel: 'IN_SYSTEM' as const, enabled: input.channels.inSystem },
+        { channel: 'EMAIL' as const, enabled: input.channels.email },
+      ];
+      for (const preference of preferences) {
+        await tx.notification_preferences.upsert({
+          where: {
+            user_id_channel_event_type: {
+              user_id: userId,
+              channel: preference.channel,
+              event_type: 'ALL',
+            },
+          },
+          create: {
+            user_id: userId,
+            channel: preference.channel,
+            event_type: 'ALL',
+            enabled: preference.enabled,
+            created_at: updatedAt,
+            updated_at: updatedAt,
+          },
+          update: { enabled: preference.enabled, updated_at: updatedAt },
+          select: { id: true },
+        });
+      }
+
+      const auditId = randomUUID();
+      const after = { channels: input.channels };
+      await tx.audit_logs.create({
+        data: {
+          id: auditId,
+          actor_type: 'USER',
+          actor_user_id: userId,
+          action: 'PERSONAL_NOTIFICATION_PREFERENCES_UPDATED',
+          resource_type: 'USER_NOTIFICATION_PREFERENCES',
+          resource_id: userId,
+          source: 'API',
+          after_data: after,
+          record_hash: createHash('sha256')
+            .update(JSON.stringify({ id: auditId, userId, after }))
+            .digest('hex'),
+        },
+        select: { id: true },
+      });
+      return { kind: 'updated', preferences, updatedAt } as const;
+    }, transactionOptions);
   },
 
   findRecipients(audience: SendInSystemNotificationInput['audience']) {
@@ -44,13 +110,15 @@ export const notificationsRepository = {
         where: {
           id: { in: recipientIds },
           status: 'ACTIVE',
+          notification_preferences: {
+            none: { channel: 'IN_SYSTEM', event_type: 'ALL', enabled: false },
+          },
           ...(input.audience.type === 'roles' ? { role: { in: input.audience.roles } } : {}),
         },
         select: { id: true },
         orderBy: { id: 'asc' },
       });
-      if (activeRecipients.length !== recipientIds.length)
-        return { kind: 'recipients_changed' } as const;
+      if (activeRecipients.length === 0) return { kind: 'no_recipients' } as const;
 
       const notification = await tx.notifications.create({
         data: {
@@ -129,12 +197,17 @@ export const notificationsRepository = {
       if (!actor || actor.status !== 'ACTIVE') return { kind: 'unauthorized' } as const;
       if (actor.role !== 'ADMIN') return { kind: 'forbidden' } as const;
       const recipients = await tx.users.findMany({
-        where: { id: { in: input.userIds }, status: 'ACTIVE' },
+        where: {
+          id: { in: input.userIds },
+          status: 'ACTIVE',
+          notification_preferences: {
+            none: { channel: 'EMAIL', event_type: 'ALL', enabled: false },
+          },
+        },
         select: { id: true, email: true },
         orderBy: { id: 'asc' },
       });
-      if (recipients.length !== input.userIds.length)
-        return { kind: 'recipients_changed' } as const;
+      if (recipients.length === 0) return { kind: 'no_recipients' } as const;
 
       const notification = await tx.notifications.create({
         data: {

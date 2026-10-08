@@ -92,10 +92,12 @@ describe('WBS role capability compatibility', () => {
       'ai-alerts.thresholds.manage',
       'incidents.read',
       'reports.read',
+      'notifications.preferences',
     ]);
     expect(capabilitiesForRole(user_role.EMPLOYEE)).toEqual([
       'assets.read',
       'policies.acknowledge',
+      'notifications.preferences',
     ]);
   });
 });

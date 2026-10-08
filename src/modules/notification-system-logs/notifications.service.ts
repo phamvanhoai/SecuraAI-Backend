@@ -4,6 +4,7 @@ import type { SendInSystemNotificationInput } from './dto/send-in-system-notific
 import { notificationsRepository } from './notifications.repository.js';
 import type { SendEmailNotificationInput } from './dto/send-email-notification.dto.js';
 import { notificationEmailService } from './notification-email.service.js';
+import type { UpdateNotificationPreferencesInput } from './dto/update-notification-preferences.dto.js';
 
 type SmtpFailure = { code: string; message: string; retryable: boolean };
 
@@ -51,6 +52,35 @@ function classifySmtpFailure(error: unknown): SmtpFailure {
 }
 
 export const notificationsService = {
+  async getPreferences(userId: string) {
+    const actor = await notificationsRepository.findActor(userId);
+    if (!actor || actor.status !== 'ACTIVE')
+      throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+    const preferences = await notificationsRepository.findPreferences(userId);
+    const values = new Map(preferences.map((item) => [item.channel, item]));
+    const updatedAt = preferences.reduce<Date | null>(
+      (latest, item) => (!latest || item.updated_at > latest ? item.updated_at : latest),
+      null,
+    );
+    return {
+      channels: {
+        inSystem: values.get('IN_SYSTEM')?.enabled ?? true,
+        email: values.get('EMAIL')?.enabled ?? true,
+      },
+      updatedAt: updatedAt?.toISOString() ?? null,
+    };
+  },
+
+  async updatePreferences(userId: string, input: UpdateNotificationPreferencesInput) {
+    const result = await notificationsRepository.updatePreferences(userId, input);
+    if (result.kind === 'unauthorized')
+      throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+    return {
+      channels: input.channels,
+      updatedAt: result.updatedAt.toISOString(),
+    };
+  },
+
   async send(actorUserId: string, input: SendInSystemNotificationInput) {
     const actor = await notificationsRepository.findActor(actorUserId);
     if (!actor || actor.status !== 'ACTIVE')
@@ -83,11 +113,11 @@ export const notificationsService = {
       throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
     if (result.kind === 'forbidden')
       throw new AppError(403, 'FORBIDDEN', 'Administrator access required');
-    if (result.kind === 'recipients_changed')
+    if (result.kind === 'no_recipients')
       throw new AppError(
-        409,
-        'NOTIFICATION_RECIPIENTS_CHANGED',
-        'Recipient eligibility changed. Review the audience and try again.',
+        422,
+        'NO_ELIGIBLE_NOTIFICATION_RECIPIENTS',
+        'No selected recipient has the in-system channel enabled.',
       );
     return {
       id: result.notification.id,
@@ -116,11 +146,11 @@ export const notificationsService = {
       throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
     if (result.kind === 'forbidden')
       throw new AppError(403, 'FORBIDDEN', 'Administrator access required');
-    if (result.kind === 'recipients_changed')
+    if (result.kind === 'no_recipients')
       throw new AppError(
-        409,
-        'EMAIL_RECIPIENTS_CHANGED',
-        'Recipient eligibility changed. Review the recipients and try again.',
+        422,
+        'NO_ELIGIBLE_EMAIL_RECIPIENTS',
+        'No selected recipient has the email channel enabled.',
       );
 
     let sentCount = 0;

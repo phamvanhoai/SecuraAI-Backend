@@ -1,6 +1,6 @@
 # V2 modules
 
-Notification & System Logs implements Admin-only `POST /api/v1/notifications` for in-system delivery to explicitly selected active users or fixed-role groups. The send transaction stores one notification, snapshots up to 500 eligible recipients, records an in-system delivery and appends an audit record. The schema also provides delivery tracking and per-user channel preferences. Inbox listing, read state, preference APIs and notification history remain separate use cases.
+Notification & System Logs implements Admin-only in-system and email sending through `POST /api/v1/notifications` and `POST /api/v1/notifications/email`. All active roles can read and update their own supported delivery channels through `GET/PATCH /api/v1/notifications/preferences`; preferences default to both channels enabled and updates are audited. Inbox listing, read state and notification history remain separate use cases.
 
 Admin-only `POST /api/v1/notifications/email` sends text-only email through the configured SMTP transport to up to 20 explicitly selected active users. It snapshots recipient email addresses, records `PENDING` delivery rows before network I/O, then marks each attempt `SENT` or `FAILED` without exposing provider errors. Partial delivery is returned with sent/failed counts. Retry, templates, attachments, HTML email and bulk role audiences are outside this use case.
 
