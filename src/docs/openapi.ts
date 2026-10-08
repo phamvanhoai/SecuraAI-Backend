@@ -5,6 +5,7 @@ import { pendingV2Paths } from './pending-v2.openapi.js';
 import { businessServicesPaths } from './business-services.openapi.js';
 import { notificationPaths } from './notifications.openapi.js';
 import { auditPaths } from './audit.openapi.js';
+import { systemLogPaths } from './system-logs.openapi.js';
 
 export const openApiSpec = {
   openapi: '3.0.3',
@@ -27,6 +28,7 @@ export const openApiSpec = {
     ...businessServicesPaths,
     ...notificationPaths,
     ...auditPaths,
+    ...systemLogPaths,
     '/access-control/permissions': {
       get: {
         tags: ['Access Control'],
