@@ -4,6 +4,7 @@ import { controlEvidencePaths } from './control-evidence.openapi.js';
 import { pendingV2Paths } from './pending-v2.openapi.js';
 import { businessServicesPaths } from './business-services.openapi.js';
 import { notificationPaths } from './notifications.openapi.js';
+import { auditPaths } from './audit.openapi.js';
 
 export const openApiSpec = {
   openapi: '3.0.3',
@@ -25,6 +26,7 @@ export const openApiSpec = {
     ...controlEvidencePaths,
     ...businessServicesPaths,
     ...notificationPaths,
+    ...auditPaths,
     '/access-control/permissions': {
       get: {
         tags: ['Access Control'],
@@ -2085,7 +2087,8 @@ export const openApiSpec = {
       get: {
         tags: ['Event Ingestion'],
         summary: 'Get entity mapping options for review and correction',
-        description: 'Returns available users, assets, and monitored accounts for event mapping correction.',
+        description:
+          'Returns available users, assets, and monitored accounts for event mapping correction.',
         security: [{ bearerAuth: [] }],
         responses: {
           '200': { description: 'Mapping options list' },
@@ -2115,7 +2118,8 @@ export const openApiSpec = {
       put: {
         tags: ['Event Ingestion'],
         summary: 'Review and correct event entity mappings',
-        description: 'Allows Security Officers to correct inaccurate system-generated mappings between security events and users, accounts, or assets.',
+        description:
+          'Allows Security Officers to correct inaccurate system-generated mappings between security events and users, accounts, or assets.',
         security: [{ bearerAuth: [] }],
         parameters: [
           { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },

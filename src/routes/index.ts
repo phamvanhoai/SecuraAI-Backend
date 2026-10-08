@@ -28,6 +28,7 @@ import {
 import { pendingV2Router } from './pending-v2.routes.js';
 import { accessControlRouter } from '../modules/access-control/index.js';
 import { notificationsRouter } from '../modules/notification-system-logs/index.js';
+import { auditRouter } from '../modules/audit-security-reporting/index.js';
 
 export const apiRouter = Router();
 apiRouter.use('/health', healthRouter);
@@ -35,6 +36,7 @@ apiRouter.use('/auth', authRouter);
 apiRouter.use('/users', usersRouter);
 apiRouter.use('/access-control', accessControlRouter);
 apiRouter.use('/notifications', notificationsRouter);
+apiRouter.use('/audit', auditRouter);
 apiRouter.use('/anomaly-detections', anomalyDetectionRouter);
 apiRouter.use('/ai-alerts', aiAlertsRouter);
 apiRouter.use('/risks', riskRegisterRouter);
