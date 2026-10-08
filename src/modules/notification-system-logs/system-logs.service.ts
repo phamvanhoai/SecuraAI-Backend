@@ -5,6 +5,7 @@ import type { ExportInvestigationLogsInput } from './dto/export-investigation-lo
 import { createHash, randomUUID } from 'node:crypto';
 import { renderInvestigationLogPdf } from './investigation-log-pdf.js';
 import { renderInvestigationLogXlsx } from './investigation-log-xlsx.js';
+import type { ConfigurationHistoryQuery } from './dto/configuration-history.dto.js';
 
 function actorName(record: Awaited<ReturnType<typeof systemLogsRepository.findForExport>>[number]) {
   return (
@@ -172,5 +173,12 @@ export const systemLogsService = {
               : 'application/json; charset=utf-8',
       extension: input.format.toLowerCase(),
     };
+  },
+  async configurationHistory(actorUserId: string, query: ConfigurationHistoryQuery) {
+    const actor = await systemLogsRepository.findActor(actorUserId);
+    if (!actor || actor.status !== 'ACTIVE') throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+    if (actor.role !== 'ADMIN') throw new AppError(403, 'FORBIDDEN', 'Administrator access required');
+    const result = await systemLogsRepository.configurationHistory(query);
+    return { items: result.items.map((item) => ({ id: item.id, setting: item.resource_type, action: item.action, resourceId: item.resource_id, resourceDetails: item.resourceDetails ? { name: item.resourceDetails.full_name, email: item.resourceDetails.email, role: item.resourceDetails.role } : null, actor: item.users?.full_name ?? item.users?.email ?? 'Unknown actor', actorEmail: item.users?.email ?? null, actorRole: item.users?.role ?? null, changedAt: item.occurred_at.toISOString(), previousValue: item.before_data, newValue: item.after_data, outcome: item.outcome })), pagination: { page: query.page, limit: query.limit, total: result.total, pageCount: Math.max(1, Math.ceil(result.total / query.limit)) } };
   },
 };
