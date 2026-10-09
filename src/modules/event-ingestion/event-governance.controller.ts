@@ -4,6 +4,7 @@ import { eventGovernanceService } from './event-governance.service.js';
 import {
   getEventGovernancePolicyParamsSchema,
   listEventGovernancePoliciesQuerySchema,
+  updateEventGovernancePolicySchema,
 } from './dto/event-governance-policy.dto.js';
 
 function authenticatedUserId(value: unknown): string {
@@ -30,6 +31,17 @@ export async function getEventGovernancePolicyDetail(
   const userId = authenticatedUserId(res.locals.authenticatedUserId);
   const params = getEventGovernancePolicyParamsSchema.parse(req.params);
   const result = await eventGovernanceService.getPolicyDetail(userId, params.id);
+  res.status(200).json({ success: true, data: result });
+}
+
+export async function updateEventGovernancePolicy(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const userId = authenticatedUserId(res.locals.authenticatedUserId);
+  const params = getEventGovernancePolicyParamsSchema.parse(req.params);
+  const body = updateEventGovernancePolicySchema.parse(req.body);
+  const result = await eventGovernanceService.updatePolicy(userId, params.id, body);
   res.status(200).json({ success: true, data: result });
 }
 

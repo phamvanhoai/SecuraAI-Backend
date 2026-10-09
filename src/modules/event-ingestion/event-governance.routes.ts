@@ -5,11 +5,13 @@ import { asyncHandler } from '../../common/utils/async-handler.js';
 import {
   getEventGovernancePolicyParamsSchema,
   listEventGovernancePoliciesQuerySchema,
+  updateEventGovernancePolicySchema,
 } from './dto/event-governance-policy.dto.js';
 import {
   getEventGovernanceLifecycleSummary,
   getEventGovernancePolicyDetail,
   listEventGovernancePolicies,
+  updateEventGovernancePolicy,
 } from './event-governance.controller.js';
 
 export const eventGovernanceRouter = Router();
@@ -25,6 +27,16 @@ eventGovernanceRouter.get(
   authenticate,
   validate({ params: getEventGovernancePolicyParamsSchema }),
   asyncHandler(getEventGovernancePolicyDetail),
+);
+
+eventGovernanceRouter.patch(
+  '/policies/:id',
+  authenticate,
+  validate({
+    params: getEventGovernancePolicyParamsSchema,
+    body: updateEventGovernancePolicySchema,
+  }),
+  asyncHandler(updateEventGovernancePolicy),
 );
 
 eventGovernanceRouter.get(
@@ -45,6 +57,16 @@ eventGovernanceRouter.get(
   authenticate,
   validate({ params: getEventGovernancePolicyParamsSchema }),
   asyncHandler(getEventGovernancePolicyDetail),
+);
+
+eventGovernanceRouter.patch(
+  '/:id',
+  authenticate,
+  validate({
+    params: getEventGovernancePolicyParamsSchema,
+    body: updateEventGovernancePolicySchema,
+  }),
+  asyncHandler(updateEventGovernancePolicy),
 );
 
 eventGovernanceRouter.get(

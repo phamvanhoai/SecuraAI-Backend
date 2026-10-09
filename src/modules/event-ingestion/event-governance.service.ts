@@ -8,6 +8,7 @@ import type {
   EventGovernancePolicyDto,
   ListEventGovernancePoliciesQuery,
   PaginatedEventGovernancePoliciesDto,
+  UpdateEventGovernancePolicyDto,
 } from './dto/event-governance-policy.dto.js';
 
 function mapGovernancePolicyItem(record: GovernancePolicyWithUsers): EventGovernancePolicyDto {
@@ -59,6 +60,23 @@ async function requireGovernanceViewer(userId: string) {
   return actor;
 }
 
+async function requireGovernanceAdmin(userId: string) {
+  const actor = await eventGovernanceRepository.findActorUser(userId);
+  if (!actor || actor.status !== 'ACTIVE') {
+    throw new AppError(401, 'UNAUTHORIZED', 'Invalid or inactive user session');
+  }
+
+  if (actor.role !== 'ADMIN') {
+    throw new AppError(
+      403,
+      'FORBIDDEN',
+      'Only System Administrators can configure or update event data governance policies',
+    );
+  }
+
+  return actor;
+}
+
 export const eventGovernanceService = {
   async listPolicies(
     userId: string,
@@ -94,6 +112,59 @@ export const eventGovernanceService = {
     }
 
     return mapGovernancePolicyItem(record);
+  },
+
+  async updatePolicy(
+    userId: string,
+    id: string,
+    data: UpdateEventGovernancePolicyDto,
+  ): Promise<EventGovernancePolicyDto> {
+    await requireGovernanceAdmin(userId);
+
+    const existing = await eventGovernanceRepository.findById(id);
+    if (!existing) {
+      throw new AppError(404, 'NOT_FOUND', 'Event data governance policy not found');
+    }
+
+    const effectiveRetentionDays = data.retentionDays ?? existing.retention_days;
+    const effectiveArchiveAfterDays =
+      data.archiveAfterDays !== undefined ? data.archiveAfterDays : existing.archive_after_days;
+
+    if (
+      effectiveArchiveAfterDays !== null &&
+      effectiveArchiveAfterDays !== undefined &&
+      effectiveArchiveAfterDays >= effectiveRetentionDays
+    ) {
+      throw new AppError(
+        400,
+        'BAD_REQUEST',
+        `Cold archival threshold (${effectiveArchiveAfterDays} days) must be strictly less than effective retention period (${effectiveRetentionDays} days)`,
+      );
+    }
+
+    const updated = await eventGovernanceRepository.update(id, {
+      ...(data.name !== undefined ? { name: data.name } : {}),
+      ...(data.purpose !== undefined ? { purpose: data.purpose } : {}),
+      ...(data.eventFamily !== undefined ? { event_family: data.eventFamily } : {}),
+      ...(data.retentionDays !== undefined ? { retention_days: data.retentionDays } : {}),
+      ...(data.accessScope !== undefined ? { access_scope: data.accessScope } : {}),
+      ...(data.maskingRules !== undefined
+        ? { masking_rules: data.maskingRules as Record<string, unknown> }
+        : {}),
+      ...(data.exportAllowed !== undefined ? { export_allowed: data.exportAllowed } : {}),
+      ...(data.archiveAfterDays !== undefined
+        ? { archive_after_days: data.archiveAfterDays }
+        : {}),
+      ...(data.deletionEnabled !== undefined ? { deletion_enabled: data.deletionEnabled } : {}),
+      ...(data.status !== undefined ? { status: data.status } : {}),
+      updated_by: userId,
+    });
+
+    if (!updated) {
+      throw new AppError(404, 'NOT_FOUND', 'Event data governance policy not found after update');
+    }
+
+    return mapGovernancePolicyItem(updated);
   },
 
   async getLifecycleSummary(userId: string): Promise<EventGovernanceLifecycleSummaryDto> {

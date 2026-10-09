@@ -75,3 +75,59 @@ export type EventGovernanceLifecycleSummaryDto = {
   policiesWithAutomatedDeletion: number;
   exportAllowedCount: number;
 };
+
+export const updateEventGovernancePolicySchema = z
+  .object({
+    name: z
+      .string()
+      .trim()
+      .min(3, 'Policy name must be at least 3 characters')
+      .max(150, 'Policy name cannot exceed 150 characters')
+      .optional(),
+    purpose: z
+      .string()
+      .trim()
+      .min(5, 'Purpose must be at least 5 characters')
+      .max(500, 'Purpose cannot exceed 500 characters')
+      .optional(),
+    eventFamily: z.enum(eventFamilies).nullable().optional(),
+    retentionDays: z
+      .number()
+      .int()
+      .min(1, 'Retention period must be at least 1 day')
+      .max(3650, 'Retention period cannot exceed 3650 days (10 years)')
+      .optional(),
+    archiveAfterDays: z
+      .number()
+      .int()
+      .min(1, 'Archival threshold must be at least 1 day')
+      .max(3650)
+      .nullable()
+      .optional(),
+    accessScope: z.string().trim().max(100).nullable().optional(),
+    maskingRules: z.record(z.string(), z.unknown()).nullable().optional(),
+    exportAllowed: z.boolean().optional(),
+    deletionEnabled: z.boolean().optional(),
+    status: z.enum(governancePolicyStatuses).optional(),
+  })
+  .refine(
+    (data) => {
+      if (
+        data.archiveAfterDays !== undefined &&
+        data.archiveAfterDays !== null &&
+        data.retentionDays !== undefined
+      ) {
+        return data.archiveAfterDays < data.retentionDays;
+      }
+      return true;
+    },
+    {
+      message:
+        'Cold archival threshold (archiveAfterDays) must be strictly less than retention period (retentionDays)',
+      path: ['archiveAfterDays'],
+    },
+  );
+
+export type UpdateEventGovernancePolicyDto = z.infer<
+  typeof updateEventGovernancePolicySchema
+>;
