@@ -23,3 +23,11 @@ export async function getAuditLogDetail(req: Request, res: Response): Promise<vo
   const result = await auditLogsService.getAuditLogDetail(userId, params.id);
   res.status(200).json({ success: true, data: result });
 }
+
+export async function getAuditLogDiff(req: Request, res: Response): Promise<void> {
+  const userId = authenticatedUserId(res.locals.authenticatedUserId);
+  const params = getAuditLogParamsSchema.parse(req.params);
+  const result = await auditLogsService.getAuditLogDiff(userId, params.id);
+  res.status(200).json({ success: true, data: result });
+}
+

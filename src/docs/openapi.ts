@@ -1282,6 +1282,30 @@ export const openApiSpec = {
         },
       },
     },
+    '/audit-logs/{id}/diff': {
+      get: {
+        tags: ['Audit & Security Reporting'],
+        summary: 'View before / after property changes for an audit log record',
+        description:
+          'Compare the recorded state of an entity before and after a change, presenting property-level differences (MODIFIED, ADDED, REMOVED, UNCHANGED) to support security auditing and forensic investigation. Restricted to Administrator and Security Officer roles.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          '200': { description: 'Property-level diff of entity state before and after change' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Administrator or Security Officer role required' },
+          '404': { description: 'Audit log record not found' },
+          '422': { description: 'Invalid audit log ID format' },
+        },
+      },
+    },
     '/health/live': {
       get: {
         tags: ['Health'],

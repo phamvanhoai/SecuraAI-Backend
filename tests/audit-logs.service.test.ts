@@ -236,4 +236,59 @@ describe('audit logs service', () => {
       });
     });
   });
+
+  describe('getAuditLogDiff', () => {
+    beforeEach(() => {
+      vi.mocked(auditLogsRepository.findById).mockResolvedValue(mockAuditRecord);
+    });
+
+    it('computes property-level changes comparing beforeData and afterData', async () => {
+      const result = await auditLogsService.getAuditLogDiff(adminUserId, sampleAuditId);
+
+      expect(auditLogsRepository.findById).toHaveBeenCalledWith(sampleAuditId);
+      expect(result.id).toBe(sampleAuditId);
+      expect(result.action).toBe('UPDATE_ROLE');
+      expect(result.hasChanges).toBe(true);
+      expect(result.totalModified).toBe(1);
+      expect(result.totalAdded).toBe(0);
+      expect(result.totalRemoved).toBe(0);
+      expect(result.changes).toEqual([
+        {
+          property: 'role',
+          changeType: 'MODIFIED',
+          beforeValue: 'EMPLOYEE',
+          afterValue: 'SECURITY_OFFICER',
+        },
+      ]);
+    });
+
+    it('handles created entities with null beforeData as ADDED properties', async () => {
+      vi.mocked(auditLogsRepository.findById).mockResolvedValue({
+        ...mockAuditRecord,
+        action: 'CREATE_POLICY',
+        before_data: null,
+        after_data: { title: 'Security Policy', version: '1.0' },
+      });
+
+      const result = await auditLogsService.getAuditLogDiff(adminUserId, sampleAuditId);
+
+      expect(result.totalAdded).toBe(2);
+      expect(result.totalModified).toBe(0);
+      expect(result.changes).toEqual([
+        { property: 'title', changeType: 'ADDED', beforeValue: null, afterValue: 'Security Policy' },
+        { property: 'version', changeType: 'ADDED', beforeValue: null, afterValue: '1.0' },
+      ]);
+    });
+
+    it('throws 404 when record does not exist', async () => {
+      vi.mocked(auditLogsRepository.findById).mockResolvedValue(null);
+
+      await expect(
+        auditLogsService.getAuditLogDiff(adminUserId, '00000000-0000-0000-0000-000000000000'),
+      ).rejects.toMatchObject({
+        statusCode: 404,
+      });
+    });
+  });
 });
+

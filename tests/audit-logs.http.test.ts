@@ -7,6 +7,7 @@ vi.mock('../src/modules/audit-security-reporting/audit-logs.service.js', () => (
   auditLogsService: {
     listAuditLogs: vi.fn(),
     getAuditLogDetail: vi.fn(),
+    getAuditLogDiff: vi.fn(),
   },
 }));
 
@@ -165,4 +166,59 @@ describe('Audit Logs HTTP endpoints', () => {
       expect(res.status).toBe(422);
     });
   });
+
+  describe('GET /api/v1/audit-logs/:id/diff', () => {
+    it('requires authentication', async () => {
+      const res = await request(app).get(`/api/v1/audit-logs/${sampleLogId}/diff`);
+      expect(res.status).toBe(401);
+    });
+
+    it('returns property-level diff for valid request', async () => {
+      vi.mocked(auditLogsService.getAuditLogDiff).mockResolvedValue({
+        id: sampleLogId,
+        action: 'UPDATE_USER_ROLE',
+        resourceType: 'users',
+        resourceId: '550e8400-e29b-41d4-a716-446655440002',
+        occurredAt: '2026-10-08T12:00:00.000Z',
+        totalProperties: 1,
+        totalModified: 1,
+        totalAdded: 0,
+        totalRemoved: 0,
+        totalUnchanged: 0,
+        hasChanges: true,
+        changes: [
+          {
+            property: 'role',
+            changeType: 'MODIFIED',
+            beforeValue: 'EMPLOYEE',
+            afterValue: 'SECURITY_OFFICER',
+          },
+        ],
+      });
+
+      const res = await request(app)
+        .get(`/api/v1/audit-logs/${sampleLogId}/diff`)
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.hasChanges).toBe(true);
+      expect(res.body.data.changes).toHaveLength(1);
+      expect(res.body.data.changes[0]?.property).toBe('role');
+      expect(auditLogsService.getAuditLogDiff).toHaveBeenCalledWith(userId, sampleLogId);
+    });
+
+    it('returns 404 when audit record does not exist', async () => {
+      vi.mocked(auditLogsService.getAuditLogDiff).mockRejectedValue(
+        new AppError(404, 'NOT_FOUND', 'Audit log record not found'),
+      );
+
+      const res = await request(app)
+        .get(`/api/v1/audit-logs/${sampleLogId}/diff`)
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(404);
+    });
+  });
 });
+

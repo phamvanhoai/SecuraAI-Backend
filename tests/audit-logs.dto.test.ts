@@ -73,4 +73,47 @@ describe('audit logs DTO validation', () => {
       expect(() => getAuditLogParamsSchema.parse({ id: 'invalid-id' })).toThrow();
     });
   });
+
+  describe('computePropertyChanges', () => {
+    it('accurately identifies ADDED, MODIFIED, REMOVED, and UNCHANGED properties', async () => {
+      const { computePropertyChanges } = await import(
+        '../src/modules/audit-security-reporting/dto/list-audit-logs.dto.js'
+      );
+
+      const before = {
+        role: 'EMPLOYEE',
+        department: 'IT',
+        tempNotes: 'to be deleted',
+      };
+      const after = {
+        role: 'SECURITY_OFFICER',
+        department: 'IT',
+        permissions: ['read', 'write'],
+      };
+
+      const changes = computePropertyChanges(before, after);
+
+      expect(changes).toEqual([
+        { property: 'department', changeType: 'UNCHANGED', beforeValue: 'IT', afterValue: 'IT' },
+        { property: 'permissions', changeType: 'ADDED', beforeValue: null, afterValue: ['read', 'write'] },
+        { property: 'role', changeType: 'MODIFIED', beforeValue: 'EMPLOYEE', afterValue: 'SECURITY_OFFICER' },
+        { property: 'tempNotes', changeType: 'REMOVED', beforeValue: 'to be deleted', afterValue: null },
+      ]);
+    });
+
+    it('handles null states gracefully', async () => {
+      const { computePropertyChanges } = await import(
+        '../src/modules/audit-security-reporting/dto/list-audit-logs.dto.js'
+      );
+
+      expect(computePropertyChanges(null, null)).toEqual([]);
+      expect(computePropertyChanges(null, { title: 'Policy A' })).toEqual([
+        { property: 'title', changeType: 'ADDED', beforeValue: null, afterValue: 'Policy A' },
+      ]);
+      expect(computePropertyChanges({ title: 'Policy A' }, null)).toEqual([
+        { property: 'title', changeType: 'REMOVED', beforeValue: 'Policy A', afterValue: null },
+      ]);
+    });
+  });
 });
+

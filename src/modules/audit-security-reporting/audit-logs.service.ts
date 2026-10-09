@@ -2,10 +2,12 @@ import { AppError } from '../../common/errors/app-error.js';
 import { auditLogsRepository } from './audit-logs.repository.js';
 import type {
   AuditLogActorDto,
+  AuditLogDiffDto,
   AuditLogItemDto,
   AuditLogListResponseDto,
   ListAuditLogsQuery,
 } from './dto/list-audit-logs.dto.js';
+import { computePropertyChanges } from './dto/list-audit-logs.dto.js';
 
 type RawAuditRecord = Awaited<ReturnType<typeof auditLogsRepository.findMany>>[number];
 
@@ -116,4 +118,38 @@ export const auditLogsService = {
 
     return mapAuditLogItem(record);
   },
+
+  async getAuditLogDiff(userId: string, id: string): Promise<AuditLogDiffDto> {
+    await requireAuditViewer(userId);
+
+    const record = await auditLogsRepository.findById(id);
+    if (!record) {
+      throw new AppError(404, 'NOT_FOUND', 'Audit log record not found');
+    }
+
+    const beforeData = (record.before_data as Record<string, unknown> | null) ?? null;
+    const afterData = (record.after_data as Record<string, unknown> | null) ?? null;
+    const changes = computePropertyChanges(beforeData, afterData);
+
+    const totalModified = changes.filter((c) => c.changeType === 'MODIFIED').length;
+    const totalAdded = changes.filter((c) => c.changeType === 'ADDED').length;
+    const totalRemoved = changes.filter((c) => c.changeType === 'REMOVED').length;
+    const totalUnchanged = changes.filter((c) => c.changeType === 'UNCHANGED').length;
+
+    return {
+      id: record.id,
+      action: record.action,
+      resourceType: record.resource_type,
+      resourceId: record.resource_id,
+      occurredAt: record.occurred_at.toISOString(),
+      totalProperties: changes.length,
+      totalModified,
+      totalAdded,
+      totalRemoved,
+      totalUnchanged,
+      hasChanges: totalModified > 0 || totalAdded > 0 || totalRemoved > 0,
+      changes,
+    };
+  },
 };
+
