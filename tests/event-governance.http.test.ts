@@ -8,6 +8,7 @@ vi.mock('../src/modules/event-ingestion/event-governance.service.js', () => ({
     listPolicies: vi.fn(),
     getPolicyDetail: vi.fn(),
     getLifecycleSummary: vi.fn(),
+    updatePolicy: vi.fn(),
   },
 }));
 
@@ -163,6 +164,60 @@ describe('Event Governance HTTP endpoints', () => {
       const res = await request(app)
         .get('/api/v1/event-governance/policies/invalid-id-format')
         .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(422);
+    });
+  });
+
+  describe('PATCH /api/v1/event-governance/policies/:id', () => {
+    it('requires authentication', async () => {
+      const res = await request(app)
+        .patch(`/api/v1/event-governance/policies/${samplePolicyId}`)
+        .send({ retentionDays: 180 });
+
+      expect(res.status).toBe(401);
+    });
+
+    it('updates policy settings for authenticated administrator', async () => {
+      vi.mocked(eventGovernanceService.updatePolicy).mockResolvedValue({
+        ...samplePolicyDto,
+        retentionDays: 180,
+        archiveAfterDays: 60,
+        deletionEnabled: true,
+      });
+
+      const res = await request(app)
+        .patch(`/api/v1/event-governance/policies/${samplePolicyId}`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          retentionDays: 180,
+          archiveAfterDays: 60,
+          deletionEnabled: true,
+        });
+
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.data.retentionDays).toBe(180);
+      expect(res.body.data.archiveAfterDays).toBe(60);
+      expect(eventGovernanceService.updatePolicy).toHaveBeenCalledWith(
+        userId,
+        samplePolicyId,
+        {
+          retentionDays: 180,
+          archiveAfterDays: 60,
+          deletionEnabled: true,
+        },
+      );
+    });
+
+    it('rejects invalid body (e.g. archiveAfterDays >= retentionDays in body)', async () => {
+      const res = await request(app)
+        .patch(`/api/v1/event-governance/policies/${samplePolicyId}`)
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          retentionDays: 90,
+          archiveAfterDays: 120,
+        });
 
       expect(res.status).toBe(422);
     });

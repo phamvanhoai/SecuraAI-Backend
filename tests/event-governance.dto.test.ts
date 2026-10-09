@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   getEventGovernancePolicyParamsSchema,
   listEventGovernancePoliciesQuerySchema,
+  updateEventGovernancePolicySchema,
 } from '../src/modules/event-ingestion/dto/event-governance-policy.dto.js';
 
 describe('event governance policy DTO validation', () => {
@@ -66,6 +67,51 @@ describe('event governance policy DTO validation', () => {
     it('rejects non-uuid format', () => {
       expect(() =>
         getEventGovernancePolicyParamsSchema.parse({ id: 'not-a-uuid' }),
+      ).toThrow();
+    });
+  });
+
+  describe('updateEventGovernancePolicySchema', () => {
+    it('validates partial update payload correctly', () => {
+      const parsed = updateEventGovernancePolicySchema.parse({
+        retentionDays: 180,
+        archiveAfterDays: 60,
+        deletionEnabled: true,
+        exportAllowed: false,
+        status: 'ACTIVE',
+        maskingRules: { maskIp: true },
+      });
+
+      expect(parsed.retentionDays).toBe(180);
+      expect(parsed.archiveAfterDays).toBe(60);
+      expect(parsed.deletionEnabled).toBe(true);
+      expect(parsed.exportAllowed).toBe(false);
+      expect(parsed.status).toBe('ACTIVE');
+    });
+
+    it('rejects archiveAfterDays greater than or equal to retentionDays in schema', () => {
+      expect(() =>
+        updateEventGovernancePolicySchema.parse({
+          retentionDays: 90,
+          archiveAfterDays: 90,
+        }),
+      ).toThrow(/Cold archival threshold.*less than retention period/i);
+
+      expect(() =>
+        updateEventGovernancePolicySchema.parse({
+          retentionDays: 90,
+          archiveAfterDays: 120,
+        }),
+      ).toThrow(/Cold archival threshold.*less than retention period/i);
+    });
+
+    it('rejects invalid retention days range (less than 1 or exceeding 3650)', () => {
+      expect(() =>
+        updateEventGovernancePolicySchema.parse({ retentionDays: 0 }),
+      ).toThrow();
+
+      expect(() =>
+        updateEventGovernancePolicySchema.parse({ retentionDays: 5000 }),
       ).toThrow();
     });
   });

@@ -7,6 +7,7 @@ vi.mock('../src/modules/event-ingestion/event-governance.repository.js', () => (
     count: vi.fn(),
     findById: vi.fn(),
     findAllActive: vi.fn(),
+    update: vi.fn(),
   },
 }));
 
@@ -201,6 +202,78 @@ describe('event governance service', () => {
         policiesWithArchival: 1,
         policiesWithAutomatedDeletion: 1,
         exportAllowedCount: 1,
+      });
+    });
+  });
+
+  describe('updatePolicy', () => {
+    it('successfully updates policy settings when actor is admin', async () => {
+      vi.mocked(eventGovernanceRepository.update).mockResolvedValue({
+        ...mockPolicyRecord,
+        retention_days: 180,
+        archive_after_days: 60,
+        deletion_enabled: false,
+        export_allowed: false,
+      });
+
+      const result = await eventGovernanceService.updatePolicy(adminUserId, samplePolicyId, {
+        retentionDays: 180,
+        archiveAfterDays: 60,
+        deletionEnabled: false,
+        exportAllowed: false,
+      });
+
+      expect(eventGovernanceRepository.update).toHaveBeenCalledWith(samplePolicyId, {
+        retention_days: 180,
+        archive_after_days: 60,
+        deletion_enabled: false,
+        export_allowed: false,
+        updated_by: adminUserId,
+      });
+
+      expect(result.retentionDays).toBe(180);
+      expect(result.archiveAfterDays).toBe(60);
+      expect(result.deletionEnabled).toBe(false);
+      expect(result.exportAllowed).toBe(false);
+    });
+
+    it('rejects update if actor is not an Admin (e.g. Security Officer)', async () => {
+      vi.mocked(eventGovernanceRepository.findActorUser).mockResolvedValue({
+        id: 'officer-id',
+        full_name: 'Security Officer',
+        email: 'officer@securaai.internal',
+        role: 'SECURITY_OFFICER',
+        status: 'ACTIVE',
+      });
+
+      await expect(
+        eventGovernanceService.updatePolicy('officer-id', samplePolicyId, {
+          retentionDays: 180,
+        }),
+      ).rejects.toMatchObject({
+        statusCode: 403,
+      });
+    });
+
+    it('rejects update if effective archiveAfterDays >= effective retentionDays', async () => {
+      await expect(
+        eventGovernanceService.updatePolicy(adminUserId, samplePolicyId, {
+          archiveAfterDays: 100,
+        }),
+      ).rejects.toMatchObject({
+        statusCode: 400,
+      });
+    });
+
+    it('throws 404 if policy to update does not exist', async () => {
+      vi.mocked(eventGovernanceRepository.findById).mockResolvedValue(null);
+
+      await expect(
+        eventGovernanceService.updatePolicy(adminUserId, '00000000-0000-0000-0000-000000000000', {
+          retentionDays: 180,
+        }),
+      ).rejects.toMatchObject({
+        statusCode: 404,
       });
     });
   });
