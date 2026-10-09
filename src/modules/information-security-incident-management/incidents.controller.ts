@@ -1,4 +1,21 @@
 import type { RequestHandler } from 'express';
+import { assignIncidentHandlerSchema } from './dto/assign-incident-handler.dto.js';
+
+export const listIncidentAssignmentOptions: RequestHandler = async (_req, res) => {
+  const data = await incidentsService.assignmentOptions(
+    authenticatedUserId(res.locals.authenticatedUserId),
+  );
+  res.status(200).json({ success: true, data });
+};
+export const assignIncidentHandler: RequestHandler = async (req, res) => {
+  const { incidentId } = incidentDetailParamsSchema.parse(req.params);
+  const data = await incidentsService.assignHandler(
+    authenticatedUserId(res.locals.authenticatedUserId),
+    incidentId,
+    assignIncidentHandlerSchema.parse(req.body),
+  );
+  res.status(200).json({ success: true, data });
+};
 import { AppError } from '../../common/errors/app-error.js';
 import {
   createIncidentFromSourceSchema,
@@ -14,6 +31,16 @@ import {
 export const getClassificationHistory: RequestHandler = async (req, res) => {
   const { incidentId } = incidentDetailParamsSchema.parse(req.params);
   const data = await incidentsService.classificationHistory(
+    authenticatedUserId(res.locals.authenticatedUserId),
+    incidentId,
+    classificationHistoryQuerySchema.parse(req.query),
+  );
+  res.status(200).json({ success: true, data });
+};
+
+export const getAssignmentHistory: RequestHandler = async (req, res) => {
+  const { incidentId } = incidentDetailParamsSchema.parse(req.params);
+  const data = await incidentsService.assignmentHistory(
     authenticatedUserId(res.locals.authenticatedUserId),
     incidentId,
     classificationHistoryQuerySchema.parse(req.query),

@@ -1,6 +1,10 @@
 # SecuraAI Backend — V2 baseline
 
-UC57: `PATCH /api/v1/incidents/:incidentId/severity` lets active Security Officers classify severity (`low`, `medium`, `high`, `critical`) with a 10–2000 character rationale. Severity and its `INCIDENT_SEVERITY_CLASSIFIED` audit record are saved atomically. Optional `expectedUpdatedAt` guards stale edits; closed incidents return 409. List/detail responses include classification count and the latest rationale, officer and time. There are 74 pending V1 contracts.
+`GET /api/v1/incidents/:incidentId/assignee` returns paginated assignment history from existing `audit_logs`: previous/new handler, assigning officer, time and note. Active Security Officers and Executives may read closed-incident history. Defaults: page 1 / limit 10 (maximum 100). Names reflect current accounts. No new tables or pending-route count change.
+
+UC58: `GET /api/v1/incidents/assignment-options` lists active Security Officer handlers; `PATCH /api/v1/incidents/:incidentId/assignee` assigns or changes the handler with a 10–2000 character note and optional `expectedUpdatedAt`. Only active Security Officers may call these endpoints. Closed incidents and stale edits return 409. Assignment and `INCIDENT_HANDLER_ASSIGNED` audit (previous/new handler, officer, note, time) are atomic, using existing V2 tables. Response phase is unchanged; selecting the current handler is a no-op. There are 72 pending V1 contracts.
+
+UC57: `PATCH /api/v1/incidents/:incidentId/severity` lets active Security Officers classify severity (`low`, `medium`, `high`, `critical`) with a 10–2000 character rationale. Severity and its `INCIDENT_SEVERITY_CLASSIFIED` audit record are saved atomically. Optional `expectedUpdatedAt` guards stale edits; closed incidents return 409. List/detail responses include classification count and the latest rationale, officer and time.
 
 `GET /api/v1/incidents/:incidentId/severity` returns paginated classification history from existing `audit_logs`, newest first, including previous/new severity, rationale, officer and time. Active Security Officers and Executives may read it, including closed incidents. Defaults: page 1, limit 10 (maximum 100). No new database table is required.
 

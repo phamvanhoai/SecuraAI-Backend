@@ -2,6 +2,7 @@ import { AppError } from '../../common/errors/app-error.js';
 import { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import type { ClassifyIncidentSeverity } from './dto/classify-incident-severity.dto.js';
+import type { AssignIncidentHandler } from './dto/assign-incident-handler.dto.js';
 import type { ViewIncidentsQuery } from './dto/view-incidents.dto.js';
 import type {
   CreateIncidentFromSource,
@@ -37,7 +38,7 @@ function mapIncident(incident: IncidentViewRecord) {
     lastClassification: null,
     currentAssignment: incident.users_incidents_handler_user_idTousers
       ? {
-          assignedAt: null,
+          assignedAt: incident.assignment_at ?? null,
           assignee: mapActor(incident.users_incidents_handler_user_idTousers),
         }
       : null,
@@ -171,6 +172,90 @@ async function requireSecurityOfficer(userId: string): Promise<void> {
 }
 
 export const incidentsService = {
+  async assignmentHistory(
+    userId: string,
+    incidentId: string,
+    query: { page: number; limit: number },
+  ) {
+    await requireViewer(userId);
+    if (!(await incidentsRepository.findById(incidentId)))
+      throw new AppError(404, 'INCIDENT_NOT_FOUND', 'Incident not found');
+    const [total, records] = await incidentsRepository.assignmentHistory(
+      incidentId,
+      query.page,
+      query.limit,
+    );
+    const beforeSchema = z.object({ assigneeUserId: z.uuid().nullable() });
+    const afterSchema = z.object({ assigneeUserId: z.uuid(), note: z.string() });
+    const entries = records.map((record) => ({
+      record,
+      before: beforeSchema.safeParse(record.before_data),
+      after: afterSchema.safeParse(record.after_data),
+    }));
+    const ids = [
+      ...new Set(
+        entries
+          .flatMap((entry) => [
+            entry.before.success ? entry.before.data.assigneeUserId : null,
+            entry.after.success ? entry.after.data.assigneeUserId : null,
+          ])
+          .filter((id): id is string => id !== null),
+      ),
+    ];
+    const names = new Map(
+      (await incidentsRepository.handlerNames(ids)).map((user) => [user.id, user.full_name]),
+    );
+    const handler = (id: string | null) =>
+      id ? { id, name: names.get(id) ?? 'Unknown handler' } : null;
+    return {
+      items: entries.map(({ record, before, after }) => ({
+        id: record.id,
+        assignedAt: record.occurred_at,
+        assignedBy: record.users ? { id: record.users.id, name: record.users.full_name } : null,
+        previousHandler: before.success ? handler(before.data.assigneeUserId) : null,
+        handler: after.success ? handler(after.data.assigneeUserId) : null,
+        note: after.success ? after.data.note : null,
+      })),
+      pagination: {
+        page: query.page,
+        limit: query.limit,
+        total,
+        totalPages: Math.ceil(total / query.limit),
+      },
+    };
+  },
+  async assignmentOptions(userId: string) {
+    await requireSecurityOfficer(userId);
+    return { users: (await incidentsRepository.assignmentOptions()).map(mapActor) };
+  },
+  async assignHandler(userId: string, incidentId: string, input: AssignIncidentHandler) {
+    await requireSecurityOfficer(userId);
+    try {
+      const result = await incidentsRepository.assignHandler(userId, incidentId, input);
+      if (result.outcome === 'forbidden')
+        throw new AppError(403, 'FORBIDDEN', 'Security Officer role required');
+      if (result.outcome === 'not_found')
+        throw new AppError(404, 'INCIDENT_NOT_FOUND', 'Incident not found');
+      if (result.outcome === 'closed')
+        throw new AppError(409, 'INCIDENT_CLOSED', 'Closed incidents cannot be reassigned');
+      if (result.outcome === 'conflict')
+        throw new AppError(409, 'INCIDENT_STALE', 'The incident changed. Refresh and try again');
+      if (result.outcome === 'invalid_handler')
+        throw new AppError(409, 'INVALID_INCIDENT_HANDLER', 'Select an active Security Officer');
+      const incident = mapIncident(result.incident);
+      return {
+        ...incident,
+        changed: result.changed,
+        currentAssignment: incident.currentAssignment
+          ? { ...incident.currentAssignment, assignedAt: result.assignedAt }
+          : null,
+      };
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034')
+        throw new AppError(409, 'INCIDENT_STALE', 'The incident changed. Refresh and try again');
+      throw error;
+    }
+  },
   async classificationHistory(
     userId: string,
     incidentId: string,
