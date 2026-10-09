@@ -997,6 +997,96 @@ export const openApiSpec = {
         },
       },
     },
+    '/incidents/assignment-options': {
+      get: {
+        tags: ['Incident Management'],
+        summary: 'List eligible incident handlers',
+        description:
+          'Active Security Officers only. Returns active Security Officers as users with id, name and email.',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          '200': { description: 'Success envelope with data.users' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer required' },
+        },
+      },
+    },
+    '/incidents/{incidentId}/assignee': {
+      get: {
+        tags: ['Incident Management'],
+        summary: 'View incident assignment history',
+        description:
+          'Active Security Officers and Executives can read assignment audits, including closed incidents. Newest first. Handler names reflect current account names. data.items: id, assignedAt, assignedBy (id/name or null), previousHandler and handler (id/name or null), note. data.pagination: page, limit, total, totalPages.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'incidentId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+          {
+            name: 'page',
+            in: 'query',
+            schema: { type: 'integer', minimum: 1, maximum: 100000, default: 1 },
+          },
+          {
+            name: 'limit',
+            in: 'query',
+            schema: { type: 'integer', minimum: 1, maximum: 100, default: 10 },
+          },
+        ],
+        responses: {
+          '200': { description: 'Success envelope with paginated assignment history' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer or Executive required' },
+          '404': { description: 'Incident not found' },
+          '422': { description: 'Invalid identifier or pagination' },
+        },
+      },
+      patch: {
+        tags: ['Incident Management'],
+        summary: 'Assign or change incident handler',
+        description:
+          'Active Security Officer assigns an active Security Officer. Updates handler and records previous/new handler, assigning officer, note and time atomically in audit_logs. Does not change response phase. Closed incidents cannot be assigned. Selecting the current handler is a no-op (changed=false).',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'incidentId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['assigneeUserId', 'note'],
+                properties: {
+                  assigneeUserId: { type: 'string', format: 'uuid' },
+                  note: { type: 'string', minLength: 10, maxLength: 2000 },
+                  expectedUpdatedAt: { type: 'string', format: 'date-time' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': {
+            description: 'Success envelope containing incident, currentAssignment and changed',
+          },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer required' },
+          '404': { description: 'Incident not found' },
+          '409': { description: 'Closed or stale incident, or handler no longer eligible' },
+          '422': { description: 'Invalid UUID, note or timestamp' },
+        },
+      },
+    },
     '/incidents/{incidentId}/severity': {
       get: {
         tags: ['Incident Management'],

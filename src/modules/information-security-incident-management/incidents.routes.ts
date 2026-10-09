@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { assignIncidentHandlerSchema } from './dto/assign-incident-handler.dto.js';
 import { authenticate } from '../../common/middleware/authenticate.js';
 import { validate } from '../../common/middleware/validate.js';
 import { asyncHandler } from '../../common/utils/async-handler.js';
@@ -9,6 +10,9 @@ import {
   getIncidentDetail,
   listIncidentSourceOptions,
   listIncidents,
+  listIncidentAssignmentOptions,
+  assignIncidentHandler,
+  getAssignmentHistory,
 } from './incidents.controller.js';
 import {
   createIncidentFromSourceSchema,
@@ -21,6 +25,25 @@ import {
 } from './dto/classify-incident-severity.dto.js';
 
 export const incidentsRouter = Router();
+
+incidentsRouter.get(
+  '/:incidentId/assignee',
+  authenticate,
+  validate({ params: incidentDetailParamsSchema, query: classificationHistoryQuerySchema }),
+  asyncHandler(getAssignmentHistory),
+);
+
+incidentsRouter.get(
+  '/assignment-options',
+  authenticate,
+  asyncHandler(listIncidentAssignmentOptions),
+);
+incidentsRouter.patch(
+  '/:incidentId/assignee',
+  authenticate,
+  validate({ params: incidentDetailParamsSchema, body: assignIncidentHandlerSchema }),
+  asyncHandler(assignIncidentHandler),
+);
 
 incidentsRouter.get(
   '/:incidentId/severity',

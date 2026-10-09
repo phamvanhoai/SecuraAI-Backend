@@ -3,6 +3,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { prisma } from '../../database/prisma.js';
 import type { ViewIncidentsQuery } from './dto/view-incidents.dto.js';
 import type { ClassifyIncidentSeverity } from './dto/classify-incident-severity.dto.js';
+import type { AssignIncidentHandler } from './dto/assign-incident-handler.dto.js';
 import type {
   CreateIncidentFromSource,
   IncidentSourceOptionsQuery,
@@ -79,13 +80,147 @@ export const incidentDetailSelect = {
 
 export type IncidentViewRecord = Prisma.incidentsGetPayload<{
   select: typeof incidentViewSelect;
-}>;
+}> & { assignment_at?: Date | null };
 
 export type IncidentDetailRecord = Prisma.incidentsGetPayload<{
   select: typeof incidentDetailSelect;
-}>;
+}> & { assignment_at?: Date | null };
+
+async function withAssignmentTimes<T extends { id: string; handler_user_id: string | null }>(
+  records: T[],
+) {
+  const ids = records.filter((record) => record.handler_user_id).map((record) => record.id);
+  if (!ids.length) return records;
+  const audits = await prisma.audit_logs.findMany({
+    where: {
+      resource_type: 'INCIDENT',
+      resource_id: { in: ids },
+      action: 'INCIDENT_HANDLER_ASSIGNED',
+      outcome: 'SUCCESS',
+    },
+    distinct: ['resource_id'],
+    orderBy: [{ occurred_at: 'desc' }, { id: 'desc' }],
+    take: ids.length,
+    select: { resource_id: true, occurred_at: true, after_data: true },
+  });
+  return records.map((record) => {
+    const entry = audits.find((audit) => audit.resource_id === record.id);
+    const payload = entry?.after_data;
+    const matches =
+      payload &&
+      typeof payload === 'object' &&
+      !Array.isArray(payload) &&
+      payload.assigneeUserId === record.handler_user_id;
+    return { ...record, assignment_at: matches ? entry.occurred_at : null };
+  });
+}
 
 export const incidentsRepository = {
+  assignmentHistory(incidentId: string, page: number, limit: number) {
+    const where = {
+      resource_type: 'INCIDENT',
+      resource_id: incidentId,
+      action: 'INCIDENT_HANDLER_ASSIGNED',
+      outcome: 'SUCCESS' as const,
+    };
+    return prisma.$transaction([
+      prisma.audit_logs.count({ where }),
+      prisma.audit_logs.findMany({
+        where,
+        skip: (page - 1) * limit,
+        take: limit,
+        orderBy: [{ occurred_at: 'desc' }, { id: 'desc' }],
+        select: {
+          id: true,
+          occurred_at: true,
+          before_data: true,
+          after_data: true,
+          users: { select: { id: true, full_name: true } },
+        },
+      }),
+    ]);
+  },
+  handlerNames(ids: string[]) {
+    return prisma.users.findMany({
+      where: { id: { in: ids } },
+      select: { id: true, full_name: true },
+    });
+  },
+  assignmentOptions() {
+    return prisma.users.findMany({
+      where: { role: 'SECURITY_OFFICER', status: 'ACTIVE' },
+      orderBy: [{ full_name: 'asc' }, { id: 'asc' }],
+      select: { id: true, full_name: true, email: true },
+    });
+  },
+  assignHandler(userId: string, incidentId: string, input: AssignIncidentHandler) {
+    return prisma.$transaction(
+      async (transaction) => {
+        const actor = await transaction.users.findUnique({
+          where: { id: userId },
+          select: { role: true, status: true },
+        });
+        if (!actor || actor.role !== 'SECURITY_OFFICER' || actor.status !== 'ACTIVE')
+          return { outcome: 'forbidden' as const };
+        await transaction.$queryRaw`SELECT id FROM public.incidents WHERE id = ${incidentId}::uuid FOR UPDATE`;
+        const current = await transaction.incidents.findUnique({
+          where: { id: incidentId },
+          select: { status: true, handler_user_id: true, updated_at: true },
+        });
+        if (!current) return { outcome: 'not_found' as const };
+        if (current.status === 'CLOSED') return { outcome: 'closed' as const };
+        if (
+          input.expectedUpdatedAt &&
+          current.updated_at.getTime() !== new Date(input.expectedUpdatedAt).getTime()
+        )
+          return { outcome: 'conflict' as const };
+        const handler = await transaction.users.findUnique({
+          where: { id: input.assigneeUserId },
+          select: { role: true, status: true },
+        });
+        if (!handler || handler.role !== 'SECURITY_OFFICER' || handler.status !== 'ACTIVE')
+          return { outcome: 'invalid_handler' as const };
+        const at = new Date();
+        if (current.handler_user_id === input.assigneeUserId) {
+          const incident = await transaction.incidents.findUniqueOrThrow({
+            where: { id: incidentId },
+            select: incidentViewSelect,
+          });
+          return { outcome: 'assigned' as const, incident, changed: false, assignedAt: null };
+        }
+        await transaction.incidents.update({
+          where: { id: incidentId },
+          data: { handler_user_id: input.assigneeUserId, updated_at: at },
+        });
+        const id = randomUUID();
+        const before = { assigneeUserId: current.handler_user_id };
+        const after = { assigneeUserId: input.assigneeUserId, note: input.note };
+        await transaction.audit_logs.create({
+          data: {
+            id,
+            actor_type: 'USER',
+            actor_user_id: userId,
+            action: 'INCIDENT_HANDLER_ASSIGNED',
+            resource_type: 'INCIDENT',
+            resource_id: incidentId,
+            occurred_at: at,
+            source: 'API',
+            before_data: before,
+            after_data: after,
+            record_hash: createHash('sha256')
+              .update(JSON.stringify({ id, userId, incidentId, at, before, after }))
+              .digest('hex'),
+          },
+        });
+        const incident = await transaction.incidents.findUniqueOrThrow({
+          where: { id: incidentId },
+          select: incidentViewSelect,
+        });
+        return { outcome: 'assigned' as const, incident, changed: true, assignedAt: at };
+      },
+      { isolationLevel: 'Serializable' },
+    );
+  },
   classificationHistory(incidentId: string, page: number, limit: number) {
     const where = {
       resource_type: 'INCIDENT',
@@ -211,7 +346,7 @@ export const incidentsRepository = {
     });
   },
 
-  list(query: ViewIncidentsQuery) {
+  async list(query: ViewIncidentsQuery) {
     const where: Prisma.incidentsWhereInput = {
       ...(query.search
         ? {
@@ -228,7 +363,7 @@ export const incidentsRepository = {
         ? { status: query.status.toUpperCase() as Prisma.Enumincident_statusFilter }
         : {}),
     };
-    return prisma.$transaction([
+    const [total, records] = await prisma.$transaction([
       prisma.incidents.count({ where }),
       prisma.incidents.findMany({
         where,
@@ -238,13 +373,16 @@ export const incidentsRepository = {
         take: query.limit,
       }),
     ]);
+    return [total, await withAssignmentTimes(records)] as const;
   },
 
-  findById(incidentId: string) {
-    return prisma.incidents.findUnique({
+  async findById(incidentId: string) {
+    const record = await prisma.incidents.findUnique({
       where: { id: incidentId },
       select: incidentDetailSelect,
     });
+    if (!record) return null;
+    return (await withAssignmentTimes([record]))[0] ?? null;
   },
 
   listSourceOptions(query: IncidentSourceOptionsQuery) {
