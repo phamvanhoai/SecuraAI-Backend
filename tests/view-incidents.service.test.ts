@@ -18,6 +18,7 @@ const now = new Date('2026-09-30T00:00:00Z');
 const record = {
   id: incidentId,
   incident_code: 'INC-2026-001',
+  incident_analysis: null,
   title: 'Suspicious administrative login',
   description: 'An unexpected privileged login was detected.',
   severity: 'HIGH',
@@ -102,12 +103,22 @@ describe('view incidents service', () => {
           incidentCode: 'INC-2026-001',
           severity: 'high',
           status: 'triage',
+          hasAnalysis: false,
           currentAssignment: { assignee: { name: 'Security Officer' } },
           relatedCounts: { assets: 2, evidence: 4 },
         },
       ],
       pagination: { total: 1, totalPages: 1 },
     });
+  });
+
+  it('marks incidents with existing analysis for read-only discovery after reopening', async () => {
+    vi.mocked(incidentsRepository.list).mockResolvedValue([
+      1,
+      [{ ...record, incident_analysis: { id: incidentId } }],
+    ]);
+    const result = await incidentsService.list(userId, { page: 1, limit: 10 });
+    expect(result.items[0]).toMatchObject({ status: 'triage', hasAnalysis: true });
   });
 
   it('allows an Executive to view incident details', async () => {

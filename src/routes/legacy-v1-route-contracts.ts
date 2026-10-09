@@ -11,7 +11,6 @@ export const legacyV1RouteContracts = [
     tag: 'Policies',
   },
   { method: 'get', path: '/incidents/mine', tag: 'Incidents' },
-  { method: 'patch', path: '/incidents/{incidentId}/progress', tag: 'Incidents' },
   { method: 'get', path: '/incidents/{incidentId}/evidence', tag: 'Incidents' },
   { method: 'post', path: '/incidents/{incidentId}/evidence', tag: 'Incidents' },
   { method: 'get', path: '/incidents/evidence/{evidenceId}/download', tag: 'Incidents' },

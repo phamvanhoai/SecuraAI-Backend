@@ -21,10 +21,18 @@ const input = {
 beforeEach(() => {
   vi.resetAllMocks();
   tx.users.findUnique.mockResolvedValue({ role: 'SECURITY_OFFICER', status: 'ACTIVE' });
-  tx.incidents.findUnique.mockResolvedValue({ status: 'OPEN' });
+  tx.incidents.findUnique.mockResolvedValue({ status: 'ERADICATION' });
   tx.incident_actions.create.mockResolvedValue({ id: 'action' });
 });
-it('atomically records action, current actor and audit without changing phase', async () => {
+it('rejects later-stage actions before any write', async () => {
+  tx.incidents.findUnique.mockResolvedValue({ status: 'OPEN' });
+  await expect(
+    incidentsRepository.recordEradication('officer', 'incident', input),
+  ).rejects.toMatchObject({ code: 'INCIDENT_PHASE_REQUIRED', statusCode: 409 });
+  expect(tx.incident_actions.create).not.toHaveBeenCalled();
+  expect(tx.incidents.update).not.toHaveBeenCalled();
+});
+it('atomically records action and audit without changing the phase', async () => {
   expect(await incidentsRepository.recordEradication('officer', 'incident', input)).toMatchObject({
     outcome: 'recorded',
   });
@@ -42,7 +50,7 @@ it('atomically records action, current actor and audit without changing phase', 
   );
   expect(tx.incidents.update).toHaveBeenCalledWith({
     where: { id: 'incident' },
-    data: { updated_at: expect.any(Date) },
+    data: { updated_at: expect.any(Date), status: 'ERADICATION' },
   });
   expect(tx.audit_logs.create).toHaveBeenCalledWith(
     expect.objectContaining({
@@ -78,6 +86,22 @@ it('propagates audit failure so transaction rolls back', async () => {
   tx.audit_logs.create.mockRejectedValue(new Error('Audit failure'));
   await expect(incidentsRepository.recordEradication('officer', 'incident', input)).rejects.toThrow(
     'Audit failure',
+  );
+});
+it('keeps completed recovery in lessons learned when adding retrospective work', async () => {
+  tx.incidents.findUnique.mockResolvedValue({ status: 'LESSONS_LEARNED' });
+  await incidentsRepository.recordEradication('officer', 'incident', input);
+  expect(tx.incidents.update).toHaveBeenCalledWith({
+    where: { id: 'incident' },
+    data: { updated_at: expect.any(Date), status: 'LESSONS_LEARNED' },
+  });
+  expect(tx.audit_logs.create).toHaveBeenCalledWith(
+    expect.objectContaining({
+      data: expect.objectContaining({
+        before_data: { status: 'LESSONS_LEARNED' },
+        after_data: expect.objectContaining({ status: 'LESSONS_LEARNED' }),
+      }),
+    }),
   );
 });
 it('scopes and stably paginates only eradication records', async () => {

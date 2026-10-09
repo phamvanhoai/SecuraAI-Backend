@@ -57,9 +57,28 @@ describe('incident severity repository transaction', () => {
         actor_user_id: actorId,
         resource_id: incidentId,
         action: 'INCIDENT_SEVERITY_CLASSIFIED',
-        before_data: { severity: 'high' },
-        after_data: input,
+        before_data: { severity: 'high', status: 'TRIAGE' },
+        after_data: { ...input, status: 'TRIAGE' },
         record_hash: expect.stringMatching(/^[a-f0-9]{64}$/),
+      }),
+    });
+  });
+  it('classification preserves OPEN instead of inferring triage readiness', async () => {
+    mocks.transaction.incidents.findUnique.mockResolvedValue({
+      status: 'OPEN',
+      severity: 'HIGH',
+      updated_at: updatedAt,
+    });
+    await incidentsRepository.classifySeverity(actorId, incidentId, input);
+    expect(mocks.transaction.incidents.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: { severity: 'CRITICAL', updated_at: expect.any(Date) },
+      }),
+    );
+    expect(mocks.transaction.audit_logs.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        before_data: { severity: 'high', status: 'OPEN' },
+        after_data: { ...input, status: 'OPEN' },
       }),
     });
   });

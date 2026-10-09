@@ -1,4 +1,23 @@
 import type { RequestHandler } from 'express';
+import { incidentProgressSchema, phaseHistoryQuerySchema } from './dto/incident-progress.dto.js';
+export const updateIncidentPhase: RequestHandler = async (req, res) => {
+  const { incidentId } = incidentDetailParamsSchema.parse(req.params);
+  const data = await incidentsService.updatePhase(
+    authenticatedUserId(res.locals.authenticatedUserId),
+    incidentId,
+    incidentProgressSchema.parse(req.body),
+  );
+  res.json({ success: true, data });
+};
+export const getIncidentPhaseHistory: RequestHandler = async (req, res) => {
+  const { incidentId } = incidentDetailParamsSchema.parse(req.params);
+  const data = await incidentsService.phaseHistory(
+    authenticatedUserId(res.locals.authenticatedUserId),
+    incidentId,
+    phaseHistoryQuerySchema.parse(req.query),
+  );
+  res.json({ success: true, data });
+};
 import {
   recordContainmentActionSchema,
   containmentHistoryQuerySchema,

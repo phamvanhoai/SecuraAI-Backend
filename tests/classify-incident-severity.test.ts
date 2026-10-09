@@ -32,6 +32,7 @@ const input = {
 const incident: IncidentViewRecord = {
   id: incidentId,
   incident_code: 'INC-001',
+  incident_analysis: null,
   title: 'Suspicious login',
   description: 'Unexpected access',
   severity: 'HIGH',

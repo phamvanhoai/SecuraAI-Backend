@@ -1,4 +1,6 @@
 import { env } from '../config/env.js';
+import { incidentProgressPaths } from './incident-progress.openapi.js';
+import { incidentAnalysisPaths } from './incident-analysis.openapi.js';
 import { controlCatalogPaths } from './control-catalog.openapi.js';
 import { controlEvidencePaths } from './control-evidence.openapi.js';
 import { pendingV2Paths } from './pending-v2.openapi.js';
@@ -22,7 +24,9 @@ export const openApiSpec = {
     },
   },
   paths: {
+    ...incidentAnalysisPaths,
     ...pendingV2Paths,
+    ...incidentProgressPaths,
     ...controlCatalogPaths,
     ...controlEvidencePaths,
     ...businessServicesPaths,
@@ -933,7 +937,7 @@ export const openApiSpec = {
         tags: ['Incident Management'],
         summary: 'List security incidents',
         description:
-          'Returns a searchable, paginated list of V2 security incidents for active Security Officers and Executives.',
+          'Returns a searchable, paginated list of V2 security incidents for active Security Officers and Executives. Each incident includes hasAnalysis, a boolean indicating whether root cause analysis exists, also returned in incident detail.',
         security: [{ bearerAuth: [] }],
         parameters: [
           { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
@@ -1002,7 +1006,7 @@ export const openApiSpec = {
         tags: ['Incident Management'],
         summary: 'Record containment action',
         description:
-          'Active Security Officers only. Appends a CONTAINMENT action and audit atomically using existing V2 incident_actions. Performer is the signed-in user. Does not change incident phase. Closed incidents reject writes. Times must not be in the future.',
+          'Active Security Officers only. Appends a CONTAINMENT action and audit atomically using existing V2 incident_actions. Performer is the signed-in user. Requires current CONTAINMENT or a later non-closed phase; earlier phases return 409 INCIDENT_PHASE_REQUIRED. Status never changes. Closed incidents reject writes. Times must not be in the future.',
         security: [{ bearerAuth: [] }],
         parameters: [
           {
@@ -1078,7 +1082,7 @@ export const openApiSpec = {
         tags: ['Incident Management'],
         summary: 'Record eradication action',
         description:
-          'Active Security Officers only. Appends a ERADICATION action and audit atomically using existing V2 incident_actions. Performer is the signed-in user. Does not change incident phase. Closed incidents reject writes. Times must not be in the future.',
+          'Active Security Officers only. Appends an ERADICATION action and audit atomically using existing V2 incident_actions. Performer is the signed-in user. Requires current ERADICATION or a later non-closed phase; earlier phases return 409 INCIDENT_PHASE_REQUIRED. Status never changes. Closed incidents reject writes. Times must not be in the future.',
         security: [{ bearerAuth: [] }],
         parameters: [
           {
@@ -1154,7 +1158,7 @@ export const openApiSpec = {
         tags: ['Incident Management'],
         summary: 'Record recovery action',
         description:
-          'Active Security Officers only. Appends a RECOVERY action and audit atomically using existing V2 incident_actions. Performer is the signed-in user. Does not change incident phase. Closed incidents reject writes. Times must not be in the future.',
+          'Active Security Officers only. Appends a RECOVERY action and audit atomically using existing V2 incident_actions. Performer is the signed-in user. Requires RECOVERY or LESSONS_LEARNED; earlier phases return 409 INCIDENT_PHASE_REQUIRED. Status never changes. Confirm verified recovery through PATCH /incidents/{incidentId}/progress separately. Closed incidents reject writes. Times must not be in the future.',
         security: [{ bearerAuth: [] }],
         parameters: [
           {
@@ -1276,7 +1280,7 @@ export const openApiSpec = {
         tags: ['Incident Management'],
         summary: 'Assign or change incident handler',
         description:
-          'Active Security Officer assigns an active Security Officer. Updates handler and records previous/new handler, assigning officer, note and time atomically in audit_logs. Does not change response phase. Closed incidents cannot be assigned. Selecting the current handler is a no-op (changed=false).',
+          'Active Security Officer assigns an active Security Officer. Updates handler and records previous/new handler, assigning officer, note and time atomically in audit_logs. Assignment never changes the handling phase or establishes phase completion. Before/after status is audited. Closed incidents cannot be assigned. Selecting the current handler is a no-op (changed=false).',
         security: [{ bearerAuth: [] }],
         parameters: [
           {
@@ -1410,7 +1414,7 @@ export const openApiSpec = {
         tags: ['Incident Management'],
         summary: 'Classify incident severity',
         description:
-          'An active Security Officer records severity and a rationale supporting response priority. Writes severity and its audit record atomically. Closed incidents cannot be reclassified.',
+          'An active Security Officer records severity and a rationale supporting response priority. Writes severity and its audit record atomically. Classification never changes the handling phase or establishes phase completion; before/after status is audited. Closed incidents cannot be reclassified.',
         security: [{ bearerAuth: [] }],
         parameters: [
           {
