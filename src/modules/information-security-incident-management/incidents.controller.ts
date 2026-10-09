@@ -6,6 +6,30 @@ import {
 } from './dto/create-incident-from-source.dto.js';
 import { incidentDetailParamsSchema, viewIncidentsQuerySchema } from './dto/view-incidents.dto.js';
 import { incidentsService } from './incidents.service.js';
+import {
+  classifyIncidentSeveritySchema,
+  classificationHistoryQuerySchema,
+} from './dto/classify-incident-severity.dto.js';
+
+export const getClassificationHistory: RequestHandler = async (req, res) => {
+  const { incidentId } = incidentDetailParamsSchema.parse(req.params);
+  const data = await incidentsService.classificationHistory(
+    authenticatedUserId(res.locals.authenticatedUserId),
+    incidentId,
+    classificationHistoryQuerySchema.parse(req.query),
+  );
+  res.status(200).json({ success: true, data });
+};
+
+export const classifyIncidentSeverity: RequestHandler = async (req, res) => {
+  const { incidentId } = incidentDetailParamsSchema.parse(req.params);
+  const data = await incidentsService.classifySeverity(
+    authenticatedUserId(res.locals.authenticatedUserId),
+    incidentId,
+    classifyIncidentSeveritySchema.parse(req.body),
+  );
+  res.status(200).json({ success: true, data });
+};
 
 function authenticatedUserId(value: unknown): string {
   if (typeof value !== 'string') throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');

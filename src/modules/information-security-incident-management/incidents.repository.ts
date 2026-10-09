@@ -1,7 +1,8 @@
 import type { Prisma } from '@prisma/client';
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { prisma } from '../../database/prisma.js';
 import type { ViewIncidentsQuery } from './dto/view-incidents.dto.js';
+import type { ClassifyIncidentSeverity } from './dto/classify-incident-severity.dto.js';
 import type {
   CreateIncidentFromSource,
   IncidentSourceOptionsQuery,
@@ -85,6 +86,124 @@ export type IncidentDetailRecord = Prisma.incidentsGetPayload<{
 }>;
 
 export const incidentsRepository = {
+  classificationHistory(incidentId: string, page: number, limit: number) {
+    const where = {
+      resource_type: 'INCIDENT',
+      resource_id: incidentId,
+      action: 'INCIDENT_SEVERITY_CLASSIFIED',
+      outcome: 'SUCCESS' as const,
+    };
+    return prisma.$transaction([
+      prisma.audit_logs.count({ where }),
+      prisma.audit_logs.findMany({
+        where,
+        skip: (page - 1) * limit,
+        take: limit,
+        orderBy: [{ occurred_at: 'desc' }, { id: 'desc' }],
+        select: {
+          id: true,
+          occurred_at: true,
+          before_data: true,
+          after_data: true,
+          users: { select: { id: true, full_name: true } },
+        },
+      }),
+    ]);
+  },
+  async classificationMetadata(incidentIds: string[]) {
+    const where = {
+      resource_type: 'INCIDENT',
+      resource_id: { in: incidentIds },
+      action: 'INCIDENT_SEVERITY_CLASSIFIED',
+      outcome: 'SUCCESS' as const,
+    };
+    const [counts, latest] = await prisma.$transaction([
+      prisma.audit_logs.groupBy({
+        by: ['resource_id'],
+        where,
+        orderBy: { resource_id: 'asc' },
+        _count: { _all: true },
+      }),
+      prisma.audit_logs.findMany({
+        where,
+        distinct: ['resource_id'],
+        orderBy: [{ occurred_at: 'desc' }, { id: 'desc' }],
+        take: incidentIds.length,
+        select: {
+          resource_id: true,
+          occurred_at: true,
+          after_data: true,
+          users: { select: { id: true, full_name: true } },
+        },
+      }),
+    ]);
+    return {
+      counts: counts.map((item) => ({
+        resourceId: item.resource_id,
+        count: typeof item._count === 'object' ? (item._count._all ?? 0) : 0,
+      })),
+      latest,
+    };
+  },
+
+  classifySeverity(userId: string, incidentId: string, input: ClassifyIncidentSeverity) {
+    return prisma.$transaction(
+      async (transaction) => {
+        const actor = await transaction.users.findUnique({
+          where: { id: userId },
+          select: { role: true, status: true },
+        });
+        if (!actor || actor.status !== 'ACTIVE' || actor.role !== 'SECURITY_OFFICER') {
+          return { outcome: 'forbidden' as const };
+        }
+        await transaction.$queryRaw`SELECT id FROM public.incidents WHERE id = ${incidentId}::uuid FOR UPDATE`;
+        const current = await transaction.incidents.findUnique({
+          where: { id: incidentId },
+          select: { status: true, severity: true, updated_at: true },
+        });
+        if (!current) return { outcome: 'not_found' as const };
+        if (current.status === 'CLOSED') return { outcome: 'closed' as const };
+        if (
+          input.expectedUpdatedAt &&
+          current.updated_at.getTime() !== new Date(input.expectedUpdatedAt).getTime()
+        ) {
+          return { outcome: 'conflict' as const };
+        }
+        const at = new Date();
+        const changed = await transaction.incidents.updateMany({
+          where: { id: incidentId, status: { not: 'CLOSED' } },
+          data: { severity: input.severity.toUpperCase(), updated_at: at },
+        });
+        if (changed.count !== 1) return { outcome: 'conflict' as const };
+        const id = randomUUID();
+        const before = { severity: current.severity.toLowerCase() };
+        const after = { severity: input.severity, rationale: input.rationale };
+        await transaction.audit_logs.create({
+          data: {
+            id,
+            actor_type: 'USER',
+            actor_user_id: userId,
+            action: 'INCIDENT_SEVERITY_CLASSIFIED',
+            resource_type: 'INCIDENT',
+            resource_id: incidentId,
+            occurred_at: at,
+            source: 'API',
+            before_data: before,
+            after_data: after,
+            record_hash: createHash('sha256')
+              .update(JSON.stringify({ id, userId, incidentId, at, before, after }))
+              .digest('hex'),
+          },
+        });
+        const incident = await transaction.incidents.findUniqueOrThrow({
+          where: { id: incidentId },
+          select: incidentViewSelect,
+        });
+        return { outcome: 'classified' as const, incident };
+      },
+      { isolationLevel: 'Serializable' },
+    );
+  },
   findActor(userId: string) {
     return prisma.users.findUnique({
       where: { id: userId },

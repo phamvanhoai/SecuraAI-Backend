@@ -5,6 +5,7 @@ vi.mock('../src/modules/information-security-incident-management/incidents.repos
     findActor: vi.fn(),
     list: vi.fn(),
     findById: vi.fn(),
+    classificationMetadata: vi.fn(),
   },
 }));
 
@@ -81,6 +82,10 @@ const record = {
 describe('view incidents service', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(incidentsRepository.classificationMetadata).mockResolvedValue({
+      counts: [],
+      latest: [],
+    });
     vi.mocked(incidentsRepository.findActor).mockResolvedValue({
       id: userId,
       role: 'SECURITY_OFFICER',
