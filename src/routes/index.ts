@@ -12,6 +12,7 @@ import {
   normalizedEventsRouter,
   wazuhIngestionRouter,
 } from '../modules/event-ingestion/index.js';
+import { auditLogsRouter } from '../modules/audit-security-reporting/index.js';
 import {
   riskRegisterRouter,
   riskReassessmentReviewRouter,
@@ -56,4 +57,7 @@ apiRouter.use('/events', normalizedEventsRouter);
 apiRouter.use('/event-ingestion/events', normalizedEventsRouter);
 apiRouter.use('/integrations/wazuh', wazuhIngestionRouter);
 apiRouter.use('/event-ingestion/wazuh', wazuhIngestionRouter);
+apiRouter.use('/audit-logs', auditLogsRouter);
+apiRouter.use('/audit-security-reporting/audit-logs', auditLogsRouter);
+apiRouter.use('/audits', auditLogsRouter);
 apiRouter.use(pendingV2Router);

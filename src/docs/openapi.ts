@@ -3603,6 +3603,62 @@ export const openApiSpec = {
         },
       },
     },
+    '/audit-logs': {
+      get: {
+        tags: ['Audit & Security Reporting'],
+        summary: 'List and search system audit records',
+        description:
+          'Returns paginated audit records with filters for actor, action, resource, correlation ID and time range.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 } },
+          { name: 'search', in: 'query', schema: { type: 'string', maxLength: 100 } },
+          { name: 'actor', in: 'query', schema: { type: 'string', maxLength: 100 } },
+          { name: 'action', in: 'query', schema: { type: 'string', maxLength: 100 } },
+          { name: 'resourceType', in: 'query', schema: { type: 'string', maxLength: 100 } },
+          { name: 'correlationId', in: 'query', schema: { type: 'string', maxLength: 100 } },
+          { name: 'startDate', in: 'query', schema: { type: 'string', format: 'date-time' } },
+          { name: 'endDate', in: 'query', schema: { type: 'string', format: 'date-time' } },
+        ],
+        responses: {
+          '200': { description: 'Paginated audit records' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Authorized audit role required' },
+          '422': { description: 'Invalid query parameters' },
+        },
+      },
+    },
+    '/audit-logs/{id}': {
+      get: {
+        tags: ['Audit & Security Reporting'],
+        summary: 'View audit log detail',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+        responses: {
+          '200': { description: 'Detailed audit record' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Authorized audit role required' },
+          '404': { description: 'Audit record not found' },
+          '422': { description: 'Invalid audit record ID' },
+        },
+      },
+    },
+    '/audit-logs/{id}/diff': {
+      get: {
+        tags: ['Audit & Security Reporting'],
+        summary: 'View before and after changes',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+        responses: {
+          '200': { description: 'Property-level before and after comparison' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Authorized audit role required' },
+          '404': { description: 'Audit record not found' },
+          '422': { description: 'Invalid audit record ID' },
+        },
+      },
+    },
     '/health/live': {
       get: {
         tags: ['Health'],
