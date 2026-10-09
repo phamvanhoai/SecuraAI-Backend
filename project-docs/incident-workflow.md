@@ -47,8 +47,8 @@ their existing histories. Mutation success refreshes lists/details/history witho
 Stale concurrent writes return 409, so the officer must review current state again.
 
 Recovery action no longer accepts recoveryCompleted; clients must use the explicit
-progress confirmation. RCA saves remain allowed in LESSONS_LEARNED/CLOSED and never
-change phase. Close Incident remains a separate, unimplemented use case.
+progress confirmation. RCA saves are allowed only in LESSONS_LEARNED and never
+change phase. Close Incident (UC63) is implemented separately below.
 
 No table, column, enum, migration or bulk rewrite is added. Existing incident_actions
 and audit_logs are reused. Pending legacy contracts decrease from 72 to 71, removing
@@ -64,7 +64,32 @@ future-action recording restriction and forward-only policy are SecuraAI decisio
 not requirements mandated by the vendors or NIST. Backward transitions, reopening
 and a task-based completion engine are not implemented by this change. Existing
 records and audit snapshots are retained; removing automatic transitions does not
-rewrite previously stored phases. Close Incident remains a separate pending use case.
+rewrite previously stored phases.
+
+## Close Incident (UC63)
+
+GET /incidents/:incidentId/close provides backend-derived readiness and real closure
+audit metadata to active Security Officers and Executives. POST on the same URL is
+restricted to active Security Officers. In SecuraAI, closure requires current
+LESSONS_LEARNED, nonblank saved root cause, lessons learned and improvement
+recommendations, a 20-4000 character summary, confirmed=true and expectedUpdatedAt.
+These are product rules interpreting the tracking requirement to finish recovery
+and record necessary information, not universal vendor requirements. No journal
+count proves completion; the officer attests required response/recovery work is
+complete. Recommendations may remain documented follow-up.
+
+Status CLOSED, server-owned closed_at and INCIDENT_CLOSED audit (officer, summary,
+before/after status and timestamp) commit atomically in a serializable transaction
+with a locked incident. Concurrent updates return 409 and require renewed review.
+Repeated closure returns changed=false without changing timestamp or adding audit.
+Existing response, assignment, severity and analysis histories remain accessible.
+Existing closed records without closure audit display missing metadata honestly.
+After closure, RCA findings and history are read-only. New or amended findings are
+rejected with 409 INCIDENT_CLOSED under the same incident lock, preserving the
+findings used during closure. Existing audit entries are not changed or removed.
+The UI refreshes incident queries and shows the real closure record without F5.
+No schema/migration is added. These new URLs do not replace a pending legacy
+contract, so the pending count remains 71.
 
 References informing the separation of response work, recovery validation and review:
 

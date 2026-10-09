@@ -63,7 +63,8 @@ export const incidentAnalysisRepository = {
           select: { status: true, incident_analysis: { select: analysisSelect } },
         });
         if (!incident) return { outcome: 'not_found' as const };
-        if (!['LESSONS_LEARNED', 'CLOSED'].includes(incident.status))
+        if (incident.status === 'CLOSED') return { outcome: 'closed' as const };
+        if (incident.status !== 'LESSONS_LEARNED')
           return { outcome: 'not_ready' as const };
         const previous = incident.incident_analysis;
         if ((previous?.updated_at.toISOString() ?? null) !== input.expectedUpdatedAt)

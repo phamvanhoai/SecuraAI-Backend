@@ -1,4 +1,6 @@
 import { Router } from 'express';
+import { closeIncidentSchema } from './dto/close-incident.dto.js';
+import { closeIncident, getIncidentClosure } from './incident-closure.controller.js';
 import { incidentProgressSchema, phaseHistoryQuerySchema } from './dto/incident-progress.dto.js';
 import { updateIncidentPhase, getIncidentPhaseHistory } from './incidents.controller.js';
 import {
@@ -51,6 +53,18 @@ import {
 } from './dto/record-recovery-action.dto.js';
 import { recordRecoveryAction, getRecoveryHistory } from './incidents.controller.js';
 export const incidentsRouter = Router();
+incidentsRouter.get(
+  '/:incidentId/close',
+  authenticate,
+  validate({ params: incidentDetailParamsSchema }),
+  asyncHandler(getIncidentClosure),
+);
+incidentsRouter.post(
+  '/:incidentId/close',
+  authenticate,
+  validate({ params: incidentDetailParamsSchema, body: closeIncidentSchema }),
+  asyncHandler(closeIncident),
+);
 incidentsRouter.patch(
   '/:incidentId/progress',
   authenticate,

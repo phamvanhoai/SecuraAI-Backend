@@ -88,7 +88,7 @@ it('allows Executive read but exposes no edit capability', async () => {
     ).status,
   ).toBe(200);
 });
-it.each(['OPEN', 'TRIAGE', 'CONTAINMENT', 'ERADICATION', 'RECOVERY'])(
+it.each(['OPEN', 'TRIAGE', 'CONTAINMENT', 'ERADICATION', 'RECOVERY', 'CLOSED'])(
   'makes %s read-only',
   async (status) => {
     mocks.findIncident.mockResolvedValue({ status, incident_analysis: null });
@@ -119,12 +119,30 @@ it.each([
   ['forbidden', 403],
   ['not_found', 404],
   ['not_ready', 409],
+  ['closed', 409],
   ['conflict', 409],
 ] as const)('maps %s', async (outcome, status) => {
   mocks.save.mockResolvedValue({ outcome });
   expect((await request(app).patch(url).auth(token, { type: 'bearer' }).send(input)).status).toBe(
     status,
   );
+});
+it('returns INCIDENT_CLOSED for a form submitted after closure while retaining reads', async () => {
+  mocks.findIncident.mockResolvedValue({ status: 'CLOSED', incident_analysis: record });
+  const review = await request(app).get(url).auth(token, { type: 'bearer' });
+  expect(review.body.data.canEdit).toBe(false);
+  expect(review.body.data.analysis).toMatchObject(findings);
+  mocks.save.mockResolvedValue({ outcome: 'closed' });
+  const response = await request(app).patch(url).auth(token, { type: 'bearer' }).send(input);
+  expect(response.status).toBe(409);
+  expect(response.body.error.code).toBe('INCIDENT_CLOSED');
+  expect(
+    (
+      await request(app)
+        .get(url + '/history')
+        .auth(token, { type: 'bearer' })
+    ).status,
+  ).toBe(200);
 });
 it('returns immutable history and bounded pagination', async () => {
   const res = await request(app)
