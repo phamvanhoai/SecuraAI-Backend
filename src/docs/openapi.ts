@@ -1073,6 +1073,82 @@ export const openApiSpec = {
         },
       },
     },
+    '/incidents/{incidentId}/eradication-actions': {
+      post: {
+        tags: ['Incident Management'],
+        summary: 'Record eradication action',
+        description:
+          'Active Security Officers only. Appends a ERADICATION action and audit atomically using existing V2 incident_actions. Performer is the signed-in user. Does not change incident phase. Closed incidents reject writes. Times must not be in the future.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'incidentId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['description', 'performedAt'],
+                properties: {
+                  description: { type: 'string', minLength: 10, maxLength: 4000 },
+                  performedAt: { type: 'string', format: 'date-time' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '201': {
+            description:
+              'Success envelope: id, phase=eradication, description, performedAt, recordedAt, performedBy (id/name)',
+          },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Active Security Officer required' },
+          '404': { description: 'Incident not found' },
+          '409': { description: 'Closed incident or concurrent update' },
+          '422': { description: 'Invalid description or performed time' },
+        },
+      },
+      get: {
+        tags: ['Incident Management'],
+        summary: 'View eradication action history',
+        description:
+          'Active Security Officers and Executives. Includes closed incidents, newest performed time first, stable ID tie-break. data.items: id, phase=eradication, description, performedAt, recordedAt, performedBy (id/name). data.pagination: page, limit, total, totalPages. Account names reflect current users.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'incidentId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+          {
+            name: 'page',
+            in: 'query',
+            schema: { type: 'integer', minimum: 1, maximum: 100000, default: 1 },
+          },
+          {
+            name: 'limit',
+            in: 'query',
+            schema: { type: 'integer', minimum: 1, maximum: 100, default: 10 },
+          },
+        ],
+        responses: {
+          '200': { description: 'Success envelope with items and pagination' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Active viewer required' },
+          '404': { description: 'Incident not found' },
+          '422': { description: 'Invalid ID or pagination' },
+        },
+      },
+    },
     '/incidents/assignment-options': {
       get: {
         tags: ['Incident Management'],
