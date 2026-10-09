@@ -172,6 +172,62 @@ async function requireSecurityOfficer(userId: string): Promise<void> {
 }
 
 export const incidentsService = {
+  async containmentHistory(
+    userId: string,
+    incidentId: string,
+    query: { page: number; limit: number },
+  ) {
+    await requireViewer(userId);
+    if (!(await incidentsRepository.findById(incidentId)))
+      throw new AppError(404, 'INCIDENT_NOT_FOUND', 'Incident not found');
+    const [total, records] = await incidentsRepository.containmentHistory(
+      incidentId,
+      query.page,
+      query.limit,
+    );
+    return {
+      items: records.map((action) => ({
+        id: action.id,
+        phase: 'containment',
+        description: action.description,
+        performedAt: action.performed_at,
+        recordedAt: action.created_at,
+        performedBy: { id: action.users.id, name: action.users.full_name },
+      })),
+      pagination: { ...query, total, totalPages: Math.ceil(total / query.limit) },
+    };
+  },
+  async recordContainment(
+    userId: string,
+    incidentId: string,
+    input: { description: string; performedAt: string },
+  ) {
+    await requireSecurityOfficer(userId);
+    try {
+      const result = await incidentsRepository.recordContainment(userId, incidentId, input);
+      if (result.outcome === 'forbidden')
+        throw new AppError(403, 'FORBIDDEN', 'Security Officer role required');
+      if (result.outcome === 'not_found')
+        throw new AppError(404, 'INCIDENT_NOT_FOUND', 'Incident not found');
+      if (result.outcome === 'closed')
+        throw new AppError(409, 'INCIDENT_CLOSED', 'Closed incidents cannot receive new actions');
+      if (result.outcome === 'future_time')
+        throw new AppError(422, 'INVALID_PERFORMED_AT', 'Performed time cannot be in the future');
+      const action = result.action;
+      return {
+        id: action.id,
+        phase: 'containment',
+        description: action.description,
+        performedAt: action.performed_at,
+        recordedAt: action.created_at,
+        performedBy: { id: action.users.id, name: action.users.full_name },
+      };
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034')
+        throw new AppError(409, 'INCIDENT_STALE', 'The incident changed. Refresh and try again');
+      throw error;
+    }
+  },
   async assignmentHistory(
     userId: string,
     incidentId: string,

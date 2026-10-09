@@ -1,5 +1,7 @@
 # V2 modules
 
+UC59: `POST/GET /api/v1/incidents/:incidentId/containment-actions` records and lists completed containment actions using existing `incident_actions`. Only active Security Officers may write; Security Officers and Executives may read paginated history. Writes append an audit atomically and preserve the incident response phase. Closed incidents are read-only. The 72 pending legacy contracts are unchanged because these URLs are new.
+
 UC57: `PATCH /api/v1/incidents/:incidentId/severity` lets active Security Officers classify severity (`low`, `medium`, `high`, `critical`) with a 10–2000 character rationale. Severity and its `INCIDENT_SEVERITY_CLASSIFIED` audit record are saved atomically. Optional `expectedUpdatedAt` guards stale edits; closed incidents return 409. List/detail responses include classification count and the latest rationale, officer and time. There are 72 pending V1 contracts.
 
 Notification & System Logs implements Admin-only in-system and email sending through `POST /api/v1/notifications` and `POST /api/v1/notifications/email`. All active roles can read and update their own supported delivery channels through `GET/PATCH /api/v1/notifications/preferences`; preferences default to both channels enabled and updates are audited. Inbox listing, read state and notification history remain separate use cases.

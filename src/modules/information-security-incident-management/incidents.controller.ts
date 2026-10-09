@@ -1,4 +1,26 @@
 import type { RequestHandler } from 'express';
+import {
+  recordContainmentActionSchema,
+  containmentHistoryQuerySchema,
+} from './dto/record-containment-action.dto.js';
+export const recordContainmentAction: RequestHandler = async (req, res) => {
+  const { incidentId } = incidentDetailParamsSchema.parse(req.params);
+  const data = await incidentsService.recordContainment(
+    authenticatedUserId(res.locals.authenticatedUserId),
+    incidentId,
+    recordContainmentActionSchema.parse(req.body),
+  );
+  res.status(201).json({ success: true, data });
+};
+export const getContainmentHistory: RequestHandler = async (req, res) => {
+  const { incidentId } = incidentDetailParamsSchema.parse(req.params);
+  const data = await incidentsService.containmentHistory(
+    authenticatedUserId(res.locals.authenticatedUserId),
+    incidentId,
+    containmentHistoryQuerySchema.parse(req.query),
+  );
+  res.status(200).json({ success: true, data });
+};
 import { assignIncidentHandlerSchema } from './dto/assign-incident-handler.dto.js';
 
 export const listIncidentAssignmentOptions: RequestHandler = async (_req, res) => {
