@@ -1,4 +1,9 @@
 import { Router } from 'express';
+import {
+  recordContainmentActionSchema,
+  containmentHistoryQuerySchema,
+} from './dto/record-containment-action.dto.js';
+import { recordContainmentAction, getContainmentHistory } from './incidents.controller.js';
 import { assignIncidentHandlerSchema } from './dto/assign-incident-handler.dto.js';
 import { authenticate } from '../../common/middleware/authenticate.js';
 import { validate } from '../../common/middleware/validate.js';
@@ -25,6 +30,18 @@ import {
 } from './dto/classify-incident-severity.dto.js';
 
 export const incidentsRouter = Router();
+incidentsRouter.post(
+  '/:incidentId/containment-actions',
+  authenticate,
+  validate({ params: incidentDetailParamsSchema, body: recordContainmentActionSchema }),
+  asyncHandler(recordContainmentAction),
+);
+incidentsRouter.get(
+  '/:incidentId/containment-actions',
+  authenticate,
+  validate({ params: incidentDetailParamsSchema, query: containmentHistoryQuerySchema }),
+  asyncHandler(getContainmentHistory),
+);
 
 incidentsRouter.get(
   '/:incidentId/assignee',
