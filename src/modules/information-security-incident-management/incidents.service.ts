@@ -4,7 +4,11 @@ import type {
   CreateIncidentFromSource,
   IncidentSourceOptionsQuery,
 } from './dto/create-incident-from-source.dto.js';
-import { incidentsRepository, type IncidentViewRecord } from './incidents.repository.js';
+import {
+  incidentsRepository,
+  type IncidentDetailRecord,
+  type IncidentViewRecord,
+} from './incidents.repository.js';
 
 function mapActor(actor: { id: string; full_name: string; email: string } | null) {
   return actor ? { id: actor.id, name: actor.full_name, email: actor.email } : null;
@@ -53,6 +57,75 @@ function mapIncident(incident: IncidentViewRecord) {
   };
 }
 
+function mapIncidentDetail(incident: IncidentDetailRecord) {
+  const base = mapIncident(incident);
+  const responseActions = incident.incident_actions.map((action) => ({
+    id: action.id,
+    phase: action.phase.toLowerCase(),
+    description: action.description,
+    performedAt: action.performed_at,
+    performedBy: mapActor(action.users),
+  }));
+  const handlingHistory = [
+    {
+      id: `reported-${incident.id}`,
+      type: 'reported',
+      description: 'Incident report created',
+      occurredAt: incident.created_at,
+      actor: mapActor(incident.users_incidents_created_byTousers),
+      phase: null,
+    },
+    ...(incident.confirmed_at
+      ? [
+          {
+            id: `confirmed-${incident.id}`,
+            type: 'confirmed',
+            description: 'Incident confirmed',
+            occurredAt: incident.confirmed_at,
+            actor: null,
+            phase: null,
+          },
+        ]
+      : []),
+    ...responseActions.map((action) => ({
+      id: action.id,
+      type: 'response_action',
+      description: action.description,
+      occurredAt: action.performedAt,
+      actor: action.performedBy,
+      phase: action.phase,
+    })),
+    ...(incident.closed_at
+      ? [
+          {
+            id: `closed-${incident.id}`,
+            type: 'closed',
+            description: 'Incident closed',
+            occurredAt: incident.closed_at,
+            actor: null,
+            phase: null,
+          },
+        ]
+      : []),
+  ].sort((left, right) => left.occurredAt.getTime() - right.occurredAt.getTime());
+
+  return {
+    ...base,
+    affectedAssets: incident.incident_assets.map((link) => ({
+      id: link.assets.id,
+      assetCode: link.assets.asset_code,
+      name: link.assets.name,
+      assetType: link.assets.asset_type,
+      criticality: link.assets.criticality,
+      status: link.assets.status.toLowerCase(),
+      linkedAt: link.linked_at,
+      linkedBy: mapActor(link.users),
+    })),
+    responseActions,
+    handlingHistory,
+  };
+}
+
 async function requireViewer(userId: string): Promise<void> {
   const actor = await incidentsRepository.findActor(userId);
   if (!actor || actor.status !== 'ACTIVE') {
@@ -92,7 +165,7 @@ export const incidentsService = {
     await requireViewer(userId);
     const incident = await incidentsRepository.findById(incidentId);
     if (!incident) throw new AppError(404, 'INCIDENT_NOT_FOUND', 'Incident not found');
-    return mapIncident(incident);
+    return mapIncidentDetail(incident);
   },
 
   async listSourceOptions(userId: string, query: IncidentSourceOptionsQuery) {

@@ -38,6 +38,37 @@ const record = {
     email: 'officer@example.com',
   },
   security_findings: null,
+  incident_assets: [
+    {
+      linked_at: now,
+      assets: {
+        id: 'a1c8f72b-d6bc-45e3-b8f3-17e41ab7e128',
+        asset_code: 'AST-001',
+        name: 'Identity gateway',
+        asset_type: 'Application',
+        criticality: 'HIGH',
+        status: 'ACTIVE' as const,
+      },
+      users: {
+        id: userId,
+        full_name: 'Security Officer',
+        email: 'officer@example.com',
+      },
+    },
+  ],
+  incident_actions: [
+    {
+      id: '7ffaf9d3-51fb-4acc-b4d3-620017866123',
+      phase: 'CONTAINMENT' as const,
+      description: 'Disabled the affected privileged account.',
+      performed_at: new Date('2026-09-30T01:00:00Z'),
+      users: {
+        id: userId,
+        full_name: 'Security Officer',
+        email: 'officer@example.com',
+      },
+    },
+  ],
   _count: {
     incident_actions: 1,
     incident_assets: 2,
@@ -84,6 +115,19 @@ describe('view incidents service', () => {
     await expect(incidentsService.detail(userId, incidentId)).resolves.toMatchObject({
       id: incidentId,
       createdBy: { name: 'Security Officer' },
+      affectedAssets: [{ assetCode: 'AST-001', name: 'Identity gateway' }],
+      responseActions: [
+        {
+          phase: 'containment',
+          description: 'Disabled the affected privileged account.',
+          performedBy: { name: 'Security Officer' },
+        },
+      ],
+      handlingHistory: [
+        { type: 'reported' },
+        { type: 'confirmed' },
+        { type: 'response_action', phase: 'containment' },
+      ],
     });
   });
 

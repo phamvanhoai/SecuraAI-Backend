@@ -1002,7 +1002,7 @@ export const openApiSpec = {
         tags: ['Incident Management'],
         summary: 'View security incident details',
         description:
-          'Returns core incident details, responsible users, timestamps, and related-record counts from the V2 database.',
+          'Returns the incident description, severity, status, affected assets, assigned handler, response actions, and chronological handling history from the V2 database. Requires an active Security Officer or Executive.',
         security: [{ bearerAuth: [] }],
         parameters: [
           {
@@ -1013,7 +1013,44 @@ export const openApiSpec = {
           },
         ],
         responses: {
-          '200': { description: 'Incident details' },
+          '200': {
+            description: 'Complete incident details',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['success', 'data'],
+                  properties: {
+                    success: { type: 'boolean', enum: [true] },
+                    data: {
+                      type: 'object',
+                      required: [
+                        'id',
+                        'incidentCode',
+                        'title',
+                        'severity',
+                        'status',
+                        'affectedAssets',
+                        'responseActions',
+                        'handlingHistory',
+                      ],
+                      properties: {
+                        id: { type: 'string', format: 'uuid' },
+                        incidentCode: { type: 'string' },
+                        title: { type: 'string' },
+                        description: { type: ['string', 'null'] },
+                        severity: { type: 'string' },
+                        status: { type: 'string' },
+                        affectedAssets: { type: 'array', items: { type: 'object' } },
+                        responseActions: { type: 'array', items: { type: 'object' } },
+                        handlingHistory: { type: 'array', items: { type: 'object' } },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
           '401': { description: 'Authentication required' },
           '403': { description: 'Security Officer or Executive role required' },
           '404': { description: 'Incident not found' },

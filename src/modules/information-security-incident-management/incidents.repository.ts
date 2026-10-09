@@ -45,8 +45,43 @@ export const incidentViewSelect = {
   },
 } satisfies Prisma.incidentsSelect;
 
+export const incidentDetailSelect = {
+  ...incidentViewSelect,
+  incident_assets: {
+    orderBy: [{ linked_at: 'asc' as const }, { asset_id: 'asc' as const }],
+    select: {
+      linked_at: true,
+      assets: {
+        select: {
+          id: true,
+          asset_code: true,
+          name: true,
+          asset_type: true,
+          criticality: true,
+          status: true,
+        },
+      },
+      users: { select: { id: true, full_name: true, email: true } },
+    },
+  },
+  incident_actions: {
+    orderBy: [{ performed_at: 'asc' as const }, { id: 'asc' as const }],
+    select: {
+      id: true,
+      phase: true,
+      description: true,
+      performed_at: true,
+      users: { select: { id: true, full_name: true, email: true } },
+    },
+  },
+} satisfies Prisma.incidentsSelect;
+
 export type IncidentViewRecord = Prisma.incidentsGetPayload<{
   select: typeof incidentViewSelect;
+}>;
+
+export type IncidentDetailRecord = Prisma.incidentsGetPayload<{
+  select: typeof incidentDetailSelect;
 }>;
 
 export const incidentsRepository = {
@@ -89,7 +124,7 @@ export const incidentsRepository = {
   findById(incidentId: string) {
     return prisma.incidents.findUnique({
       where: { id: incidentId },
-      select: incidentViewSelect,
+      select: incidentDetailSelect,
     });
   },
 

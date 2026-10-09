@@ -44,12 +44,21 @@ describe('view incidents HTTP routes', () => {
   });
 
   it('returns selected incident details', async () => {
-    vi.mocked(incidentsService.detail).mockResolvedValue({} as never);
+    vi.mocked(incidentsService.detail).mockResolvedValue({
+      affectedAssets: [],
+      responseActions: [],
+      handlingHistory: [],
+    } as never);
     const response = await request(app)
       .get(`/api/v1/incidents/${incidentId}`)
       .set('Authorization', `Bearer ${token}`);
     expect(response.status).toBe(200);
     expect(incidentsService.detail).toHaveBeenCalledWith(userId, incidentId);
+    expect(response.body.data).toMatchObject({
+      affectedAssets: [],
+      responseActions: [],
+      handlingHistory: [],
+    });
   });
 
   it('leaves pending mine route available to the legacy handler', async () => {
