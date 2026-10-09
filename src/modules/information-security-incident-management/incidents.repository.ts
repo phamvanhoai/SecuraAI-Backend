@@ -198,6 +198,88 @@ export const incidentsRepository = {
       { isolationLevel: 'Serializable' },
     );
   },
+  eradicationHistory(incidentId: string, page: number, limit: number) {
+    const where = { incident_id: incidentId, phase: 'ERADICATION' as const };
+    return prisma.$transaction([
+      prisma.incident_actions.count({ where }),
+      prisma.incident_actions.findMany({
+        where,
+        skip: (page - 1) * limit,
+        take: limit,
+        orderBy: [{ performed_at: 'desc' }, { id: 'desc' }],
+        select: {
+          id: true,
+          description: true,
+          performed_at: true,
+          created_at: true,
+          users: { select: { id: true, full_name: true } },
+        },
+      }),
+    ]);
+  },
+  recordEradication(
+    userId: string,
+    incidentId: string,
+    input: { description: string; performedAt: string },
+  ) {
+    return prisma.$transaction(
+      async (tx) => {
+        const actor = await tx.users.findUnique({
+          where: { id: userId },
+          select: { role: true, status: true },
+        });
+        if (!actor || actor.role !== 'SECURITY_OFFICER' || actor.status !== 'ACTIVE')
+          return { outcome: 'forbidden' as const };
+        await tx.$queryRaw`SELECT id FROM public.incidents WHERE id = ${incidentId}::uuid FOR UPDATE`;
+        const incident = await tx.incidents.findUnique({
+          where: { id: incidentId },
+          select: { status: true },
+        });
+        if (!incident) return { outcome: 'not_found' as const };
+        if (incident.status === 'CLOSED') return { outcome: 'closed' as const };
+        const at = new Date();
+        const performedAt = new Date(input.performedAt);
+        if (performedAt.getTime() > at.getTime()) return { outcome: 'future_time' as const };
+        const action = await tx.incident_actions.create({
+          data: {
+            incident_id: incidentId,
+            phase: 'ERADICATION',
+            description: input.description,
+            performed_by: userId,
+            performed_at: performedAt,
+          },
+          select: {
+            id: true,
+            description: true,
+            performed_at: true,
+            created_at: true,
+            users: { select: { id: true, full_name: true } },
+          },
+        });
+        await tx.incidents.update({ where: { id: incidentId }, data: { updated_at: at } });
+        const id = randomUUID();
+        const after = { actionId: action.id, phase: 'ERADICATION', ...input };
+        await tx.audit_logs.create({
+          data: {
+            id,
+            actor_type: 'USER',
+            actor_user_id: userId,
+            resource_type: 'INCIDENT',
+            resource_id: incidentId,
+            action: 'INCIDENT_ERADICATION_RECORDED',
+            source: 'API',
+            occurred_at: at,
+            after_data: after,
+            record_hash: createHash('sha256')
+              .update(JSON.stringify({ id, userId, incidentId, at, after }))
+              .digest('hex'),
+          },
+        });
+        return { outcome: 'recorded' as const, action };
+      },
+      { isolationLevel: 'Serializable' },
+    );
+  },
   assignmentHistory(incidentId: string, page: number, limit: number) {
     const where = {
       resource_type: 'INCIDENT',

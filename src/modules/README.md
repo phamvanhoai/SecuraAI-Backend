@@ -1,5 +1,7 @@
 # V2 modules
 
+UC60 exposes `POST/GET /incidents/:incidentId/eradication-actions` through route → controller → service → repository. Existing `incident_actions` records phase `ERADICATION`, description, authenticated performer and performed time; an atomic audit accompanies writes. History is paginated and phase-scoped. No schema changes or legacy routes are required (72 pending).
+
 UC59: `POST/GET /api/v1/incidents/:incidentId/containment-actions` records and lists completed containment actions using existing `incident_actions`. Only active Security Officers may write; Security Officers and Executives may read paginated history. Writes append an audit atomically and preserve the incident response phase. Closed incidents are read-only. The 72 pending legacy contracts are unchanged because these URLs are new.
 
 UC57: `PATCH /api/v1/incidents/:incidentId/severity` lets active Security Officers classify severity (`low`, `medium`, `high`, `critical`) with a 10–2000 character rationale. Severity and its `INCIDENT_SEVERITY_CLASSIFIED` audit record are saved atomically. Optional `expectedUpdatedAt` guards stale edits; closed incidents return 409. List/detail responses include classification count and the latest rationale, officer and time. There are 72 pending V1 contracts.

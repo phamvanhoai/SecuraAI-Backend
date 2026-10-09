@@ -21,6 +21,28 @@ export const getContainmentHistory: RequestHandler = async (req, res) => {
   );
   res.status(200).json({ success: true, data });
 };
+import {
+  recordEradicationActionSchema,
+  eradicationHistoryQuerySchema,
+} from './dto/record-eradication-action.dto.js';
+export const recordEradicationAction: RequestHandler = async (req, res) => {
+  const { incidentId } = incidentDetailParamsSchema.parse(req.params);
+  const data = await incidentsService.recordEradication(
+    authenticatedUserId(res.locals.authenticatedUserId),
+    incidentId,
+    recordEradicationActionSchema.parse(req.body),
+  );
+  res.status(201).json({ success: true, data });
+};
+export const getEradicationHistory: RequestHandler = async (req, res) => {
+  const { incidentId } = incidentDetailParamsSchema.parse(req.params);
+  const data = await incidentsService.eradicationHistory(
+    authenticatedUserId(res.locals.authenticatedUserId),
+    incidentId,
+    eradicationHistoryQuerySchema.parse(req.query),
+  );
+  res.status(200).json({ success: true, data });
+};
 import { assignIncidentHandlerSchema } from './dto/assign-incident-handler.dto.js';
 
 export const listIncidentAssignmentOptions: RequestHandler = async (_req, res) => {

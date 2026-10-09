@@ -29,7 +29,24 @@ import {
   classificationHistoryQuerySchema,
 } from './dto/classify-incident-severity.dto.js';
 
+import {
+  recordEradicationActionSchema,
+  eradicationHistoryQuerySchema,
+} from './dto/record-eradication-action.dto.js';
+import { recordEradicationAction, getEradicationHistory } from './incidents.controller.js';
 export const incidentsRouter = Router();
+incidentsRouter.post(
+  '/:incidentId/eradication-actions',
+  authenticate,
+  validate({ params: incidentDetailParamsSchema, body: recordEradicationActionSchema }),
+  asyncHandler(recordEradicationAction),
+);
+incidentsRouter.get(
+  '/:incidentId/eradication-actions',
+  authenticate,
+  validate({ params: incidentDetailParamsSchema, query: eradicationHistoryQuerySchema }),
+  asyncHandler(getEradicationHistory),
+);
 incidentsRouter.post(
   '/:incidentId/containment-actions',
   authenticate,
