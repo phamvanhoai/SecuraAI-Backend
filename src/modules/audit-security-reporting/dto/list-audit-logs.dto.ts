@@ -5,6 +5,14 @@ export const auditActorTypes = ['USER', 'SYSTEM', 'API_KEY'] as const;
 export const listAuditLogsQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(20),
+  search: z.string().trim().max(100).optional(),
+  actor: z.string().trim().max(100).optional(),
+  actorType: z.enum(auditActorTypes).optional(),
+  action: z.string().trim().max(100).optional(),
+  resourceType: z.string().trim().max(100).optional(),
+  correlationId: z.string().trim().max(100).optional(),
+  startDate: z.string().datetime().optional(),
+  endDate: z.string().datetime().optional(),
   sortBy: z
     .enum(['occurredAt', 'action', 'resourceType', 'actorType', 'sourceIp', 'createdAt'])
     .default('occurredAt'),

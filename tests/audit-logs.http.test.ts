@@ -59,6 +59,34 @@ describe('Audit Logs HTTP endpoints', () => {
       );
     });
 
+    it('passes search, actor, action, resourceType and date range parameters to service', async () => {
+      vi.mocked(auditLogsService.listAuditLogs).mockResolvedValue({
+        items: [],
+        pagination: { page: 1, limit: 10, totalItems: 0, totalPages: 1 },
+      });
+
+      const res = await request(app)
+        .get(
+          '/api/v1/audit-logs?search=test&actor=admin&actorType=USER&action=LOGIN&resourceType=users&correlationId=c-123&startDate=2026-10-01T00:00:00.000Z&endDate=2026-10-09T00:00:00.000Z',
+        )
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(auditLogsService.listAuditLogs).toHaveBeenCalledWith(
+        userId,
+        expect.objectContaining({
+          search: 'test',
+          actor: 'admin',
+          actorType: 'USER',
+          action: 'LOGIN',
+          resourceType: 'users',
+          correlationId: 'c-123',
+          startDate: '2026-10-01T00:00:00.000Z',
+          endDate: '2026-10-09T00:00:00.000Z',
+        }),
+      );
+    });
+
     it('rejects invalid limit parameter with 422', async () => {
       const res = await request(app)
         .get('/api/v1/audit-logs?limit=500')

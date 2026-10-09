@@ -22,6 +22,79 @@ function mapSortColumn(
   }
 }
 
+const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+export function buildAuditLogsWhereClause(query: ListAuditLogsQuery): Prisma.audit_logsWhereInput {
+  const andConditions: Prisma.audit_logsWhereInput[] = [];
+
+  if (query.actorType) {
+    andConditions.push({ actor_type: query.actorType });
+  }
+
+  if (query.action) {
+    andConditions.push({ action: { contains: query.action, mode: 'insensitive' } });
+  }
+
+  if (query.resourceType) {
+    andConditions.push({ resource_type: { contains: query.resourceType, mode: 'insensitive' } });
+  }
+
+  if (query.correlationId) {
+    andConditions.push({ correlation_id: { contains: query.correlationId, mode: 'insensitive' } });
+  }
+
+  if (query.startDate || query.endDate) {
+    const dateFilter: Prisma.DateTimeFilter = {};
+    if (query.startDate) {
+      dateFilter.gte = new Date(query.startDate);
+    }
+    if (query.endDate) {
+      dateFilter.lte = new Date(query.endDate);
+    }
+    andConditions.push({ occurred_at: dateFilter });
+  }
+
+  if (query.actor) {
+    const actorOrConditions: Prisma.audit_logsWhereInput[] = [
+      { users: { full_name: { contains: query.actor, mode: 'insensitive' } } },
+      { users: { email: { contains: query.actor, mode: 'insensitive' } } },
+      { integration_api_keys: { name: { contains: query.actor, mode: 'insensitive' } } },
+    ];
+    if (uuidPattern.test(query.actor)) {
+      actorOrConditions.push({ actor_user_id: query.actor });
+    }
+    andConditions.push({ OR: actorOrConditions });
+  }
+
+  if (query.search) {
+    const searchOrConditions: Prisma.audit_logsWhereInput[] = [
+      { action: { contains: query.search, mode: 'insensitive' } },
+      { resource_type: { contains: query.search, mode: 'insensitive' } },
+      { correlation_id: { contains: query.search, mode: 'insensitive' } },
+      { source_ip: { contains: query.search, mode: 'insensitive' } },
+      { source: { contains: query.search, mode: 'insensitive' } },
+      { users: { full_name: { contains: query.search, mode: 'insensitive' } } },
+      { users: { email: { contains: query.search, mode: 'insensitive' } } },
+    ];
+    if (uuidPattern.test(query.search)) {
+      searchOrConditions.push({ resource_id: query.search });
+      searchOrConditions.push({ actor_user_id: query.search });
+      searchOrConditions.push({ id: query.search });
+    }
+    andConditions.push({ OR: searchOrConditions });
+  }
+
+  if (andConditions.length === 0) {
+    return {};
+  }
+
+  if (andConditions.length === 1 && andConditions[0]) {
+    return andConditions[0];
+  }
+
+  return { AND: andConditions };
+}
+
 export const auditLogsRepository = {
   findActorUser(userId: string) {
     return prisma.users.findUnique({
@@ -33,8 +106,10 @@ export const auditLogsRepository = {
   async findMany(query: ListAuditLogsQuery) {
     const sortField = mapSortColumn(query.sortBy);
     const skip = (query.page - 1) * query.limit;
+    const where = buildAuditLogsWhereClause(query);
 
     return prisma.audit_logs.findMany({
+      where,
       orderBy: { [sortField]: query.sortOrder },
       skip,
       take: query.limit,
@@ -75,7 +150,8 @@ export const auditLogsRepository = {
     });
   },
 
-  count() {
-    return prisma.audit_logs.count();
+  count(query?: ListAuditLogsQuery) {
+    const where = query ? buildAuditLogsWhereClause(query) : undefined;
+    return where ? prisma.audit_logs.count({ where }) : prisma.audit_logs.count();
   },
 };

@@ -69,8 +69,12 @@ async function requireAuditViewer(userId: string) {
     throw new AppError(401, 'UNAUTHORIZED', 'Invalid or inactive user session');
   }
 
-  if (actor.role !== 'ADMIN' && actor.role !== 'EXECUTIVE' && actor.role !== 'SECURITY_OFFICER') {
-    throw new AppError(403, 'FORBIDDEN', 'Audit log access requires Administrator or Auditor role');
+  if (actor.role !== 'ADMIN' && actor.role !== 'SECURITY_OFFICER') {
+    throw new AppError(
+      403,
+      'FORBIDDEN',
+      'Audit log access is restricted to Administrators and Security Officers',
+    );
   }
 
   return actor;
@@ -85,7 +89,7 @@ export const auditLogsService = {
 
     const [records, totalItems] = await Promise.all([
       auditLogsRepository.findMany(query),
-      auditLogsRepository.count(),
+      auditLogsRepository.count(query),
     ]);
 
     const totalPages = Math.ceil(totalItems / query.limit) || 1;

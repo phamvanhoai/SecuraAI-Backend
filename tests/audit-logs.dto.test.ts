@@ -13,17 +13,39 @@ describe('audit logs DTO validation', () => {
       });
     });
 
-    it('accepts valid query options', () => {
+    it('accepts valid search and filter query options', () => {
       const parsed = listAuditLogsQuerySchema.parse({
         page: '2',
         limit: '50',
+        search: 'login failed',
+        actor: 'admin@securaai.internal',
+        actorType: 'USER',
+        action: 'LOGIN_FAILURE',
+        resourceType: 'users',
+        correlationId: 'corr-999',
+        startDate: '2026-10-01T00:00:00.000Z',
+        endDate: '2026-10-08T23:59:59.000Z',
         sortBy: 'action',
         sortOrder: 'asc',
       });
       expect(parsed.page).toBe(2);
       expect(parsed.limit).toBe(50);
+      expect(parsed.search).toBe('login failed');
+      expect(parsed.actor).toBe('admin@securaai.internal');
+      expect(parsed.actorType).toBe('USER');
+      expect(parsed.action).toBe('LOGIN_FAILURE');
+      expect(parsed.resourceType).toBe('users');
+      expect(parsed.correlationId).toBe('corr-999');
+      expect(parsed.startDate).toBe('2026-10-01T00:00:00.000Z');
+      expect(parsed.endDate).toBe('2026-10-08T23:59:59.000Z');
       expect(parsed.sortBy).toBe('action');
       expect(parsed.sortOrder).toBe('asc');
+    });
+
+    it('rejects invalid actorType', () => {
+      expect(() =>
+        listAuditLogsQuerySchema.parse({ actorType: 'UNKNOWN_TYPE' }),
+      ).toThrow();
     });
 
     it('rejects invalid limit exceeding 100', () => {

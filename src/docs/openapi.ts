@@ -1212,9 +1212,9 @@ export const openApiSpec = {
     '/audit-logs': {
       get: {
         tags: ['Audit & Security Reporting'],
-        summary: 'List system audit records',
+        summary: 'List and search system audit records',
         description:
-          'Retrieve paginated audit trail logs covering user actions, configuration changes, and system access. Restricted to Administrator or Auditor role.',
+          'Retrieve paginated audit trail logs with search and filter capabilities covering actor, action type, affected resource, correlation ID, and time range. Restricted to Administrator or Auditor role.',
         security: [{ bearerAuth: [] }],
         parameters: [
           { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
@@ -1223,6 +1223,18 @@ export const openApiSpec = {
             in: 'query',
             schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
           },
+          { name: 'search', in: 'query', schema: { type: 'string', maxLength: 100 } },
+          { name: 'actor', in: 'query', schema: { type: 'string', maxLength: 100 } },
+          {
+            name: 'actorType',
+            in: 'query',
+            schema: { type: 'string', enum: ['USER', 'SYSTEM', 'API_KEY'] },
+          },
+          { name: 'action', in: 'query', schema: { type: 'string', maxLength: 100 } },
+          { name: 'resourceType', in: 'query', schema: { type: 'string', maxLength: 100 } },
+          { name: 'correlationId', in: 'query', schema: { type: 'string', maxLength: 100 } },
+          { name: 'startDate', in: 'query', schema: { type: 'string', format: 'date-time' } },
+          { name: 'endDate', in: 'query', schema: { type: 'string', format: 'date-time' } },
           {
             name: 'sortBy',
             in: 'query',
@@ -1239,7 +1251,7 @@ export const openApiSpec = {
           },
         ],
         responses: {
-          '200': { description: 'Paginated list of audit records' },
+          '200': { description: 'Paginated list of matching audit records' },
           '401': { description: 'Authentication required' },
           '403': { description: 'Administrator or Auditor role required' },
           '422': { description: 'Invalid query parameters' },

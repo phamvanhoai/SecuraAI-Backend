@@ -85,6 +85,70 @@ describe('audit logs service', () => {
       });
     });
 
+    it('passes search and filter parameters to repository', async () => {
+      const query = {
+        page: 1,
+        limit: 10,
+        search: 'role change',
+        actor: 'Admin',
+        actorType: 'USER' as const,
+        action: 'UPDATE_ROLE',
+        resourceType: 'roles',
+        correlationId: 'corr-12345',
+        startDate: '2026-10-01T00:00:00.000Z',
+        endDate: '2026-10-08T23:59:59.000Z',
+        sortBy: 'action' as const,
+        sortOrder: 'asc' as const,
+      };
+
+      const result = await auditLogsService.listAuditLogs(adminUserId, query);
+
+      expect(auditLogsRepository.findMany).toHaveBeenCalledWith(query);
+      expect(auditLogsRepository.count).toHaveBeenCalledWith(query);
+      expect(result.items).toHaveLength(1);
+    });
+
+    it('allows a security officer to view audit logs', async () => {
+      vi.mocked(auditLogsRepository.findActorUser).mockResolvedValue({
+        id: adminUserId,
+        full_name: 'Security Officer',
+        email: 'officer@securaai.internal',
+        role: 'SECURITY_OFFICER',
+        status: 'ACTIVE',
+      });
+
+      const result = await auditLogsService.listAuditLogs(adminUserId, {
+        page: 1,
+        limit: 20,
+        sortBy: 'occurredAt',
+        sortOrder: 'desc',
+      });
+
+      expect(result.items).toHaveLength(1);
+    });
+
+    it('rejects an executive actor without direct audit log access', async () => {
+      vi.mocked(auditLogsRepository.findActorUser).mockResolvedValue({
+        id: adminUserId,
+        full_name: 'Executive Leader',
+        email: 'executive@securaai.internal',
+        role: 'EXECUTIVE',
+        status: 'ACTIVE',
+      });
+
+      await expect(
+        auditLogsService.listAuditLogs(adminUserId, {
+          page: 1,
+          limit: 20,
+          sortBy: 'occurredAt',
+          sortOrder: 'desc',
+        }),
+      ).rejects.toMatchObject({
+        statusCode: 403,
+      });
+      expect(auditLogsRepository.findMany).not.toHaveBeenCalled();
+    });
+
     it('rejects an employee actor without audit permissions', async () => {
       vi.mocked(auditLogsRepository.findActorUser).mockResolvedValue({
         id: adminUserId,
