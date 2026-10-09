@@ -42,6 +42,7 @@ describe('UC58 service and HTTP boundary', () => {
       incident: {
         id,
         incident_code: 'INC-TEST-001',
+        incident_analysis: null,
         title: 'Suspicious access',
         description: 'Unexpected access',
         severity: 'MEDIUM',

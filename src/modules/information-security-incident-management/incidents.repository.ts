@@ -4,6 +4,8 @@ import { prisma } from '../../database/prisma.js';
 import type { ViewIncidentsQuery } from './dto/view-incidents.dto.js';
 import type { ClassifyIncidentSeverity } from './dto/classify-incident-severity.dto.js';
 import type { AssignIncidentHandler } from './dto/assign-incident-handler.dto.js';
+import type { RecordRecoveryAction } from './dto/record-recovery-action.dto.js';
+import { requireRecordPhase } from './incident-workflow.js';
 import type {
   CreateIncidentFromSource,
   IncidentSourceOptionsQuery,
@@ -22,6 +24,7 @@ export const incidentViewSelect = {
   closed_at: true,
   created_at: true,
   updated_at: true,
+  incident_analysis: { select: { id: true } },
   users_incidents_created_byTousers: {
     select: { id: true, full_name: true, email: true },
   },
@@ -158,6 +161,7 @@ export const incidentsRepository = {
         const at = new Date();
         const performedAt = new Date(input.performedAt);
         if (performedAt.getTime() > at.getTime()) return { outcome: 'future_time' as const };
+        requireRecordPhase(incident.status, 'CONTAINMENT');
         const action = await tx.incident_actions.create({
           data: {
             incident_id: incidentId,
@@ -174,9 +178,10 @@ export const incidentsRepository = {
             users: { select: { id: true, full_name: true } },
           },
         });
-        await tx.incidents.update({ where: { id: incidentId }, data: { updated_at: at } });
+        const status = incident.status;
+        await tx.incidents.update({ where: { id: incidentId }, data: { updated_at: at, status } });
         const id = randomUUID();
-        const after = { actionId: action.id, phase: 'CONTAINMENT', ...input };
+        const after = { actionId: action.id, phase: 'CONTAINMENT', ...input, status };
         await tx.audit_logs.create({
           data: {
             id,
@@ -187,6 +192,7 @@ export const incidentsRepository = {
             action: 'INCIDENT_CONTAINMENT_RECORDED',
             source: 'API',
             occurred_at: at,
+            before_data: { status: incident.status },
             after_data: after,
             record_hash: createHash('sha256')
               .update(JSON.stringify({ id, userId, incidentId, at, after }))
@@ -240,6 +246,7 @@ export const incidentsRepository = {
         const at = new Date();
         const performedAt = new Date(input.performedAt);
         if (performedAt.getTime() > at.getTime()) return { outcome: 'future_time' as const };
+        requireRecordPhase(incident.status, 'ERADICATION');
         const action = await tx.incident_actions.create({
           data: {
             incident_id: incidentId,
@@ -256,9 +263,10 @@ export const incidentsRepository = {
             users: { select: { id: true, full_name: true } },
           },
         });
-        await tx.incidents.update({ where: { id: incidentId }, data: { updated_at: at } });
+        const status = incident.status;
+        await tx.incidents.update({ where: { id: incidentId }, data: { updated_at: at, status } });
         const id = randomUUID();
-        const after = { actionId: action.id, phase: 'ERADICATION', ...input };
+        const after = { actionId: action.id, phase: 'ERADICATION', ...input, status };
         await tx.audit_logs.create({
           data: {
             id,
@@ -269,6 +277,7 @@ export const incidentsRepository = {
             action: 'INCIDENT_ERADICATION_RECORDED',
             source: 'API',
             occurred_at: at,
+            before_data: { status: incident.status },
             after_data: after,
             record_hash: createHash('sha256')
               .update(JSON.stringify({ id, userId, incidentId, at, after }))
@@ -299,11 +308,7 @@ export const incidentsRepository = {
       }),
     ]);
   },
-  recordRecovery(
-    userId: string,
-    incidentId: string,
-    input: { description: string; performedAt: string },
-  ) {
+  recordRecovery(userId: string, incidentId: string, input: RecordRecoveryAction) {
     return prisma.$transaction(
       async (tx) => {
         const actor = await tx.users.findUnique({
@@ -322,6 +327,7 @@ export const incidentsRepository = {
         const at = new Date();
         const performedAt = new Date(input.performedAt);
         if (performedAt.getTime() > at.getTime()) return { outcome: 'future_time' as const };
+        requireRecordPhase(incident.status, 'RECOVERY');
         const action = await tx.incident_actions.create({
           data: {
             incident_id: incidentId,
@@ -338,9 +344,10 @@ export const incidentsRepository = {
             users: { select: { id: true, full_name: true } },
           },
         });
-        await tx.incidents.update({ where: { id: incidentId }, data: { updated_at: at } });
+        const status = incident.status;
+        await tx.incidents.update({ where: { id: incidentId }, data: { updated_at: at, status } });
         const id = randomUUID();
-        const after = { actionId: action.id, phase: 'RECOVERY', ...input };
+        const after = { actionId: action.id, phase: 'RECOVERY', ...input, status };
         await tx.audit_logs.create({
           data: {
             id,
@@ -351,6 +358,7 @@ export const incidentsRepository = {
             action: 'INCIDENT_RECOVERY_RECORDED',
             source: 'API',
             occurred_at: at,
+            before_data: { status: incident.status },
             after_data: after,
             record_hash: createHash('sha256')
               .update(JSON.stringify({ id, userId, incidentId, at, after }))
@@ -436,11 +444,18 @@ export const incidentsRepository = {
         }
         await transaction.incidents.update({
           where: { id: incidentId },
-          data: { handler_user_id: input.assigneeUserId, updated_at: at },
+          data: {
+            handler_user_id: input.assigneeUserId,
+            updated_at: at,
+          },
         });
         const id = randomUUID();
-        const before = { assigneeUserId: current.handler_user_id };
-        const after = { assigneeUserId: input.assigneeUserId, note: input.note };
+        const before = { assigneeUserId: current.handler_user_id, status: current.status };
+        const after = {
+          assigneeUserId: input.assigneeUserId,
+          note: input.note,
+          status: current.status,
+        };
         await transaction.audit_logs.create({
           data: {
             id,
@@ -553,12 +568,19 @@ export const incidentsRepository = {
         const at = new Date();
         const changed = await transaction.incidents.updateMany({
           where: { id: incidentId, status: { not: 'CLOSED' } },
-          data: { severity: input.severity.toUpperCase(), updated_at: at },
+          data: {
+            severity: input.severity.toUpperCase(),
+            updated_at: at,
+          },
         });
         if (changed.count !== 1) return { outcome: 'conflict' as const };
         const id = randomUUID();
-        const before = { severity: current.severity.toLowerCase() };
-        const after = { severity: input.severity, rationale: input.rationale };
+        const before = { severity: current.severity.toLowerCase(), status: current.status };
+        const after = {
+          severity: input.severity,
+          rationale: input.rationale,
+          status: current.status,
+        };
         await transaction.audit_logs.create({
           data: {
             id,

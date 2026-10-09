@@ -1,8 +1,11 @@
 import { AppError } from '../../common/errors/app-error.js';
 import { Prisma } from '@prisma/client';
 import { z } from 'zod';
+import { incidentProgressRepository } from './incident-progress.repository.js';
+import type { IncidentProgress } from './dto/incident-progress.dto.js';
 import type { ClassifyIncidentSeverity } from './dto/classify-incident-severity.dto.js';
 import type { AssignIncidentHandler } from './dto/assign-incident-handler.dto.js';
+import type { RecordRecoveryAction } from './dto/record-recovery-action.dto.js';
 import type { ViewIncidentsQuery } from './dto/view-incidents.dto.js';
 import type {
   CreateIncidentFromSource,
@@ -34,6 +37,7 @@ function mapIncident(incident: IncidentViewRecord) {
     createdAt: incident.created_at,
     updatedAt: incident.updated_at,
     classified: true,
+    hasAnalysis: Boolean(incident.incident_analysis),
     classificationCount: 0,
     lastClassification: null,
     currentAssignment: incident.users_incidents_handler_user_idTousers
@@ -172,6 +176,36 @@ async function requireSecurityOfficer(userId: string): Promise<void> {
 }
 
 export const incidentsService = {
+  async updatePhase(userId: string, incidentId: string, input: IncidentProgress) {
+    await requireSecurityOfficer(userId);
+    try {
+      return mapIncident(await incidentProgressRepository.update(userId, incidentId, input));
+    } catch (error) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2034')
+        throw new AppError(409, 'INCIDENT_STALE', 'The incident changed. Refresh and try again');
+      throw error;
+    }
+  },
+  async phaseHistory(userId: string, incidentId: string, query: { page: number; limit: number }) {
+    await requireViewer(userId);
+    if (!(await incidentsRepository.findById(incidentId)))
+      throw new AppError(404, 'INCIDENT_NOT_FOUND', 'Incident not found');
+    const [total, records] = await incidentProgressRepository.history(
+      incidentId,
+      query.page,
+      query.limit,
+    );
+    return {
+      items: records.map((record) => ({
+        id: record.id,
+        occurredAt: record.occurred_at,
+        actor: record.users ? { id: record.users.id, name: record.users.full_name } : null,
+        before: record.before_data,
+        after: record.after_data,
+      })),
+      pagination: { ...query, total, totalPages: Math.ceil(total / query.limit) },
+    };
+  },
   async containmentHistory(
     userId: string,
     incidentId: string,
@@ -309,11 +343,7 @@ export const incidentsService = {
       pagination: { ...query, total, totalPages: Math.ceil(total / query.limit) },
     };
   },
-  async recordRecovery(
-    userId: string,
-    incidentId: string,
-    input: { description: string; performedAt: string },
-  ) {
+  async recordRecovery(userId: string, incidentId: string, input: RecordRecoveryAction) {
     await requireSecurityOfficer(userId);
     try {
       const result = await incidentsRepository.recordRecovery(userId, incidentId, input);

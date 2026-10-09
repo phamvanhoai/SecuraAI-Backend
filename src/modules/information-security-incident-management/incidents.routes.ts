@@ -1,4 +1,15 @@
 import { Router } from 'express';
+import { incidentProgressSchema, phaseHistoryQuerySchema } from './dto/incident-progress.dto.js';
+import { updateIncidentPhase, getIncidentPhaseHistory } from './incidents.controller.js';
+import {
+  getIncidentAnalysis,
+  saveIncidentAnalysis,
+  getIncidentAnalysisHistory,
+} from './incident-analysis.controller.js';
+import {
+  saveIncidentAnalysisSchema,
+  analysisHistoryQuerySchema,
+} from './dto/incident-analysis.dto.js';
 import {
   recordContainmentActionSchema,
   containmentHistoryQuerySchema,
@@ -40,6 +51,36 @@ import {
 } from './dto/record-recovery-action.dto.js';
 import { recordRecoveryAction, getRecoveryHistory } from './incidents.controller.js';
 export const incidentsRouter = Router();
+incidentsRouter.patch(
+  '/:incidentId/progress',
+  authenticate,
+  validate({ params: incidentDetailParamsSchema, body: incidentProgressSchema }),
+  asyncHandler(updateIncidentPhase),
+);
+incidentsRouter.get(
+  '/:incidentId/progress',
+  authenticate,
+  validate({ params: incidentDetailParamsSchema, query: phaseHistoryQuerySchema }),
+  asyncHandler(getIncidentPhaseHistory),
+);
+incidentsRouter.get(
+  '/:incidentId/analysis',
+  authenticate,
+  validate({ params: incidentDetailParamsSchema }),
+  asyncHandler(getIncidentAnalysis),
+);
+incidentsRouter.patch(
+  '/:incidentId/analysis',
+  authenticate,
+  validate({ params: incidentDetailParamsSchema, body: saveIncidentAnalysisSchema }),
+  asyncHandler(saveIncidentAnalysis),
+);
+incidentsRouter.get(
+  '/:incidentId/analysis/history',
+  authenticate,
+  validate({ params: incidentDetailParamsSchema, query: analysisHistoryQuerySchema }),
+  asyncHandler(getIncidentAnalysisHistory),
+);
 incidentsRouter.post(
   '/:incidentId/eradication-actions',
   authenticate,

@@ -56,6 +56,25 @@ it('records actor-owned recovery and exposes paginated history', async () => {
   expect(history.status).toBe(200);
   expect(history.body.data.pagination).toEqual({ page: 2, limit: 5, total: 1, totalPages: 1 });
 });
+it('rejects completion flags on action recording; phase completion is separate', async () => {
+  expect(
+    (
+      await request(app)
+        .post(endpoint)
+        .auth(token, { type: 'bearer' })
+        .send({ ...input, recoveryCompleted: true })
+    ).status,
+  ).toBe(422);
+  expect(mocks.recordRecovery).not.toHaveBeenCalled();
+  expect(
+    (
+      await request(app)
+        .post(endpoint)
+        .auth(token, { type: 'bearer' })
+        .send({ ...input, recoveryCompleted: 'yes' })
+    ).status,
+  ).toBe(422);
+});
 it.each(['ADMIN', 'EMPLOYEE', 'EXECUTIVE'])('rejects %s writes', async (role) => {
   mocks.findActor.mockResolvedValue({ id, role, status: 'ACTIVE' });
   expect(

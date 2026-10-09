@@ -72,8 +72,8 @@ describe('UC58 assignment', () => {
         actor_user_id: actorId,
         resource_id: incidentId,
         action: 'INCIDENT_HANDLER_ASSIGNED',
-        before_data: { assigneeUserId: null },
-        after_data: input,
+        before_data: { assigneeUserId: null, status: 'TRIAGE' },
+        after_data: { ...input, status: 'TRIAGE' },
         record_hash: expect.stringMatching(/^[a-f0-9]{64}$/),
       }),
     });
@@ -86,7 +86,27 @@ describe('UC58 assignment', () => {
     });
     await incidentsRepository.assignHandler(actorId, incidentId, input);
     expect(mocks.audit_logs.create).toHaveBeenCalledWith({
-      data: expect.objectContaining({ before_data: { assigneeUserId: incidentId } }),
+      data: expect.objectContaining({
+        before_data: { assigneeUserId: incidentId, status: 'RECOVERY' },
+      }),
+    });
+  });
+  it('first assignment preserves OPEN and audits responsibility, not phase completion', async () => {
+    mocks.incidents.findUnique.mockResolvedValue({
+      status: 'OPEN',
+      handler_user_id: null,
+      updated_at: at,
+    });
+    await incidentsRepository.assignHandler(actorId, incidentId, input);
+    expect(mocks.incidents.update).toHaveBeenCalledWith({
+      where: { id: incidentId },
+      data: { handler_user_id: actorId, updated_at: expect.any(Date) },
+    });
+    expect(mocks.audit_logs.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        before_data: { assigneeUserId: null, status: 'OPEN' },
+        after_data: { ...input, status: 'OPEN' },
+      }),
     });
   });
   it('same-handler retry performs no writes', async () => {
