@@ -34,6 +34,11 @@ import {
   eradicationHistoryQuerySchema,
 } from './dto/record-eradication-action.dto.js';
 import { recordEradicationAction, getEradicationHistory } from './incidents.controller.js';
+import {
+  recordRecoveryActionSchema,
+  recoveryHistoryQuerySchema,
+} from './dto/record-recovery-action.dto.js';
+import { recordRecoveryAction, getRecoveryHistory } from './incidents.controller.js';
 export const incidentsRouter = Router();
 incidentsRouter.post(
   '/:incidentId/eradication-actions',
@@ -46,6 +51,18 @@ incidentsRouter.get(
   authenticate,
   validate({ params: incidentDetailParamsSchema, query: eradicationHistoryQuerySchema }),
   asyncHandler(getEradicationHistory),
+);
+incidentsRouter.post(
+  '/:incidentId/recovery-actions',
+  authenticate,
+  validate({ params: incidentDetailParamsSchema, body: recordRecoveryActionSchema }),
+  asyncHandler(recordRecoveryAction),
+);
+incidentsRouter.get(
+  '/:incidentId/recovery-actions',
+  authenticate,
+  validate({ params: incidentDetailParamsSchema, query: recoveryHistoryQuerySchema }),
+  asyncHandler(getRecoveryHistory),
 );
 incidentsRouter.post(
   '/:incidentId/containment-actions',
