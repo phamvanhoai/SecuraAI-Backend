@@ -1,5 +1,6 @@
 import type { RequestHandler } from 'express';
 import { AppError } from '../../common/errors/app-error.js';
+import { extractClientContext } from '../../common/utils/client-context.js';
 import { listAiAlertsQuerySchema } from './dto/list-ai-alerts.dto.js';
 import { aiAlertsService } from './ai-alerts.service.js';
 import {
@@ -27,13 +28,16 @@ export const getDetectionThreshold: RequestHandler = async (_req, res) => {
     .status(200)
     .json({ success: true, data: await aiAlertsService.getDetectionThreshold(userId) });
 };
+
 export const configureDetectionThreshold: RequestHandler = async (req, res) => {
   const userId: unknown = res.locals.authenticatedUserId;
   if (typeof userId !== 'string')
     throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+  const context = extractClientContext(req);
   const data = await aiAlertsService.configureDetectionThreshold(
     userId,
     configureDetectionThresholdSchema.parse(req.body),
+    context,
   );
   res.status(200).json({ success: true, data });
 };

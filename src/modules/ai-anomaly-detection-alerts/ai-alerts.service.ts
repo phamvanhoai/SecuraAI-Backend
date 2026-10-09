@@ -152,7 +152,11 @@ export const aiAlertsService = {
       );
     return detectionThresholdResponse(model);
   },
-  async configureDetectionThreshold(userId: string, input: ConfigureDetectionThreshold) {
+  async configureDetectionThreshold(
+    userId: string,
+    input: ConfigureDetectionThreshold,
+    context?: { sourceIp?: string | undefined; userAgent?: string | undefined },
+  ) {
     await requireThresholdManager(userId);
     const model = await aiAlertsRepository.findDeployedModelThreshold();
     if (!model)
@@ -165,6 +169,8 @@ export const aiAlertsService = {
       modelVersionId: model.id,
       threshold: input.threshold,
       actorUserId: userId,
+      sourceIp: context?.sourceIp,
+      userAgent: context?.userAgent,
     });
     if (!updated)
       throw new AppError(

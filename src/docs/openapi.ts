@@ -1,5 +1,14 @@
 import { env } from '../config/env.js';
+import { incidentClosurePaths } from './incident-closure.openapi.js';
+import { incidentProgressPaths } from './incident-progress.openapi.js';
+import { incidentAnalysisPaths } from './incident-analysis.openapi.js';
+import { controlCatalogPaths } from './control-catalog.openapi.js';
+import { controlEvidencePaths } from './control-evidence.openapi.js';
 import { pendingV2Paths } from './pending-v2.openapi.js';
+import { businessServicesPaths } from './business-services.openapi.js';
+import { notificationPaths } from './notifications.openapi.js';
+import { auditPaths } from './audit.openapi.js';
+import { systemLogPaths } from './system-logs.openapi.js';
 
 export const openApiSpec = {
   openapi: '3.0.3',
@@ -16,7 +25,16 @@ export const openApiSpec = {
     },
   },
   paths: {
+    ...incidentClosurePaths,
+    ...incidentAnalysisPaths,
     ...pendingV2Paths,
+    ...incidentProgressPaths,
+    ...controlCatalogPaths,
+    ...controlEvidencePaths,
+    ...businessServicesPaths,
+    ...notificationPaths,
+    ...auditPaths,
+    ...systemLogPaths,
     '/access-control/permissions': {
       get: {
         tags: ['Access Control'],
@@ -921,7 +939,7 @@ export const openApiSpec = {
         tags: ['Incident Management'],
         summary: 'List security incidents',
         description:
-          'Returns a searchable, paginated list of V2 security incidents for active Security Officers and Executives.',
+          'Returns a searchable, paginated list of V2 security incidents for active Security Officers and Executives. Each incident includes hasAnalysis, a boolean indicating whether root cause analysis exists, also returned in incident detail.',
         security: [{ bearerAuth: [] }],
         parameters: [
           { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
@@ -985,12 +1003,466 @@ export const openApiSpec = {
         },
       },
     },
+    '/incidents/{incidentId}/containment-actions': {
+      post: {
+        tags: ['Incident Management'],
+        summary: 'Record containment action',
+        description:
+          'Active Security Officers only. Appends a CONTAINMENT action and audit atomically using existing V2 incident_actions. Performer is the signed-in user. Requires current CONTAINMENT or a later non-closed phase; earlier phases return 409 INCIDENT_PHASE_REQUIRED. Status never changes. Closed incidents reject writes. Times must not be in the future.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'incidentId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['description', 'performedAt'],
+                properties: {
+                  description: { type: 'string', minLength: 10, maxLength: 4000 },
+                  performedAt: { type: 'string', format: 'date-time' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '201': {
+            description:
+              'Success envelope: id, phase=containment, description, performedAt, recordedAt, performedBy (id/name)',
+          },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Active Security Officer required' },
+          '404': { description: 'Incident not found' },
+          '409': { description: 'Closed incident or concurrent update' },
+          '422': { description: 'Invalid description or performed time' },
+        },
+      },
+      get: {
+        tags: ['Incident Management'],
+        summary: 'View containment action history',
+        description:
+          'Active Security Officers and Executives. Includes closed incidents, newest performed time first, stable ID tie-break. data.items: id, phase=containment, description, performedAt, recordedAt, performedBy (id/name). data.pagination: page, limit, total, totalPages. Account names reflect current users.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'incidentId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+          {
+            name: 'page',
+            in: 'query',
+            schema: { type: 'integer', minimum: 1, maximum: 100000, default: 1 },
+          },
+          {
+            name: 'limit',
+            in: 'query',
+            schema: { type: 'integer', minimum: 1, maximum: 100, default: 10 },
+          },
+        ],
+        responses: {
+          '200': { description: 'Success envelope with items and pagination' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Active viewer required' },
+          '404': { description: 'Incident not found' },
+          '422': { description: 'Invalid ID or pagination' },
+        },
+      },
+    },
+    '/incidents/{incidentId}/eradication-actions': {
+      post: {
+        tags: ['Incident Management'],
+        summary: 'Record eradication action',
+        description:
+          'Active Security Officers only. Appends an ERADICATION action and audit atomically using existing V2 incident_actions. Performer is the signed-in user. Requires current ERADICATION or a later non-closed phase; earlier phases return 409 INCIDENT_PHASE_REQUIRED. Status never changes. Closed incidents reject writes. Times must not be in the future.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'incidentId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['description', 'performedAt'],
+                properties: {
+                  description: { type: 'string', minLength: 10, maxLength: 4000 },
+                  performedAt: { type: 'string', format: 'date-time' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '201': {
+            description:
+              'Success envelope: id, phase=eradication, description, performedAt, recordedAt, performedBy (id/name)',
+          },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Active Security Officer required' },
+          '404': { description: 'Incident not found' },
+          '409': { description: 'Closed incident or concurrent update' },
+          '422': { description: 'Invalid description or performed time' },
+        },
+      },
+      get: {
+        tags: ['Incident Management'],
+        summary: 'View eradication action history',
+        description:
+          'Active Security Officers and Executives. Includes closed incidents, newest performed time first, stable ID tie-break. data.items: id, phase=eradication, description, performedAt, recordedAt, performedBy (id/name). data.pagination: page, limit, total, totalPages. Account names reflect current users.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'incidentId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+          {
+            name: 'page',
+            in: 'query',
+            schema: { type: 'integer', minimum: 1, maximum: 100000, default: 1 },
+          },
+          {
+            name: 'limit',
+            in: 'query',
+            schema: { type: 'integer', minimum: 1, maximum: 100, default: 10 },
+          },
+        ],
+        responses: {
+          '200': { description: 'Success envelope with items and pagination' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Active viewer required' },
+          '404': { description: 'Incident not found' },
+          '422': { description: 'Invalid ID or pagination' },
+        },
+      },
+    },
+    '/incidents/{incidentId}/recovery-actions': {
+      post: {
+        tags: ['Incident Management'],
+        summary: 'Record recovery action',
+        description:
+          'Active Security Officers only. Appends a RECOVERY action and audit atomically using existing V2 incident_actions. Performer is the signed-in user. Requires RECOVERY or LESSONS_LEARNED; earlier phases return 409 INCIDENT_PHASE_REQUIRED. Status never changes. Confirm verified recovery through PATCH /incidents/{incidentId}/progress separately. Closed incidents reject writes. Times must not be in the future.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'incidentId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['description', 'performedAt'],
+                properties: {
+                  description: { type: 'string', minLength: 10, maxLength: 4000 },
+                  performedAt: { type: 'string', format: 'date-time' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '201': {
+            description:
+              'Success envelope: id, phase=recovery, description, performedAt, recordedAt, performedBy (id/name)',
+          },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Active Security Officer required' },
+          '404': { description: 'Incident not found' },
+          '409': { description: 'Closed incident or concurrent update' },
+          '422': { description: 'Invalid description or performed time' },
+        },
+      },
+      get: {
+        tags: ['Incident Management'],
+        summary: 'View recovery action history',
+        description:
+          'Active Security Officers and Executives. Includes closed incidents, newest performed time first, stable ID tie-break. data.items: id, phase=recovery, description, performedAt, recordedAt, performedBy (id/name). data.pagination: page, limit, total, totalPages. Account names reflect current users.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'incidentId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+          {
+            name: 'page',
+            in: 'query',
+            schema: { type: 'integer', minimum: 1, maximum: 100000, default: 1 },
+          },
+          {
+            name: 'limit',
+            in: 'query',
+            schema: { type: 'integer', minimum: 1, maximum: 100, default: 10 },
+          },
+        ],
+        responses: {
+          '200': { description: 'Success envelope with items and pagination' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Active viewer required' },
+          '404': { description: 'Incident not found' },
+          '422': { description: 'Invalid ID or pagination' },
+        },
+      },
+    },
+    '/incidents/assignment-options': {
+      get: {
+        tags: ['Incident Management'],
+        summary: 'List eligible incident handlers',
+        description:
+          'Active Security Officers only. Returns active Security Officers as users with id, name and email.',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          '200': { description: 'Success envelope with data.users' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer required' },
+        },
+      },
+    },
+    '/incidents/{incidentId}/assignee': {
+      get: {
+        tags: ['Incident Management'],
+        summary: 'View incident assignment history',
+        description:
+          'Active Security Officers and Executives can read assignment audits, including closed incidents. Newest first. Handler names reflect current account names. data.items: id, assignedAt, assignedBy (id/name or null), previousHandler and handler (id/name or null), note. data.pagination: page, limit, total, totalPages.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'incidentId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+          {
+            name: 'page',
+            in: 'query',
+            schema: { type: 'integer', minimum: 1, maximum: 100000, default: 1 },
+          },
+          {
+            name: 'limit',
+            in: 'query',
+            schema: { type: 'integer', minimum: 1, maximum: 100, default: 10 },
+          },
+        ],
+        responses: {
+          '200': { description: 'Success envelope with paginated assignment history' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer or Executive required' },
+          '404': { description: 'Incident not found' },
+          '422': { description: 'Invalid identifier or pagination' },
+        },
+      },
+      patch: {
+        tags: ['Incident Management'],
+        summary: 'Assign or change incident handler',
+        description:
+          'Active Security Officer assigns an active Security Officer. Updates handler and records previous/new handler, assigning officer, note and time atomically in audit_logs. Assignment never changes the handling phase or establishes phase completion. Before/after status is audited. Closed incidents cannot be assigned. Selecting the current handler is a no-op (changed=false).',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'incidentId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['assigneeUserId', 'note'],
+                properties: {
+                  assigneeUserId: { type: 'string', format: 'uuid' },
+                  note: { type: 'string', minLength: 10, maxLength: 2000 },
+                  expectedUpdatedAt: { type: 'string', format: 'date-time' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': {
+            description: 'Success envelope containing incident, currentAssignment and changed',
+          },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer required' },
+          '404': { description: 'Incident not found' },
+          '409': { description: 'Closed or stale incident, or handler no longer eligible' },
+          '422': { description: 'Invalid UUID, note or timestamp' },
+        },
+      },
+    },
+    '/incidents/{incidentId}/severity': {
+      get: {
+        tags: ['Incident Management'],
+        summary: 'View incident severity classification history',
+        description:
+          'Active Security Officers and Executives can read paginated audit-backed history, newest first. Includes previous/new severity, rationale, officer and time; closed incidents remain readable.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'incidentId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+          {
+            name: 'page',
+            in: 'query',
+            schema: { type: 'integer', minimum: 1, maximum: 100000, default: 1 },
+          },
+          {
+            name: 'limit',
+            in: 'query',
+            schema: { type: 'integer', minimum: 1, maximum: 100, default: 10 },
+          },
+        ],
+        responses: {
+          '200': {
+            description:
+              'Classification history with items (id, classifiedAt, classifiedBy, previousSeverity, severity, rationale) and pagination (page, limit, total, totalPages)',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['success', 'data'],
+                  properties: {
+                    success: { type: 'boolean', enum: [true] },
+                    data: {
+                      type: 'object',
+                      required: ['items', 'pagination'],
+                      properties: {
+                        items: {
+                          type: 'array',
+                          items: {
+                            type: 'object',
+                            properties: {
+                              id: { type: 'string', format: 'uuid' },
+                              classifiedAt: { type: 'string', format: 'date-time' },
+                              classifiedBy: {
+                                type: 'object',
+                                nullable: true,
+                                properties: {
+                                  id: { type: 'string', format: 'uuid' },
+                                  name: { type: 'string' },
+                                },
+                              },
+                              previousSeverity: {
+                                type: 'string',
+                                nullable: true,
+                                enum: ['low', 'medium', 'high', 'critical', null],
+                              },
+                              severity: {
+                                type: 'string',
+                                nullable: true,
+                                enum: ['low', 'medium', 'high', 'critical', null],
+                              },
+                              rationale: { type: 'string', nullable: true },
+                            },
+                          },
+                        },
+                        pagination: {
+                          type: 'object',
+                          properties: {
+                            page: { type: 'integer' },
+                            limit: { type: 'integer' },
+                            total: { type: 'integer' },
+                            totalPages: { type: 'integer' },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer or Executive required' },
+          '404': { description: 'Incident not found' },
+          '422': { description: 'Invalid identifier or pagination' },
+        },
+      },
+      patch: {
+        tags: ['Incident Management'],
+        summary: 'Classify incident severity',
+        description:
+          'An active Security Officer records severity and a rationale supporting response priority. Writes severity and its audit record atomically. Classification never changes the handling phase or establishes phase completion; before/after status is audited. Closed incidents cannot be reclassified.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'incidentId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['severity', 'rationale'],
+                properties: {
+                  severity: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] },
+                  rationale: { type: 'string', minLength: 10, maxLength: 2000 },
+                  expectedUpdatedAt: { type: 'string', format: 'date-time' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': {
+            description: 'Incident with updated severity and latest classification metadata',
+          },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Active Security Officer required' },
+          '404': { description: 'Incident not found' },
+          '409': {
+            description: 'Incident closed or changed concurrently; refresh before retrying',
+          },
+          '422': { description: 'Invalid incident identifier, severity or rationale' },
+        },
+      },
+    },
     '/incidents/{incidentId}': {
       get: {
         tags: ['Incident Management'],
         summary: 'View security incident details',
         description:
-          'Returns core incident details, responsible users, timestamps, and related-record counts from the V2 database.',
+          'Returns the incident description, severity, status, affected assets, assigned handler, response actions, and chronological handling history from the V2 database. Requires an active Security Officer or Executive.',
         security: [{ bearerAuth: [] }],
         parameters: [
           {
@@ -1001,7 +1473,44 @@ export const openApiSpec = {
           },
         ],
         responses: {
-          '200': { description: 'Incident details' },
+          '200': {
+            description: 'Complete incident details',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['success', 'data'],
+                  properties: {
+                    success: { type: 'boolean', enum: [true] },
+                    data: {
+                      type: 'object',
+                      required: [
+                        'id',
+                        'incidentCode',
+                        'title',
+                        'severity',
+                        'status',
+                        'affectedAssets',
+                        'responseActions',
+                        'handlingHistory',
+                      ],
+                      properties: {
+                        id: { type: 'string', format: 'uuid' },
+                        incidentCode: { type: 'string' },
+                        title: { type: 'string' },
+                        description: { type: ['string', 'null'] },
+                        severity: { type: 'string' },
+                        status: { type: 'string' },
+                        affectedAssets: { type: 'array', items: { type: 'object' } },
+                        responseActions: { type: 'array', items: { type: 'object' } },
+                        handlingHistory: { type: 'array', items: { type: 'object' } },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
           '401': { description: 'Authentication required' },
           '403': { description: 'Security Officer or Executive role required' },
           '404': { description: 'Incident not found' },
@@ -2073,6 +2582,19 @@ export const openApiSpec = {
         },
       },
     },
+    '/events/mapping-options': {
+      get: {
+        tags: ['Event Ingestion'],
+        summary: 'Get entity mapping options for review and correction',
+        description:
+          'Returns available users, assets, and monitored accounts for event mapping correction.',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          '200': { description: 'Mapping options list' },
+          '401': { description: 'Authentication required' },
+        },
+      },
+    },
     '/events/{id}': {
       get: {
         tags: ['Event Ingestion'],
@@ -2088,6 +2610,42 @@ export const openApiSpec = {
           '401': { description: 'Authentication required' },
           '404': { description: 'Normalized security event not found' },
           '422': { description: 'Invalid event ID' },
+        },
+      },
+    },
+    '/events/{id}/mappings': {
+      put: {
+        tags: ['Event Ingestion'],
+        summary: 'Review and correct event entity mappings',
+        description:
+          'Allows Security Officers to correct inaccurate system-generated mappings between security events and users, accounts, or assets.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['reason'],
+                properties: {
+                  userId: { type: 'string', format: 'uuid', nullable: true },
+                  assetId: { type: 'string', format: 'uuid', nullable: true },
+                  monitoredAccountId: { type: 'string', format: 'uuid', nullable: true },
+                  reason: { type: 'string', minLength: 1, maxLength: 500 },
+                  confidence: { type: 'number', minimum: 0, maximum: 1, default: 1.0 },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'Updated entity mapping' },
+          '401': { description: 'Authentication required' },
+          '404': { description: 'Event, target user, or target asset not found' },
+          '422': { description: 'Validation failed' },
         },
       },
     },
@@ -3042,6 +3600,141 @@ export const openApiSpec = {
           '403': { description: 'Admin role required' },
           '404': { description: 'User not found' },
           '422': { description: 'Invalid request' },
+        },
+      },
+    },
+    '/audit-logs': {
+      get: {
+        tags: ['Audit & Security Reporting'],
+        summary: 'List and search system audit records',
+        description:
+          'Returns paginated audit records with filters for actor, action, resource, correlation ID and time range.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 } },
+          { name: 'search', in: 'query', schema: { type: 'string', maxLength: 100 } },
+          { name: 'actor', in: 'query', schema: { type: 'string', maxLength: 100 } },
+          { name: 'action', in: 'query', schema: { type: 'string', maxLength: 100 } },
+          { name: 'resourceType', in: 'query', schema: { type: 'string', maxLength: 100 } },
+          { name: 'correlationId', in: 'query', schema: { type: 'string', maxLength: 100 } },
+          { name: 'startDate', in: 'query', schema: { type: 'string', format: 'date-time' } },
+          { name: 'endDate', in: 'query', schema: { type: 'string', format: 'date-time' } },
+        ],
+        responses: {
+          '200': { description: 'Paginated audit records' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Authorized audit role required' },
+          '422': { description: 'Invalid query parameters' },
+        },
+      },
+    },
+    '/audit-logs/{id}': {
+      get: {
+        tags: ['Audit & Security Reporting'],
+        summary: 'View audit log detail',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+        responses: {
+          '200': { description: 'Detailed audit record' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Authorized audit role required' },
+          '404': { description: 'Audit record not found' },
+          '422': { description: 'Invalid audit record ID' },
+        },
+      },
+    },
+    '/audit-logs/{id}/diff': {
+      get: {
+        tags: ['Audit & Security Reporting'],
+        summary: 'View before and after changes',
+        security: [{ bearerAuth: [] }],
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+        responses: {
+          '200': { description: 'Property-level before and after comparison' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Authorized audit role required' },
+          '404': { description: 'Audit record not found' },
+          '422': { description: 'Invalid audit record ID' },
+        },
+      },
+    },
+    '/event-governance/policies': {
+      get: {
+        tags: ['Event Ingestion'],
+        summary: 'List event data governance and retention policies',
+        description:
+          'Retrieve current event data governance policies covering applicable retention periods, cold-storage archival rules, PII masking rules, and automated lifecycle purging settings. Restricted to Administrator and Security Officer roles.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'page',
+            in: 'query',
+            schema: { type: 'integer', default: 1 },
+          },
+          {
+            name: 'limit',
+            in: 'query',
+            schema: { type: 'integer', default: 20 },
+          },
+          {
+            name: 'eventFamily',
+            in: 'query',
+            schema: { type: 'string', enum: ['AUTHENTICATION', 'VPN_SSO', 'APPLICATION_ACCESS'] },
+          },
+          {
+            name: 'status',
+            in: 'query',
+            schema: { type: 'string', enum: ['ACTIVE', 'INACTIVE'] },
+          },
+          {
+            name: 'search',
+            in: 'query',
+            schema: { type: 'string' },
+          },
+        ],
+        responses: {
+          '200': { description: 'Paginated list of event data governance policies' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Administrator or Security Officer role required' },
+        },
+      },
+    },
+    '/event-governance/policies/summary': {
+      get: {
+        tags: ['Event Ingestion'],
+        summary: 'Get event data lifecycle and retention summary metrics',
+        description:
+          'Retrieve overall event data governance metrics including retention range (min/max/avg days), active archival rules, automated purge enforcement, and export permissions. Restricted to Administrator and Security Officer roles.',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          '200': { description: 'Summary lifecycle metrics across event governance policies' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Administrator or Security Officer role required' },
+        },
+      },
+    },
+    '/event-governance/policies/{id}': {
+      get: {
+        tags: ['Event Ingestion'],
+        summary: 'Get event data governance policy details',
+        description:
+          'Retrieve complete configuration and lifecycle rules of a specific event data governance policy including retention days, archive days, deletion settings, access scope, and masking rules. Restricted to Administrator and Security Officer roles.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          '200': { description: 'Detailed event data governance policy' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Administrator or Security Officer role required' },
+          '404': { description: 'Event data governance policy not found' },
+          '422': { description: 'Invalid policy ID format' },
         },
       },
     },

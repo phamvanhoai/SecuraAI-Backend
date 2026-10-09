@@ -5,6 +5,7 @@ vi.mock('../src/modules/information-security-incident-management/incidents.repos
     findActor: vi.fn(),
     list: vi.fn(),
     findById: vi.fn(),
+    classificationMetadata: vi.fn(),
   },
 }));
 
@@ -17,6 +18,7 @@ const now = new Date('2026-09-30T00:00:00Z');
 const record = {
   id: incidentId,
   incident_code: 'INC-2026-001',
+  incident_analysis: null,
   title: 'Suspicious administrative login',
   description: 'An unexpected privileged login was detected.',
   severity: 'HIGH',
@@ -38,6 +40,37 @@ const record = {
     email: 'officer@example.com',
   },
   security_findings: null,
+  incident_assets: [
+    {
+      linked_at: now,
+      assets: {
+        id: 'a1c8f72b-d6bc-45e3-b8f3-17e41ab7e128',
+        asset_code: 'AST-001',
+        name: 'Identity gateway',
+        asset_type: 'Application',
+        criticality: 'HIGH',
+        status: 'ACTIVE' as const,
+      },
+      users: {
+        id: userId,
+        full_name: 'Security Officer',
+        email: 'officer@example.com',
+      },
+    },
+  ],
+  incident_actions: [
+    {
+      id: '7ffaf9d3-51fb-4acc-b4d3-620017866123',
+      phase: 'CONTAINMENT' as const,
+      description: 'Disabled the affected privileged account.',
+      performed_at: new Date('2026-09-30T01:00:00Z'),
+      users: {
+        id: userId,
+        full_name: 'Security Officer',
+        email: 'officer@example.com',
+      },
+    },
+  ],
   _count: {
     incident_actions: 1,
     incident_assets: 2,
@@ -50,6 +83,10 @@ const record = {
 describe('view incidents service', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(incidentsRepository.classificationMetadata).mockResolvedValue({
+      counts: [],
+      latest: [],
+    });
     vi.mocked(incidentsRepository.findActor).mockResolvedValue({
       id: userId,
       role: 'SECURITY_OFFICER',
@@ -66,12 +103,22 @@ describe('view incidents service', () => {
           incidentCode: 'INC-2026-001',
           severity: 'high',
           status: 'triage',
+          hasAnalysis: false,
           currentAssignment: { assignee: { name: 'Security Officer' } },
           relatedCounts: { assets: 2, evidence: 4 },
         },
       ],
       pagination: { total: 1, totalPages: 1 },
     });
+  });
+
+  it('marks incidents with existing analysis for read-only discovery after reopening', async () => {
+    vi.mocked(incidentsRepository.list).mockResolvedValue([
+      1,
+      [{ ...record, incident_analysis: { id: incidentId } }],
+    ]);
+    const result = await incidentsService.list(userId, { page: 1, limit: 10 });
+    expect(result.items[0]).toMatchObject({ status: 'triage', hasAnalysis: true });
   });
 
   it('allows an Executive to view incident details', async () => {
@@ -84,6 +131,19 @@ describe('view incidents service', () => {
     await expect(incidentsService.detail(userId, incidentId)).resolves.toMatchObject({
       id: incidentId,
       createdBy: { name: 'Security Officer' },
+      affectedAssets: [{ assetCode: 'AST-001', name: 'Identity gateway' }],
+      responseActions: [
+        {
+          phase: 'containment',
+          description: 'Disabled the affected privileged account.',
+          performedBy: { name: 'Security Officer' },
+        },
+      ],
+      handlingHistory: [
+        { type: 'reported' },
+        { type: 'confirmed' },
+        { type: 'response_action', phase: 'containment' },
+      ],
     });
   });
 

@@ -24,8 +24,17 @@ export const capabilitiesByRole = {
     'integrations.read',
     'audit.read',
     'system-settings.read',
+    'notifications.send',
+    'notifications.send-email',
+    'notifications.preferences',
+    'system-logs.search',
+    'system-logs.export',
   ],
   SECURITY_OFFICER: [
+    'business-services.read',
+    'business-services.create',
+    'business-services.update',
+    'business-services.deactivate',
     'assets.read',
     'assets.create',
     'assets.update',
@@ -55,9 +64,14 @@ export const capabilitiesByRole = {
     'incidents.record-control-weakness',
     'incidents.request-risk-reassessment',
     'compliance.assess-controls',
+    'controls.create',
+    'controls.update',
     'login-history.read',
     'log-sources.read',
     'reports.read',
+    'notifications.preferences',
+    'system-logs.search',
+    'system-logs.export',
   ],
   EXECUTIVE: [
     'assets.read',
@@ -65,8 +79,9 @@ export const capabilitiesByRole = {
     'ai-alerts.thresholds.manage',
     'incidents.read',
     'reports.read',
+    'notifications.preferences',
   ],
-  EMPLOYEE: ['assets.read', 'policies.acknowledge'],
+  EMPLOYEE: ['assets.read', 'policies.acknowledge', 'notifications.preferences'],
 } as const satisfies Record<user_role, readonly string[]>;
 
 export function capabilitiesForRole(role: user_role): readonly string[] {

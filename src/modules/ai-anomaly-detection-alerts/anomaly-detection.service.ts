@@ -54,7 +54,12 @@ function scoreEvent(
 }
 
 export const anomalyDetectionService = {
-  async run(userId: string, input: RunAnomalyDetectionBody, correlationId?: string) {
+  async run(
+    userId: string,
+    input: RunAnomalyDetectionBody,
+    correlationId?: string,
+    context?: { sourceIp?: string | undefined; userAgent?: string | undefined },
+  ) {
     const actor = await anomalyDetectionRepository.findActor(userId);
     if (!actor || actor.status !== 'ACTIVE')
       throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
@@ -109,6 +114,8 @@ export const anomalyDetectionService = {
       ...(correlationId ? { correlationId } : {}),
       detections,
       summary,
+      sourceIp: context?.sourceIp,
+      userAgent: context?.userAgent,
     });
     return {
       ...summary,

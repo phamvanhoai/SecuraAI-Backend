@@ -1,4 +1,26 @@
 import { Router } from 'express';
+import {
+  listControlEvidence,
+  addControlEvidence,
+  linkControlEvidence,
+} from './control-evidence.controller.js';
+import {
+  addControlEvidenceSchema,
+  linkControlEvidenceSchema,
+  listControlEvidenceSchema,
+} from './dto/control-evidence.dto.js';
+import {
+  getCatalogControl,
+  listControlOwners,
+  createCatalogControl,
+  editCatalogControl,
+} from './control-catalog.controller.js';
+import {
+  controlParamsSchema,
+  controlOwnerQuerySchema,
+  createControlSchema,
+  editControlSchema,
+} from './dto/manage-control.dto.js';
 import { authenticate } from '../../common/middleware/authenticate.js';
 import { validate } from '../../common/middleware/validate.js';
 import { asyncHandler } from '../../common/utils/async-handler.js';
@@ -68,6 +90,48 @@ import {
 } from './dto/define-policy-applicability.dto.js';
 
 export const policyComplianceRouter = Router();
+policyComplianceRouter.get(
+  '/controls/:controlId/evidence',
+  authenticate,
+  validate({ params: controlParamsSchema, query: listControlEvidenceSchema }),
+  asyncHandler(listControlEvidence),
+);
+policyComplianceRouter.post(
+  '/controls/:controlId/evidence',
+  authenticate,
+  validate({ params: controlParamsSchema, body: addControlEvidenceSchema }),
+  asyncHandler(addControlEvidence),
+);
+policyComplianceRouter.post(
+  '/controls/:controlId/evidence-links',
+  authenticate,
+  validate({ params: controlParamsSchema, body: linkControlEvidenceSchema }),
+  asyncHandler(linkControlEvidence),
+);
+policyComplianceRouter.get(
+  '/controls/owner-options',
+  authenticate,
+  validate({ query: controlOwnerQuerySchema }),
+  asyncHandler(listControlOwners),
+);
+policyComplianceRouter.get(
+  '/controls/:controlId',
+  authenticate,
+  validate({ params: controlParamsSchema }),
+  asyncHandler(getCatalogControl),
+);
+policyComplianceRouter.post(
+  '/controls',
+  authenticate,
+  validate({ body: createControlSchema }),
+  asyncHandler(createCatalogControl),
+);
+policyComplianceRouter.patch(
+  '/controls/:controlId',
+  authenticate,
+  validate({ params: controlParamsSchema, body: editControlSchema }),
+  asyncHandler(editCatalogControl),
+);
 policyComplianceRouter.get(
   '/policies/:policyId/versions/:versionId/applicability',
   authenticate,

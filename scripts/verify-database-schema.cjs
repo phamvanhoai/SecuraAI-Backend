@@ -6,11 +6,24 @@ const prisma = new PrismaClient();
 
 async function verifyDatabaseSchema() {
   const sql = fs.readFileSync('project-docs/new/database.sql', 'utf8');
-  const expected = [...sql.matchAll(/^CREATE TABLE\s+([a-z_][a-z0-9_]*)\s*\(/gim)]
-    .map((match) => match[1])
-    .sort();
-  const expectedForeignKeys = [...sql.matchAll(/^ALTER TABLE .* FOREIGN KEY /gm)].length;
-  const expectedChecks = [...sql.matchAll(/\bCHECK\s*\(/g)].length;
+  const additiveTables = [
+    'notification_deliveries',
+    'notification_preferences',
+    'notification_recipients',
+    'notifications',
+  ];
+  const expected = [
+    ...new Set([
+      ...[...sql.matchAll(/^CREATE TABLE\s+([a-z_][a-z0-9_]*)\s*\(/gim)].map(
+        (match) => match[1],
+      ),
+      ...additiveTables,
+    ]),
+  ].sort();
+  // The approved baseline remains immutable. These totals include every
+  // applied additive migration through Send In-System Notification.
+  const expectedForeignKeys = 135;
+  const expectedChecks = 184;
   const rows = await prisma.$queryRaw`
     SELECT table_name
     FROM information_schema.tables

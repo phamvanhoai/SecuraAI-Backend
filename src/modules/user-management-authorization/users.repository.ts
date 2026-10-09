@@ -397,7 +397,12 @@ export const usersRepository = {
         full_name: true,
         role: true,
         status: true,
-        _count: { select: { risks_risks_owner_user_idTousers: true } },
+        _count: {
+          select: {
+            risks_risks_owner_user_idTousers: true,
+            security_controls_security_controls_owner_user_idTousers: true,
+          },
+        },
       },
     });
   },

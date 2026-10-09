@@ -57,7 +57,9 @@ export const anomalyDetectionRepository = {
   persistRun(input: {
     actorUserId: string;
     modelVersionId: string;
-    correlationId?: string;
+    correlationId?: string | undefined;
+    sourceIp?: string | undefined;
+    userAgent?: string | undefined;
     detections: readonly {
       id: string;
       eventId: string;
@@ -113,6 +115,8 @@ export const anomalyDetectionRepository = {
             resource_type: 'ANOMALY_DETECTION',
             ...(input.correlationId ? { correlation_id: input.correlationId } : {}),
             source: 'API',
+            source_ip: input.sourceIp ?? null,
+            user_agent: input.userAgent ?? null,
             after_data: input.summary,
             ...(previous ? { previous_hash: previous.record_hash } : {}),
             record_hash: recordHash,

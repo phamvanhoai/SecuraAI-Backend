@@ -19,12 +19,12 @@ Current stack:
 Current database baseline:
 
 - Online database: Supabase-managed PostgreSQL 17 in the Singapore region.
-- The original V2 baseline contains 56 tables. The current evolved schema contains 60 tables, 36 enum types and 129 active foreign-key constraints defined by `project-docs/new/database.sql` plus applied migrations.
+- The original V2 baseline contains 56 tables. The current evolved schema contains 64 tables, 42 enum types, 135 active foreign-key constraints and 184 check constraints defined by `project-docs/new/database.sql` plus applied migrations.
 - `prisma/migrations/00000000000000_baseline_v2/migration.sql` is the deployable V2 baseline.
 - Legacy migrations are retained under `prisma/migrations-legacy/` for reference only.
 - `npm run db:verify` compares the live `public` schema with the approved database design.
 
-Health routes, V2-backed authentication login, refresh, logout, password reset and password change, protected `GET /users/me`, Security Officer policy draft listing and submission, Admin viewing of submitted policy drafts, anomaly detection runs, the real-time AI alert feed and XAI explanation, AI alert reliability feedback, confirmation of alerts as incidents, false-positive alert marking, and deployed-model threshold configuration are currently implemented. Another 123 historical V1 method/URL contracts are registered in `src/routes/legacy-v1-route-contracts.ts` and return HTTP 501 until ported. Their V3 handlers and tests are in `reference/legacy-v3/` as non-running porting reference. Training is removed from both active code and the V3 porting reference; only immutable historical database snapshots may still mention it. Do not describe any pending business endpoint as implemented until its full route-to-repository path and tests exist.
+Health routes, V2-backed authentication login, refresh, logout, password reset and password change, protected `GET /users/me`, Security Officer policy draft listing and submission, Admin viewing of submitted policy drafts, anomaly detection runs, the real-time AI alert feed and XAI explanation, AI alert reliability feedback, confirmation of alerts as incidents, false-positive alert marking, and deployed-model threshold configuration are currently implemented. Another 72 historical V1 method/URL contracts are registered in `src/routes/legacy-v1-route-contracts.ts` and return HTTP 501 until ported. Their V3 handlers and tests are in `reference/legacy-v3/` as non-running porting reference. Training is removed from both active code and the V3 porting reference; only immutable historical database snapshots may still mention it. Do not describe any pending business endpoint as implemented until its full route-to-repository path and tests exist.
 
 `GET /users/me` returns role-derived frontend capability names from `src/modules/user-management-authorization/role-capabilities.ts`, based on the WBS actor column. These are not stored grants and must never be used as a substitute for server-side role, scope, ownership and status checks on future handlers.
 
@@ -176,7 +176,7 @@ Example for a Risk Owner review: the account remains `EMPLOYEE`; `/users/me` may
 - Do not run destructive resets, drops or production migrations without explicit user authorization.
 - The Supabase `public` schema must match the V2 baseline in `project-docs/new/database.sql` plus Prisma's `_prisma_migrations` table. Do not modify Supabase-managed schemas such as `auth`, `storage`, `realtime`, `extensions` or `vault`.
 - Prisma does not fully represent PostgreSQL comments, deferred foreign keys or all check-constraint metadata. Preserve these in SQL migrations; do not assume `prisma db pull` captures every database feature.
-- Run `npm run db:verify` after schema changes. It must report 60 tables, 129 foreign keys, 168 checks, and empty `missing`/`unexpected` lists.
+- Run `npm run db:verify` after schema changes. It must report 64 tables, 135 foreign keys, 184 checks, and empty `missing`/`unexpected` lists.
 
 Repository example:
 

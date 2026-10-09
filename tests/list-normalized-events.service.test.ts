@@ -147,4 +147,96 @@ describe('normalizedEventsService', () => {
     expect(metrics.totalEvents).toBe(1500);
     expect(metrics.byFamily.AUTHENTICATION).toBe(800);
   });
+
+  it('updates event entity mapping successfully', async () => {
+    const mockUpdatedMapping = {
+      id: 'map-002',
+      event_id: '550e8400-e29b-41d4-a716-446655440001',
+      user_id: '550e8400-e29b-41d4-a716-446655440010',
+      monitored_account_id: null,
+      asset_id: '550e8400-e29b-41d4-a716-446655440020',
+      mapping_method: 'MANUAL' as const,
+      confidence: new Prisma.Decimal(1.0),
+      reason: 'Manual correction by Security Officer',
+      mapped_by: 'user-admin-1',
+      mapped_at: new Date('2026-10-03T10:00:00Z'),
+      is_active: true,
+      supersedes_mapping_id: 'map-001',
+      created_at: new Date('2026-10-03T10:00:00Z'),
+      assets: {
+        id: '550e8400-e29b-41d4-a716-446655440020',
+        name: 'Database Server',
+        asset_code: 'AST-DB-01',
+        asset_type: 'DATABASE',
+        criticality: 'HIGH',
+      },
+      users_event_entity_mappings_user_idTousers: {
+        id: '550e8400-e29b-41d4-a716-446655440010',
+        email: 'analyst@company.com',
+        full_name: 'Security Analyst',
+      },
+      users_event_entity_mappings_mapped_byTousers: {
+        id: 'user-admin-1',
+        email: 'admin@company.com',
+        full_name: 'Admin User',
+      },
+      monitored_accounts: null,
+    };
+
+    vi.spyOn(normalizedEventsRepository, 'updateMapping').mockResolvedValue(mockUpdatedMapping);
+
+    const result = await normalizedEventsService.updateEventMapping(
+      'user-admin-1',
+      '550e8400-e29b-41d4-a716-446655440001',
+      {
+        userId: '550e8400-e29b-41d4-a716-446655440010',
+        assetId: '550e8400-e29b-41d4-a716-446655440020',
+        reason: 'Manual correction by Security Officer',
+        confidence: 1.0,
+      },
+    );
+
+    expect(result.id).toBe('map-002');
+    expect(result.mappingMethod).toBe('MANUAL');
+    expect(result.mappedUser?.email).toBe('analyst@company.com');
+    expect(result.mappedAsset?.assetCode).toBe('AST-DB-01');
+    expect(result.mappedBy?.email).toBe('admin@company.com');
+  });
+
+  it('throws 404 when updating mapping for non-existent event', async () => {
+    vi.spyOn(normalizedEventsRepository, 'updateMapping').mockResolvedValue(null);
+
+    await expect(
+      normalizedEventsService.updateEventMapping(
+        'user-admin-1',
+        '550e8400-e29b-41d4-a716-446655440099',
+        {
+          userId: '550e8400-e29b-41d4-a716-446655440010',
+          reason: 'Test reason',
+          confidence: 1.0,
+        },
+      ),
+    ).rejects.toThrow('Normalized security event not found');
+  });
+
+  it('returns mapping options for users and assets', async () => {
+    vi.spyOn(normalizedEventsRepository, 'getMappingOptions').mockResolvedValue({
+      users: [{ id: 'u1', email: 'user@test.com', full_name: 'User Test' }],
+      assets: [
+        {
+          id: 'a1',
+          name: 'Server 1',
+          asset_code: 'AST-01',
+          asset_type: 'SERVER',
+          criticality: 'HIGH',
+        },
+      ],
+      monitoredAccounts: [],
+    });
+
+    const options = await normalizedEventsService.getMappingOptions('user-admin-1');
+
+    expect(options.users).toHaveLength(1);
+    expect(options.assets).toHaveLength(1);
+  });
 });

@@ -346,6 +346,12 @@ export const usersService = {
       throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
     }
     const permissions = [...capabilitiesForRole(user.role)];
+    if (
+      user.role === 'EMPLOYEE' &&
+      user._count.security_controls_security_controls_owner_user_idTousers > 0
+    ) {
+      permissions.push('compliance.assess-controls');
+    }
     if (user.role === 'EMPLOYEE' && user._count.risks_risks_owner_user_idTousers > 0) {
       permissions.push('risks.read', 'risks.review-reassessment', 'risks.update-treatment-plan');
     }
