@@ -28,8 +28,7 @@ export const incidentAnalysisService = {
     const actor = await requireViewer(userId);
     const incident = await incidentAnalysisRepository.findIncident(incidentId);
     if (!incident) throw new AppError(404, 'INCIDENT_NOT_FOUND', 'Incident not found');
-    const canEdit =
-      actor.role === 'SECURITY_OFFICER' && ['LESSONS_LEARNED', 'CLOSED'].includes(incident.status);
+    const canEdit = actor.role === 'SECURITY_OFFICER' && incident.status === 'LESSONS_LEARNED';
     return {
       analysis: incident.incident_analysis ? mapAnalysis(incident.incident_analysis) : null,
       canEdit,
@@ -37,7 +36,9 @@ export const incidentAnalysisService = {
         ? null
         : actor.role !== 'SECURITY_OFFICER'
           ? 'Only Security Officers can document findings.'
-          : 'Findings can be saved when the incident reaches Lessons learned or Closed.',
+          : incident.status === 'CLOSED'
+            ? 'This incident is closed. Findings and history are read-only.'
+            : 'Findings can be saved when the incident reaches Lessons learned.',
     };
   },
   async history(userId: string, incidentId: string, query: { page: number; limit: number }) {
@@ -74,11 +75,17 @@ export const incidentAnalysisService = {
         throw new AppError(403, 'FORBIDDEN', 'Active Security Officer required');
       if (result.outcome === 'not_found')
         throw new AppError(404, 'INCIDENT_NOT_FOUND', 'Incident not found');
+      if (result.outcome === 'closed')
+        throw new AppError(
+          409,
+          'INCIDENT_CLOSED',
+          'This incident is closed. Findings and history are read-only.',
+        );
       if (result.outcome === 'not_ready')
         throw new AppError(
           409,
           'INCIDENT_NOT_READY_FOR_ANALYSIS',
-          'Move the incident to Lessons learned or Closed after response is complete.',
+          'Move the incident to Lessons learned after response is complete.',
         );
       if (result.outcome === 'conflict')
         throw new AppError(

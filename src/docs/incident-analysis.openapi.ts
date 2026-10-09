@@ -60,7 +60,7 @@ export const incidentAnalysisPaths = {
       tags: ['Incident Management'],
       summary: 'View current root cause analysis',
       description:
-        'Active Security Officers and Executives can read. canEdit is true only for Security Officers when status is LESSONS_LEARNED or CLOSED. No saved analysis returns analysis=null.',
+        'Active Security Officers and Executives can read. canEdit is true only for Security Officers when status is LESSONS_LEARNED. CLOSED findings and history are read-only. No saved analysis returns analysis=null.',
       security: [{ bearerAuth: [] }],
       parameters: [id],
       responses: {
@@ -80,7 +80,7 @@ export const incidentAnalysisPaths = {
       tags: ['Incident Management'],
       summary: 'Document root cause, lessons learned and recommendations',
       description:
-        'Active Security Officers only, after response is complete (LESSONS_LEARNED or CLOSED). Upserts existing unique incident_analysis and appends before/after audit atomically. Performer/time are server-owned. Does not change incident status or reopen closed incidents. expectedUpdatedAt is required: null for first save, otherwise use GET analysis.updatedAt verbatim.',
+        'Active Security Officers only, after response is complete (LESSONS_LEARNED). CLOSED rejects writes with 409 INCIDENT_CLOSED, rechecked under the transaction incident lock. Upserts existing unique incident_analysis and appends before/after audit atomically. Performer/time are server-owned. Does not change incident status. expectedUpdatedAt is required: null for first save, otherwise use GET analysis.updatedAt verbatim.',
       security: [{ bearerAuth: [] }],
       parameters: [id],
       requestBody: {
@@ -106,7 +106,7 @@ export const incidentAnalysisPaths = {
         ...errors,
         '409': {
           description:
-            'Incident not ready, stale analysis or concurrent update; reload before retrying',
+            'INCIDENT_CLOSED (read-only), incident not ready, stale analysis or concurrent update; reload before retrying',
         },
       },
     },

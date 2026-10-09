@@ -26,7 +26,7 @@ beforeEach(() => {
   tx.incidents.findUnique.mockResolvedValue({ status: 'LESSONS_LEARNED', incident_analysis: null });
   tx.incident_analysis.upsert.mockResolvedValue({ id: 'analysis' });
 });
-it.each(['LESSONS_LEARNED', 'CLOSED'])(
+it.each(['LESSONS_LEARNED'])(
   'upserts one analysis and atomic audit in %s without changing status',
   async (status) => {
     tx.incidents.findUnique.mockResolvedValue({ status, incident_analysis: null });
@@ -70,7 +70,10 @@ it('preserves previous findings in audit and updates existing row', async () => 
     lessons_learned: 'old lessons',
     improvement_actions: 'old improvements',
   };
-  tx.incidents.findUnique.mockResolvedValue({ status: 'CLOSED', incident_analysis: previous });
+  tx.incidents.findUnique.mockResolvedValue({
+    status: 'LESSONS_LEARNED',
+    incident_analysis: previous,
+  });
   await incidentAnalysisRepository.save('officer', 'incident', {
     ...input,
     expectedUpdatedAt: previous.updated_at.toISOString(),
@@ -99,7 +102,7 @@ it.each(['OPEN', 'TRIAGE', 'CONTAINMENT', 'ERADICATION', 'RECOVERY'])(
 );
 it('rejects stale updates and races creating the first record', async () => {
   tx.incidents.findUnique.mockResolvedValue({
-    status: 'CLOSED',
+    status: 'LESSONS_LEARNED',
     incident_analysis: { updated_at: new Date('2026-01-01') },
   });
   expect(await incidentAnalysisRepository.save('officer', 'incident', input)).toEqual({
@@ -125,6 +128,22 @@ it('rechecks active role and missing incident within transaction', async () => {
   });
   expect(tx.incident_analysis.upsert).not.toHaveBeenCalled();
 });
+it.each([null, { updated_at: new Date('2026-01-01'), root_cause: 'Saved cause' }])(
+  'rejects both new and amended RCA on closed incidents after locking',
+  async (previous) => {
+    tx.incidents.findUnique.mockResolvedValue({ status: 'CLOSED', incident_analysis: previous });
+    expect(
+      await incidentAnalysisRepository.save('officer', 'incident', {
+        ...input,
+        expectedUpdatedAt: previous?.updated_at.toISOString() ?? null,
+      }),
+    ).toEqual({ outcome: 'closed' });
+    expect(tx.$queryRaw).toHaveBeenCalled();
+    expect(tx.incident_analysis.upsert).not.toHaveBeenCalled();
+    expect(tx.incidents.update).not.toHaveBeenCalled();
+    expect(tx.audit_logs.create).not.toHaveBeenCalled();
+  },
+);
 it('propagates audit failure for rollback', async () => {
   tx.audit_logs.create.mockRejectedValue(new Error('audit failed'));
   await expect(incidentAnalysisRepository.save('officer', 'incident', input)).rejects.toThrow(

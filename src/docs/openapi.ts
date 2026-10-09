@@ -1,4 +1,5 @@
 import { env } from '../config/env.js';
+import { incidentClosurePaths } from './incident-closure.openapi.js';
 import { incidentProgressPaths } from './incident-progress.openapi.js';
 import { incidentAnalysisPaths } from './incident-analysis.openapi.js';
 import { controlCatalogPaths } from './control-catalog.openapi.js';
@@ -24,6 +25,7 @@ export const openApiSpec = {
     },
   },
   paths: {
+    ...incidentClosurePaths,
     ...incidentAnalysisPaths,
     ...pendingV2Paths,
     ...incidentProgressPaths,
