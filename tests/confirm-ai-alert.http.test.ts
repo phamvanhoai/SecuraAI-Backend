@@ -36,7 +36,7 @@ describe('POST /api/v1/ai-alerts/:alertId/confirm-incident', () => {
     );
   });
 
-  it('confirms the alert and returns the incident', async () => {
+  it('confirms the alert and returns the finding', async () => {
     vi.mocked(aiAlertsService.confirmAsIncident).mockResolvedValue({
       id: alertId,
       alertCode: 'ALT-C82662FF',
@@ -44,7 +44,7 @@ describe('POST /api/v1/ai-alerts/:alertId/confirm-incident', () => {
       reviewedByUserId: userId,
       reviewedAt: new Date('2026-09-25T00:00:00Z'),
       changed: true,
-      incident: { id: userId, code: 'INC-C82662FF8CB74E97', status: 'OPEN', created: true },
+      finding: { id: userId, title: 'Login failure', status: 'open', created: true },
     });
     const response = await request(app)
       .post(`/api/v1/ai-alerts/${alertId}/confirm-incident`)

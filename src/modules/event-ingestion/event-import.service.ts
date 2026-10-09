@@ -1,9 +1,6 @@
 import { AppError } from '../../common/errors/app-error.js';
 import { eventSourcesRepository } from './event-sources.repository.js';
-import {
-  eventImportRepository,
-  type ValidatedEventRecord,
-} from './event-import.repository.js';
+import { eventImportRepository, type ValidatedEventRecord } from './event-import.repository.js';
 import {
   importEventItemSchema,
   type ImportEventsBody,
@@ -289,4 +286,3 @@ export function detectEventFamilyFromType(eventType: string): string | undefined
 
   return undefined;
 }
-

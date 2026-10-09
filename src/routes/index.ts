@@ -14,14 +14,44 @@ import {
   wazuhIngestionRouter,
 } from '../modules/event-ingestion/index.js';
 import { auditLogsRouter } from '../modules/audit-security-reporting/index.js';
+import {
+  riskRegisterRouter,
+  riskReassessmentReviewRouter,
+} from '../modules/risk-assessment/index.js';
+import { assetsRouter, businessServicesRouter } from '../modules/it-asset-management/index.js';
+import {
+  incidentAssetsRouter,
+  incidentControlsRouter,
+  incidentRisksRouter,
+  controlWeaknessesRouter,
+  riskReassessmentRequestsRouter,
+  incidentsRouter,
+} from '../modules/information-security-incident-management/index.js';
 import { pendingV2Router } from './pending-v2.routes.js';
+import { accessControlRouter } from '../modules/access-control/index.js';
+import { notificationsRouter, systemLogsRouter } from '../modules/notification-system-logs/index.js';
+import { auditRouter } from '../modules/audit-security-reporting/index.js';
 
 export const apiRouter = Router();
 apiRouter.use('/health', healthRouter);
 apiRouter.use('/auth', authRouter);
 apiRouter.use('/users', usersRouter);
+apiRouter.use('/access-control', accessControlRouter);
+apiRouter.use('/notifications', notificationsRouter);
+apiRouter.use('/system-logs', systemLogsRouter);
+apiRouter.use('/audit', auditRouter);
 apiRouter.use('/anomaly-detections', anomalyDetectionRouter);
 apiRouter.use('/ai-alerts', aiAlertsRouter);
+apiRouter.use('/risks', riskRegisterRouter);
+apiRouter.use('/risks', riskReassessmentReviewRouter);
+apiRouter.use('/assets', assetsRouter);
+apiRouter.use('/business-services', businessServicesRouter);
+apiRouter.use('/incidents', incidentAssetsRouter);
+apiRouter.use('/incidents', incidentControlsRouter);
+apiRouter.use('/incidents', incidentRisksRouter);
+apiRouter.use('/incidents', controlWeaknessesRouter);
+apiRouter.use('/incidents', riskReassessmentRequestsRouter);
+apiRouter.use('/incidents', incidentsRouter);
 apiRouter.use('/compliance', policyComplianceRouter);
 apiRouter.use('/event-sources', eventSourcesRouter);
 apiRouter.use('/events', normalizedEventsRouter);
@@ -36,5 +66,3 @@ apiRouter.use('/audit-logs', auditLogsRouter);
 apiRouter.use('/audit-security-reporting/audit-logs', auditLogsRouter);
 apiRouter.use('/audits', auditLogsRouter);
 apiRouter.use(pendingV2Router);
-
-

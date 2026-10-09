@@ -34,8 +34,16 @@ describe('/api/v1/ai-alerts/:alertId/feedback', () => {
       id: userId,
       alertId,
       reviewedByUserId: userId,
+      analyst: { id: userId, name: 'Security Officer', email: 'security@example.com' },
       feedbackLabel: 'needs_review',
       comment: 'Investigate',
+      reason: 'Investigate',
+      recordedAt: new Date('2026-09-25T00:00:00Z'),
+      modelVersion: {
+        id: userId,
+        modelName: 'secura-behavior',
+        version: '1.0.0',
+      },
       createdAt: new Date('2026-09-25T00:00:00Z'),
     });
     const response = await request(app)
