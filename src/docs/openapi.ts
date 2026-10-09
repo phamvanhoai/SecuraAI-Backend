@@ -997,6 +997,142 @@ export const openApiSpec = {
         },
       },
     },
+    '/incidents/{incidentId}/severity': {
+      get: {
+        tags: ['Incident Management'],
+        summary: 'View incident severity classification history',
+        description:
+          'Active Security Officers and Executives can read paginated audit-backed history, newest first. Includes previous/new severity, rationale, officer and time; closed incidents remain readable.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'incidentId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+          {
+            name: 'page',
+            in: 'query',
+            schema: { type: 'integer', minimum: 1, maximum: 100000, default: 1 },
+          },
+          {
+            name: 'limit',
+            in: 'query',
+            schema: { type: 'integer', minimum: 1, maximum: 100, default: 10 },
+          },
+        ],
+        responses: {
+          '200': {
+            description:
+              'Classification history with items (id, classifiedAt, classifiedBy, previousSeverity, severity, rationale) and pagination (page, limit, total, totalPages)',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['success', 'data'],
+                  properties: {
+                    success: { type: 'boolean', enum: [true] },
+                    data: {
+                      type: 'object',
+                      required: ['items', 'pagination'],
+                      properties: {
+                        items: {
+                          type: 'array',
+                          items: {
+                            type: 'object',
+                            properties: {
+                              id: { type: 'string', format: 'uuid' },
+                              classifiedAt: { type: 'string', format: 'date-time' },
+                              classifiedBy: {
+                                type: 'object',
+                                nullable: true,
+                                properties: {
+                                  id: { type: 'string', format: 'uuid' },
+                                  name: { type: 'string' },
+                                },
+                              },
+                              previousSeverity: {
+                                type: 'string',
+                                nullable: true,
+                                enum: ['low', 'medium', 'high', 'critical', null],
+                              },
+                              severity: {
+                                type: 'string',
+                                nullable: true,
+                                enum: ['low', 'medium', 'high', 'critical', null],
+                              },
+                              rationale: { type: 'string', nullable: true },
+                            },
+                          },
+                        },
+                        pagination: {
+                          type: 'object',
+                          properties: {
+                            page: { type: 'integer' },
+                            limit: { type: 'integer' },
+                            total: { type: 'integer' },
+                            totalPages: { type: 'integer' },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer or Executive required' },
+          '404': { description: 'Incident not found' },
+          '422': { description: 'Invalid identifier or pagination' },
+        },
+      },
+      patch: {
+        tags: ['Incident Management'],
+        summary: 'Classify incident severity',
+        description:
+          'An active Security Officer records severity and a rationale supporting response priority. Writes severity and its audit record atomically. Closed incidents cannot be reclassified.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'incidentId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['severity', 'rationale'],
+                properties: {
+                  severity: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] },
+                  rationale: { type: 'string', minLength: 10, maxLength: 2000 },
+                  expectedUpdatedAt: { type: 'string', format: 'date-time' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': {
+            description: 'Incident with updated severity and latest classification metadata',
+          },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Active Security Officer required' },
+          '404': { description: 'Incident not found' },
+          '409': {
+            description: 'Incident closed or changed concurrently; refresh before retrying',
+          },
+          '422': { description: 'Invalid incident identifier, severity or rationale' },
+        },
+      },
+    },
     '/incidents/{incidentId}': {
       get: {
         tags: ['Incident Management'],
