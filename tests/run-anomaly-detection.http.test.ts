@@ -53,6 +53,9 @@ describe('POST /api/v1/anomaly-detections/runs', () => {
       userId,
       { lookbackHours: 24, maxEvents: 100 },
       expect.any(String),
+      expect.objectContaining({
+        sourceIp: expect.any(String),
+      }),
     );
   });
 });

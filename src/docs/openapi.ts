@@ -1209,6 +1209,43 @@ export const openApiSpec = {
         },
       },
     },
+    '/audit-logs': {
+      get: {
+        tags: ['Audit & Security Reporting'],
+        summary: 'List system audit records',
+        description:
+          'Retrieve paginated audit trail logs covering user actions, configuration changes, and system access. Restricted to Administrator or Auditor role.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
+          {
+            name: 'limit',
+            in: 'query',
+            schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
+          },
+          {
+            name: 'sortBy',
+            in: 'query',
+            schema: {
+              type: 'string',
+              enum: ['occurredAt', 'action', 'resourceType', 'actorType', 'sourceIp', 'createdAt'],
+              default: 'occurredAt',
+            },
+          },
+          {
+            name: 'sortOrder',
+            in: 'query',
+            schema: { type: 'string', enum: ['asc', 'desc'], default: 'desc' },
+          },
+        ],
+        responses: {
+          '200': { description: 'Paginated list of audit records' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Administrator or Auditor role required' },
+          '422': { description: 'Invalid query parameters' },
+        },
+      },
+    },
     '/health/live': {
       get: {
         tags: ['Health'],

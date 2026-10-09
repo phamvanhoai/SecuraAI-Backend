@@ -92,6 +92,8 @@ export const aiAlertsRepository = {
     modelVersionId: string;
     threshold: number;
     actorUserId: string;
+    sourceIp?: string | undefined;
+    userAgent?: string | undefined;
   }) {
     return prisma.$transaction(async (transaction) => {
       const model = await transaction.ai_model_versions.findFirst({
@@ -130,6 +132,8 @@ export const aiAlertsRepository = {
           resource_type: 'AI_MODEL_VERSION',
           resource_id: model.id,
           source: 'API',
+          source_ip: input.sourceIp ?? null,
+          user_agent: input.userAgent ?? null,
           after_data: { threshold: input.threshold },
           record_hash: `${model.id}:${input.threshold}:${input.actorUserId}`,
         },
