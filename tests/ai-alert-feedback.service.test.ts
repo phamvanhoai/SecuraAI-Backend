@@ -40,7 +40,14 @@ describe('AI alert feedback service', () => {
       analyst_user_id: userId,
       decision: 'FALSE_POSITIVE',
       reason: 'Scheduled maintenance',
+      completed_at: new Date('2026-09-25T00:00:00Z'),
       created_at: new Date('2026-09-25T00:00:00Z'),
+      users: { id: userId, full_name: 'Security Officer', email: 'security@example.com' },
+      ai_model_versions: {
+        id: modelVersionId,
+        model_name: 'secura-behavior',
+        version: '1.0.0',
+      },
     });
     const result = await aiAlertsService.createFeedback(userId, alertId, {
       feedbackLabel: 'false_positive',
@@ -54,6 +61,15 @@ describe('AI alert feedback service', () => {
       modelVersionId,
     });
     expect(result.feedbackLabel).toBe('false_positive');
+    expect(result).toMatchObject({
+      reason: 'Scheduled maintenance',
+      analyst: { id: userId, name: 'Security Officer', email: 'security@example.com' },
+      modelVersion: {
+        id: modelVersionId,
+        modelName: 'secura-behavior',
+        version: '1.0.0',
+      },
+    });
   });
 
   it('rejects non-security-officer actors', async () => {

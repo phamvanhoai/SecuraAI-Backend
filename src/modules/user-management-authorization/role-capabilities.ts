@@ -5,10 +5,14 @@ import type { user_role } from '@prisma/client';
  * conservatively from the "Vai trò thực hiện" column in
  * project-docs/new/Report3_Project Tracking.xlsx (WBS), not from a database
  * permission grant. Future V2 handlers must enforce their own role/scope rules.
- * Ownership-specific actors and removed training use cases are not inferred.
+ * `assets.read` grants entry to the asset directory; the asset API still
+ * enforces contextual Asset Owner scope for non-Security-Officer accounts.
  */
-const capabilitiesByRole = {
+export const capabilitiesByRole = {
   ADMIN: [
+    'roles.read',
+    'roles.update',
+    'assets.read',
     'users.read',
     'users.create',
     'users.update',
@@ -20,8 +24,17 @@ const capabilitiesByRole = {
     'integrations.read',
     'audit.read',
     'system-settings.read',
+    'notifications.send',
+    'notifications.send-email',
+    'notifications.preferences',
+    'system-logs.search',
+    'system-logs.export',
   ],
   SECURITY_OFFICER: [
+    'business-services.read',
+    'business-services.create',
+    'business-services.update',
+    'business-services.deactivate',
     'assets.read',
     'assets.create',
     'assets.update',
@@ -45,19 +58,30 @@ const capabilitiesByRole = {
     'incidents.classify',
     'incidents.assign',
     'incidents.update-progress',
+    'incidents.link-assets',
+    'incidents.link-controls',
+    'incidents.link-risks',
+    'incidents.record-control-weakness',
+    'incidents.request-risk-reassessment',
     'compliance.assess-controls',
+    'controls.create',
+    'controls.update',
     'login-history.read',
     'log-sources.read',
     'reports.read',
+    'notifications.preferences',
+    'system-logs.search',
+    'system-logs.export',
   ],
   EXECUTIVE: [
+    'assets.read',
+    'risks.read',
     'ai-alerts.thresholds.manage',
     'incidents.read',
     'reports.read',
+    'notifications.preferences',
   ],
-  EMPLOYEE: [
-    'policies.acknowledge',
-  ],
+  EMPLOYEE: ['assets.read', 'policies.acknowledge', 'notifications.preferences'],
 } as const satisfies Record<user_role, readonly string[]>;
 
 export function capabilitiesForRole(role: user_role): readonly string[] {
