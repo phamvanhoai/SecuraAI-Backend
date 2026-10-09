@@ -154,4 +154,44 @@ export const auditLogsRepository = {
     const where = query ? buildAuditLogsWhereClause(query) : undefined;
     return where ? prisma.audit_logs.count({ where }) : prisma.audit_logs.count();
   },
+
+  findById(id: string) {
+    return prisma.audit_logs.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        actor_type: true,
+        actor_user_id: true,
+        actor_api_key_id: true,
+        action: true,
+        resource_type: true,
+        resource_id: true,
+        occurred_at: true,
+        before_data: true,
+        after_data: true,
+        correlation_id: true,
+        source: true,
+        source_ip: true,
+        user_agent: true,
+        previous_hash: true,
+        record_hash: true,
+        created_at: true,
+        users: {
+          select: {
+            id: true,
+            full_name: true,
+            email: true,
+            role: true,
+          },
+        },
+        integration_api_keys: {
+          select: {
+            id: true,
+            name: true,
+            key_prefix: true,
+          },
+        },
+      },
+    });
+  },
 };

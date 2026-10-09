@@ -54,4 +54,23 @@ describe('audit logs DTO validation', () => {
       ).toThrow();
     });
   });
+
+  describe('getAuditLogParamsSchema', () => {
+    it('accepts valid UUID id', async () => {
+      const { getAuditLogParamsSchema } = await import(
+        '../src/modules/audit-security-reporting/dto/list-audit-logs.dto.js'
+      );
+      const parsed = getAuditLogParamsSchema.parse({
+        id: '550e8400-e29b-41d4-a716-446655440000',
+      });
+      expect(parsed.id).toBe('550e8400-e29b-41d4-a716-446655440000');
+    });
+
+    it('rejects non-uuid id', async () => {
+      const { getAuditLogParamsSchema } = await import(
+        '../src/modules/audit-security-reporting/dto/list-audit-logs.dto.js'
+      );
+      expect(() => getAuditLogParamsSchema.parse({ id: 'invalid-id' })).toThrow();
+    });
+  });
 });

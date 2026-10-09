@@ -1253,8 +1253,32 @@ export const openApiSpec = {
         responses: {
           '200': { description: 'Paginated list of matching audit records' },
           '401': { description: 'Authentication required' },
-          '403': { description: 'Administrator or Auditor role required' },
+          '403': { description: 'Administrator or Security Officer role required' },
           '422': { description: 'Invalid query parameters' },
+        },
+      },
+    },
+    '/audit-logs/{id}': {
+      get: {
+        tags: ['Audit & Security Reporting'],
+        summary: 'Get audit log details',
+        description:
+          'Retrieve detailed information of a specific audit log record including action, actor details, affected resource, request context, parameter diffs, and cryptographic hash chain verification. Restricted to Administrator and Security Officer roles.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          '200': { description: 'Detailed audit log record' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Administrator or Security Officer role required' },
+          '404': { description: 'Audit log record not found' },
+          '422': { description: 'Invalid audit log ID format' },
         },
       },
     },

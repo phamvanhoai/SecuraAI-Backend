@@ -60,3 +60,9 @@ export type AuditLogListResponseDto = {
     totalPages: number;
   };
 };
+
+export const getAuditLogParamsSchema = z.object({
+  id: z.string().uuid(),
+});
+
+export type GetAuditLogParams = z.infer<typeof getAuditLogParamsSchema>;

@@ -105,4 +105,15 @@ export const auditLogsService = {
       },
     };
   },
+
+  async getAuditLogDetail(userId: string, id: string): Promise<AuditLogItemDto> {
+    await requireAuditViewer(userId);
+
+    const record = await auditLogsRepository.findById(id);
+    if (!record) {
+      throw new AppError(404, 'NOT_FOUND', 'Audit log record not found');
+    }
+
+    return mapAuditLogItem(record);
+  },
 };

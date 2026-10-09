@@ -5,6 +5,7 @@ vi.mock('../src/modules/audit-security-reporting/audit-logs.repository.js', () =
     findActorUser: vi.fn(),
     findMany: vi.fn(),
     count: vi.fn(),
+    findById: vi.fn(),
   },
 }));
 
@@ -189,6 +190,49 @@ describe('audit logs service', () => {
         }),
       ).rejects.toMatchObject({
         statusCode: 401,
+      });
+    });
+  });
+
+  describe('getAuditLogDetail', () => {
+    beforeEach(() => {
+      vi.mocked(auditLogsRepository.findById).mockResolvedValue(mockAuditRecord);
+    });
+
+    it('returns audit log detail for admin or security officer', async () => {
+      const result = await auditLogsService.getAuditLogDetail(adminUserId, sampleAuditId);
+
+      expect(auditLogsRepository.findById).toHaveBeenCalledWith(sampleAuditId);
+      expect(result.id).toBe(sampleAuditId);
+      expect(result.action).toBe('UPDATE_ROLE');
+      expect(result.actor?.name).toBe('Admin User');
+      expect(result.beforeData).toEqual({ role: 'EMPLOYEE' });
+      expect(result.afterData).toEqual({ role: 'SECURITY_OFFICER' });
+    });
+
+    it('throws 404 when audit record does not exist', async () => {
+      vi.mocked(auditLogsRepository.findById).mockResolvedValue(null);
+
+      await expect(
+        auditLogsService.getAuditLogDetail(adminUserId, '00000000-0000-0000-0000-000000000000'),
+      ).rejects.toMatchObject({
+        statusCode: 404,
+      });
+    });
+
+    it('rejects an executive actor with 403', async () => {
+      vi.mocked(auditLogsRepository.findActorUser).mockResolvedValue({
+        id: adminUserId,
+        full_name: 'Executive Leader',
+        email: 'executive@securaai.internal',
+        role: 'EXECUTIVE',
+        status: 'ACTIVE',
+      });
+
+      await expect(
+        auditLogsService.getAuditLogDetail(adminUserId, sampleAuditId),
+      ).rejects.toMatchObject({
+        statusCode: 403,
       });
     });
   });
