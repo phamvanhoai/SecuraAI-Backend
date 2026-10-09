@@ -1306,6 +1306,85 @@ export const openApiSpec = {
         },
       },
     },
+    '/event-governance/policies': {
+      get: {
+        tags: ['Event Ingestion'],
+        summary: 'List event data governance and retention policies',
+        description:
+          'Retrieve current event data governance policies covering applicable retention periods, cold-storage archival rules, PII masking rules, and automated lifecycle purging settings. Restricted to Administrator and Security Officer roles.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'page',
+            in: 'query',
+            schema: { type: 'integer', default: 1 },
+          },
+          {
+            name: 'limit',
+            in: 'query',
+            schema: { type: 'integer', default: 20 },
+          },
+          {
+            name: 'eventFamily',
+            in: 'query',
+            schema: { type: 'string', enum: ['AUTHENTICATION', 'VPN_SSO', 'APPLICATION_ACCESS'] },
+          },
+          {
+            name: 'status',
+            in: 'query',
+            schema: { type: 'string', enum: ['ACTIVE', 'INACTIVE'] },
+          },
+          {
+            name: 'search',
+            in: 'query',
+            schema: { type: 'string' },
+          },
+        ],
+        responses: {
+          '200': { description: 'Paginated list of event data governance policies' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Administrator or Security Officer role required' },
+        },
+      },
+    },
+    '/event-governance/policies/summary': {
+      get: {
+        tags: ['Event Ingestion'],
+        summary: 'Get event data lifecycle and retention summary metrics',
+        description:
+          'Retrieve overall event data governance metrics including retention range (min/max/avg days), active archival rules, automated purge enforcement, and export permissions. Restricted to Administrator and Security Officer roles.',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          '200': { description: 'Summary lifecycle metrics across event governance policies' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Administrator or Security Officer role required' },
+        },
+      },
+    },
+    '/event-governance/policies/{id}': {
+      get: {
+        tags: ['Event Ingestion'],
+        summary: 'Get event data governance policy details',
+        description:
+          'Retrieve complete configuration and lifecycle rules of a specific event data governance policy including retention days, archive days, deletion settings, access scope, and masking rules. Restricted to Administrator and Security Officer roles.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          '200': { description: 'Detailed event data governance policy' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Administrator or Security Officer role required' },
+          '404': { description: 'Event data governance policy not found' },
+          '422': { description: 'Invalid policy ID format' },
+        },
+      },
+    },
     '/health/live': {
       get: {
         tags: ['Health'],

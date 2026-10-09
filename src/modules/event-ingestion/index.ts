@@ -9,6 +9,9 @@ export { normalizedEventsRepository } from './normalized-events.repository.js';
 export { wazuhIngestionRouter } from './wazuh-ingestion.routes.js';
 export { wazuhIngestionService } from './wazuh-ingestion.service.js';
 export { wazuhIngestionRepository } from './wazuh-ingestion.repository.js';
+export { eventGovernanceRouter } from './event-governance.routes.js';
+export { eventGovernanceService } from './event-governance.service.js';
+export { eventGovernanceRepository } from './event-governance.repository.js';
 export * from './dto/create-event-source.dto.js';
 export * from './dto/list-event-sources.dto.js';
 export * from './dto/get-event-source-detail.dto.js';
@@ -17,3 +20,5 @@ export * from './dto/test-event-source-connection.dto.js';
 export * from './dto/wazuh-event-ingest.dto.js';
 export * from './dto/import-events.dto.js';
 export * from './dto/list-normalized-events.dto.js';
+export * from './dto/event-governance-policy.dto.js';
+

@@ -8,6 +8,7 @@ import {
 } from '../modules/ai-anomaly-detection-alerts/index.js';
 import { policyComplianceRouter } from '../modules/policy-compliance-control/index.js';
 import {
+  eventGovernanceRouter,
   eventSourcesRouter,
   normalizedEventsRouter,
   wazuhIngestionRouter,
@@ -25,10 +26,15 @@ apiRouter.use('/compliance', policyComplianceRouter);
 apiRouter.use('/event-sources', eventSourcesRouter);
 apiRouter.use('/events', normalizedEventsRouter);
 apiRouter.use('/event-ingestion/events', normalizedEventsRouter);
+apiRouter.use('/event-governance/policies', eventGovernanceRouter);
+apiRouter.use('/event-governance', eventGovernanceRouter);
+apiRouter.use('/event-data-governance-policies', eventGovernanceRouter);
+apiRouter.use('/event-ingestion/governance-policies', eventGovernanceRouter);
 apiRouter.use('/integrations/wazuh', wazuhIngestionRouter);
 apiRouter.use('/event-ingestion/wazuh', wazuhIngestionRouter);
 apiRouter.use('/audit-logs', auditLogsRouter);
 apiRouter.use('/audit-security-reporting/audit-logs', auditLogsRouter);
 apiRouter.use('/audits', auditLogsRouter);
 apiRouter.use(pendingV2Router);
+
 
