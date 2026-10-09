@@ -1,5 +1,7 @@
 # V2 modules
 
+UC61: Record Recovery Actions uses POST/GET `/api/v1/incidents/:incidentId/recovery-actions` and existing V2 `incident_actions` with phase `RECOVERY`. Active Security Officers record completed restoration steps and performed time; the authenticated performer and audit are saved atomically. History is paginated and refreshes after saving. Closed incidents are read-only; recording does not automatically change phase or close the incident. No schema changes; 72 pending legacy contracts remain unchanged.
+
 UC60 exposes `POST/GET /incidents/:incidentId/eradication-actions` through route → controller → service → repository. Existing `incident_actions` records phase `ERADICATION`, description, authenticated performer and performed time; an atomic audit accompanies writes. History is paginated and phase-scoped. No schema changes or legacy routes are required (72 pending).
 
 UC59: `POST/GET /api/v1/incidents/:incidentId/containment-actions` records and lists completed containment actions using existing `incident_actions`. Only active Security Officers may write; Security Officers and Executives may read paginated history. Writes append an audit atomically and preserve the incident response phase. Closed incidents are read-only. The 72 pending legacy contracts are unchanged because these URLs are new.
