@@ -77,6 +77,30 @@ export const openApiSpec = {
         },
       },
     },
+    '/integrations/api-keys/{keyId}': {
+      get: {
+        tags: ['Audit & Security Reporting'],
+        summary: 'View Integration API Key Detail',
+        description:
+          'Returns metadata, scopes, status, creator, expiration, and available usage information without exposing the secret value. Restricted to administrators.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'keyId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          '200': { description: 'Integration API key metadata' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Administrator role required' },
+          '404': { description: 'Integration API key not found' },
+          '422': { description: 'Invalid key identifier' },
+        },
+      },
+    },
     '/access-control/permissions': {
       get: {
         tags: ['Access Control'],
@@ -3726,6 +3750,32 @@ export const openApiSpec = {
           '403': { description: 'Administrator role required' },
           '404': { description: 'Event source / integration not found' },
           '422': { description: 'Invalid parameter format' },
+        },
+      },
+    },
+    '/integrations/{id}/api-keys/{keyId}': {
+      ...(pendingV2Paths['/integrations/{id}/api-keys/{keyId}'] ?? {}),
+      get: {
+        tags: ['Integrations', 'Audit & Security Reporting'],
+        summary: 'View Integration API Key Detail',
+        description:
+          'Returns metadata and available usage information for a key belonging to the selected integration without exposing the secret value.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+          {
+            name: 'keyId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          '200': { description: 'Integration API key metadata' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Administrator role required' },
+          '404': { description: 'Integration or API key not found' },
+          '422': { description: 'Invalid identifier' },
         },
       },
     },
