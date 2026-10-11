@@ -34,7 +34,7 @@ const controlSelect = {
   },
   control_assessments: {
     orderBy: { assessed_at: 'desc' as const },
-    take: 5,
+    take: 50,
     select: {
       id: true,
       assessment_type: true,

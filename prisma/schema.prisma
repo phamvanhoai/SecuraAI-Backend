@@ -492,6 +492,8 @@ model evidence_items {
   source                                    String                   @db.VarChar(255)
   owner_user_id                             String?                  @db.Uuid
   storage_uri                               String?
+  evidence_type                             String                   @default("EXTERNAL_URL") @db.VarChar(32)
+  original_file_name                        String?                  @db.VarChar(255)
   mime_type                                 String?                  @db.VarChar(100)
   file_size                                 BigInt?
   collected_at                              DateTime                 @default(now()) @db.Timestamptz(6)

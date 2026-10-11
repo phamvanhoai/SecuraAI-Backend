@@ -6,6 +6,7 @@ import type {
   AddControlEvidence,
   LinkControlEvidence,
   ListControlEvidence,
+  UnlinkControlEvidence,
 } from './dto/control-evidence.dto.js';
 import { evidenceDocumentUrlSchema } from './dto/control-evidence.dto.js';
 import { isControlEvidenceUsable, usableControlEvidenceWhere } from './control-evidence.rules.js';
@@ -16,6 +17,11 @@ const select = {
   source: true,
   description: true,
   storage_uri: true,
+  evidence_type: true,
+  original_file_name: true,
+  mime_type: true,
+  file_size: true,
+  integrity_hash: true,
   status: true,
   owner_user_id: true,
   collected_at: true,
@@ -43,6 +49,17 @@ function map(item: Evidence, now: Date) {
     source: item.source,
     description: item.description,
     documentUrl: url.success ? url.data : null,
+    evidenceType: item.evidence_type === 'UPLOADED_FILE' ? 'uploaded_file' : 'external_url',
+    file:
+      item.evidence_type === 'UPLOADED_FILE' && item.original_file_name
+        ? {
+            name: item.original_file_name,
+            mimeType: item.mime_type,
+            sizeBytes: item.file_size === null ? null : Number(item.file_size),
+            sha256: item.integrity_hash,
+            downloadUrl: `/api/v1/compliance/evidence/${item.id}/download`,
+          }
+        : null,
     status: item.status.toLowerCase(),
     usable,
     collectedAt: item.collected_at,
@@ -213,7 +230,7 @@ export const controlEvidenceRepository = {
       async (tx) => {
         const context = await access(tx, actorId, controlId, true);
         // Same requestId is safely replayable after an ambiguous network response.
-        await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${input.requestId}))`;
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${input.requestId}))`;
         const previous = await tx.evidence_items.findUnique({
           where: { id: input.requestId },
           select,
@@ -257,7 +274,7 @@ export const controlEvidenceRepository = {
             'Validity must end after collection and the current time',
           );
         // Serialize matching document/version checks; still reject only visible duplicates.
-        await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${`${input.documentUrl}|${collectedAt.toISOString()}`}))`;
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${`${input.documentUrl}|${collectedAt.toISOString()}`}))`;
         if (
           await tx.evidence_items.findFirst({
             where: {
@@ -282,6 +299,7 @@ export const controlEvidenceRepository = {
             description: input.description,
             owner_user_id: actorId,
             storage_uri: input.documentUrl,
+            evidence_type: 'EXTERNAL_URL',
             collected_at: collectedAt,
             valid_until: validUntil,
             status: 'ACTIVE',
@@ -303,6 +321,165 @@ export const controlEvidenceRepository = {
       },
       { maxWait: 5000, timeout: 15000 },
     );
+  },
+  addUploaded(
+    actorId: string,
+    controlId: string,
+    input: {
+      requestId: string;
+      name: string;
+      source: string;
+      description: string;
+      collectedAt: string;
+      validUntil: string | null;
+      storageKey: string;
+      originalFileName: string;
+      mimeType: string;
+      sizeBytes: number;
+      sha256: string;
+    },
+  ) {
+    return prisma.$transaction(
+      async (tx) => {
+        const context = await access(tx, actorId, controlId, true);
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${input.requestId}))`;
+        const previous = await tx.evidence_items.findUnique({ where: { id: input.requestId }, select });
+        if (previous) {
+          const linked = await tx.control_evidence_links.findUnique({
+            where: { control_id_evidence_id: { control_id: controlId, evidence_id: previous.id } },
+            select: { linked_by: true },
+          });
+          if (
+            previous.owner_user_id !== actorId ||
+            linked?.linked_by !== actorId ||
+            previous.evidence_type !== 'UPLOADED_FILE' ||
+            previous.integrity_hash !== input.sha256 ||
+            previous.storage_uri !== input.storageKey
+          )
+            throw new AppError(
+              409,
+              'EVIDENCE_REQUEST_CONFLICT',
+              'This request was already used for a different evidence record. Close and reopen the form',
+            );
+          return { evidence: map(previous, new Date()), created: false };
+        }
+        const now = new Date();
+        const collectedAt = new Date(input.collectedAt);
+        const validUntil = input.validUntil ? new Date(input.validUntil) : null;
+        if (collectedAt > now)
+          throw new AppError(422, 'EVIDENCE_FUTURE_COLLECTION', 'Collection time cannot be in the future');
+        if (validUntil && (validUntil <= now || validUntil <= collectedAt))
+          throw new AppError(
+            422,
+            'EVIDENCE_INVALID_VALIDITY',
+            'Validity must end after collection and the current time',
+          );
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${input.sha256}))`;
+        const duplicate = await tx.evidence_items.findFirst({
+          where: { AND: [visible(context), { evidence_type: 'UPLOADED_FILE', integrity_hash: input.sha256 }] },
+          select: { id: true },
+        });
+        if (duplicate)
+          throw new AppError(
+            409,
+            'EVIDENCE_FILE_ALREADY_EXISTS',
+            'This file already exists. Use Link existing evidence',
+          );
+        const item = await tx.evidence_items.create({
+          data: {
+            id: input.requestId,
+            name: input.name,
+            source: input.source,
+            description: input.description,
+            owner_user_id: actorId,
+            storage_uri: input.storageKey,
+            evidence_type: 'UPLOADED_FILE',
+            original_file_name: input.originalFileName,
+            mime_type: input.mimeType,
+            file_size: BigInt(input.sizeBytes),
+            integrity_hash: input.sha256,
+            collected_at: collectedAt,
+            valid_until: validUntil,
+            status: 'ACTIVE',
+          },
+          select,
+        });
+        await tx.control_evidence_links.create({
+          data: { control_id: controlId, evidence_id: item.id, linked_by: actorId, linked_at: now },
+        });
+        await audit(
+          tx,
+          context,
+          item.id,
+          'CONTROL_EVIDENCE_FILE_UPLOADED',
+          'Uploaded private evidence file and linked to control',
+          now,
+        );
+        return { evidence: map(item, now), created: true };
+      },
+      { maxWait: 5000, timeout: 15000 },
+    );
+  },
+  getUploadedFile(actorId: string, evidenceId: string) {
+    return prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM public.users WHERE id = ${actorId}::uuid FOR SHARE`;
+      const actor = await tx.users.findUnique({ where: { id: actorId }, select: { role: true, status: true } });
+      if (!actor || actor.status !== 'ACTIVE')
+        throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+      const item = await tx.evidence_items.findFirst({
+        where: {
+          id: evidenceId,
+          evidence_type: 'UPLOADED_FILE',
+          ...(actor.role === 'SECURITY_OFFICER'
+            ? {}
+            : actor.role === 'EMPLOYEE'
+              ? {
+                  OR: [
+                    { owner_user_id: actorId },
+                    { control_evidence_links: { some: { security_controls: { owner_user_id: actorId } } } },
+                  ],
+                }
+              : { id: '__not_accessible__' }),
+        },
+        select: {
+          id: true,
+          storage_uri: true,
+          original_file_name: true,
+          mime_type: true,
+          integrity_hash: true,
+        },
+      });
+      if (!item?.storage_uri || !item.original_file_name || !item.mime_type || !item.integrity_hash)
+        throw new AppError(404, 'EVIDENCE_FILE_NOT_FOUND', 'Evidence file not found or not accessible');
+      return {
+        id: item.id,
+        storageKey: item.storage_uri,
+        fileName: item.original_file_name,
+        mimeType: item.mime_type,
+        sha256: item.integrity_hash,
+      };
+    });
+  },
+  async recordFileDownload(actorId: string, evidenceId: string) {
+    const id = randomUUID();
+    const at = new Date();
+    const after = { evidenceId };
+    await prisma.audit_logs.create({
+      data: {
+        id,
+        actor_type: 'USER',
+        actor_user_id: actorId,
+        action: 'CONTROL_EVIDENCE_FILE_DOWNLOADED',
+        resource_type: 'EVIDENCE',
+        resource_id: evidenceId,
+        occurred_at: at,
+        source: 'API',
+        after_data: after,
+        record_hash: createHash('sha256')
+          .update(JSON.stringify({ id, actor: actorId, action: 'CONTROL_EVIDENCE_FILE_DOWNLOADED', at: at.toISOString(), after }))
+          .digest('hex'),
+      },
+    });
   },
   link(actorId: string, controlId: string, input: LinkControlEvidence) {
     return prisma.$transaction(
@@ -333,6 +510,24 @@ export const controlEvidenceRepository = {
         });
         await audit(tx, context, item.id, 'CONTROL_EVIDENCE_LINKED', input.reason, now);
         return { evidence: map(item, now), linked: true };
+      },
+      { isolationLevel: 'Serializable', maxWait: 5000, timeout: 15000 },
+    );
+  },
+  unlink(actorId: string, controlId: string, evidenceId: string, input: UnlinkControlEvidence) {
+    return prisma.$transaction(
+      async (tx) => {
+        const context = await access(tx, actorId, controlId, true);
+        const link = await tx.control_evidence_links.findUnique({
+          where: { control_id_evidence_id: { control_id: controlId, evidence_id: evidenceId } },
+          select: { evidence_id: true },
+        });
+        if (!link) throw new AppError(404, 'EVIDENCE_LINK_NOT_FOUND', 'Evidence is not linked to this Control');
+        await tx.control_evidence_links.delete({
+          where: { control_id_evidence_id: { control_id: controlId, evidence_id: evidenceId } },
+        });
+        await audit(tx, context, evidenceId, 'CONTROL_EVIDENCE_UNLINKED', input.reason, new Date());
+        return { unlinked: true };
       },
       { isolationLevel: 'Serializable', maxWait: 5000, timeout: 15000 },
     );

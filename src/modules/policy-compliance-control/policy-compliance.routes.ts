@@ -3,11 +3,17 @@ import {
   listControlEvidence,
   addControlEvidence,
   linkControlEvidence,
+  unlinkControlEvidence,
+  uploadControlEvidence,
+  downloadControlEvidence,
 } from './control-evidence.controller.js';
+import { uploadControlEvidenceFile } from './control-evidence.upload.js';
 import {
   addControlEvidenceSchema,
   linkControlEvidenceSchema,
+  unlinkControlEvidenceSchema,
   listControlEvidenceSchema,
+  evidenceParamsSchema,
 } from './dto/control-evidence.dto.js';
 import {
   getCatalogControl,
@@ -102,11 +108,30 @@ policyComplianceRouter.post(
   validate({ params: controlParamsSchema, body: addControlEvidenceSchema }),
   asyncHandler(addControlEvidence),
 );
+policyComplianceRouter.delete(
+  '/controls/:controlId/evidence-links/:evidenceId',
+  authenticate,
+  validate({ params: controlParamsSchema.merge(evidenceParamsSchema), body: unlinkControlEvidenceSchema }),
+  asyncHandler(unlinkControlEvidence),
+);
 policyComplianceRouter.post(
   '/controls/:controlId/evidence-links',
   authenticate,
   validate({ params: controlParamsSchema, body: linkControlEvidenceSchema }),
   asyncHandler(linkControlEvidence),
+);
+policyComplianceRouter.post(
+  '/controls/:controlId/evidence-files',
+  authenticate,
+  uploadControlEvidenceFile,
+  validate({ params: controlParamsSchema }),
+  asyncHandler(uploadControlEvidence),
+);
+policyComplianceRouter.get(
+  '/evidence/:evidenceId/download',
+  authenticate,
+  validate({ params: evidenceParamsSchema }),
+  asyncHandler(downloadControlEvidence),
 );
 policyComplianceRouter.get(
   '/controls/owner-options',

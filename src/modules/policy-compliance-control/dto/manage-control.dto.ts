@@ -13,13 +13,6 @@ const fields = {
 };
 export const createControlSchema = z
   .object({
-    controlCode: z
-      .string()
-      .trim()
-      .toUpperCase()
-      .min(3)
-      .max(100)
-      .regex(/^[A-Z0-9][A-Z0-9._-]*$/),
     ...fields,
   })
   .strict();

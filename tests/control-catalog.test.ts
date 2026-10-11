@@ -44,7 +44,6 @@ const record = {
   _count: { control_assessments: 0 },
 };
 const body = {
-  controlCode: 'CTRL-MFA',
   name: record.name,
   description: record.description,
   ownerUserId: null,
@@ -77,12 +76,12 @@ beforeEach(() => {
   );
 });
 describe('Control catalog boundaries', () => {
-  it('normalizes code and accepts an unassigned owner', () =>
-    expect(createControlSchema.parse({ ...body, controlCode: ' ctrl-mfa ' }).controlCode).toBe(
-      'CTRL-MFA',
-    ));
+  it('accepts an unassigned owner without accepting a caller-supplied code', () => {
+    expect(createControlSchema.safeParse(body).success).toBe(true);
+    expect(createControlSchema.safeParse({ ...body, controlCode: 'CTRL-MFA' }).success).toBe(false);
+  });
   it.each([
-    { controlCode: 'bad code' },
+    { controlCode: 'CTRL-MFA' },
     { name: ' ' },
     { description: 'short' },
     { ownerUserId: 'bad' },
@@ -115,7 +114,7 @@ describe('Control catalog business rules', () => {
           owner_user_id: null,
           applicability: 'APPLICABLE',
           implementation_status: 'NOT_IMPLEMENTED',
-          control_code: 'CTRL-MFA',
+          control_code: expect.stringMatching(/^CTRL-[A-F0-9]{8}$/),
           created_by: id,
         },
       }),
@@ -138,13 +137,6 @@ describe('Control catalog business rules', () => {
     await expect(controlCatalogService.create(id, body)).rejects.toMatchObject({ statusCode: 403 });
     tx.users.findUnique.mockResolvedValue({ role: 'SECURITY_OFFICER', status: 'INACTIVE' });
     await expect(controlCatalogService.create(id, body)).rejects.toMatchObject({ statusCode: 401 });
-  });
-  it('rejects case-insensitive duplicate codes without an audit', async () => {
-    tx.security_controls.findFirst.mockResolvedValue({ id: controlId });
-    await expect(controlCatalogService.create(id, body)).rejects.toMatchObject({
-      code: 'CONTROL_CODE_EXISTS',
-    });
-    expect(tx.audit_logs.create).not.toHaveBeenCalled();
   });
   it('rejects an inactive new owner', async () => {
     tx.users.findUnique
@@ -223,14 +215,16 @@ describe('Control catalog business rules', () => {
   it('bounds owner search and discloses no credentials', async () => {
     tx.security_controls.findMany.mockResolvedValue([]);
     tx.users.findUnique.mockResolvedValue({ role: 'SECURITY_OFFICER', status: 'ACTIVE' });
-    tx.users.findMany.mockResolvedValue([{ id, full_name: 'Demo owner' }]);
+    tx.users.findMany.mockResolvedValue([
+      { id, full_name: 'Demo owner', email: 'demo.owner@example.test' },
+    ]);
     expect(await controlCatalogService.owners(id, 'Demo')).toEqual({
-      items: [{ id, fullName: 'Demo owner' }],
+      items: [{ id, fullName: 'Demo owner', email: 'demo.owner@example.test' }],
     });
     expect(tx.users.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
         take: 10,
-        select: { id: true, full_name: true },
+        select: { id: true, full_name: true, email: true },
         where: expect.objectContaining({
           status: 'ACTIVE',
           role: { in: ['EMPLOYEE', 'SECURITY_OFFICER'] },

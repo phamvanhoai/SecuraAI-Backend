@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+export const evidenceParamsSchema = z.object({ evidenceId: z.uuid() }).strict();
+
 // A reference is never fetched by the backend. Credentials embedded in URLs are not accepted.
 export const evidenceDocumentUrlSchema = z
   .string()
@@ -41,6 +43,26 @@ export const addControlEvidenceSchema = z
 export const linkControlEvidenceSchema = z
   .object({ evidenceId: z.uuid(), reason: z.string().trim().min(10).max(2000) })
   .strict();
+export const unlinkControlEvidenceSchema = z
+  .object({ reason: z.string().trim().min(10).max(2000) })
+  .strict();
+export const uploadControlEvidenceFieldsSchema = z
+  .object({
+    requestId: z.uuid(),
+    name: z.string().trim().min(3).max(255),
+    source: z.string().trim().min(3).max(255),
+    description: z.string().trim().min(10).max(5000),
+    collectedAt: z.iso.datetime({ offset: true }),
+    validUntil: z.preprocess(
+      (value) => (value === '' || value === undefined ? null : value),
+      z.iso.datetime({ offset: true }).nullable(),
+    ),
+  })
+  .strict()
+  .refine(
+    (value) => !value.validUntil || new Date(value.validUntil) > new Date(value.collectedAt),
+    { path: ['validUntil'], message: 'Validity must end after collection' },
+  );
 export const listControlEvidenceSchema = z
   .object({
     page: z.coerce.number().int().min(1).max(100000).default(1),
@@ -51,4 +73,6 @@ export const listControlEvidenceSchema = z
   .strict();
 export type AddControlEvidence = z.infer<typeof addControlEvidenceSchema>;
 export type LinkControlEvidence = z.infer<typeof linkControlEvidenceSchema>;
+export type UnlinkControlEvidence = z.infer<typeof unlinkControlEvidenceSchema>;
+export type UploadControlEvidenceFields = z.infer<typeof uploadControlEvidenceFieldsSchema>;
 export type ListControlEvidence = z.infer<typeof listControlEvidenceSchema>;

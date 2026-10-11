@@ -64,7 +64,6 @@ export const legacyV1RouteContracts = [
     path: '/compliance/control-assessments/{assessmentId}/evidence',
     tag: 'Policies',
   },
-  { method: 'get', path: '/compliance/evidence/{evidenceId}/download', tag: 'Policies' },
   {
     method: 'patch',
     path: '/security-monitoring/log-sources/{logSourceId}',
