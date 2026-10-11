@@ -5,6 +5,7 @@ import {
   integrationApiKeyParamsSchema,
   listIntegrationApiKeysQuerySchema,
 } from './dto/list-integration-api-keys.dto.js';
+import { createIntegrationApiKeySchema } from './dto/create-integration-api-key.dto.js';
 
 function authenticatedUserId(value: unknown): string {
   if (typeof value !== 'string') {
@@ -40,5 +41,31 @@ export async function listIntegrationApiKeysBySource(
   res.status(200).json({
     success: true,
     data: items,
+  });
+}
+
+export async function createIntegrationApiKey(req: Request, res: Response): Promise<void> {
+  const userId = authenticatedUserId(res.locals.authenticatedUserId);
+  const input = createIntegrationApiKeySchema.parse(req.body);
+  const result = await integrationApiKeysService.createApiKey(userId, input);
+
+  res.status(201).json({
+    success: true,
+    data: result,
+  });
+}
+
+export async function createIntegrationApiKeyBySource(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const userId = authenticatedUserId(res.locals.authenticatedUserId);
+  const params = integrationApiKeyParamsSchema.parse(req.params);
+  const input = createIntegrationApiKeySchema.parse(req.body);
+  const result = await integrationApiKeysService.createApiKey(userId, input, params.id);
+
+  res.status(201).json({
+    success: true,
+    data: result,
   });
 }

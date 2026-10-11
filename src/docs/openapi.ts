@@ -35,6 +35,48 @@ export const openApiSpec = {
     ...notificationPaths,
     ...auditPaths,
     ...systemLogPaths,
+    '/integrations/api-keys': {
+      post: {
+        tags: ['Audit & Security Reporting'],
+        summary: 'Generate integration API key',
+        description:
+          'Generate a new integration API key by specifying its name, authorized scopes, and expiration settings. The plaintext secret is returned once. Restricted to administrators.',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['name'],
+                properties: {
+                  name: { type: 'string', minLength: 1, maxLength: 255 },
+                  keyName: { type: 'string', minLength: 1, maxLength: 255 },
+                  eventSourceId: { type: 'string', format: 'uuid', nullable: true },
+                  integrationId: { type: 'string', format: 'uuid', nullable: true },
+                  scopes: {
+                    type: 'array',
+                    items: { type: 'string' },
+                    default: ['events:ingest'],
+                  },
+                  expiresAt: { type: 'string', format: 'date-time', nullable: true },
+                  isActive: { type: 'boolean', default: true },
+                  status: { type: 'string', enum: ['ACTIVE', 'INACTIVE'], default: 'ACTIVE' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '201': { description: 'API key generated; plaintext secret returned once' },
+          '400': { description: 'Invalid expiration or key configuration' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Administrator role required' },
+          '404': { description: 'Event source or integration not found' },
+          '422': { description: 'Validation failed' },
+        },
+      },
+    },
     '/access-control/permissions': {
       get: {
         tags: ['Access Control'],
