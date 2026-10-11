@@ -22,6 +22,18 @@ const evidence = {
       description:
         'Supported HTTPS reference only; unsafe/unsupported legacy storage URIs are not exposed. Never fetched by SecuraAI.',
     },
+    evidenceType: { type: 'string', enum: ['external_url', 'uploaded_file'] },
+    file: {
+      type: 'object',
+      nullable: true,
+      properties: {
+        name: { type: 'string' },
+        mimeType: { type: 'string', nullable: true },
+        sizeBytes: { type: 'integer', nullable: true },
+        sha256: { type: 'string', nullable: true },
+        downloadUrl: { type: 'string' },
+      },
+    },
     status: { type: 'string', enum: ['active', 'expired', 'invalid', 'archived'] },
     usable: {
       type: 'boolean',
@@ -230,6 +242,58 @@ export const controlEvidencePaths = {
           description: 'Already linked (linked=false); no extra audit',
           content: json(envelope(linkResult)),
         },
+        ...errors,
+      },
+    },
+  },
+  '/compliance/controls/{controlId}/evidence-files': {
+    post: {
+      tags: ['Controls'],
+      summary: 'Upload one private Evidence file and link it to a Control',
+      security,
+      parameters,
+      description:
+        'Accepts PDF, PNG, JPG/JPEG, TXT, CSV or XLSX up to 10 MB. Validates extension, reported MIME and content signature, stores outside public assets under an opaque key, and records SHA-256. Local/demo storage does not perform malware scanning. Uploading does not create an effectiveness result or change Risk.',
+      requestBody: {
+        required: true,
+        content: {
+          'multipart/form-data': {
+            schema: {
+              type: 'object',
+              required: ['file', 'requestId', 'name', 'source', 'description', 'collectedAt'],
+              properties: {
+                file: { type: 'string', format: 'binary' },
+                requestId: { type: 'string', format: 'uuid' },
+                name: { type: 'string', minLength: 3, maxLength: 255 },
+                source: { type: 'string', minLength: 3, maxLength: 255 },
+                description: { type: 'string', minLength: 10, maxLength: 5000 },
+                collectedAt: date,
+                validUntil: { ...date, nullable: true },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        '201': { description: 'File, Evidence, link and audit created', content: json(envelope(addResult)) },
+        '200': { description: 'Identical request already saved', content: json(envelope(addResult)) },
+        '413': { description: 'File exceeds 10 MB' },
+        ...errors,
+      },
+    },
+  },
+  '/compliance/evidence/{evidenceId}/download': {
+    get: {
+      tags: ['Controls'],
+      summary: 'Download an accessible uploaded Evidence file',
+      security,
+      parameters: [
+        { name: 'evidenceId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+      ],
+      description:
+        'Rechecks access, verifies stored SHA-256, records a download audit event and returns an attachment with nosniff. Storage paths are never exposed.',
+      responses: {
+        '200': { description: 'Evidence attachment', content: { 'application/octet-stream': { schema: { type: 'string', format: 'binary' } } } },
         ...errors,
       },
     },

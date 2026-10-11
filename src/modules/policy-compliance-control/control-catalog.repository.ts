@@ -14,7 +14,7 @@ const select = {
   created_at: true,
   updated_at: true,
   users_security_controls_owner_user_idTousers: {
-    select: { id: true, full_name: true, status: true },
+    select: { id: true, full_name: true, email: true, status: true },
   },
   _count: { select: { control_assessments: true } },
 } as const;
@@ -135,9 +135,16 @@ export const controlCatalogRepository = {
       where: {
         status: 'ACTIVE',
         role: { in: ['EMPLOYEE', 'SECURITY_OFFICER'] },
-        ...(q ? { full_name: { contains: q, mode: 'insensitive' as const } } : {}),
+        ...(q
+          ? {
+              OR: [
+                { full_name: { contains: q, mode: 'insensitive' as const } },
+                { email: { contains: q, mode: 'insensitive' as const } },
+              ],
+            }
+          : {}),
       },
-      select: { id: true, full_name: true },
+      select: { id: true, full_name: true, email: true },
       orderBy: [{ full_name: 'asc' }, { id: 'asc' }],
       take: 10,
     });
@@ -147,16 +154,9 @@ export const controlCatalogRepository = {
       async (tx) => {
         await requireOfficer(tx, actorId);
         await validateOwner(tx, input.ownerUserId);
-        await tx.$queryRaw`SELECT pg_advisory_xact_lock(hashtext(${input.controlCode}))`;
-        if (
-          await tx.security_controls.findFirst({
-            where: { control_code: { equals: input.controlCode, mode: 'insensitive' } },
-            select: { id: true },
-          })
-        )
-          throw new AppError(409, 'CONTROL_CODE_EXISTS', 'Control code is already in use');
+        const controlCode = `CTRL-${randomUUID().replaceAll('-', '').slice(0, 8).toUpperCase()}`;
         const control = await tx.security_controls.create({
-          data: { ...values(input), control_code: input.controlCode, created_by: actorId },
+          data: { ...values(input), control_code: controlCode, created_by: actorId },
           select,
         });
         await audit(tx, actorId, control, null, null);
