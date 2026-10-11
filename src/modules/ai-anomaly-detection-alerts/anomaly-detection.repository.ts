@@ -55,7 +55,7 @@ export const anomalyDetectionRepository = {
     };
   },
   persistRun(input: {
-    actorUserId: string;
+    actor: { type: 'USER'; userId: string } | { type: 'SYSTEM' };
     modelVersionId: string;
     correlationId?: string | undefined;
     sourceIp?: string | undefined;
@@ -101,7 +101,7 @@ export const anomalyDetectionRepository = {
           .update(
             JSON.stringify({
               previousHash: previous?.record_hash ?? null,
-              actorUserId: input.actorUserId,
+              actor: input.actor,
               correlationId: input.correlationId,
               summary: input.summary,
             }),
@@ -109,12 +109,12 @@ export const anomalyDetectionRepository = {
           .digest('hex');
         await transaction.audit_logs.create({
           data: {
-            actor_user_id: input.actorUserId,
-            actor_type: 'USER',
+            actor_user_id: input.actor.type === 'USER' ? input.actor.userId : null,
+            actor_type: input.actor.type,
             action: 'ANOMALY_DETECTION_RUN',
             resource_type: 'ANOMALY_DETECTION',
             ...(input.correlationId ? { correlation_id: input.correlationId } : {}),
-            source: 'API',
+            source: input.actor.type === 'USER' ? 'API' : 'SYSTEM',
             source_ip: input.sourceIp ?? null,
             user_agent: input.userAgent ?? null,
             after_data: input.summary,

@@ -6,6 +6,7 @@ import type {
   WazuhIngestResponseDto,
 } from './dto/wazuh-event-ingest.dto.js';
 import { wazuhIngestionRepository } from './wazuh-ingestion.repository.js';
+import { requestAutomatedDetection } from '../ai-anomaly-detection-alerts/automated-detection.worker.js';
 
 function verifyIngestToken(token?: string): void {
   const configuredToken = env.WAZUH_INGEST_TOKEN;
@@ -37,6 +38,7 @@ export const wazuhIngestionService = {
 
     // 3. Save Normalized Event
     const saved = await wazuhIngestionRepository.saveNormalizedEvent(source.id, input);
+    requestAutomatedDetection();
 
     return {
       eventId: saved.id,
