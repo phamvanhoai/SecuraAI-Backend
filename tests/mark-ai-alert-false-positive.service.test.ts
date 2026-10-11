@@ -30,7 +30,8 @@ describe('mark AI alert false positive service', () => {
       outcome: 'changed',
       alert: {
         id: alertId,
-        status: 'NEW',
+        status: 'IN_TRIAGE',
+        assigned_to: userId,
         security_findings: null,
         anomaly_detections: { model_version_id: userId },
         alert_triage_records: [],
@@ -47,6 +48,32 @@ describe('mark AI alert false positive service', () => {
     await expect(aiAlertsService.markFalsePositive(userId, alertId, {})).rejects.toMatchObject({
       statusCode: 409,
       code: 'AI_ALERT_ALREADY_CONFIRMED',
+    });
+  });
+
+  it('requires analyst triage before dismissal', async () => {
+    vi.mocked(aiAlertsRepository.markFalsePositive).mockResolvedValue({
+      outcome: 'invalid_status',
+    });
+    await expect(aiAlertsService.markFalsePositive(userId, alertId, {})).rejects.toMatchObject({
+      statusCode: 409,
+      code: 'AI_ALERT_TRIAGE_REQUIRED',
+    });
+  });
+
+  it('allows only the assigned analyst to dismiss the alert', async () => {
+    vi.mocked(aiAlertsRepository.markFalsePositive).mockResolvedValue({ outcome: 'not_owner' });
+    await expect(aiAlertsService.markFalsePositive(userId, alertId, {})).rejects.toMatchObject({
+      statusCode: 409,
+      code: 'AI_ALERT_TRIAGE_OWNERSHIP_CONFLICT',
+    });
+  });
+
+  it('reports a concurrent status change', async () => {
+    vi.mocked(aiAlertsRepository.markFalsePositive).mockResolvedValue({ outcome: 'conflict' });
+    await expect(aiAlertsService.markFalsePositive(userId, alertId, {})).rejects.toMatchObject({
+      statusCode: 409,
+      code: 'AI_ALERT_STATUS_CONFLICT',
     });
   });
 });
