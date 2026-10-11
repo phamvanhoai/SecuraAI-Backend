@@ -13,7 +13,11 @@ import {
   normalizedEventsRouter,
   wazuhIngestionRouter,
 } from '../modules/event-ingestion/index.js';
-import { auditLogsRouter } from '../modules/audit-security-reporting/index.js';
+import {
+  auditLogsRouter,
+  integrationApiKeysRouter,
+  integrationSourceApiKeysRouter,
+} from '../modules/audit-security-reporting/index.js';
 import {
   riskRegisterRouter,
   riskReassessmentReviewRouter,
@@ -54,6 +58,7 @@ apiRouter.use('/incidents', riskReassessmentRequestsRouter);
 apiRouter.use('/incidents', incidentsRouter);
 apiRouter.use('/compliance', policyComplianceRouter);
 apiRouter.use('/event-sources', eventSourcesRouter);
+apiRouter.use('/event-sources', integrationSourceApiKeysRouter);
 apiRouter.use('/events', normalizedEventsRouter);
 apiRouter.use('/event-ingestion/events', normalizedEventsRouter);
 apiRouter.use('/event-governance/policies', eventGovernanceRouter);
@@ -62,7 +67,11 @@ apiRouter.use('/event-data-governance-policies', eventGovernanceRouter);
 apiRouter.use('/event-ingestion/governance-policies', eventGovernanceRouter);
 apiRouter.use('/integrations/wazuh', wazuhIngestionRouter);
 apiRouter.use('/event-ingestion/wazuh', wazuhIngestionRouter);
+apiRouter.use('/integrations', integrationSourceApiKeysRouter);
+apiRouter.use('/integrations/api-keys', integrationApiKeysRouter);
 apiRouter.use('/audit-logs', auditLogsRouter);
 apiRouter.use('/audit-security-reporting/audit-logs', auditLogsRouter);
+apiRouter.use('/audit-security-reporting/api-keys', integrationApiKeysRouter);
+apiRouter.use('/api-keys', integrationApiKeysRouter);
 apiRouter.use('/audits', auditLogsRouter);
 apiRouter.use(pendingV2Router);

@@ -3659,6 +3659,59 @@ export const openApiSpec = {
         },
       },
     },
+    '/integrations/{id}/api-keys': {
+      ...(pendingV2Paths['/integrations/{id}/api-keys'] ?? {}),
+      get: {
+        tags: ['Integrations', 'Audit & Security Reporting'],
+        summary: 'View Integration API Key List for an event source / integration',
+        description:
+          'Allow administrators to view the list of integration API keys assigned to a specific integration or event source, including key names, key prefixes/fingerprints, assigned scopes, status, creator, and expiration information. Secret key values are not exposed in the list.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+          { name: 'search', in: 'query', schema: { type: 'string' } },
+          { name: 'status', in: 'query', schema: { type: 'string', enum: ['ACTIVE', 'EXPIRED', 'REVOKED', 'ROTATED'] } },
+          { name: 'isActive', in: 'query', schema: { type: 'boolean' } },
+        ],
+        responses: {
+          '200': { description: 'List of integration API keys for the specified integration without secrets' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Administrator role required' },
+          '404': { description: 'Event source / integration not found' },
+          '422': { description: 'Invalid parameter format' },
+        },
+      },
+    },
+    '/audit-security-reporting/api-keys': {
+      get: {
+        tags: ['Audit & Security Reporting'],
+        summary: 'View all integration API keys with pagination and filtering',
+        description:
+          'Allow administrators to view the list of all integration API keys across the platform, including key names, assigned scopes, status, creator, and expiration information. Secret key values are never exposed.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 } },
+          { name: 'search', in: 'query', schema: { type: 'string' } },
+          { name: 'status', in: 'query', schema: { type: 'string', enum: ['ACTIVE', 'EXPIRED', 'REVOKED', 'ROTATED'] } },
+          { name: 'isActive', in: 'query', schema: { type: 'boolean' } },
+          { name: 'eventSourceId', in: 'query', schema: { type: 'string', format: 'uuid' } },
+          { name: 'sortBy', in: 'query', schema: { type: 'string', enum: ['createdAt', 'expiresAt', 'lastUsedAt', 'name'], default: 'createdAt' } },
+          { name: 'sortOrder', in: 'query', schema: { type: 'string', enum: ['asc', 'desc'], default: 'desc' } },
+        ],
+        responses: {
+          '200': { description: 'Paginated list of integration API keys' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Administrator role required' },
+          '422': { description: 'Invalid query parameters' },
+        },
+      },
+    },
     '/event-governance/policies': {
       get: {
         tags: ['Event Ingestion'],

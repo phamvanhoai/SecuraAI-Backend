@@ -100,7 +100,6 @@ export const legacyV1RouteContracts = [
   { method: 'get', path: '/integrations/logs', tag: 'Integrations' },
   { method: 'get', path: '/integrations/{id}/logs', tag: 'Integrations' },
   { method: 'post', path: '/integrations/{id}/api-keys', tag: 'Integrations' },
-  { method: 'get', path: '/integrations/{id}/api-keys', tag: 'Integrations' },
   { method: 'get', path: '/integrations/{id}/api-keys/{keyId}', tag: 'Integrations' },
   { method: 'patch', path: '/integrations/{id}/api-keys/{keyId}', tag: 'Integrations' },
   { method: 'post', path: '/integrations/{id}/api-keys/{keyId}/rotate', tag: 'Integrations' },
