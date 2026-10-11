@@ -76,6 +76,25 @@ export const openApiSpec = {
         },
       },
     },
+    '/integrations/api-keys/{keyId}': {
+      get: {
+        tags: ['Audit & Security Reporting'],
+        summary: 'View Integration API Key Detail',
+        description:
+          'Allow administrators to view the complete metadata of a selected integration API key, including its creator, permission scopes, status, creation and expiration times, and available usage information.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'keyId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+        ],
+        responses: {
+          '200': { description: 'Integration API key detail metadata' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Admin role required' },
+          '404': { description: 'Integration API key not found' },
+          '422': { description: 'Validation failed' },
+        },
+      },
+    },
     '/event-sources': {
       get: {
         tags: ['Event Ingestion'],
@@ -1424,6 +1443,27 @@ export const openApiSpec = {
           '401': { description: 'Authentication required' },
           '403': { description: 'Admin role required' },
           '404': { description: 'Event source / integration not found' },
+          '422': { description: 'Validation failed' },
+        },
+      },
+    },
+    '/integrations/{id}/api-keys/{keyId}': {
+      ...(pendingV2Paths['/integrations/{id}/api-keys/{keyId}'] ?? {}),
+      get: {
+        tags: ['Integrations', 'Audit & Security Reporting'],
+        summary: 'View Integration API Key Detail',
+        description:
+          'Allow administrators to view the complete metadata of a selected integration API key, including its creator, permission scopes, status, creation and expiration times, and available usage information (last used timestamp, last used IP address, total audit log events).',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+          { name: 'keyId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+        ],
+        responses: {
+          '200': { description: 'Integration API key detail metadata' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Admin role required' },
+          '404': { description: 'Integration API key or integration not found' },
           '422': { description: 'Validation failed' },
         },
       },

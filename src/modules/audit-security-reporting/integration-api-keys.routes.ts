@@ -8,8 +8,14 @@ import {
 } from './dto/list-integration-api-keys.dto.js';
 import { createIntegrationApiKeySchema } from './dto/create-integration-api-key.dto.js';
 import {
+  getIntegrationApiKeyDetailParamsSchema,
+  getIntegrationSourceApiKeyDetailParamsSchema,
+} from './dto/get-integration-api-key-detail.dto.js';
+import {
   createIntegrationApiKey,
   createIntegrationApiKeyBySource,
+  getIntegrationApiKeyDetail,
+  getIntegrationApiKeyDetailBySource,
   listIntegrationApiKeys,
   listIntegrationApiKeysBySource,
 } from './integration-api-keys.controller.js';
@@ -30,6 +36,13 @@ integrationApiKeysRouter.post(
   asyncHandler(createIntegrationApiKey),
 );
 
+integrationApiKeysRouter.get(
+  '/:keyId',
+  authenticate,
+  validate({ params: getIntegrationApiKeyDetailParamsSchema }),
+  asyncHandler(getIntegrationApiKeyDetail),
+);
+
 export const integrationSourceApiKeysRouter = Router({ mergeParams: true });
 
 integrationSourceApiKeysRouter.get(
@@ -40,6 +53,13 @@ integrationSourceApiKeysRouter.get(
     query: listIntegrationApiKeysQuerySchema,
   }),
   asyncHandler(listIntegrationApiKeysBySource),
+);
+
+integrationSourceApiKeysRouter.get(
+  '/:id/api-keys/:keyId',
+  authenticate,
+  validate({ params: getIntegrationSourceApiKeyDetailParamsSchema }),
+  asyncHandler(getIntegrationApiKeyDetailBySource),
 );
 
 integrationSourceApiKeysRouter.post(

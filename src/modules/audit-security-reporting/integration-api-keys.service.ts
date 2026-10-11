@@ -11,6 +11,7 @@ import {
   type CreateIntegrationApiKeyInput,
   type CreatedIntegrationApiKeyResponseDto,
 } from './dto/create-integration-api-key.dto.js';
+import type { IntegrationApiKeyDetailDto } from './dto/get-integration-api-key-detail.dto.js';
 
 export const integrationApiKeysService = {
   async listApiKeys(
@@ -123,6 +124,35 @@ export const integrationApiKeysService = {
       secret,
     };
   },
+
+  async getApiKeyDetail(
+    userId: string,
+    keyId: string,
+    contextIntegrationId?: string,
+  ): Promise<IntegrationApiKeyDetailDto> {
+    await requireAuthorizedAdmin(userId);
+
+    const record = await integrationApiKeysRepository.findById(keyId);
+    if (!record) {
+      throw new AppError(404, 'NOT_FOUND', 'Integration API key not found');
+    }
+
+    if (
+      contextIntegrationId &&
+      record.event_source_id &&
+      record.event_source_id !== contextIntegrationId
+    ) {
+      throw new AppError(
+        404,
+        'NOT_FOUND',
+        'Integration API key not found for the specified integration',
+      );
+    }
+
+    const totalAuditEvents = await integrationApiKeysRepository.countAuditLogsForApiKey(keyId);
+
+    return mapToApiKeyDetailDto(record, totalAuditEvents);
+  },
 };
 
 async function requireAuthorizedAdmin(userId: string): Promise<void> {
@@ -186,5 +216,87 @@ function mapToApiKeyItemDto(record: DbApiKeyRecord): IntegrationApiKeyItemDto {
           sourceType: record.event_sources.source_type,
         }
       : null,
+  };
+}
+
+type DbApiKeyDetailRecord = NonNullable<
+  Awaited<ReturnType<typeof integrationApiKeysRepository.findById>>
+>;
+
+function mapToApiKeyDetailDto(
+  record: DbApiKeyDetailRecord,
+  totalAuditEvents: number,
+): IntegrationApiKeyDetailDto {
+  const now = new Date();
+  const isExpired = record.expires_at !== null && record.expires_at <= now;
+  const isRevoked = record.status === 'REVOKED';
+  const isRotated = record.status === 'ROTATED';
+
+  let effectiveStatus = record.status;
+  if (record.status === 'ACTIVE' && isExpired) {
+    effectiveStatus = 'EXPIRED';
+  }
+
+  const isActive = record.status === 'ACTIVE' && !isExpired && !isRevoked && !isRotated;
+  const maskedKey = `${record.key_prefix}...****`;
+
+  return {
+    id: record.id,
+    eventSourceId: record.event_source_id,
+    integrationId: record.event_source_id,
+    name: record.name,
+    keyName: record.name,
+    keyPrefix: record.key_prefix,
+    keyFingerprint: maskedKey,
+    maskedKey,
+    status: effectiveStatus,
+    isActive,
+    scopes: record.api_key_scopes.map((s) => s.scope_code),
+    expiresAt: record.expires_at,
+    lastUsedAt: record.last_used_at,
+    lastUsedIp: record.last_used_ip,
+    creator: record.users_integration_api_keys_created_byTousers
+      ? {
+          id: record.users_integration_api_keys_created_byTousers.id,
+          fullName: record.users_integration_api_keys_created_byTousers.full_name,
+          email: record.users_integration_api_keys_created_byTousers.email,
+          username: record.users_integration_api_keys_created_byTousers.username,
+        }
+      : null,
+    createdBy: record.created_by,
+    createdAt: record.created_at,
+    rotatedAt: record.rotated_at,
+    revokedAt: record.revoked_at,
+    revokedBy: record.revoked_by,
+    revoker: record.users_integration_api_keys_revoked_byTousers
+      ? {
+          id: record.users_integration_api_keys_revoked_byTousers.id,
+          fullName: record.users_integration_api_keys_revoked_byTousers.full_name,
+          email: record.users_integration_api_keys_revoked_byTousers.email,
+          username: record.users_integration_api_keys_revoked_byTousers.username,
+        }
+      : null,
+    replacementKeyId: record.replacement_key_id,
+    replacementKey: record.integration_api_keys
+      ? {
+          id: record.integration_api_keys.id,
+          name: record.integration_api_keys.name,
+          keyPrefix: record.integration_api_keys.key_prefix,
+          status: record.integration_api_keys.status,
+        }
+      : null,
+    eventSource: record.event_sources
+      ? {
+          id: record.event_sources.id,
+          name: record.event_sources.name,
+          sourceType: record.event_sources.source_type,
+        }
+      : null,
+    usage: {
+      lastUsedAt: record.last_used_at,
+      lastUsedIp: record.last_used_ip,
+      totalAuditEvents,
+      isUsed: Boolean(record.last_used_at || totalAuditEvents > 0),
+    },
   };
 }

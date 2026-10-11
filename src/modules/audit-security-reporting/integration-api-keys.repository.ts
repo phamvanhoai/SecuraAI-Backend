@@ -104,6 +104,22 @@ export const integrationApiKeysRepository = {
             username: true,
           },
         },
+        users_integration_api_keys_revoked_byTousers: {
+          select: {
+            id: true,
+            full_name: true,
+            email: true,
+            username: true,
+          },
+        },
+        integration_api_keys: {
+          select: {
+            id: true,
+            name: true,
+            key_prefix: true,
+            status: true,
+          },
+        },
         event_sources: {
           select: {
             id: true,
@@ -111,6 +127,14 @@ export const integrationApiKeysRepository = {
             source_type: true,
           },
         },
+      },
+    });
+  },
+
+  async countAuditLogsForApiKey(apiKeyId: string) {
+    return prisma.audit_logs.count({
+      where: {
+        actor_api_key_id: apiKeyId,
       },
     });
   },
