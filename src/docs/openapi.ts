@@ -35,6 +35,72 @@ export const openApiSpec = {
     ...notificationPaths,
     ...auditPaths,
     ...systemLogPaths,
+    '/integrations/api-keys': {
+      post: {
+        tags: ['Audit & Security Reporting'],
+        summary: 'Generate integration API key',
+        description:
+          'Generate a new integration API key by specifying its name, authorized scopes, and expiration settings. The plaintext secret is returned once. Restricted to administrators.',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['name'],
+                properties: {
+                  name: { type: 'string', minLength: 1, maxLength: 255 },
+                  keyName: { type: 'string', minLength: 1, maxLength: 255 },
+                  eventSourceId: { type: 'string', format: 'uuid', nullable: true },
+                  integrationId: { type: 'string', format: 'uuid', nullable: true },
+                  scopes: {
+                    type: 'array',
+                    items: { type: 'string' },
+                    default: ['events:ingest'],
+                  },
+                  expiresAt: { type: 'string', format: 'date-time', nullable: true },
+                  isActive: { type: 'boolean', default: true },
+                  status: { type: 'string', enum: ['ACTIVE', 'INACTIVE'], default: 'ACTIVE' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '201': { description: 'API key generated; plaintext secret returned once' },
+          '400': { description: 'Invalid expiration or key configuration' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Administrator role required' },
+          '404': { description: 'Event source or integration not found' },
+          '422': { description: 'Validation failed' },
+        },
+      },
+    },
+    '/integrations/api-keys/{keyId}': {
+      get: {
+        tags: ['Audit & Security Reporting'],
+        summary: 'View Integration API Key Detail',
+        description:
+          'Returns metadata, scopes, status, creator, expiration, and available usage information without exposing the secret value. Restricted to administrators.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'keyId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          '200': { description: 'Integration API key metadata' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Administrator role required' },
+          '404': { description: 'Integration API key not found' },
+          '422': { description: 'Invalid key identifier' },
+        },
+      },
+    },
     '/access-control/permissions': {
       get: {
         tags: ['Access Control'],
@@ -3656,6 +3722,85 @@ export const openApiSpec = {
           '403': { description: 'Authorized audit role required' },
           '404': { description: 'Audit record not found' },
           '422': { description: 'Invalid audit record ID' },
+        },
+      },
+    },
+    '/integrations/{id}/api-keys': {
+      ...(pendingV2Paths['/integrations/{id}/api-keys'] ?? {}),
+      get: {
+        tags: ['Integrations', 'Audit & Security Reporting'],
+        summary: 'View Integration API Key List for an event source / integration',
+        description:
+          'Allow administrators to view the list of integration API keys assigned to a specific integration or event source, including key names, key prefixes/fingerprints, assigned scopes, status, creator, and expiration information. Secret key values are not exposed in the list.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+          { name: 'search', in: 'query', schema: { type: 'string' } },
+          { name: 'status', in: 'query', schema: { type: 'string', enum: ['ACTIVE', 'EXPIRED', 'REVOKED', 'ROTATED'] } },
+          { name: 'isActive', in: 'query', schema: { type: 'boolean' } },
+        ],
+        responses: {
+          '200': { description: 'List of integration API keys for the specified integration without secrets' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Administrator role required' },
+          '404': { description: 'Event source / integration not found' },
+          '422': { description: 'Invalid parameter format' },
+        },
+      },
+    },
+    '/integrations/{id}/api-keys/{keyId}': {
+      ...(pendingV2Paths['/integrations/{id}/api-keys/{keyId}'] ?? {}),
+      get: {
+        tags: ['Integrations', 'Audit & Security Reporting'],
+        summary: 'View Integration API Key Detail',
+        description:
+          'Returns metadata and available usage information for a key belonging to the selected integration without exposing the secret value.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+          {
+            name: 'keyId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          '200': { description: 'Integration API key metadata' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Administrator role required' },
+          '404': { description: 'Integration or API key not found' },
+          '422': { description: 'Invalid identifier' },
+        },
+      },
+    },
+    '/audit-security-reporting/api-keys': {
+      get: {
+        tags: ['Audit & Security Reporting'],
+        summary: 'View all integration API keys with pagination and filtering',
+        description:
+          'Allow administrators to view the list of all integration API keys across the platform, including key names, assigned scopes, status, creator, and expiration information. Secret key values are never exposed.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 } },
+          { name: 'search', in: 'query', schema: { type: 'string' } },
+          { name: 'status', in: 'query', schema: { type: 'string', enum: ['ACTIVE', 'EXPIRED', 'REVOKED', 'ROTATED'] } },
+          { name: 'isActive', in: 'query', schema: { type: 'boolean' } },
+          { name: 'eventSourceId', in: 'query', schema: { type: 'string', format: 'uuid' } },
+          { name: 'sortBy', in: 'query', schema: { type: 'string', enum: ['createdAt', 'expiresAt', 'lastUsedAt', 'name'], default: 'createdAt' } },
+          { name: 'sortOrder', in: 'query', schema: { type: 'string', enum: ['asc', 'desc'], default: 'desc' } },
+        ],
+        responses: {
+          '200': { description: 'Paginated list of integration API keys' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Administrator role required' },
+          '422': { description: 'Invalid query parameters' },
         },
       },
     },

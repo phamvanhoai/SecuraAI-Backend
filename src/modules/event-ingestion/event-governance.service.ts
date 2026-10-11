@@ -149,7 +149,7 @@ export const eventGovernanceService = {
       ...(data.retentionDays !== undefined ? { retention_days: data.retentionDays } : {}),
       ...(data.accessScope !== undefined ? { access_scope: data.accessScope } : {}),
       ...(data.maskingRules !== undefined
-        ? { masking_rules: data.maskingRules as Record<string, unknown> }
+        ? { masking_rules: data.maskingRules }
         : {}),
       ...(data.exportAllowed !== undefined ? { export_allowed: data.exportAllowed } : {}),
       ...(data.archiveAfterDays !== undefined

@@ -75,11 +75,72 @@ describe('run anomaly detection service', () => {
     });
     expect(anomalyDetectionRepository.persistRun).toHaveBeenCalledWith(
       expect.objectContaining({
-        actorUserId: 'u',
+        actor: { type: 'USER', userId: 'u' },
         modelVersionId: 'model',
         correlationId: 'request-id',
         detections: [expect.objectContaining({ eventId: 'event', isAnomaly: true })],
       }),
     );
+  });
+
+  it('runs pending-event detection as a system actor without a user session', async () => {
+    vi.mocked(anomalyDetectionRepository.findDeployedModel).mockResolvedValue({
+      id: 'model',
+      model_name: 'detector',
+      version: '2',
+      parameters: { threshold: 0.5 },
+    });
+    vi.mocked(anomalyDetectionRepository.findPendingEvents).mockResolvedValue({
+      events: [
+        {
+          id: 'wazuh-event',
+          event_type: 'privilege_use',
+          severity: '13',
+          occurred_at: new Date('2026-09-25T02:00:00Z'),
+          event_entity_mappings: [],
+        },
+      ],
+      frequencies: new Map([['privilege_use', 1]]),
+      populationSize: 100,
+    });
+    vi.mocked(anomalyDetectionRepository.persistRun).mockResolvedValue({
+      detectionsCreated: 1,
+      alertsCreated: 1,
+    });
+
+    const result = await anomalyDetectionService.runAutomated({
+      lookbackHours: 24,
+      maxEvents: 100,
+    });
+
+    expect(result).toMatchObject({ eventsEvaluated: 1, alertsCreated: 1 });
+    expect(anomalyDetectionRepository.persistRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        actor: { type: 'SYSTEM' },
+        detections: [expect.objectContaining({ eventId: 'wazuh-event', isAnomaly: true })],
+      }),
+    );
+  });
+
+  it('does not create an audit run when there are no pending events', async () => {
+    vi.mocked(anomalyDetectionRepository.findDeployedModel).mockResolvedValue({
+      id: 'model',
+      model_name: 'detector',
+      version: '2',
+      parameters: { threshold: 0.7 },
+    });
+    vi.mocked(anomalyDetectionRepository.findPendingEvents).mockResolvedValue({
+      events: [],
+      frequencies: new Map(),
+      populationSize: 0,
+    });
+
+    const result = await anomalyDetectionService.runAutomated({
+      lookbackHours: 24,
+      maxEvents: 100,
+    });
+
+    expect(result).toMatchObject({ eventsEvaluated: 0, detectionsCreated: 0, alertsCreated: 0 });
+    expect(anomalyDetectionRepository.persistRun).not.toHaveBeenCalled();
   });
 });
