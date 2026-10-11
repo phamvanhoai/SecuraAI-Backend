@@ -35,7 +35,7 @@ describe('normalizedEventsService', () => {
               name: 'Domain Controller 01',
               asset_code: 'AST-SRV-01',
               asset_type: 'SERVER',
-              criticality: 'CRITICAL',
+              criticality: null,
             },
             users_event_entity_mappings_user_idTousers: {
               id: 'user-001',
@@ -67,6 +67,7 @@ describe('normalizedEventsService', () => {
     expect(result.items[0]?.eventSourceName).toBe('Wazuh Production');
     expect(result.items[0]?.mappedUser?.email).toBe('john.doe@company.com');
     expect(result.items[0]?.mappedAsset?.assetCode).toBe('AST-SRV-01');
+    expect(result.items[0]?.mappedAsset?.criticality).toBeNull();
     expect(result.items[0]?.anomalyCount).toBe(1);
     expect(result.pagination.total).toBe(1);
   });

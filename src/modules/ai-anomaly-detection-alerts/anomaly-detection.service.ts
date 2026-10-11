@@ -30,13 +30,20 @@ const severityScore: Readonly<Record<string, number>> = {
   low: 0.2,
 };
 
+function normalizedSeverity(value: string | null): number {
+  const named = severityScore[value?.toLowerCase() ?? ''];
+  if (named !== undefined) return named;
+  const wazuhLevel = Number(value);
+  return Number.isFinite(wazuhLevel) ? Math.min(1, Math.max(0, wazuhLevel / 15)) : 0.35;
+}
+
 function scoreEvent(
   event: DetectionEvent,
   frequency: number,
   populationSize: number,
   weights: z.infer<typeof parametersSchema>['weights'],
 ): number {
-  const severity = severityScore[event.severity?.toLowerCase() ?? ''] ?? 0.35;
+  const severity = normalizedSeverity(event.severity);
   const rarity = populationSize === 0 ? 0 : 1 - frequency / populationSize;
   const hour = event.occurred_at.getUTCHours();
   const offHours = hour < 6 || hour >= 22 ? 1 : 0;
@@ -72,6 +79,30 @@ export const anomalyDetectionService = {
         'NO_DEPLOYED_MODEL',
         'Deploy an anomaly detection model before running detection',
       );
+    return runDetection(model, input, {
+      actor: { type: 'USER', userId },
+      correlationId,
+      sourceIp: context?.sourceIp,
+      userAgent: context?.userAgent,
+    });
+  },
+  async runAutomated(input: RunAnomalyDetectionBody) {
+    const model = await anomalyDetectionRepository.findDeployedModel();
+    if (!model) return null;
+    return runDetection(model, input, { actor: { type: 'SYSTEM' } });
+  },
+};
+
+async function runDetection(
+  model: Awaited<ReturnType<typeof anomalyDetectionRepository.findDeployedModel>> & {},
+  input: RunAnomalyDetectionBody,
+  audit: {
+    actor: { type: 'USER'; userId: string } | { type: 'SYSTEM' };
+    correlationId?: string | undefined;
+    sourceIp?: string | undefined;
+    userAgent?: string | undefined;
+  },
+) {
     const parsed = parametersSchema.safeParse(model.parameters ?? {});
     const parameters = parsed.success ? parsed.data : parametersSchema.parse({});
     const since = new Date(Date.now() - input.lookbackHours * 3_600_000);
@@ -108,14 +139,23 @@ export const anomalyDetectionService = {
       customThresholdsApplied: detections.filter((item) => item.threshold !== parameters.threshold)
         .length,
     } satisfies Prisma.InputJsonObject;
+    if (detections.length === 0) {
+      return {
+        ...summary,
+        detectionsCreated: 0,
+        alertsCreated: 0,
+        threshold: parameters.threshold,
+        completedAt: new Date().toISOString(),
+      };
+    }
     const persisted = await anomalyDetectionRepository.persistRun({
-      actorUserId: userId,
+      actor: audit.actor,
       modelVersionId: model.id,
-      ...(correlationId ? { correlationId } : {}),
+      ...(audit.correlationId ? { correlationId: audit.correlationId } : {}),
       detections,
       summary,
-      sourceIp: context?.sourceIp,
-      userAgent: context?.userAgent,
+      sourceIp: audit.sourceIp,
+      userAgent: audit.userAgent,
     });
     return {
       ...summary,
@@ -123,5 +163,4 @@ export const anomalyDetectionService = {
       threshold: parameters.threshold,
       completedAt: new Date().toISOString(),
     };
-  },
-};
+}

@@ -10,3 +10,9 @@ export const refreshBodySchema = z.strictObject({
 });
 
 export type LoginBody = z.infer<typeof loginBodySchema>;
+
+export const googleLoginBodySchema = z.object({
+  credential: z.string().trim().min(1).max(4096),
+});
+
+export type GoogleLoginBody = z.infer<typeof googleLoginBodySchema>;

@@ -8,3 +8,4 @@ export * from './integration-api-keys.controller.js';
 export * from './integration-api-keys.service.js';
 export * from './integration-api-keys.repository.js';
 export * from './dto/list-integration-api-keys.dto.js';
+export { auditRouter } from './audit.routes.js';
