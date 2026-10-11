@@ -1,5 +1,6 @@
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["relationJoins"]
 }
 
 datasource db {
@@ -161,6 +162,7 @@ model asset_dependencies {
   assets_asset_dependencies_depends_on_asset_idToassets assets   @relation("asset_dependencies_depends_on_asset_idToassets", fields: [depends_on_asset_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_asset_dependency_parent")
 
   @@unique([asset_id, depends_on_asset_id], map: "uq_asset_dependency")
+  @@index([depends_on_asset_id], map: "idx_asset_dependency_parent")
 }
 
 model asset_event_sources {
@@ -175,14 +177,28 @@ model asset_event_sources {
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model assets {
+  archive_reason                                                    String?
+  archived_by                                                       String?                 @db.Uuid
+  archive_actor                                                     users?                  @relation("asset_archive_actor", fields: [archived_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_asset_archived_by")
+  classification_confidentiality_impact                             Int?
+  classification_integrity_impact                                   Int?
+  classification_availability_impact                                Int?
+  classification_business_impact                                    Int?
+  classification_rationale                                          String?
+  data_classification_basis                                         String?
+  data_classification_method_version                                String?                 @db.VarChar(100)
+  classification_method_version                                     String?                 @db.VarChar(100)
+  classified_at                                                     DateTime?               @db.Timestamptz(6)
+  classified_by                                                     String?                 @db.Uuid
+  classification_assessor                                           users?                  @relation("asset_classification_assessor", fields: [classified_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_asset_classification_assessor")
   id                                                                String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   asset_code                                                        String                  @unique @db.VarChar(100)
   name                                                              String                  @db.VarChar(255)
   asset_type                                                        String                  @db.VarChar(100)
   owner_user_id                                                     String?                 @db.Uuid
   business_service_id                                               String?                 @db.Uuid
-  criticality                                                       String                  @db.VarChar(50)
-  data_classification                                               String                  @db.VarChar(50)
+  criticality                                                       String?                 @db.VarChar(50)
+  data_classification                                               String?                 @db.VarChar(50)
   description                                                       String?
   status                                                            asset_status            @default(ACTIVE)
   archived_at                                                       DateTime?               @db.Timestamptz(6)
@@ -203,6 +219,8 @@ model assets {
   user_access_scopes                                                user_access_scopes[]
 
   @@index([business_service_id], map: "idx_assets_business_service")
+  @@index([classified_by], map: "idx_assets_classified_by")
+  @@index([archived_by], map: "idx_assets_archived_by")
   @@index([owner_user_id], map: "idx_assets_owner")
 }
 
@@ -225,6 +243,9 @@ model audit_logs {
   previous_hash        String?               @db.VarChar(255)
   record_hash          String                @db.VarChar(255)
   created_at           DateTime              @default(now()) @db.Timestamptz(6)
+  outcome              audit_outcome         @default(SUCCESS)
+  error_code           String?               @db.VarChar(100)
+  duration_ms          Int?
   integration_api_keys integration_api_keys? @relation(fields: [actor_api_key_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_audit_actor_api_key")
   users                users?                @relation(fields: [actor_user_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_audit_actor_user")
 
@@ -233,6 +254,10 @@ model audit_logs {
   @@index([actor_user_id], map: "idx_audit_actor_user")
   @@index([correlation_id], map: "idx_audit_correlation")
   @@index([occurred_at(sort: Desc)], map: "idx_audit_occurred_at")
+  @@index([outcome, occurred_at(sort: Desc)], map: "idx_audit_logs_outcome_occurred")
+  @@index([source, occurred_at(sort: Desc)], map: "idx_audit_logs_source_occurred")
+  @@index([actor_user_id, occurred_at(sort: Desc)], map: "idx_audit_logs_actor_occurred")
+  @@index([action, occurred_at(sort: Desc)], map: "idx_audit_logs_action_occurred")
   @@index([resource_type, resource_id], map: "idx_audit_resource")
 }
 
@@ -251,6 +276,7 @@ model auth_sessions {
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model business_services {
+  risks              risks[]
   id                 String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   name               String               @db.VarChar(255)
   description        String?
@@ -740,6 +766,27 @@ model policy_acknowledgements {
   @@unique([policy_version_id, user_id], map: "uq_policy_acknowledgement")
 }
 
+/// Applicability is defined for a draft version before review and retained with that version.
+/// Department IDs and role codes are validated by the application because PostgreSQL cannot
+/// attach foreign keys to array elements.
+model policy_applicabilities {
+  id                   String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  policy_version_id    String          @unique @db.Uuid
+  department_ids       String[]        @default([]) @db.Uuid
+  role_codes           user_role[]     @default([])
+  user_groups          String[]        @default([])
+  organizational_scope String?
+  rationale            String
+  reference_basis      String
+  defined_by           String          @db.Uuid
+  defined_at           DateTime        @default(now()) @db.Timestamptz(6)
+  updated_at           DateTime        @default(now()) @db.Timestamptz(6)
+  policy_versions      policy_versions @relation(fields: [policy_version_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_policy_applicability_version")
+  users                users           @relation(fields: [defined_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_policy_applicability_defined_by")
+
+  @@index([defined_by], map: "idx_policy_applicability_defined_by")
+}
+
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model policy_decisions {
   id                String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
@@ -767,6 +814,7 @@ model policy_versions {
   published_at                                                    DateTime?                 @db.Timestamptz(6)
   policies_policies_current_published_version_idTopolicy_versions policies[]                @relation("policies_current_published_version_idTopolicy_versions")
   policy_acknowledgements                                         policy_acknowledgements[]
+  policy_applicabilities                                          policy_applicabilities?
   policy_decisions                                                policy_decisions[]
   users                                                           users                     @relation(fields: [author_user_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_policy_version_author")
   policies_policy_versions_policy_idTopolicies                    policies                  @relation("policy_versions_policy_idTopolicies", fields: [policy_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_policy_version_policy")
@@ -777,15 +825,21 @@ model policy_versions {
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model report_exports {
-  id           String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  report_type  String               @db.VarChar(100)
-  requested_by String               @db.Uuid
-  filters      Json?
-  status       report_export_status @default(REQUESTED)
-  storage_uri  String?
-  generated_at DateTime?            @db.Timestamptz(6)
-  created_at   DateTime             @default(now()) @db.Timestamptz(6)
-  users        users                @relation(fields: [requested_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_report_requested_by")
+  id            String                @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  report_type   String                @db.VarChar(100)
+  requested_by  String                @db.Uuid
+  filters       Json?
+  status        report_export_status  @default(REQUESTED)
+  storage_uri   String?
+  generated_at  DateTime?             @db.Timestamptz(6)
+  created_at    DateTime              @default(now()) @db.Timestamptz(6)
+  file_format   report_export_format?
+  record_count  Int?
+  error_code    String?               @db.VarChar(100)
+  error_message String?
+  expires_at    DateTime?             @db.Timestamptz(6)
+  completed_at  DateTime?             @db.Timestamptz(6)
+  users         users                 @relation(fields: [requested_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_report_requested_by")
 
   @@index([requested_by, created_at(sort: Desc)], map: "idx_report_exports_requester")
 }
@@ -859,6 +913,7 @@ model risk_reassessment_requests {
   status                                               reassessment_status @default(PENDING)
   reviewed_by                                          String?             @db.Uuid
   reviewed_at                                          DateTime?           @db.Timestamptz(6)
+  review_comment                                       String?
   created_at                                           DateTime            @default(now()) @db.Timestamptz(6)
   updated_at                                           DateTime            @default(now()) @db.Timestamptz(6)
   risk_assessments                                     risk_assessments?
@@ -874,12 +929,35 @@ model risk_reassessment_requests {
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model risk_threats {
-  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  risk_id     String   @db.Uuid
-  name        String   @db.VarChar(255)
-  description String?
-  created_at  DateTime @default(now()) @db.Timestamptz(6)
-  risks       risks    @relation(fields: [risk_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_risk_threat_risk")
+  id                          String                        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  risk_id                     String                        @db.Uuid
+  name                        String                        @db.VarChar(255)
+  description                 String?
+  created_at                  DateTime                      @default(now()) @db.Timestamptz(6)
+  risks                       risks                         @relation(fields: [risk_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_risk_threat_risk")
+  risk_threat_vulnerabilities risk_threat_vulnerabilities[]
+}
+
+model risk_vulnerability_controls {
+  vulnerability_id     String               @db.Uuid
+  control_id           String               @db.Uuid
+  linked_at            DateTime             @default(now()) @db.Timestamptz(6)
+  risk_vulnerabilities risk_vulnerabilities @relation(fields: [vulnerability_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_risk_vulnerability_control_vulnerability")
+  security_controls    security_controls    @relation(fields: [control_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_risk_vulnerability_control_control")
+
+  @@id([vulnerability_id, control_id])
+  @@index([control_id], map: "idx_risk_vulnerability_controls_control")
+}
+
+model risk_threat_vulnerabilities {
+  threat_id            String               @db.Uuid
+  vulnerability_id     String               @db.Uuid
+  linked_at            DateTime             @default(now()) @db.Timestamptz(6)
+  risk_threats         risk_threats         @relation(fields: [threat_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_risk_threat_vulnerability_threat")
+  risk_vulnerabilities risk_vulnerabilities @relation(fields: [vulnerability_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_risk_threat_vulnerability_vulnerability")
+
+  @@id([threat_id, vulnerability_id])
+  @@index([vulnerability_id], map: "idx_risk_threat_vulnerabilities_vulnerability")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -921,16 +999,21 @@ model risk_treatment_plans {
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model risk_vulnerabilities {
-  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  risk_id     String   @db.Uuid
-  name        String   @db.VarChar(255)
-  description String?
-  created_at  DateTime @default(now()) @db.Timestamptz(6)
-  risks       risks    @relation(fields: [risk_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_risk_vulnerability_risk")
+  id                          String                        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  risk_id                     String                        @db.Uuid
+  name                        String                        @db.VarChar(255)
+  description                 String?
+  created_at                  DateTime                      @default(now()) @db.Timestamptz(6)
+  risks                       risks                         @relation(fields: [risk_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_risk_vulnerability_risk")
+  risk_threat_vulnerabilities risk_threat_vulnerabilities[]
+  risk_vulnerability_controls risk_vulnerability_controls[]
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model risks {
+  scope_type                       String?                      @db.VarChar(30)
+  business_service_id              String?                      @db.Uuid
+  business_services                business_services?           @relation(fields: [business_service_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_risk_business_service")
   id                               String                       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   risk_code                        String                       @unique @db.VarChar(100)
   title                            String                       @db.VarChar(255)
@@ -954,6 +1037,7 @@ model risks {
   users_risks_owner_user_idTousers users?                       @relation("risks_owner_user_idTousers", fields: [owner_user_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_risk_owner")
 
   @@index([owner_user_id], map: "idx_risks_owner")
+  @@index([business_service_id], map: "idx_risks_business_service")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -973,6 +1057,7 @@ model security_controls {
   control_evidence_links                       control_evidence_links[]
   control_findings                             control_findings[]
   control_risk_links                           control_risk_links[]
+  risk_vulnerability_controls                  risk_vulnerability_controls[]
   incident_controls                            incident_controls[]
   users_security_controls_created_byTousers    users                         @relation("security_controls_created_byTousers", fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_control_created_by")
   users_security_controls_owner_user_idTousers users?                        @relation("security_controls_owner_user_idTousers", fields: [owner_user_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_control_owner")
@@ -1002,8 +1087,10 @@ model security_findings {
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model user_access_scopes {
   id                                          String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  user_id                                     String             @db.Uuid
+  user_id                                     String?            @db.Uuid
+  role                                        user_role?
   scope_code                                  String             @db.VarChar(100)
+  effect                                      String             @default("ALLOW") @db.VarChar(10)
   business_service_id                         String?            @db.Uuid
   asset_id                                    String?            @db.Uuid
   assigned_by                                 String             @db.Uuid
@@ -1012,24 +1099,110 @@ model user_access_scopes {
   assets                                      assets?            @relation(fields: [asset_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_access_scope_asset")
   users_user_access_scopes_assigned_byTousers users              @relation("user_access_scopes_assigned_byTousers", fields: [assigned_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_access_scope_assigned_by")
   business_services                           business_services? @relation(fields: [business_service_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_access_scope_business_service")
-  users_user_access_scopes_user_idTousers     users              @relation("user_access_scopes_user_idTousers", fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_access_scope_user")
+  users_user_access_scopes_user_idTousers     users?             @relation("user_access_scopes_user_idTousers", fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_access_scope_user")
 
   @@index([user_id], map: "idx_access_scopes_user")
+  @@index([role], map: "idx_access_scopes_role")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
+model departments {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  code       String   @unique @db.VarChar(50)
+  name       String   @db.VarChar(255)
+  status     String   @default("ACTIVE") @db.VarChar(20)
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_at DateTime @default(now()) @db.Timestamptz(6)
+  users      users[]
+}
+
+model notifications {
+  id                      String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  title                   String                     @db.VarChar(160)
+  message                 String
+  priority                notification_priority      @default(NORMAL)
+  audience_type           notification_audience_type
+  audience_definition     Json
+  sent_by                 String                     @db.Uuid
+  created_at              DateTime                   @default(now()) @db.Timestamptz(6)
+  expires_at              DateTime?                  @db.Timestamptz(6)
+  sender                  users                      @relation("notifications_sent_byTousers", fields: [sent_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_notifications_sender")
+  notification_recipients notification_recipients[]
+
+  @@index([sent_by, created_at(sort: Desc)], map: "idx_notifications_sender_created")
+  @@index([created_at(sort: Desc)], map: "idx_notifications_created")
+}
+
+model notification_recipients {
+  id                      String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  notification_id         String                    @db.Uuid
+  user_id                 String                    @db.Uuid
+  read_at                 DateTime?                 @db.Timestamptz(6)
+  archived_at             DateTime?                 @db.Timestamptz(6)
+  created_at              DateTime                  @default(now()) @db.Timestamptz(6)
+  notification            notifications             @relation(fields: [notification_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_notification_recipients_notification")
+  user                    users                     @relation("notification_recipients_userTousers", fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_notification_recipients_user")
+  notification_deliveries notification_deliveries[]
+
+  @@unique([notification_id, user_id], map: "uq_notification_recipients_notification_user")
+  @@index([user_id, read_at, created_at(sort: Desc)], map: "idx_notification_recipients_inbox")
+}
+
+model notification_deliveries {
+  id                        String                       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  notification_recipient_id String                       @db.Uuid
+  channel                   notification_channel
+  destination               String?                      @db.VarChar(320)
+  status                    notification_delivery_status @default(PENDING)
+  attempt_count             Int                          @default(0)
+  provider_message_id       String?                      @db.VarChar(255)
+  last_error_code           String?                      @db.VarChar(100)
+  last_error_message        String?
+  last_attempt_at           DateTime?                    @db.Timestamptz(6)
+  sent_at                   DateTime?                    @db.Timestamptz(6)
+  delivered_at              DateTime?                    @db.Timestamptz(6)
+  created_at                DateTime                     @default(now()) @db.Timestamptz(6)
+  updated_at                DateTime                     @default(now()) @db.Timestamptz(6)
+  notification_recipient    notification_recipients      @relation(fields: [notification_recipient_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_notification_deliveries_recipient")
+
+  @@unique([notification_recipient_id, channel], map: "uq_notification_deliveries_recipient_channel")
+  @@index([status, created_at], map: "idx_notification_deliveries_status_created")
+  @@index([provider_message_id], map: "idx_notification_deliveries_provider_message")
+}
+
+model notification_preferences {
+  id         String               @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id    String               @db.Uuid
+  channel    notification_channel
+  event_type String               @default("ALL") @db.VarChar(100)
+  enabled    Boolean              @default(true)
+  created_at DateTime             @default(now()) @db.Timestamptz(6)
+  updated_at DateTime             @default(now()) @db.Timestamptz(6)
+  user       users                @relation("notification_preferences_userTousers", fields: [user_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_notification_preferences_user")
+
+  @@unique([user_id, channel, event_type], map: "uq_notification_preferences_user_channel_event")
+  @@index([user_id, enabled], map: "idx_notification_preferences_user_enabled")
+}
+
 model users {
+  classified_assets                                                               assets[]                         @relation("asset_classification_assessor")
+  archived_assets                                                                 assets[]                         @relation("asset_archive_actor")
   id                                                                              String                           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   email                                                                           String                           @unique @db.VarChar(255)
   username                                                                        String                           @unique @db.VarChar(100)
   password_hash                                                                   String                           @db.VarChar(255)
+  google_subject                                                                  String?                          @unique @db.VarChar(255)
   full_name                                                                       String                           @db.VarChar(255)
+  phone                                                                           String?                          @db.VarChar(30)
+  employee_code                                                                   String?                          @unique @db.VarChar(50)
+  department_id                                                                   String?                          @db.Uuid
   role                                                                            user_role
   status                                                                          user_status                      @default(ACTIVE)
   last_login_at                                                                   DateTime?                        @db.Timestamptz(6)
   password_changed_at                                                             DateTime?                        @db.Timestamptz(6)
   created_at                                                                      DateTime                         @default(now()) @db.Timestamptz(6)
   updated_at                                                                      DateTime                         @default(now()) @db.Timestamptz(6)
+  departments                                                                     departments?                     @relation(fields: [department_id], references: [id], onDelete: SetNull, onUpdate: NoAction, map: "fk_users_department")
   alert_triage_records                                                            alert_triage_records[]
   anomaly_alerts                                                                  anomaly_alerts[]
   assets_assets_created_byTousers                                                 assets[]                         @relation("assets_created_byTousers")
@@ -1059,9 +1232,13 @@ model users {
   integration_api_keys_integration_api_keys_created_byTousers                     integration_api_keys[]           @relation("integration_api_keys_created_byTousers")
   integration_api_keys_integration_api_keys_revoked_byTousers                     integration_api_keys[]           @relation("integration_api_keys_revoked_byTousers")
   monitored_accounts                                                              monitored_accounts[]
+  notifications_sent                                                              notifications[]                  @relation("notifications_sent_byTousers")
+  notification_recipients                                                         notification_recipients[]        @relation("notification_recipients_userTousers")
+  notification_preferences                                                        notification_preferences[]       @relation("notification_preferences_userTousers")
   password_reset_tokens                                                           password_reset_tokens[]
   policies                                                                        policies[]
   policy_acknowledgements                                                         policy_acknowledgements[]
+  policy_applicabilities                                                          policy_applicabilities[]
   policy_decisions                                                                policy_decisions[]
   policy_versions                                                                 policy_versions[]
   report_exports                                                                  report_exports[]
@@ -1080,6 +1257,8 @@ model users {
   security_findings                                                               security_findings[]
   user_access_scopes_user_access_scopes_assigned_byTousers                        user_access_scopes[]             @relation("user_access_scopes_assigned_byTousers")
   user_access_scopes_user_access_scopes_user_idTousers                            user_access_scopes[]             @relation("user_access_scopes_user_idTousers")
+
+  @@index([department_id], map: "idx_users_department_id")
 }
 
 enum acceptance_decision {
@@ -1320,4 +1499,41 @@ enum user_status {
   ACTIVE
   INACTIVE
   LOCKED
+}
+
+enum notification_priority {
+  NORMAL
+  IMPORTANT
+  URGENT
+}
+
+enum notification_audience_type {
+  USERS
+  ROLES
+}
+
+enum notification_channel {
+  IN_SYSTEM
+  EMAIL
+}
+
+enum notification_delivery_status {
+  PENDING
+  PROCESSING
+  SENT
+  DELIVERED
+  FAILED
+}
+
+enum audit_outcome {
+  SUCCESS
+  FAILURE
+  DENIED
+}
+
+enum report_export_format {
+  CSV
+  JSON
+  XLSX
+  PDF
 }

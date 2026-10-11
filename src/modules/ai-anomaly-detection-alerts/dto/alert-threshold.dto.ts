@@ -8,6 +8,10 @@ export const listAlertThresholdsQuerySchema = z.object({
   q: z.string().trim().min(1).max(100).optional(),
 });
 
+export const listAlertThresholdAssetOptionsQuerySchema = z.object({
+  q: z.string().trim().min(1).max(100).optional(),
+});
+
 export const alertThresholdAssetParamsSchema = z.object({ assetId: z.uuid() });
 
 export const setAlertThresholdBodySchema = z.object({
@@ -17,4 +21,7 @@ export const setAlertThresholdBodySchema = z.object({
 });
 
 export type ListAlertThresholdsQuery = z.infer<typeof listAlertThresholdsQuerySchema>;
+export type ListAlertThresholdAssetOptionsQuery = z.infer<
+  typeof listAlertThresholdAssetOptionsQuerySchema
+>;
 export type SetAlertThresholdBody = z.infer<typeof setAlertThresholdBodySchema>;

@@ -10,9 +10,11 @@ import {
 } from './dto/ai-alert-feedback.dto.js';
 import { confirmAiAlertSchema } from './dto/confirm-ai-alert.dto.js';
 import { markAiAlertFalsePositiveSchema } from './dto/mark-ai-alert-false-positive.dto.js';
+import { markAiAlertFurtherInvestigationSchema } from './dto/mark-ai-alert-further-investigation.dto.js';
 import { listModelVersionsQuerySchema } from './dto/list-model-versions.dto.js';
 import {
   alertThresholdAssetParamsSchema,
+  listAlertThresholdAssetOptionsQuerySchema,
   listAlertThresholdsQuerySchema,
   setAlertThresholdBodySchema,
 } from './dto/alert-threshold.dto.js';
@@ -51,11 +53,12 @@ export const listAlertThresholds: RequestHandler = async (req, res) => {
   res.status(200).json({ success: true, data });
 };
 
-export const listAlertThresholdAssetOptions: RequestHandler = async (_req, res) => {
+export const listAlertThresholdAssetOptions: RequestHandler = async (req, res) => {
   const userId: unknown = res.locals.authenticatedUserId;
   if (typeof userId !== 'string')
     throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
-  const data = await aiAlertsService.listActiveAssetOptions(userId);
+  const { q } = listAlertThresholdAssetOptionsQuerySchema.parse(req.query);
+  const data = await aiAlertsService.listActiveAssetOptions(userId, q);
   res.status(200).json({ success: true, data });
 };
 
@@ -88,6 +91,15 @@ export const listAiAlerts: RequestHandler = async (req, res) => {
   if (typeof userId !== 'string')
     throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
   const data = await aiAlertsService.list(userId, listAiAlertsQuerySchema.parse(req.query));
+  res.status(200).json({ success: true, data });
+};
+
+export const startAiAlertTriage: RequestHandler = async (req, res) => {
+  const userId: unknown = res.locals.authenticatedUserId;
+  if (typeof userId !== 'string')
+    throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+  const { alertId } = aiAlertIdParamsSchema.parse(req.params);
+  const data = await aiAlertsService.startTriage(userId, alertId);
   res.status(200).json({ success: true, data });
 };
 
@@ -156,6 +168,19 @@ export const markAiAlertFalsePositive: RequestHandler = async (req, res) => {
     userId,
     alertId,
     markAiAlertFalsePositiveSchema.parse(req.body),
+  );
+  res.status(200).json({ success: true, data });
+};
+
+export const markAiAlertFurtherInvestigation: RequestHandler = async (req, res) => {
+  const userId: unknown = res.locals.authenticatedUserId;
+  if (typeof userId !== 'string')
+    throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+  const { alertId } = aiAlertIdParamsSchema.parse(req.params);
+  const data = await aiAlertsService.markFurtherInvestigation(
+    userId,
+    alertId,
+    markAiAlertFurtherInvestigationSchema.parse(req.body),
   );
   res.status(200).json({ success: true, data });
 };
