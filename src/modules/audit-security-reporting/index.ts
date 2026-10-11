@@ -3,3 +3,8 @@ export * from './audit-logs.controller.js';
 export * from './audit-logs.service.js';
 export * from './audit-logs.repository.js';
 export * from './dto/list-audit-logs.dto.js';
+export * from './integration-api-keys.routes.js';
+export * from './integration-api-keys.controller.js';
+export * from './integration-api-keys.service.js';
+export * from './integration-api-keys.repository.js';
+export * from './dto/list-integration-api-keys.dto.js';
