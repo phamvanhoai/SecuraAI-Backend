@@ -1,3 +1,4 @@
+import { createHash, randomBytes } from 'node:crypto';
 import { AppError } from '../../common/errors/app-error.js';
 import { integrationApiKeysRepository } from './integration-api-keys.repository.js';
 import type {
@@ -5,6 +6,11 @@ import type {
   ListIntegrationApiKeysQueryDto,
   ListIntegrationApiKeysResponseDto,
 } from './dto/list-integration-api-keys.dto.js';
+import {
+  createIntegrationApiKeySchema,
+  type CreateIntegrationApiKeyInput,
+  type CreatedIntegrationApiKeyResponseDto,
+} from './dto/create-integration-api-key.dto.js';
 
 export const integrationApiKeysService = {
   async listApiKeys(
@@ -63,6 +69,59 @@ export const integrationApiKeysService = {
 
     const records = await integrationApiKeysRepository.findMany(fullQuery);
     return records.map((record) => mapToApiKeyItemDto(record));
+  },
+
+  async createApiKey(
+    userId: string,
+    rawInput: CreateIntegrationApiKeyInput,
+    contextIntegrationId?: string,
+  ): Promise<CreatedIntegrationApiKeyResponseDto> {
+    await requireAuthorizedAdmin(userId);
+
+    const input = createIntegrationApiKeySchema.parse(rawInput);
+    const name = (input.name?.trim() || input.keyName?.trim())!;
+    const targetSourceId = contextIntegrationId || input.eventSourceId || input.integrationId || null;
+
+    if (targetSourceId) {
+      const source = await integrationApiKeysRepository.findEventSourceById(targetSourceId);
+      if (!source) {
+        throw new AppError(404, 'NOT_FOUND', 'Event source / integration not found');
+      }
+    }
+
+    const expiresAt = input.expiresAt ? new Date(input.expiresAt) : null;
+    if (expiresAt && expiresAt.getTime() <= Date.now()) {
+      throw new AppError(400, 'BAD_REQUEST', 'Expiration date must be in the future');
+    }
+
+    // Generate random secret token with collision-resistant prefix
+    const rawRandom = randomBytes(24).toString('hex');
+    const secret = `sec_live_${rawRandom}`;
+    const keyPrefix = `sec_live_${rawRandom.slice(0, 10)}`;
+    const secretHash = createHash('sha256').update(secret).digest('hex');
+
+    const scopes = Array.from(new Set(input.scopes.map((s) => s.trim()).filter(Boolean)));
+    if (scopes.length === 0) {
+      throw new AppError(400, 'BAD_REQUEST', 'At least one authorized scope is required');
+    }
+
+    const createdRecord = await integrationApiKeysRepository.createApiKey({
+      name,
+      eventSourceId: targetSourceId,
+      keyPrefix,
+      secretHash,
+      status: input.status ?? 'ACTIVE',
+      expiresAt,
+      createdBy: userId,
+      scopes,
+    });
+
+    const itemDto = mapToApiKeyItemDto(createdRecord);
+
+    return {
+      ...itemDto,
+      secret,
+    };
   },
 };
 

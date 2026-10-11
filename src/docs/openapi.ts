@@ -17,6 +17,65 @@ export const openApiSpec = {
   },
   paths: {
     ...pendingV2Paths,
+    '/integrations/api-keys': {
+      get: {
+        tags: ['Audit & Security Reporting'],
+        summary: 'List integration API keys',
+        description: 'Retrieve a paginated list of integration API keys with masked key prefix and scopes. Restricted to ADMIN role.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 } },
+          { name: 'search', in: 'query', schema: { type: 'string' } },
+          { name: 'status', in: 'query', schema: { type: 'string', enum: ['ACTIVE', 'REVOKED', 'ROTATED'] } },
+          { name: 'isActive', in: 'query', schema: { type: 'boolean' } },
+          { name: 'eventSourceId', in: 'query', schema: { type: 'string', format: 'uuid' } },
+          { name: 'sortBy', in: 'query', schema: { type: 'string', enum: ['name', 'createdAt', 'expiresAt', 'lastUsedAt'], default: 'createdAt' } },
+          { name: 'sortOrder', in: 'query', schema: { type: 'string', enum: ['asc', 'desc'], default: 'desc' } },
+        ],
+        responses: {
+          '200': { description: 'Paginated list of integration API keys' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Admin role required' },
+          '422': { description: 'Validation failed' },
+        },
+      },
+      post: {
+        tags: ['Audit & Security Reporting'],
+        summary: 'Generate integration API key',
+        description: 'Generate a new integration API key by specifying name, authorized scopes, and expiration settings. Returns the plaintext secret token once. Restricted to ADMIN role.',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['name'],
+                properties: {
+                  name: { type: 'string', minLength: 1, maxLength: 255 },
+                  keyName: { type: 'string', minLength: 1, maxLength: 255 },
+                  eventSourceId: { type: 'string', format: 'uuid', nullable: true },
+                  integrationId: { type: 'string', format: 'uuid', nullable: true },
+                  scopes: { type: 'array', items: { type: 'string' }, default: ['events:ingest'] },
+                  expiresAt: { type: 'string', format: 'date-time', nullable: true },
+                  isActive: { type: 'boolean', default: true },
+                  status: { type: 'string', enum: ['ACTIVE', 'INACTIVE'], default: 'ACTIVE' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '201': { description: 'API key generated successfully with secret token' },
+          '400': { description: 'Bad request (e.g. past expiration date)' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Admin role required' },
+          '404': { description: 'Event source not found' },
+          '422': { description: 'Validation failed' },
+        },
+      },
+    },
     '/event-sources': {
       get: {
         tags: ['Event Ingestion'],
@@ -1331,6 +1390,41 @@ export const openApiSpec = {
           '403': { description: 'Administrator role required' },
           '404': { description: 'Event source / integration not found' },
           '422': { description: 'Invalid parameter format' },
+        },
+      },
+      post: {
+        tags: ['Integrations', 'Audit & Security Reporting'],
+        summary: 'Generate integration API key for specific source',
+        description: 'Generate an API key bound to a specific event source / integration. Returns the plaintext secret token once. Restricted to ADMIN role.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['name'],
+                properties: {
+                  name: { type: 'string', minLength: 1, maxLength: 255 },
+                  keyName: { type: 'string', minLength: 1, maxLength: 255 },
+                  scopes: { type: 'array', items: { type: 'string' }, default: ['events:ingest'] },
+                  expiresAt: { type: 'string', format: 'date-time', nullable: true },
+                  isActive: { type: 'boolean', default: true },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '201': { description: 'API key generated successfully with secret token' },
+          '400': { description: 'Bad request (e.g. past expiration date)' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Admin role required' },
+          '404': { description: 'Event source / integration not found' },
+          '422': { description: 'Validation failed' },
         },
       },
     },
