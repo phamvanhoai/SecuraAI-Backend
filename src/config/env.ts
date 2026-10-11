@@ -33,6 +33,13 @@ const envSchema = z.object({
   OLLAMA_BASE_URL: z.url().default('http://127.0.0.1:11434'),
   OLLAMA_MODEL: z.string().trim().min(1).default('qwen3:4b'),
   OLLAMA_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120_000).default(60_000),
+  ANOMALY_AUTO_DETECTION_ENABLED: booleanString.default(true),
+  ANOMALY_AUTO_DETECTION_INTERVAL_MS: z.coerce
+    .number()
+    .int()
+    .min(1_000)
+    .max(300_000)
+    .default(5_000),
   WAZUH_INGEST_TOKEN: optionalSecret,
   GOOGLE_CLIENT_ID: optionalString,
 });
