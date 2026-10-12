@@ -27,6 +27,13 @@ async function contextWriteTime(database: Prisma.TransactionClient): Promise<Dat
   return time;
 }
 
+function currentOrFutureReviewDate(reviewDate: Date | null, assessedAt: Date): Date | null {
+  if (!reviewDate) return null;
+  return reviewDate.toISOString().slice(0, 10) >= assessedAt.toISOString().slice(0, 10)
+    ? reviewDate
+    : null;
+}
+
 const assessmentSelect = {
   id: true,
   assessment_type: true,
@@ -523,17 +530,18 @@ export const riskRegisterRepository = {
         return { kind: 'incomplete_context' as const };
       const score = input.likelihood * input.impact;
       const rating = score <= 4 ? 'LOW' : score <= 9 ? 'MEDIUM' : score <= 16 ? 'HIGH' : 'CRITICAL';
+      const assessedAt = await contextWriteTime(database);
       const assessment = await database.risk_assessments.create({
         data: {
           risk_id: riskId,
           assessment_type: 'PERIODIC_REVIEW',
           inherent_likelihood: input.likelihood,
-          assessed_at: await contextWriteTime(database),
+          assessed_at: assessedAt,
           inherent_impact: input.impact,
           inherent_rating: rating,
           assessment_reason: input.assessmentReason,
           assessed_by: actorId,
-          review_date: risk.review_date,
+          review_date: currentOrFutureReviewDate(risk.review_date, assessedAt),
         },
         select: { id: true, assessed_at: true },
       });
@@ -609,12 +617,13 @@ export const riskRegisterRepository = {
       const controlEffectiveness = values.reduce((sum, value) => sum + value, 0) / values.length;
       const score = input.likelihood * input.impact;
       const rating = score <= 4 ? 'LOW' : score <= 9 ? 'MEDIUM' : score <= 16 ? 'HIGH' : 'CRITICAL';
+      const assessedAt = await contextWriteTime(database);
       const assessment = await database.risk_assessments.create({
         data: {
           risk_id: riskId,
           assessment_type: 'PERIODIC_REVIEW',
           inherent_likelihood: inherent.inherent_likelihood,
-          assessed_at: await contextWriteTime(database),
+          assessed_at: assessedAt,
           inherent_impact: inherent.inherent_impact,
           inherent_rating: inherent.inherent_rating,
           control_effectiveness: controlEffectiveness,
@@ -627,7 +636,7 @@ export const riskRegisterRepository = {
             'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL',
           assessment_reason: input.assessmentReason,
           assessed_by: actorId,
-          review_date: risk.review_date,
+          review_date: currentOrFutureReviewDate(risk.review_date, assessedAt),
         },
         select: { id: true, assessed_at: true },
       });
@@ -673,6 +682,7 @@ export const riskRegisterRepository = {
       const target = input.targetRisk.toUpperCase() as keyof typeof rank;
       if (rank[target] > rank[current.residual_rating!])
         return { kind: 'target_exceeds_residual' as const };
+      const assessedAt = await contextWriteTime(database);
       const assessment = await database.risk_assessments.create({
         data: {
           risk_id: riskId,
@@ -689,7 +699,8 @@ export const riskRegisterRepository = {
           risk_tolerance: current.risk_tolerance,
           assessment_reason: input.rationale,
           assessed_by: actorId,
-          review_date: risk.review_date,
+          assessed_at: assessedAt,
+          review_date: currentOrFutureReviewDate(risk.review_date, assessedAt),
         },
         select: { id: true, assessed_at: true },
       });
@@ -780,6 +791,7 @@ export const riskRegisterRepository = {
           if (controls.length !== new Set(input.controlIds).size)
             return { kind: 'invalid_controls' as const };
           const latest = risk.risk_assessments[0];
+          const assessedAt = await contextWriteTime(database);
           const source = await database.risk_assessments.create({
             data: {
               risk_id: risk.id,
@@ -796,7 +808,8 @@ export const riskRegisterRepository = {
               risk_tolerance: latest?.risk_tolerance ?? null,
               assessment_reason: `Treatment plan: ${input.title}`,
               assessed_by: actorId,
-              review_date: risk.review_date,
+              assessed_at: assessedAt,
+              review_date: currentOrFutureReviewDate(risk.review_date, assessedAt),
             },
             select: { id: true },
           });
@@ -856,13 +869,20 @@ export const riskRegisterRepository = {
         const plan = await database.risk_treatment_plans.findUnique({
           where: { id: planId },
           include: {
-            risks: { select: { owner_user_id: true, risk_code: true } },
+            risks: { select: { id: true, owner_user_id: true, risk_code: true, status: true } },
             risk_treatment_actions: true,
           },
         });
         if (!plan) return { kind: 'not_found' as const };
         if (['COMPLETED', 'CANCELLED'].includes(plan.status))
           return { kind: 'terminal_plan' as const };
+        if (['ACCEPTED', 'CLOSED', 'ARCHIVED'].includes(plan.risks.status))
+          return { kind: 'terminal_risk' as const };
+        if (
+          (plan.status === 'DRAFT' && input.status === 'completed') ||
+          (plan.status === 'ACTIVE' && input.status === 'draft')
+        )
+          return { kind: 'invalid_status_transition' as const };
         const actor = await database.users.findUnique({
           where: { id: actorId },
           select: { role: true },
@@ -925,7 +945,33 @@ export const riskRegisterRepository = {
           },
           include: { risk_treatment_actions: { orderBy: { created_at: 'asc' } } },
         });
-        return { kind: 'updated' as const, updated, riskCode: plan.risks.risk_code };
+        let riskStatus = plan.risks.status;
+        if (input.status === 'active' && riskStatus === 'OPEN') {
+          const risk = await database.risks.update({
+            where: { id: plan.risks.id },
+            data: { status: 'UNDER_TREATMENT', updated_at: new Date() },
+            select: { status: true },
+          });
+          riskStatus = risk.status;
+        } else if (plan.status === 'ACTIVE' && input.status === 'cancelled') {
+          const otherActivePlans = await database.risk_treatment_plans.count({
+            where: { risk_id: plan.risks.id, id: { not: planId }, status: 'ACTIVE' },
+          });
+          if (otherActivePlans === 0 && riskStatus === 'UNDER_TREATMENT') {
+            const risk = await database.risks.update({
+              where: { id: plan.risks.id },
+              data: { status: 'OPEN', updated_at: new Date() },
+              select: { status: true },
+            });
+            riskStatus = risk.status;
+          }
+        }
+        return {
+          kind: 'updated' as const,
+          updated,
+          riskCode: plan.risks.risk_code,
+          riskStatus,
+        };
       },
       { maxWait: 10_000, timeout: 15_000 },
     );
@@ -987,6 +1033,7 @@ export const riskRegisterRepository = {
         const score = input.residualLikelihood * input.residualImpact;
         const rating =
           score <= 4 ? 'LOW' : score <= 9 ? 'MEDIUM' : score <= 16 ? 'HIGH' : 'CRITICAL';
+        const assessedAt = await contextWriteTime(database);
         const assessment = await database.risk_assessments.create({
           data: {
             risk_id: riskId,
@@ -1003,7 +1050,8 @@ export const riskRegisterRepository = {
             risk_tolerance: latest?.risk_tolerance ?? null,
             assessment_reason: input.assessmentReason,
             assessed_by: actorId,
-            review_date: risk.review_date,
+            assessed_at: assessedAt,
+            review_date: currentOrFutureReviewDate(risk.review_date, assessedAt),
           },
           select: { id: true, assessed_at: true },
         });
