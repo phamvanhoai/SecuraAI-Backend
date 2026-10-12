@@ -54,6 +54,7 @@ const assessmentSelect = {
   assessment_reason: true,
   assessed_at: true,
   review_date: true,
+  methodology_version: true,
   users: { select: { id: true, full_name: true, status: true } },
 } as const;
 
@@ -286,7 +287,14 @@ export const riskRegisterRepository = {
     return prisma.audit_logs.findMany({
       where: {
         resource_id: riskId,
-        action: { in: ['RISK_THREAT_CREATED', 'RISK_THREAT_UPDATED', 'RISK_VULNERABILITY_CREATED', 'RISK_VULNERABILITY_UPDATED'] },
+        action: {
+          in: [
+            'RISK_THREAT_CREATED',
+            'RISK_THREAT_UPDATED',
+            'RISK_VULNERABILITY_CREATED',
+            'RISK_VULNERABILITY_UPDATED',
+          ],
+        },
         outcome: 'SUCCESS',
       },
       orderBy: [{ occurred_at: 'desc' }, { id: 'desc' }],
@@ -477,13 +485,27 @@ export const riskRegisterRepository = {
           },
         });
         const auditId = randomUUID();
-        await database.audit_logs.create({ data: {
-          id: auditId, actor_type: 'USER', actor_user_id: actorId,
-          action: 'RISK_THREAT_CREATED', resource_type: 'RISK', resource_id: riskId, source: 'API',
-          before_data: Prisma.JsonNull,
-          after_data: { id: threat.id, name: threat.name, description: threat.description, vulnerabilityIds: input.vulnerabilityIds },
-          record_hash: createHash('sha256').update(JSON.stringify({ auditId, actorId, riskId, threatId: threat.id })).digest('hex'),
-        } });
+        await database.audit_logs.create({
+          data: {
+            id: auditId,
+            actor_type: 'USER',
+            actor_user_id: actorId,
+            action: 'RISK_THREAT_CREATED',
+            resource_type: 'RISK',
+            resource_id: riskId,
+            source: 'API',
+            before_data: Prisma.JsonNull,
+            after_data: {
+              id: threat.id,
+              name: threat.name,
+              description: threat.description,
+              vulnerabilityIds: input.vulnerabilityIds,
+            },
+            record_hash: createHash('sha256')
+              .update(JSON.stringify({ auditId, actorId, riskId, threatId: threat.id }))
+              .digest('hex'),
+          },
+        });
         return { kind: 'created' as const, threat };
       },
       { timeout: 15_000 },
@@ -509,7 +531,15 @@ export const riskRegisterRepository = {
         if (blockedReason) return { kind: 'context_locked' as const, blockedReason };
         const current = await database.risk_threats.findFirst({
           where: { id: threatId, risk_id: riskId },
-          select: { id: true, name: true, description: true, updated_at: true, risk_threat_vulnerabilities: { select: { risk_vulnerabilities: { select: { id: true, name: true } } } } },
+          select: {
+            id: true,
+            name: true,
+            description: true,
+            updated_at: true,
+            risk_threat_vulnerabilities: {
+              select: { risk_vulnerabilities: { select: { id: true, name: true } } },
+            },
+          },
         });
         if (!current) return { kind: 'threat_not_found' as const };
         if (current.updated_at.toISOString() !== input.expectedUpdatedAt)
@@ -564,14 +594,34 @@ export const riskRegisterRepository = {
         });
         await database.risks.update({ where: { id: riskId }, data: { updated_at: changedAt } });
         const auditId = randomUUID();
-        await database.audit_logs.create({ data: {
-          id: auditId,
-          actor_type: 'USER', actor_user_id: actorId, action: 'RISK_THREAT_UPDATED',
-          resource_type: 'RISK', resource_id: riskId, source: 'API',
-          before_data: { id: threatId, name: current.name, description: current.description, vulnerabilityIds: current.risk_threat_vulnerabilities.map(({ risk_vulnerabilities }) => risk_vulnerabilities.id) },
-          after_data: { id: threatId, name: threat.name, description: threat.description, vulnerabilityIds: input.vulnerabilityIds },
-          record_hash: createHash('sha256').update(JSON.stringify({ auditId, actorId, riskId, threatId, changedAt })).digest('hex'),
-        } });
+        await database.audit_logs.create({
+          data: {
+            id: auditId,
+            actor_type: 'USER',
+            actor_user_id: actorId,
+            action: 'RISK_THREAT_UPDATED',
+            resource_type: 'RISK',
+            resource_id: riskId,
+            source: 'API',
+            before_data: {
+              id: threatId,
+              name: current.name,
+              description: current.description,
+              vulnerabilityIds: current.risk_threat_vulnerabilities.map(
+                ({ risk_vulnerabilities }) => risk_vulnerabilities.id,
+              ),
+            },
+            after_data: {
+              id: threatId,
+              name: threat.name,
+              description: threat.description,
+              vulnerabilityIds: input.vulnerabilityIds,
+            },
+            record_hash: createHash('sha256')
+              .update(JSON.stringify({ auditId, actorId, riskId, threatId, changedAt }))
+              .digest('hex'),
+          },
+        });
         return { kind: 'updated' as const, threat };
       },
       { timeout: 15_000 },
@@ -606,7 +656,8 @@ export const riskRegisterRepository = {
           where: { id: { in: input.controlIds }, applicability: { not: 'NOT_APPLICABLE' } },
           select: { id: true },
         });
-        if (controls.length !== input.controlIds.length) return { kind: 'invalid_controls' as const };
+        if (controls.length !== input.controlIds.length)
+          return { kind: 'invalid_controls' as const };
         await database.control_risk_links.createMany({
           data: input.controlIds.map((control_id) => ({ control_id, risk_id: riskId })),
           skipDuplicates: true,
@@ -639,13 +690,29 @@ export const riskRegisterRepository = {
         });
         await database.risks.update({ where: { id: riskId }, data: { updated_at: new Date() } });
         const auditId = randomUUID();
-        await database.audit_logs.create({ data: {
-          id: auditId, actor_type: 'USER', actor_user_id: actorId,
-          action: 'RISK_VULNERABILITY_CREATED', resource_type: 'RISK', resource_id: riskId, source: 'API',
-          before_data: Prisma.JsonNull,
-          after_data: { id: vulnerability.id, name: vulnerability.name, description: vulnerability.description, controlIds: input.controlIds },
-          record_hash: createHash('sha256').update(JSON.stringify({ auditId, actorId, riskId, vulnerabilityId: vulnerability.id })).digest('hex'),
-        } });
+        await database.audit_logs.create({
+          data: {
+            id: auditId,
+            actor_type: 'USER',
+            actor_user_id: actorId,
+            action: 'RISK_VULNERABILITY_CREATED',
+            resource_type: 'RISK',
+            resource_id: riskId,
+            source: 'API',
+            before_data: Prisma.JsonNull,
+            after_data: {
+              id: vulnerability.id,
+              name: vulnerability.name,
+              description: vulnerability.description,
+              controlIds: input.controlIds,
+            },
+            record_hash: createHash('sha256')
+              .update(
+                JSON.stringify({ auditId, actorId, riskId, vulnerabilityId: vulnerability.id }),
+              )
+              .digest('hex'),
+          },
+        });
         return { kind: 'created' as const, vulnerability };
       },
       { timeout: 15_000 },
@@ -677,7 +744,13 @@ export const riskRegisterRepository = {
 
         const current = await database.risk_vulnerabilities.findFirst({
           where: { id: vulnerabilityId, risk_id: riskId },
-          select: { id: true, name: true, description: true, updated_at: true, risk_vulnerability_controls: { select: { control_id: true } } },
+          select: {
+            id: true,
+            name: true,
+            description: true,
+            updated_at: true,
+            risk_vulnerability_controls: { select: { control_id: true } },
+          },
         });
         if (!current) return { kind: 'vulnerability_not_found' as const };
         if (current.updated_at.toISOString() !== input.expectedUpdatedAt)
@@ -742,14 +815,32 @@ export const riskRegisterRepository = {
         });
         await database.risks.update({ where: { id: riskId }, data: { updated_at: changedAt } });
         const auditId = randomUUID();
-        await database.audit_logs.create({ data: {
-          id: auditId,
-          actor_type: 'USER', actor_user_id: actorId, action: 'RISK_VULNERABILITY_UPDATED',
-          resource_type: 'RISK', resource_id: riskId, source: 'API',
-          before_data: { id: vulnerabilityId, name: current.name, description: current.description, controlIds: current.risk_vulnerability_controls.map((item) => item.control_id) },
-          after_data: { id: vulnerabilityId, name: vulnerability.name, description: vulnerability.description, controlIds: input.controlIds },
-          record_hash: createHash('sha256').update(JSON.stringify({ auditId, actorId, riskId, vulnerabilityId, changedAt })).digest('hex'),
-        } });
+        await database.audit_logs.create({
+          data: {
+            id: auditId,
+            actor_type: 'USER',
+            actor_user_id: actorId,
+            action: 'RISK_VULNERABILITY_UPDATED',
+            resource_type: 'RISK',
+            resource_id: riskId,
+            source: 'API',
+            before_data: {
+              id: vulnerabilityId,
+              name: current.name,
+              description: current.description,
+              controlIds: current.risk_vulnerability_controls.map((item) => item.control_id),
+            },
+            after_data: {
+              id: vulnerabilityId,
+              name: vulnerability.name,
+              description: vulnerability.description,
+              controlIds: input.controlIds,
+            },
+            record_hash: createHash('sha256')
+              .update(JSON.stringify({ auditId, actorId, riskId, vulnerabilityId, changedAt }))
+              .digest('hex'),
+          },
+        });
         return { kind: 'updated' as const, vulnerability };
       },
       { timeout: 15_000 },
@@ -759,13 +850,21 @@ export const riskRegisterRepository = {
     return prisma.security_controls.findMany({
       where: {
         applicability: { not: 'NOT_APPLICABLE' },
-        ...(q ? { OR: [
-          { control_code: { contains: q, mode: 'insensitive' } },
-          { name: { contains: q, mode: 'insensitive' } },
-        ] } : {}),
+        ...(q
+          ? {
+              OR: [
+                { control_code: { contains: q, mode: 'insensitive' } },
+                { name: { contains: q, mode: 'insensitive' } },
+              ],
+            }
+          : {}),
       },
       select: {
-        id: true, control_code: true, name: true, applicability: true, implementation_status: true,
+        id: true,
+        control_code: true,
+        name: true,
+        applicability: true,
+        implementation_status: true,
         control_risk_links: { where: { risk_id: riskId }, select: { risk_id: true }, take: 1 },
       },
       orderBy: { control_code: 'asc' },
@@ -781,11 +880,24 @@ export const riskRegisterRepository = {
           id: true,
           risk_code: true,
           title: true,
+          status: true,
           review_date: true,
+          risk_assessments: {
+            where: {
+              inherent_likelihood: { not: null },
+              inherent_impact: { not: null },
+              inherent_rating: { not: null },
+            },
+            select: { id: true, inherent_rating: true, assessment_reason: true },
+            orderBy: { assessed_at: 'desc' },
+            take: 1,
+          },
           _count: { select: { risk_assets: true, risk_threats: true, risk_vulnerabilities: true } },
         },
       });
       if (!risk) return { kind: 'risk_not_found' as const };
+      if (!['OPEN', 'UNDER_TREATMENT'].includes(risk.status))
+        return { kind: 'context_locked' as const };
       if (
         !risk._count.risk_assets ||
         !risk._count.risk_threats ||
@@ -794,11 +906,26 @@ export const riskRegisterRepository = {
         return { kind: 'incomplete_context' as const };
       const score = input.likelihood * input.impact;
       const rating = score <= 4 ? 'LOW' : score <= 9 ? 'MEDIUM' : score <= 16 ? 'HIGH' : 'CRITICAL';
+      const previousAssessment = risk.risk_assessments[0];
+      const ratingRank = { LOW: 1, MEDIUM: 2, HIGH: 3, CRITICAL: 4 } as const;
+      const isMajorReduction =
+        previousAssessment?.inherent_rating != null &&
+        ratingRank[previousAssessment.inherent_rating] - ratingRank[rating] >= 2;
+      if (isMajorReduction && input.assessmentReason.trim().length < 30)
+        return { kind: 'major_change_reason_required' as const };
+      const normalizeReason = (value: string | null) =>
+        value?.trim().replace(/\s+/g, ' ').toLocaleLowerCase() ?? '';
+      if (
+        isMajorReduction &&
+        normalizeReason(input.assessmentReason) ===
+          normalizeReason(previousAssessment.assessment_reason)
+      )
+        return { kind: 'major_change_reason_unchanged' as const };
       const assessedAt = await contextWriteTime(database);
       const assessment = await database.risk_assessments.create({
         data: {
           risk_id: riskId,
-          assessment_type: 'PERIODIC_REVIEW',
+          assessment_type: risk.risk_assessments.length ? 'PERIODIC_REVIEW' : 'INITIAL',
           inherent_likelihood: input.likelihood,
           assessed_at: assessedAt,
           inherent_impact: input.impact,
@@ -806,8 +933,9 @@ export const riskRegisterRepository = {
           assessment_reason: input.assessmentReason,
           assessed_by: actorId,
           review_date: currentOrFutureReviewDate(risk.review_date, assessedAt),
+          methodology_version: 'SECURAAI-RISK-MATRIX-v1',
         },
-        select: { id: true, assessed_at: true },
+        select: { id: true, assessment_type: true, assessed_at: true, methodology_version: true },
       });
       return { kind: 'created' as const, assessment, risk, score, rating };
     });
@@ -997,12 +1125,14 @@ export const riskRegisterRepository = {
         where: {
           ...(riskId ? { control_risk_links: { some: { risk_id: riskId } } } : {}),
           applicability: { not: 'NOT_APPLICABLE' },
-          ...(q ? {
-              OR: [
-                { control_code: { contains: q, mode: 'insensitive' } },
-                { name: { contains: q, mode: 'insensitive' } },
-              ],
-            } : {}),
+          ...(q
+            ? {
+                OR: [
+                  { control_code: { contains: q, mode: 'insensitive' } },
+                  { name: { contains: q, mode: 'insensitive' } },
+                ],
+              }
+            : {}),
         },
         select: { id: true, control_code: true, name: true, implementation_status: true },
         orderBy: { control_code: 'asc' },
@@ -1027,7 +1157,10 @@ export const riskRegisterRepository = {
                 select: { id: true },
                 take: 1,
               },
-              control_risk_links: { where: { control_id: { in: input.controlIds } }, select: { control_id: true } },
+              control_risk_links: {
+                where: { control_id: { in: input.controlIds } },
+                select: { control_id: true },
+              },
             },
           });
           if (!risk) return { kind: 'risk_not_found' as const };
@@ -1175,8 +1308,13 @@ export const riskRegisterRepository = {
           where: { risk_id: plan.risks.id, control_id: { in: input.controlIds } },
         });
         if (riskControls !== input.controlIds.length) return { kind: 'invalid_controls' as const };
-        const currentControlIds = new Set(plan.risk_treatment_plan_controls.map((item) => item.control_id));
-        if (plan.status === 'ACTIVE' && [...currentControlIds].some((id) => !input.controlIds.includes(id)))
+        const currentControlIds = new Set(
+          plan.risk_treatment_plan_controls.map((item) => item.control_id),
+        );
+        if (
+          plan.status === 'ACTIVE' &&
+          [...currentControlIds].some((id) => !input.controlIds.includes(id))
+        )
           return { kind: 'active_control_removal' as const };
         const supplied = new Set(input.actions.flatMap((item) => (item.id ? [item.id] : [])));
         if (
@@ -1208,7 +1346,9 @@ export const riskRegisterRepository = {
           where: { treatment_plan_id: planId, control_id: { notIn: input.controlIds } },
         });
         await database.risk_treatment_plan_controls.createMany({
-          data: input.controlIds.filter((id) => !currentControlIds.has(id)).map((control_id) => ({ treatment_plan_id: planId, control_id, linked_by: actorId })),
+          data: input.controlIds
+            .filter((id) => !currentControlIds.has(id))
+            .map((control_id) => ({ treatment_plan_id: planId, control_id, linked_by: actorId })),
           skipDuplicates: true,
         });
         const updated = await database.risk_treatment_plans.update({
@@ -1223,7 +1363,10 @@ export const riskRegisterRepository = {
           },
           include: {
             risk_treatment_actions: { orderBy: { created_at: 'asc' } },
-            risk_treatment_plan_controls: { include: { security_controls: true }, orderBy: { linked_at: 'asc' } },
+            risk_treatment_plan_controls: {
+              include: { security_controls: true },
+              orderBy: { linked_at: 'asc' },
+            },
           },
         });
         let riskStatus = plan.risks.status;

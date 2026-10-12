@@ -882,6 +882,7 @@ model risk_assessments {
   assessed_by                String                      @db.Uuid
   assessed_at                DateTime                    @default(now()) @db.Timestamptz(6)
   review_date                DateTime?                   @db.Date
+  methodology_version        String                     @default("SECURAAI-RISK-MATRIX-v1") @db.VarChar(100)
   reassessment_request_id    String?                     @unique @db.Uuid
   created_at                 DateTime                    @default(now()) @db.Timestamptz(6)
   users                      users                       @relation(fields: [assessed_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_risk_assessment_assessed_by")
