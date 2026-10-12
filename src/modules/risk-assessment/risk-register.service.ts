@@ -5,8 +5,8 @@ import type {
   CreateRiskAssessmentBody,
   CreateRiskOptionsQuery,
 } from './dto/create-risk-assessment.dto.js';
-import type { IdentifyThreatBody } from './dto/identify-threat.dto.js';
-import type { IdentifyVulnerabilityBody } from './dto/identify-vulnerability.dto.js';
+import type { IdentifyThreatBody, UpdateThreatBody } from './dto/identify-threat.dto.js';
+import type { IdentifyVulnerabilityBody, UpdateVulnerabilityBody, VulnerabilityControlOptionsQuery } from './dto/identify-vulnerability.dto.js';
 import { assessmentRequiresReview, vulnerabilityBlockedReason } from './vulnerability-workflow.js';
 import type { AssessInherentRiskBody } from './dto/assess-inherent-risk.dto.js';
 import type { AssessResidualRiskBody } from './dto/assess-residual-risk.dto.js';
@@ -263,6 +263,10 @@ export const riskRegisterService = {
       throw new AppError(422, 'INVALID_PLAN_OWNER', 'Plan and action owners must be active users');
     if (result.kind === 'invalid_actions')
       throw new AppError(422, 'INVALID_ACTIONS', 'Every existing action must belong to this plan');
+    if (result.kind === 'invalid_controls')
+      throw new AppError(422, 'INVALID_CONTROLS', 'Plan controls must already be linked to this risk');
+    if (result.kind === 'active_control_removal')
+      throw new AppError(409, 'ACTIVE_PLAN_CONTROL_REMOVAL', 'Controls cannot be removed after a treatment plan is active');
     if (result.kind === 'started_action_removed')
       throw new AppError(
         422,
@@ -292,6 +296,7 @@ export const riskRegisterService = {
         dueDate: item.due_date,
         status: lower(item.status),
       })),
+      controls: result.updated.risk_treatment_plan_controls.map(({ security_controls }) => ({ id: security_controls.id, code: security_controls.control_code, name: security_controls.name })),
       updatedAt: result.updated.updated_at,
     };
   },
@@ -300,6 +305,7 @@ export const riskRegisterService = {
     if (!actor || actor.status !== 'ACTIVE')
       throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
     const [users, controls] = await riskRegisterRepository.treatmentPlanOptions(
+      query.riskId,
       query.q,
       query.limit,
     );
@@ -342,7 +348,7 @@ export const riskRegisterService = {
     if (result.kind === 'invalid_users')
       throw new AppError(422, 'INVALID_PLAN_OWNER', 'Plan and action owners must be active users');
     if (result.kind === 'invalid_controls')
-      throw new AppError(422, 'INVALID_CONTROLS', 'All selected controls must exist');
+      throw new AppError(422, 'INVALID_CONTROLS', 'All selected controls must already be linked to this risk');
     return {
       id: result.plan.id,
       title: result.plan.title,
@@ -480,7 +486,7 @@ export const riskRegisterService = {
   },
   async identifyVulnerability(userId: string, riskId: string, input: IdentifyVulnerabilityBody) {
     await requireSecurityOfficer(userId);
-    const result = await riskRegisterRepository.identifyVulnerability(riskId, input);
+    const result = await riskRegisterRepository.identifyVulnerability(riskId, userId, input);
     if (result.kind === 'context_locked')
       throw new AppError(409, 'RISK_CONTEXT_LOCKED', result.blockedReason);
     if (result.kind === 'risk_not_found')
@@ -495,7 +501,7 @@ export const riskRegisterService = {
       throw new AppError(
         422,
         'INVALID_CONTROL_LINKS',
-        'All selected security controls must be linked to the risk',
+        'Selected controls must be applicable or under review',
       );
     return {
       id: result.vulnerability.id,
@@ -507,11 +513,75 @@ export const riskRegisterService = {
         name: security_controls.name,
       })),
       createdAt: result.vulnerability.created_at,
+      updatedAt: result.vulnerability.updated_at,
     };
+  },
+  async updateVulnerability(
+    userId: string,
+    riskId: string,
+    vulnerabilityId: string,
+    input: UpdateVulnerabilityBody,
+  ) {
+    await requireSecurityOfficer(userId);
+    const result = await riskRegisterRepository.updateVulnerability(
+      riskId,
+      vulnerabilityId,
+      userId,
+      input,
+    );
+    if (result.kind === 'risk_not_found')
+      throw new AppError(404, 'RISK_NOT_FOUND', 'Risk record not found');
+    if (result.kind === 'vulnerability_not_found')
+      throw new AppError(404, 'VULNERABILITY_NOT_FOUND', 'Vulnerability record not found');
+    if (result.kind === 'context_locked')
+      throw new AppError(409, 'RISK_CONTEXT_LOCKED', result.blockedReason);
+    if (result.kind === 'stale')
+      throw new AppError(
+        409,
+        'VULNERABILITY_CHANGED',
+        'This vulnerability changed after the form was opened. Refresh and try again.',
+      );
+    if (result.kind === 'duplicate')
+      throw new AppError(
+        409,
+        'VULNERABILITY_ALREADY_EXISTS',
+        'A vulnerability with this name already exists for the risk',
+      );
+    if (result.kind === 'invalid_controls')
+      throw new AppError(
+        422,
+        'INVALID_CONTROL_LINKS',
+        'Selected controls must be applicable or under review',
+      );
+    return {
+      id: result.vulnerability.id,
+      name: result.vulnerability.name,
+      description: result.vulnerability.description,
+      controls: result.vulnerability.risk_vulnerability_controls.map(({ security_controls }) => ({
+        id: security_controls.id,
+        code: security_controls.control_code,
+        name: security_controls.name,
+      })),
+      createdAt: result.vulnerability.created_at,
+      updatedAt: result.vulnerability.updated_at,
+      assessmentReviewRequired: true,
+    };
+  },
+  async vulnerabilityControlOptions(userId: string, riskId: string, query: VulnerabilityControlOptionsQuery) {
+    await requireSecurityOfficer(userId);
+    const controls = await riskRegisterRepository.vulnerabilityControlOptions(riskId, query.q, query.limit);
+    return controls.map((item) => ({
+      id: item.id,
+      code: item.control_code,
+      name: item.name,
+      applicability: lower(item.applicability),
+      implementationStatus: lower(item.implementation_status),
+      linkedToRisk: item.control_risk_links.length > 0,
+    }));
   },
   async identifyThreat(userId: string, riskId: string, input: IdentifyThreatBody) {
     await requireSecurityOfficer(userId);
-    const result = await riskRegisterRepository.identifyThreat(riskId, input);
+    const result = await riskRegisterRepository.identifyThreat(riskId, userId, input);
     if (result.kind === 'risk_not_found')
       throw new AppError(404, 'RISK_NOT_FOUND', 'Risk record not found');
     if (result.kind === 'duplicate')
@@ -534,6 +604,39 @@ export const riskRegisterService = {
         ({ risk_vulnerabilities }) => risk_vulnerabilities,
       ),
       createdAt: result.threat.created_at,
+      updatedAt: result.threat.updated_at,
+    };
+  },
+  async updateThreat(
+    userId: string,
+    riskId: string,
+    threatId: string,
+    input: UpdateThreatBody,
+  ) {
+    await requireSecurityOfficer(userId);
+    const result = await riskRegisterRepository.updateThreat(riskId, threatId, userId, input);
+    if (result.kind === 'risk_not_found')
+      throw new AppError(404, 'RISK_NOT_FOUND', 'Risk record not found');
+    if (result.kind === 'threat_not_found')
+      throw new AppError(404, 'THREAT_NOT_FOUND', 'Threat record not found');
+    if (result.kind === 'context_locked')
+      throw new AppError(409, 'RISK_CONTEXT_LOCKED', result.blockedReason);
+    if (result.kind === 'stale')
+      throw new AppError(409, 'THREAT_CHANGED', 'This threat changed after the form was opened. Refresh and try again.');
+    if (result.kind === 'duplicate')
+      throw new AppError(409, 'THREAT_ALREADY_EXISTS', 'A threat with this name already exists for the risk');
+    if (result.kind === 'invalid_vulnerabilities')
+      throw new AppError(422, 'INVALID_VULNERABILITY_LINKS', 'All selected vulnerabilities must belong to the risk');
+    return {
+      id: result.threat.id,
+      name: result.threat.name,
+      description: result.threat.description,
+      vulnerabilities: result.threat.risk_threat_vulnerabilities.map(
+        ({ risk_vulnerabilities }) => risk_vulnerabilities,
+      ),
+      createdAt: result.threat.created_at,
+      updatedAt: result.threat.updated_at,
+      assessmentReviewRequired: true,
     };
   },
   async createOptions(userId: string, query: CreateRiskOptionsQuery) {
@@ -614,7 +717,10 @@ export const riskRegisterService = {
     const actor = await riskRegisterRepository.findActor(userId);
     if (!actor || actor.status !== 'ACTIVE')
       throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
-    const found = await riskRegisterRepository.findById(riskId);
+    const [found, contextHistory] = await Promise.all([
+      riskRegisterRepository.findById(riskId),
+      riskRegisterRepository.findContextHistory(riskId),
+    ]);
     if (!found) throw new AppError(404, 'RISK_NOT_FOUND', 'Risk record not found');
     if (
       !['SECURITY_OFFICER', 'EXECUTIVE'].includes(actor.role) &&
@@ -634,15 +740,33 @@ export const riskRegisterService = {
           actor.role === 'SECURITY_OFFICER' ? blockedReason : 'Security Officer role required.',
         assessmentReviewRequired: assessmentRequiresReview(
           risk.risk_assessments[0]?.assessed_at,
-          risk.risk_vulnerabilities,
+          [...risk.risk_vulnerabilities, ...risk.risk_threats],
         ),
       },
       createdBy: person(risk.users_risks_created_byTousers),
+      contextHistory: contextHistory.map((item) => ({
+        id: item.id,
+        type: item.action.startsWith('RISK_THREAT_') ? 'threat' : 'vulnerability',
+        event: item.action.endsWith('_CREATED') ? 'created' : 'updated',
+        entityId:
+          typeof item.after_data === 'object' &&
+          item.after_data &&
+          'id' in item.after_data &&
+          typeof item.after_data.id === 'string'
+            ? item.after_data.id
+            : null,
+        occurredAt: item.occurred_at,
+        actor: item.users ? { id: item.users.id, fullName: item.users.full_name, email: item.users.email } : null,
+        before: item.before_data,
+        after: item.after_data,
+      })),
       assessments: risk.risk_assessments.map(assessment),
       threats: risk.risk_threats.map((item) => ({
         id: item.id,
         name: item.name,
         description: item.description,
+        createdAt: item.created_at,
+        updatedAt: item.updated_at,
         vulnerabilities: item.risk_threat_vulnerabilities.map(
           ({ risk_vulnerabilities }) => risk_vulnerabilities,
         ),
@@ -652,6 +776,7 @@ export const riskRegisterService = {
         name: item.name,
         description: item.description,
         createdAt: item.created_at,
+        updatedAt: item.updated_at,
         controls: item.risk_vulnerability_controls.map(({ security_controls }) => ({
           id: security_controls.id,
           code: security_controls.control_code,
@@ -669,6 +794,7 @@ export const riskRegisterService = {
       })),
       treatmentPlans: risk.risk_treatment_plans.map((item) => ({
         id: item.id,
+        riskId: risk.id,
         title: item.title,
         strategy: lower(item.strategy),
         status: lower(item.status),
@@ -677,6 +803,7 @@ export const riskRegisterService = {
         actionCount: item._count.risk_treatment_actions,
         progress: calculateTreatmentPlanProgress(item.risk_treatment_actions),
         updatedAt: item.updated_at,
+        controls: item.risk_treatment_plan_controls.map(({ security_controls }) => ({ id: security_controls.id, code: security_controls.control_code, name: security_controls.name })),
         actions: item.risk_treatment_actions.map((action) => ({
           id: action.id,
           title: action.action_description,

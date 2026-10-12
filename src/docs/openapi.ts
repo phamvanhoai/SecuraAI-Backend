@@ -289,6 +289,48 @@ export const openApiSpec = {
         },
       },
     },
+    '/risks/{riskId}/threats/{threatId}': {
+      patch: {
+        tags: ['Risks'],
+        summary: 'Update an identified threat',
+        security: [{ bearerAuth: [] }],
+        description:
+          'Active Security Officer required. Updates the existing threat and its vulnerability links without deleting history. OPEN/UNDER_TREATMENT context and no pending acceptance are required. A successful change requires risk reassessment.',
+        parameters: [
+          { name: 'riskId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+          { name: 'threatId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['name', 'description', 'vulnerabilityIds', 'expectedUpdatedAt'],
+                properties: {
+                  name: { type: 'string', minLength: 2, maxLength: 255 },
+                  description: { type: 'string', minLength: 3, maxLength: 3000 },
+                  vulnerabilityIds: {
+                    type: 'array', minItems: 1, maxItems: 50, uniqueItems: true,
+                    items: { type: 'string', format: 'uuid' },
+                  },
+                  expectedUpdatedAt: { type: 'string', format: 'date-time' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'Threat updated; reassessment required' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer required' },
+          '404': { description: 'Risk or threat not found' },
+          '409': { description: 'Risk context locked, duplicate name, or stale update' },
+          '422': { description: 'Invalid input or vulnerability links' },
+        },
+      },
+    },
     '/risks/{riskId}/acceptance': {
       post: {
         tags: ['Risks'],

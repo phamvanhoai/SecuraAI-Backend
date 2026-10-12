@@ -2,7 +2,12 @@ import { Prisma, user_role, user_status } from '@prisma/client';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../src/modules/risk-assessment/risk-register.repository.js', () => ({
-  riskRegisterRepository: { findActor: vi.fn(), list: vi.fn(), findById: vi.fn() },
+  riskRegisterRepository: {
+    findActor: vi.fn(),
+    list: vi.fn(),
+    findById: vi.fn(),
+    findContextHistory: vi.fn().mockResolvedValue([]),
+  },
 }));
 import { riskRegisterRepository } from '../src/modules/risk-assessment/risk-register.repository.js';
 import { riskRegisterService } from '../src/modules/risk-assessment/risk-register.service.js';

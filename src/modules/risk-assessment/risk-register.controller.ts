@@ -6,10 +6,18 @@ import {
   createRiskAssessmentBodySchema,
   createRiskOptionsQuerySchema,
 } from './dto/create-risk-assessment.dto.js';
-import { identifyThreatBodySchema, identifyThreatParamsSchema } from './dto/identify-threat.dto.js';
+import {
+  identifyThreatBodySchema,
+  identifyThreatParamsSchema,
+  updateThreatBodySchema,
+  updateThreatParamsSchema,
+} from './dto/identify-threat.dto.js';
 import {
   identifyVulnerabilityBodySchema,
   identifyVulnerabilityParamsSchema,
+  updateVulnerabilityBodySchema,
+  updateVulnerabilityParamsSchema,
+  vulnerabilityControlOptionsQuerySchema,
 } from './dto/identify-vulnerability.dto.js';
 import {
   assessInherentRiskBodySchema,
@@ -66,6 +74,16 @@ export const identifyThreat: RequestHandler = async (req, res) => {
   );
   res.status(201).json({ success: true, data });
 };
+export const updateThreat: RequestHandler = async (req, res) => {
+  const { riskId, threatId } = updateThreatParamsSchema.parse(req.params);
+  const data = await riskRegisterService.updateThreat(
+    userId(res.locals.authenticatedUserId),
+    riskId,
+    threatId,
+    updateThreatBodySchema.parse(req.body),
+  );
+  res.status(200).json({ success: true, data });
+};
 export const identifyVulnerability: RequestHandler = async (req, res) => {
   const { riskId } = identifyVulnerabilityParamsSchema.parse(req.params);
   const data = await riskRegisterService.identifyVulnerability(
@@ -74,6 +92,21 @@ export const identifyVulnerability: RequestHandler = async (req, res) => {
     identifyVulnerabilityBodySchema.parse(req.body),
   );
   res.status(201).json({ success: true, data });
+};
+export const updateVulnerability: RequestHandler = async (req, res) => {
+  const { riskId, vulnerabilityId } = updateVulnerabilityParamsSchema.parse(req.params);
+  const data = await riskRegisterService.updateVulnerability(
+    userId(res.locals.authenticatedUserId),
+    riskId,
+    vulnerabilityId,
+    updateVulnerabilityBodySchema.parse(req.body),
+  );
+  res.status(200).json({ success: true, data });
+};
+export const getVulnerabilityControlOptions: RequestHandler = async (req, res) => {
+  const { riskId } = identifyVulnerabilityParamsSchema.parse(req.params);
+  const data = await riskRegisterService.vulnerabilityControlOptions(userId(res.locals.authenticatedUserId), riskId, vulnerabilityControlOptionsQuerySchema.parse(req.query));
+  res.status(200).json({ success: true, data });
 };
 export const assessInherentRisk: RequestHandler = async (req, res) => {
   const { riskId } = assessInherentRiskParamsSchema.parse(req.params);

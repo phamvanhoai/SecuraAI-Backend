@@ -26,7 +26,7 @@ describe('V2 database baseline', () => {
       .sort();
 
     expect(sqlTables).toHaveLength(60);
-    expect(prismaModels).toHaveLength(64);
+    expect(prismaModels).toHaveLength(65);
     expect(prismaModels).toEqual(expect.arrayContaining(sqlTables));
     expect(prismaModels).toContain('risk_threat_vulnerabilities');
     expect(prismaModels).toContain('risk_vulnerability_controls');
