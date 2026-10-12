@@ -6,7 +6,11 @@ import type {
   CreateRiskOptionsQuery,
 } from './dto/create-risk-assessment.dto.js';
 import type { IdentifyThreatBody, UpdateThreatBody } from './dto/identify-threat.dto.js';
-import type { IdentifyVulnerabilityBody, UpdateVulnerabilityBody, VulnerabilityControlOptionsQuery } from './dto/identify-vulnerability.dto.js';
+import type {
+  IdentifyVulnerabilityBody,
+  UpdateVulnerabilityBody,
+  VulnerabilityControlOptionsQuery,
+} from './dto/identify-vulnerability.dto.js';
 import { assessmentRequiresReview, vulnerabilityBlockedReason } from './vulnerability-workflow.js';
 import type { AssessInherentRiskBody } from './dto/assess-inherent-risk.dto.js';
 import type { AssessResidualRiskBody } from './dto/assess-residual-risk.dto.js';
@@ -50,6 +54,7 @@ function assessment(value: RiskRegisterRecord['risk_assessments'][number]) {
     assessedBy: person(value.users),
     assessedAt: value.assessed_at,
     reviewDate: value.review_date,
+    methodologyVersion: value.methodology_version,
   };
 }
 
@@ -264,9 +269,17 @@ export const riskRegisterService = {
     if (result.kind === 'invalid_actions')
       throw new AppError(422, 'INVALID_ACTIONS', 'Every existing action must belong to this plan');
     if (result.kind === 'invalid_controls')
-      throw new AppError(422, 'INVALID_CONTROLS', 'Plan controls must already be linked to this risk');
+      throw new AppError(
+        422,
+        'INVALID_CONTROLS',
+        'Plan controls must already be linked to this risk',
+      );
     if (result.kind === 'active_control_removal')
-      throw new AppError(409, 'ACTIVE_PLAN_CONTROL_REMOVAL', 'Controls cannot be removed after a treatment plan is active');
+      throw new AppError(
+        409,
+        'ACTIVE_PLAN_CONTROL_REMOVAL',
+        'Controls cannot be removed after a treatment plan is active',
+      );
     if (result.kind === 'started_action_removed')
       throw new AppError(
         422,
@@ -296,7 +309,11 @@ export const riskRegisterService = {
         dueDate: item.due_date,
         status: lower(item.status),
       })),
-      controls: result.updated.risk_treatment_plan_controls.map(({ security_controls }) => ({ id: security_controls.id, code: security_controls.control_code, name: security_controls.name })),
+      controls: result.updated.risk_treatment_plan_controls.map(({ security_controls }) => ({
+        id: security_controls.id,
+        code: security_controls.control_code,
+        name: security_controls.name,
+      })),
       updatedAt: result.updated.updated_at,
     };
   },
@@ -348,7 +365,11 @@ export const riskRegisterService = {
     if (result.kind === 'invalid_users')
       throw new AppError(422, 'INVALID_PLAN_OWNER', 'Plan and action owners must be active users');
     if (result.kind === 'invalid_controls')
-      throw new AppError(422, 'INVALID_CONTROLS', 'All selected controls must already be linked to this risk');
+      throw new AppError(
+        422,
+        'INVALID_CONTROLS',
+        'All selected controls must already be linked to this risk',
+      );
     return {
       id: result.plan.id,
       title: result.plan.title,
@@ -466,6 +487,24 @@ export const riskRegisterService = {
     const result = await riskRegisterRepository.assessInherentRisk(riskId, userId, input);
     if (result.kind === 'risk_not_found')
       throw new AppError(404, 'RISK_NOT_FOUND', 'Risk record not found');
+    if (result.kind === 'context_locked')
+      throw new AppError(
+        409,
+        'RISK_CONTEXT_LOCKED',
+        'Only open or under-treatment risks can receive an inherent-risk assessment',
+      );
+    if (result.kind === 'major_change_reason_required')
+      throw new AppError(
+        422,
+        'MAJOR_RISK_CHANGE_REASON_REQUIRED',
+        'Explain a rating reduction of two or more levels in at least 30 characters',
+      );
+    if (result.kind === 'major_change_reason_unchanged')
+      throw new AppError(
+        422,
+        'MAJOR_RISK_CHANGE_REASON_UNCHANGED',
+        'A major rating reduction requires a new explanation, not the previous assessment basis',
+      );
     if (result.kind === 'incomplete_context')
       throw new AppError(
         422,
@@ -474,6 +513,8 @@ export const riskRegisterService = {
       );
     return {
       assessmentId: result.assessment.id,
+      assessmentType: lower(result.assessment.assessment_type),
+      methodologyVersion: result.assessment.methodology_version,
       riskId: result.risk.id,
       riskCode: result.risk.risk_code,
       title: result.risk.title,
@@ -567,9 +608,17 @@ export const riskRegisterService = {
       assessmentReviewRequired: true,
     };
   },
-  async vulnerabilityControlOptions(userId: string, riskId: string, query: VulnerabilityControlOptionsQuery) {
+  async vulnerabilityControlOptions(
+    userId: string,
+    riskId: string,
+    query: VulnerabilityControlOptionsQuery,
+  ) {
     await requireSecurityOfficer(userId);
-    const controls = await riskRegisterRepository.vulnerabilityControlOptions(riskId, query.q, query.limit);
+    const controls = await riskRegisterRepository.vulnerabilityControlOptions(
+      riskId,
+      query.q,
+      query.limit,
+    );
     return controls.map((item) => ({
       id: item.id,
       code: item.control_code,
@@ -607,12 +656,7 @@ export const riskRegisterService = {
       updatedAt: result.threat.updated_at,
     };
   },
-  async updateThreat(
-    userId: string,
-    riskId: string,
-    threatId: string,
-    input: UpdateThreatBody,
-  ) {
+  async updateThreat(userId: string, riskId: string, threatId: string, input: UpdateThreatBody) {
     await requireSecurityOfficer(userId);
     const result = await riskRegisterRepository.updateThreat(riskId, threatId, userId, input);
     if (result.kind === 'risk_not_found')
@@ -622,11 +666,23 @@ export const riskRegisterService = {
     if (result.kind === 'context_locked')
       throw new AppError(409, 'RISK_CONTEXT_LOCKED', result.blockedReason);
     if (result.kind === 'stale')
-      throw new AppError(409, 'THREAT_CHANGED', 'This threat changed after the form was opened. Refresh and try again.');
+      throw new AppError(
+        409,
+        'THREAT_CHANGED',
+        'This threat changed after the form was opened. Refresh and try again.',
+      );
     if (result.kind === 'duplicate')
-      throw new AppError(409, 'THREAT_ALREADY_EXISTS', 'A threat with this name already exists for the risk');
+      throw new AppError(
+        409,
+        'THREAT_ALREADY_EXISTS',
+        'A threat with this name already exists for the risk',
+      );
     if (result.kind === 'invalid_vulnerabilities')
-      throw new AppError(422, 'INVALID_VULNERABILITY_LINKS', 'All selected vulnerabilities must belong to the risk');
+      throw new AppError(
+        422,
+        'INVALID_VULNERABILITY_LINKS',
+        'All selected vulnerabilities must belong to the risk',
+      );
     return {
       id: result.threat.id,
       name: result.threat.name,
@@ -738,10 +794,10 @@ export const riskRegisterService = {
         canIdentify: actor.role === 'SECURITY_OFFICER' && !blockedReason,
         blockedReason:
           actor.role === 'SECURITY_OFFICER' ? blockedReason : 'Security Officer role required.',
-        assessmentReviewRequired: assessmentRequiresReview(
-          risk.risk_assessments[0]?.assessed_at,
-          [...risk.risk_vulnerabilities, ...risk.risk_threats],
-        ),
+        assessmentReviewRequired: assessmentRequiresReview(risk.risk_assessments[0]?.assessed_at, [
+          ...risk.risk_vulnerabilities,
+          ...risk.risk_threats,
+        ]),
       },
       createdBy: person(risk.users_risks_created_byTousers),
       contextHistory: contextHistory.map((item) => ({
@@ -756,7 +812,9 @@ export const riskRegisterService = {
             ? item.after_data.id
             : null,
         occurredAt: item.occurred_at,
-        actor: item.users ? { id: item.users.id, fullName: item.users.full_name, email: item.users.email } : null,
+        actor: item.users
+          ? { id: item.users.id, fullName: item.users.full_name, email: item.users.email }
+          : null,
         before: item.before_data,
         after: item.after_data,
       })),
@@ -803,7 +861,11 @@ export const riskRegisterService = {
         actionCount: item._count.risk_treatment_actions,
         progress: calculateTreatmentPlanProgress(item.risk_treatment_actions),
         updatedAt: item.updated_at,
-        controls: item.risk_treatment_plan_controls.map(({ security_controls }) => ({ id: security_controls.id, code: security_controls.control_code, name: security_controls.name })),
+        controls: item.risk_treatment_plan_controls.map(({ security_controls }) => ({
+          id: security_controls.id,
+          code: security_controls.control_code,
+          name: security_controls.name,
+        })),
         actions: item.risk_treatment_actions.map((action) => ({
           id: action.id,
           title: action.action_description,
