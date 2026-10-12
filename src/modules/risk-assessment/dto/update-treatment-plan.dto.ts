@@ -14,6 +14,7 @@ export const updateTreatmentPlanBodySchema = z.object({
   ownerUserId: z.uuid(),
   targetDate: z.iso.date(),
   status: z.enum(['draft', 'active', 'completed', 'cancelled']),
+  controlIds: z.array(z.uuid()).min(1).max(100).refine((ids) => new Set(ids).size === ids.length, 'Control IDs must be unique'),
   actions: z.array(action).max(100),
   expectedUpdatedAt: z.iso.datetime({ offset: true }),
 }).strict().superRefine((value, context) => {

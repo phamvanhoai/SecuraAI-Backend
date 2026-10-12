@@ -8,6 +8,6 @@ export const createTreatmentPlanBodySchema = z.object({
   if (value.strategy !== 'accept' && !value.actions.length) context.addIssue({ code: 'custom', path: ['actions'], message: 'Treatment actions are required' });
   value.actions.forEach((item, index) => { if (item.dueDate > value.targetDate) context.addIssue({ code: 'custom', path: ['actions', index, 'dueDate'], message: 'Action due date must not exceed plan target date' }); });
 });
-export const treatmentPlanOptionsQuerySchema = z.object({ q: z.string().trim().max(100).default(''), limit: z.coerce.number().int().min(1).max(100).default(100) });
+export const treatmentPlanOptionsQuerySchema = z.object({ riskId: z.uuid().optional(), q: z.string().trim().max(100).default(''), limit: z.coerce.number().int().min(1).max(100).default(10) });
 export type CreateTreatmentPlanBody = z.infer<typeof createTreatmentPlanBodySchema>;
 export type TreatmentPlanOptionsQuery = z.infer<typeof treatmentPlanOptionsQuerySchema>;

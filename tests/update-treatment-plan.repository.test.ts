@@ -2,6 +2,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const db = vi.hoisted(() => ({
   risks: { update: vi.fn() },
+  control_risk_links: { count: vi.fn() },
+  risk_treatment_plan_controls: { deleteMany: vi.fn(), createMany: vi.fn() },
   users: { findUnique: vi.fn(), count: vi.fn() },
   risk_treatment_actions: {
     deleteMany: vi.fn(),
@@ -27,6 +29,7 @@ const actorId = '11111111-1111-4111-8111-111111111111';
 const riskId = '22222222-2222-4222-8222-222222222222';
 const planId = '33333333-3333-4333-8333-333333333333';
 const actionId = '44444444-4444-4444-8444-444444444444';
+const controlId = '55555555-5555-4555-8555-555555555555';
 const updatedAt = new Date('2026-10-12T08:00:00.000Z');
 
 function plan(status: 'DRAFT' | 'ACTIVE', riskStatus: 'OPEN' | 'UNDER_TREATMENT') {
@@ -43,6 +46,7 @@ function plan(status: 'DRAFT' | 'ACTIVE', riskStatus: 'OPEN' | 'UNDER_TREATMENT'
     risk_treatment_actions: [
       { id: actionId, status: 'PENDING' },
     ],
+    risk_treatment_plan_controls: [{ control_id: controlId }],
   };
 }
 
@@ -54,6 +58,7 @@ function input(status: 'active' | 'cancelled') {
     targetDate: '2026-10-30',
     status,
     expectedUpdatedAt: updatedAt.toISOString(),
+    controlIds: [controlId],
     actions: [{
       id: actionId,
       title: 'Test database restoration',
@@ -71,6 +76,9 @@ describe('treatment plan and Risk status synchronization', () => {
     db.users.count.mockResolvedValue(1);
     db.risk_treatment_actions.deleteMany.mockResolvedValue({ count: 0 });
     db.risk_treatment_actions.update.mockResolvedValue({});
+    db.control_risk_links.count.mockResolvedValue(1);
+    db.risk_treatment_plan_controls.deleteMany.mockResolvedValue({ count: 0 });
+    db.risk_treatment_plan_controls.createMany.mockResolvedValue({ count: 0 });
     db.risk_treatment_plans.update.mockImplementation(async ({ data }: { data: { status: string } }) => ({
       id: planId,
       title: 'Improve database recovery',
@@ -80,6 +88,7 @@ describe('treatment plan and Risk status synchronization', () => {
       target_completion_date: new Date('2026-10-30T00:00:00.000Z'),
       updated_at: new Date('2026-10-12T09:00:00.000Z'),
       risk_treatment_actions: [],
+      risk_treatment_plan_controls: [{ security_controls: { id: controlId, control_code: 'CTRL-001', name: 'Control' } }],
     }));
   });
 

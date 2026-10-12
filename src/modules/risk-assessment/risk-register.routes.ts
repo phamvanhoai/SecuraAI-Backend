@@ -7,7 +7,10 @@ import {
   getCreateRiskOptions,
   getRiskRecord,
   identifyThreat,
+  updateThreat,
   identifyVulnerability,
+  updateVulnerability,
+  getVulnerabilityControlOptions,
   assessInherentRisk,
   assessResidualRisk,
   defineTargetRisk,
@@ -23,10 +26,18 @@ import {
   createRiskAssessmentBodySchema,
   createRiskOptionsQuerySchema,
 } from './dto/create-risk-assessment.dto.js';
-import { identifyThreatBodySchema, identifyThreatParamsSchema } from './dto/identify-threat.dto.js';
+import {
+  identifyThreatBodySchema,
+  identifyThreatParamsSchema,
+  updateThreatBodySchema,
+  updateThreatParamsSchema,
+} from './dto/identify-threat.dto.js';
 import {
   identifyVulnerabilityBodySchema,
   identifyVulnerabilityParamsSchema,
+  updateVulnerabilityBodySchema,
+  updateVulnerabilityParamsSchema,
+  vulnerabilityControlOptionsQuerySchema,
 } from './dto/identify-vulnerability.dto.js';
 import {
   assessInherentRiskBodySchema,
@@ -57,6 +68,18 @@ riskRegisterRouter.post(
   validate({ body: createRiskAssessmentBodySchema }),
   asyncHandler(createRiskAssessment),
 );
+riskRegisterRouter.patch(
+  '/:riskId/vulnerabilities/:vulnerabilityId',
+  authenticate,
+  validate({ params: updateVulnerabilityParamsSchema, body: updateVulnerabilityBodySchema }),
+  asyncHandler(updateVulnerability),
+);
+riskRegisterRouter.get(
+  '/:riskId/vulnerability-control-options',
+  authenticate,
+  validate({ params: identifyVulnerabilityParamsSchema, query: vulnerabilityControlOptionsQuerySchema }),
+  asyncHandler(getVulnerabilityControlOptions),
+);
 riskRegisterRouter.get(
   '/create-options',
   authenticate,
@@ -73,6 +96,12 @@ riskRegisterRouter.post(
   authenticate,
   validate({ params: identifyThreatParamsSchema, body: identifyThreatBodySchema }),
   asyncHandler(identifyThreat),
+);
+riskRegisterRouter.patch(
+  '/:riskId/threats/:threatId',
+  authenticate,
+  validate({ params: updateThreatParamsSchema, body: updateThreatBodySchema }),
+  asyncHandler(updateThreat),
 );
 riskRegisterRouter.post(
   '/:riskId/vulnerabilities',

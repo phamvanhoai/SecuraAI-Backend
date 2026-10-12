@@ -34,6 +34,7 @@ describe('create treatment plan with an overdue Risk review', () => {
       review_date: new Date('2026-10-06T00:00:00.000Z'),
       risk_assessments: [{ inherent_likelihood: 4, inherent_impact: 5, inherent_rating: 'CRITICAL' }],
       risk_treatment_plans: [],
+      control_risk_links: [{ control_id: controlId }],
     });
     db.users.findUnique.mockResolvedValue({ role: 'SECURITY_OFFICER' });
     db.users.count.mockResolvedValue(1);
