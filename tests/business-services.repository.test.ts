@@ -54,7 +54,7 @@ describe('bounded service queries', () => {
     expect(mocks.services.findUnique).toHaveBeenCalledWith(
       expect.objectContaining({
         select: expect.objectContaining({
-          users: { select: { id: true, full_name: true, status: true } },
+          users: { select: { id: true, full_name: true, email: true, status: true } },
         }),
       }),
     );
