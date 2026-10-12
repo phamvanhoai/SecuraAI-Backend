@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { AppError } from '../../common/errors/app-error.js';
 import { assetsRepository } from './assets.repository.js';
 import { ASSET_CLASSIFICATION_METHOD, calculateAssetCriticality } from './asset-classification-method.js';
@@ -16,6 +17,7 @@ async function activeActor(userId: string) {
 }
 const person = (item: { id: string; full_name: string; status: string } | null) =>
   item ? { id: item.id, fullName: item.full_name, inactive: item.status !== 'ACTIVE' } : null;
+const generateAssetCode = () => `AST-${randomUUID().replaceAll('-', '').slice(0, 8).toUpperCase()}`;
 export const assetsService = {
   async linkContext(userId: string, assetId: string, input: LinkAssetContextInput) {
     const actor = await activeActor(userId);
@@ -152,7 +154,7 @@ export const assetsService = {
     if (!references.eventSourcesValid)
       throw new AppError(422, 'INVALID_EVENT_SOURCE', 'One or more event sources are unavailable');
     try {
-      const item = await assetsRepository.create(userId, input);
+      const item = await assetsRepository.create(userId, generateAssetCode(), input);
       return {
         id: item.id,
         assetCode: item.asset_code,
@@ -175,7 +177,7 @@ export const assetsService = {
       };
     } catch (error: unknown) {
       if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2002')
-        throw new AppError(409, 'ASSET_CODE_EXISTS', 'Asset code already exists');
+        throw new AppError(409, 'ASSET_CODE_GENERATION_CONFLICT', 'Unable to allocate a unique asset code. Please retry.');
       throw error;
     }
   },
