@@ -241,6 +241,18 @@ export const riskRegisterService = {
         'TREATMENT_PLAN_FINALIZED',
         'Completed or cancelled treatment plans are read-only',
       );
+    if (result.kind === 'terminal_risk')
+      throw new AppError(
+        409,
+        'RISK_WORKFLOW_FINALIZED',
+        'Accepted, closed or archived risks cannot change treatment plans',
+      );
+    if (result.kind === 'invalid_status_transition')
+      throw new AppError(
+        409,
+        'INVALID_TREATMENT_PLAN_TRANSITION',
+        'A draft plan must be activated before completion, and an active plan cannot return to draft',
+      );
     if (result.kind === 'conflict')
       throw new AppError(
         409,
@@ -269,6 +281,7 @@ export const riskRegisterService = {
       title: result.updated.title,
       strategy: lower(result.updated.strategy),
       status: lower(result.updated.status),
+      riskStatus: lower(result.riskStatus),
       ownerUserId: result.updated.owner_user_id,
       targetDate: result.updated.target_completion_date,
       progress: calculateTreatmentPlanProgress(result.updated.risk_treatment_actions),

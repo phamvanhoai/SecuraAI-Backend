@@ -5,6 +5,7 @@ vi.mock('../src/modules/it-asset-management/business-services.repository.js', ()
     list: vi.fn(),
     findById: vi.fn(),
     listAssets: vi.fn(),
+    ownerOptions: vi.fn(),
   },
 }));
 import { businessServicesRepository as repository } from '../src/modules/it-asset-management/business-services.repository.js';
@@ -20,7 +21,12 @@ const record = {
   status: 'INACTIVE',
   created_at: new Date('2026-10-01T00:00:00Z'),
   updated_at: new Date('2026-10-02T00:00:00Z'),
-  users: { id, full_name: 'Service Owner', status: 'INACTIVE' as const },
+  users: {
+    id,
+    full_name: 'Service Owner',
+    email: 'service.owner@example.test',
+    status: 'INACTIVE' as const,
+  },
   _count: { assets: 2 },
 };
 describe('read-only business service catalog', () => {
@@ -39,11 +45,36 @@ describe('read-only business service catalog', () => {
     expect(result.items[0]).toMatchObject({
       status: 'inactive',
       linkedAssetsCount: 2,
-      owner: { fullName: 'Service Owner', inactive: true },
+      owner: {
+        fullName: 'Service Owner',
+        email: 'service.owner@example.test',
+        inactive: true,
+      },
       createdAt: '2026-10-01T00:00:00.000Z',
     });
     expect(result.pagination).toEqual({ ...query, total: 1, totalPages: 1 });
     expect(await service.get(id, id)).toMatchObject({ status: 'inactive' });
+  });
+  it('returns active owner options with email for duplicate-name disambiguation', async () => {
+    vi.mocked(repository.ownerOptions).mockResolvedValue([
+      {
+        id,
+        full_name: 'Service Owner',
+        email: 'service.owner@example.test',
+        role: 'EMPLOYEE',
+      },
+    ]);
+    await expect(service.ownerOptions(id, 'owner@example.test')).resolves.toEqual({
+      items: [
+        {
+          id,
+          fullName: 'Service Owner',
+          email: 'service.owner@example.test',
+          role: 'EMPLOYEE',
+        },
+      ],
+    });
+    expect(repository.ownerOptions).toHaveBeenCalledWith('owner@example.test');
   });
   it('keeps an unassigned owner null and bounds empty/out-of-range pages', async () => {
     vi.mocked(repository.findById).mockResolvedValue({ ...record, users: null });

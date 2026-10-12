@@ -29,6 +29,7 @@ function mapService(
       ? {
           id: item.users.id,
           fullName: item.users.full_name,
+          email: item.users.email,
           inactive: item.users.status !== 'ACTIVE',
         }
       : null,
@@ -72,6 +73,7 @@ export const businessServicesService = {
       items: (await businessServicesRepository.ownerOptions(q)).map((item) => ({
         id: item.id,
         fullName: item.full_name,
+        email: item.email,
         role: item.role,
       })),
     };

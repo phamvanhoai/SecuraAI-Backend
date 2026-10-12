@@ -4,13 +4,6 @@ const optionalUuid = z.uuid().optional();
 
 export const createAssetBodySchema = z
   .object({
-    assetCode: z
-      .string()
-      .trim()
-      .min(1)
-      .max(100)
-      .regex(/^[A-Za-z0-9][A-Za-z0-9._/-]*$/)
-      .transform((value) => value.toUpperCase()),
     name: z.string().trim().min(1).max(255),
     assetType: z.string().trim().min(1).max(100),
     ownerUserId: optionalUuid,

@@ -540,10 +540,9 @@ export const openApiSpec = {
             'application/json': {
               schema: {
                 type: 'object',
-                required: ['assetCode', 'name', 'assetType'],
+                required: ['name', 'assetType'],
                 additionalProperties: false,
                 properties: {
-                  assetCode: { type: 'string', maxLength: 100 },
                   name: { type: 'string', maxLength: 255 },
                   assetType: { type: 'string', maxLength: 100 },
                   ownerUserId: { type: 'string', format: 'uuid' },

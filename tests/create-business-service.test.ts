@@ -112,9 +112,15 @@ describe('Atomic Business Service creation', () => {
     await repository.ownerOptions('Support');
     expect(mocks.users.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { status: 'ACTIVE', full_name: { contains: 'Support', mode: 'insensitive' } },
+        where: {
+          status: 'ACTIVE',
+          OR: [
+            { full_name: { contains: 'Support', mode: 'insensitive' } },
+            { email: { contains: 'Support', mode: 'insensitive' } },
+          ],
+        },
         take: 10,
-        select: { id: true, full_name: true, role: true },
+        select: { id: true, full_name: true, email: true, role: true },
       }),
     );
   });
