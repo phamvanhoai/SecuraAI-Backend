@@ -11,3 +11,4 @@ export * from './dto/list-integration-api-keys.dto.js';
 export * from './dto/create-integration-api-key.dto.js';
 export * from './dto/get-integration-api-key-detail.dto.js';
 export * from './dto/update-integration-api-key.dto.js';
+export * from './dto/rotate-integration-api-key.dto.js';

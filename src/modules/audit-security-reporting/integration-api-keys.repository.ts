@@ -419,6 +419,155 @@ export const integrationApiKeysRepository = {
     });
   },
 
+  async rotateApiKey(data: {
+    existingKeyId: string;
+    name: string;
+    eventSourceId: string | null;
+    keyPrefix: string;
+    secretHash: string;
+    status: api_key_status;
+    expiresAt: Date | null;
+    rotatedBy: string;
+    scopes: string[];
+  }) {
+    return prisma.$transaction(async (tx) => {
+      const existing = await tx.integration_api_keys.findUniqueOrThrow({
+        where: { id: data.existingKeyId },
+        include: {
+          api_key_scopes: true,
+        },
+      });
+
+      const replacementKey = await tx.integration_api_keys.create({
+        data: {
+          name: data.name,
+          event_source_id: data.eventSourceId,
+          key_prefix: data.keyPrefix,
+          secret_hash: data.secretHash,
+          status: data.status,
+          expires_at: data.expiresAt,
+          created_by: data.rotatedBy,
+        },
+      });
+
+      if (data.scopes.length > 0) {
+        await tx.api_key_scopes.createMany({
+          data: data.scopes.map((scopeCode) => ({
+            api_key_id: replacementKey.id,
+            scope_code: scopeCode,
+          })),
+        });
+      }
+
+      const rotatedAt = new Date();
+      await tx.integration_api_keys.update({
+        where: { id: data.existingKeyId },
+        data: {
+          status: 'ROTATED',
+          rotated_at: rotatedAt,
+          replacement_key_id: replacementKey.id,
+        },
+      });
+
+      const previous = await tx.audit_logs.findFirst({
+        orderBy: [{ occurred_at: 'desc' }, { id: 'desc' }],
+        select: { record_hash: true },
+      });
+
+      const beforeData = {
+        id: existing.id,
+        name: existing.name,
+        status: existing.status,
+        key_prefix: existing.key_prefix,
+        replacement_key_id: existing.replacement_key_id,
+      };
+
+      const afterData = {
+        id: existing.id,
+        name: existing.name,
+        status: 'ROTATED',
+        key_prefix: existing.key_prefix,
+        replacement_key_id: replacementKey.id,
+        replacement_key_prefix: replacementKey.key_prefix,
+        rotated_at: rotatedAt.toISOString(),
+      };
+
+      const recordHash = createHash('sha256')
+        .update(
+          JSON.stringify({
+            previousHash: previous?.record_hash ?? null,
+            actorUserId: data.rotatedBy,
+            apiKeyId: data.existingKeyId,
+            action: 'ROTATE_INTEGRATION_API_KEY',
+            replacementKeyId: replacementKey.id,
+            beforeData,
+            afterData,
+          }),
+        )
+        .digest('hex');
+
+      await tx.audit_logs.create({
+        data: {
+          actor_user_id: data.rotatedBy,
+          actor_type: 'USER',
+          action: 'ROTATE_INTEGRATION_API_KEY',
+          resource_type: 'INTEGRATION_API_KEY',
+          resource_id: data.existingKeyId,
+          source: 'API',
+          before_data: beforeData,
+          after_data: afterData,
+          ...(previous ? { previous_hash: previous.record_hash } : {}),
+          record_hash: recordHash,
+        },
+      });
+
+      return tx.integration_api_keys.findUniqueOrThrow({
+        where: { id: replacementKey.id },
+        select: {
+          id: true,
+          event_source_id: true,
+          name: true,
+          key_prefix: true,
+          status: true,
+          expires_at: true,
+          last_used_at: true,
+          last_used_ip: true,
+          created_by: true,
+          created_at: true,
+          rotated_at: true,
+          revoked_by: true,
+          revoked_at: true,
+          replacement_key_id: true,
+          api_key_scopes: {
+            select: {
+              id: true,
+              scope_code: true,
+              created_at: true,
+            },
+            orderBy: {
+              scope_code: 'asc',
+            },
+          },
+          users_integration_api_keys_created_byTousers: {
+            select: {
+              id: true,
+              full_name: true,
+              email: true,
+              username: true,
+            },
+          },
+          event_sources: {
+            select: {
+              id: true,
+              name: true,
+              source_type: true,
+            },
+          },
+        },
+      });
+    });
+  },
+
   async findUserById(id: string) {
     return prisma.users.findUnique({
       where: { id },
