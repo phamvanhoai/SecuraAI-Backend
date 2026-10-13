@@ -21,6 +21,10 @@ import {
   type RotateIntegrationApiKeyInput,
   type RotatedIntegrationApiKeyResponseDto,
 } from './dto/rotate-integration-api-key.dto.js';
+import {
+  revokeIntegrationApiKeySchema,
+  type RevokeIntegrationApiKeyInput,
+} from './dto/revoke-integration-api-key.dto.js';
 import type { api_key_status } from '@prisma/client';
 
 export const integrationApiKeysService = {
@@ -306,6 +310,46 @@ export const integrationApiKeysService = {
       secret,
       replacedKeyId: keyId,
     };
+  },
+
+  async revokeApiKey(
+    userId: string,
+    keyId: string,
+    rawInput?: RevokeIntegrationApiKeyInput,
+    contextIntegrationId?: string,
+  ): Promise<IntegrationApiKeyItemDto> {
+    await requireAuthorizedAdmin(userId);
+
+    const input = revokeIntegrationApiKeySchema.parse(rawInput ?? {});
+
+    const existing = await integrationApiKeysRepository.findById(keyId);
+    if (!existing) {
+      throw new AppError(404, 'NOT_FOUND', 'Integration API key not found');
+    }
+
+    if (
+      contextIntegrationId &&
+      existing.event_source_id &&
+      existing.event_source_id !== contextIntegrationId
+    ) {
+      throw new AppError(
+        404,
+        'NOT_FOUND',
+        'Integration API key not found for the specified integration',
+      );
+    }
+
+    if (existing.status === 'REVOKED') {
+      throw new AppError(400, 'BAD_REQUEST', 'API key is already revoked');
+    }
+
+    const revokedRecord = await integrationApiKeysRepository.revokeApiKey(
+      keyId,
+      userId,
+      input.reason,
+    );
+
+    return mapToApiKeyItemDto(revokedRecord);
   },
 };
 

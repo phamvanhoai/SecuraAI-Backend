@@ -12,6 +12,7 @@ import {
 } from './dto/get-integration-api-key-detail.dto.js';
 import { updateIntegrationApiKeySchema } from './dto/update-integration-api-key.dto.js';
 import { rotateIntegrationApiKeySchema } from './dto/rotate-integration-api-key.dto.js';
+import { revokeIntegrationApiKeySchema } from './dto/revoke-integration-api-key.dto.js';
 
 function authenticatedUserId(value: unknown): string {
   if (typeof value !== 'string') {
@@ -153,6 +154,38 @@ export async function rotateIntegrationApiKeyBySource(
   const params = getIntegrationSourceApiKeyDetailParamsSchema.parse(req.params);
   const input = rotateIntegrationApiKeySchema.parse(req.body);
   const result = await integrationApiKeysService.rotateApiKey(
+    userId,
+    params.keyId,
+    input,
+    params.id,
+  );
+
+  res.status(200).json({
+    success: true,
+    data: result,
+  });
+}
+
+export async function revokeIntegrationApiKey(req: Request, res: Response): Promise<void> {
+  const userId = authenticatedUserId(res.locals.authenticatedUserId);
+  const params = getIntegrationApiKeyDetailParamsSchema.parse(req.params);
+  const input = revokeIntegrationApiKeySchema.parse(req.body);
+  const result = await integrationApiKeysService.revokeApiKey(userId, params.keyId, input);
+
+  res.status(200).json({
+    success: true,
+    data: result,
+  });
+}
+
+export async function revokeIntegrationApiKeyBySource(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const userId = authenticatedUserId(res.locals.authenticatedUserId);
+  const params = getIntegrationSourceApiKeyDetailParamsSchema.parse(req.params);
+  const input = revokeIntegrationApiKeySchema.parse(req.body);
+  const result = await integrationApiKeysService.revokeApiKey(
     userId,
     params.keyId,
     input,

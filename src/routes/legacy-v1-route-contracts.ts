@@ -194,5 +194,4 @@ export const legacyV1RouteContracts = [
   { method: 'get', path: '/integrations/logs/stats', tag: 'Integrations' },
   { method: 'get', path: '/integrations/logs', tag: 'Integrations' },
   { method: 'get', path: '/integrations/{id}/logs', tag: 'Integrations' },
-  { method: 'post', path: '/integrations/{id}/api-keys/{keyId}/revoke', tag: 'Integrations' },
 ] as const;

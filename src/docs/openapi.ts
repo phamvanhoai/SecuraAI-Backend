@@ -235,6 +235,73 @@ export const openApiSpec = {
         },
       },
     },
+    '/integrations/api-keys/{keyId}/revoke': {
+      post: {
+        tags: ['Audit & Security Reporting'],
+        summary: 'Revoke Integration API Key',
+        description:
+          'Allow administrators to revoke an integration API key so that it can no longer be used for authentication. The system updates the key status to REVOKED and records the revocation for audit purposes. Restricted to ADMIN role.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'keyId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+        ],
+        requestBody: {
+          required: false,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  reason: { type: 'string', maxLength: 500 },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'Integration API key revoked successfully' },
+          '400': { description: 'Bad request (e.g. key already revoked)' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Admin role required' },
+          '404': { description: 'Integration API key not found' },
+          '422': { description: 'Validation failed' },
+        },
+      },
+    },
+    '/integrations/{id}/api-keys/{keyId}/revoke': {
+      post: {
+        tags: ['Audit & Security Reporting'],
+        summary: 'Revoke Integration API Key by Event Source',
+        description:
+          'Allow administrators to revoke an integration API key belonging to a specific event source so that it can no longer be used for authentication. Restricted to ADMIN role.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+          { name: 'keyId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+        ],
+        requestBody: {
+          required: false,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  reason: { type: 'string', maxLength: 500 },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'Integration API key revoked successfully' },
+          '400': { description: 'Bad request (e.g. key already revoked)' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Admin role required' },
+          '404': { description: 'Integration API key not found for the specified integration' },
+          '422': { description: 'Validation failed' },
+        },
+      },
+    },
     '/event-sources': {
       get: {
         tags: ['Event Ingestion'],
