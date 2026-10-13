@@ -302,6 +302,44 @@ export const openApiSpec = {
         },
       },
     },
+    '/dashboard/security-posture': {
+      get: {
+        tags: ['Audit & Security Reporting'],
+        summary: 'View Security / Risk / Incident Dashboard',
+        description:
+          "Allow Security Officers and authorized Executives to view a dashboard summarizing the organization's security posture. The dashboard presents available security indicators, risk metrics, incident statistics, and recent AI-generated alerts within the user's access scope. Strictly restricted to SECURITY_OFFICER and EXECUTIVE roles.",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          '200': {
+            description: 'Security dashboard posture and metrics retrieved successfully',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    data: {
+                      type: 'object',
+                      properties: {
+                        userRole: { type: 'string', enum: ['SECURITY_OFFICER', 'EXECUTIVE'] },
+                        securityIndicators: { type: 'object' },
+                        riskMetrics: { type: 'object' },
+                        incidentStatistics: { type: 'object' },
+                        aiAlertMetrics: { type: 'object' },
+                        operationalDetails: { type: 'object' },
+                        executiveSummary: { type: 'object' },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer or Executive role required' },
+        },
+      },
+    },
     '/event-sources': {
       get: {
         tags: ['Event Ingestion'],
