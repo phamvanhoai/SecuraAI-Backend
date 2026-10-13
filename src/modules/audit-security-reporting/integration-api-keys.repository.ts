@@ -273,6 +273,152 @@ export const integrationApiKeysRepository = {
     });
   },
 
+  async updateApiKey(
+    id: string,
+    data: {
+      name?: string | undefined;
+      expiresAt?: Date | null | undefined;
+      status?: api_key_status | undefined;
+      scopes?: string[] | undefined;
+      updatedBy: string;
+    },
+  ) {
+    return prisma.$transaction(async (tx) => {
+      const existing = await tx.integration_api_keys.findUniqueOrThrow({
+        where: { id },
+        include: {
+          api_key_scopes: true,
+        },
+      });
+
+      const updateData: Prisma.integration_api_keysUpdateInput = {};
+      if (data.name !== undefined) {
+        updateData.name = data.name;
+      }
+      if (data.expiresAt !== undefined) {
+        updateData.expires_at = data.expiresAt;
+      }
+      if (data.status !== undefined) {
+        updateData.status = data.status;
+      }
+
+      const updatedKey = await tx.integration_api_keys.update({
+        where: { id },
+        data: updateData,
+      });
+
+      if (data.scopes !== undefined) {
+        await tx.api_key_scopes.deleteMany({
+          where: { api_key_id: id },
+        });
+
+        if (data.scopes.length > 0) {
+          await tx.api_key_scopes.createMany({
+            data: data.scopes.map((scopeCode) => ({
+              api_key_id: id,
+              scope_code: scopeCode,
+            })),
+          });
+        }
+      }
+
+      const previous = await tx.audit_logs.findFirst({
+        orderBy: [{ occurred_at: 'desc' }, { id: 'desc' }],
+        select: { record_hash: true },
+      });
+
+      const beforeData = {
+        name: existing.name,
+        expires_at: existing.expires_at?.toISOString() ?? null,
+        status: existing.status,
+        scopes: existing.api_key_scopes.map((s) => s.scope_code),
+      };
+
+      const afterData = {
+        name: data.name ?? existing.name,
+        expires_at:
+          data.expiresAt !== undefined
+            ? (data.expiresAt?.toISOString() ?? null)
+            : (existing.expires_at?.toISOString() ?? null),
+        status: data.status ?? existing.status,
+        scopes: data.scopes ?? existing.api_key_scopes.map((s) => s.scope_code),
+      };
+
+      const recordHash = createHash('sha256')
+        .update(
+          JSON.stringify({
+            previousHash: previous?.record_hash ?? null,
+            actorUserId: data.updatedBy,
+            apiKeyId: id,
+            action: 'UPDATE_INTEGRATION_API_KEY',
+            beforeData,
+            afterData,
+          }),
+        )
+        .digest('hex');
+
+      await tx.audit_logs.create({
+        data: {
+          actor_user_id: data.updatedBy,
+          actor_type: 'USER',
+          action: 'UPDATE_INTEGRATION_API_KEY',
+          resource_type: 'INTEGRATION_API_KEY',
+          resource_id: id,
+          source: 'API',
+          before_data: beforeData,
+          after_data: afterData,
+          ...(previous ? { previous_hash: previous.record_hash } : {}),
+          record_hash: recordHash,
+        },
+      });
+
+      return tx.integration_api_keys.findUniqueOrThrow({
+        where: { id: updatedKey.id },
+        select: {
+          id: true,
+          event_source_id: true,
+          name: true,
+          key_prefix: true,
+          status: true,
+          expires_at: true,
+          last_used_at: true,
+          last_used_ip: true,
+          created_by: true,
+          created_at: true,
+          rotated_at: true,
+          revoked_by: true,
+          revoked_at: true,
+          replacement_key_id: true,
+          api_key_scopes: {
+            select: {
+              id: true,
+              scope_code: true,
+              created_at: true,
+            },
+            orderBy: {
+              scope_code: 'asc',
+            },
+          },
+          users_integration_api_keys_created_byTousers: {
+            select: {
+              id: true,
+              full_name: true,
+              email: true,
+              username: true,
+            },
+          },
+          event_sources: {
+            select: {
+              id: true,
+              name: true,
+              source_type: true,
+            },
+          },
+        },
+      });
+    });
+  },
+
   async findUserById(id: string) {
     return prisma.users.findUnique({
       where: { id },

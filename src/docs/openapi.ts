@@ -94,6 +94,41 @@ export const openApiSpec = {
           '422': { description: 'Validation failed' },
         },
       },
+      patch: {
+        tags: ['Audit & Security Reporting'],
+        summary: 'Edit API Key Scope & Expiration',
+        description:
+          'Allow administrators to edit an existing API key’s authorized scopes or expiration date. The system validates and saves the changes and applies the updated access restrictions.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'keyId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  name: { type: 'string', minLength: 1, maxLength: 255 },
+                  keyName: { type: 'string', minLength: 1, maxLength: 255 },
+                  scopes: { type: 'array', items: { type: 'string' }, minItems: 1 },
+                  expiresAt: { type: 'string', format: 'date-time', nullable: true },
+                  isActive: { type: 'boolean' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'Updated integration API key metadata' },
+          '400': { description: 'Bad request (e.g. past expiration date or empty scopes)' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Admin role required' },
+          '404': { description: 'Integration API key not found' },
+          '422': { description: 'Validation failed' },
+        },
+      },
     },
     '/event-sources': {
       get: {
@@ -1461,6 +1496,42 @@ export const openApiSpec = {
         ],
         responses: {
           '200': { description: 'Integration API key detail metadata' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Admin role required' },
+          '404': { description: 'Integration API key or integration not found' },
+          '422': { description: 'Validation failed' },
+        },
+      },
+      patch: {
+        tags: ['Integrations', 'Audit & Security Reporting'],
+        summary: 'Edit API Key Scope & Expiration for an integration',
+        description:
+          'Allow administrators to edit an existing API key’s authorized scopes or expiration date under a specific integration. The system validates and saves the changes and applies the updated access restrictions.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+          { name: 'keyId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  name: { type: 'string', minLength: 1, maxLength: 255 },
+                  keyName: { type: 'string', minLength: 1, maxLength: 255 },
+                  scopes: { type: 'array', items: { type: 'string' }, minItems: 1 },
+                  expiresAt: { type: 'string', format: 'date-time', nullable: true },
+                  isActive: { type: 'boolean' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'Updated integration API key metadata' },
+          '400': { description: 'Bad request (e.g. past expiration date or empty scopes)' },
           '401': { description: 'Authentication required' },
           '403': { description: 'Admin role required' },
           '404': { description: 'Integration API key or integration not found' },

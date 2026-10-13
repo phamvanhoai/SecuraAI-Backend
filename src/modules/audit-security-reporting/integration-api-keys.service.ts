@@ -12,6 +12,11 @@ import {
   type CreatedIntegrationApiKeyResponseDto,
 } from './dto/create-integration-api-key.dto.js';
 import type { IntegrationApiKeyDetailDto } from './dto/get-integration-api-key-detail.dto.js';
+import {
+  updateIntegrationApiKeySchema,
+  type UpdateIntegrationApiKeyInput,
+} from './dto/update-integration-api-key.dto.js';
+import type { api_key_status } from '@prisma/client';
 
 export const integrationApiKeysService = {
   async listApiKeys(
@@ -152,6 +157,76 @@ export const integrationApiKeysService = {
     const totalAuditEvents = await integrationApiKeysRepository.countAuditLogsForApiKey(keyId);
 
     return mapToApiKeyDetailDto(record, totalAuditEvents);
+  },
+
+  async updateApiKey(
+    userId: string,
+    keyId: string,
+    rawInput: UpdateIntegrationApiKeyInput,
+    contextIntegrationId?: string,
+  ): Promise<IntegrationApiKeyItemDto> {
+    await requireAuthorizedAdmin(userId);
+
+    const input = updateIntegrationApiKeySchema.parse(rawInput);
+    const existing = await integrationApiKeysRepository.findById(keyId);
+    if (!existing) {
+      throw new AppError(404, 'NOT_FOUND', 'Integration API key not found');
+    }
+
+    if (
+      contextIntegrationId &&
+      existing.event_source_id &&
+      existing.event_source_id !== contextIntegrationId
+    ) {
+      throw new AppError(
+        404,
+        'NOT_FOUND',
+        'Integration API key not found for the specified integration',
+      );
+    }
+
+    if (existing.status === 'REVOKED') {
+      throw new AppError(400, 'BAD_REQUEST', 'Cannot modify a revoked API key');
+    }
+
+    let nextExpiresAt: Date | null | undefined;
+    if (input.expiresAt !== undefined) {
+      if (input.expiresAt === null) {
+        nextExpiresAt = null;
+      } else {
+        const parsedDate = new Date(input.expiresAt);
+        if (isNaN(parsedDate.getTime()) || parsedDate.getTime() <= Date.now()) {
+          throw new AppError(400, 'BAD_REQUEST', 'Expiration date must be in the future');
+        }
+        nextExpiresAt = parsedDate;
+      }
+    }
+
+    let nextScopes: string[] | undefined;
+    if (input.scopes !== undefined) {
+      const sanitized = Array.from(new Set(input.scopes.map((s) => s.trim()).filter(Boolean)));
+      if (sanitized.length === 0) {
+        throw new AppError(400, 'BAD_REQUEST', 'At least one authorized scope is required');
+      }
+      nextScopes = sanitized;
+    }
+
+    const nextName = (input.name?.trim() || input.keyName?.trim()) || undefined;
+
+    let nextStatus: api_key_status | undefined;
+    if (nextExpiresAt !== undefined && existing.status === 'ACTIVE') {
+      nextStatus = 'ACTIVE';
+    }
+
+    const updated = await integrationApiKeysRepository.updateApiKey(keyId, {
+      name: nextName,
+      expiresAt: nextExpiresAt,
+      status: nextStatus,
+      scopes: nextScopes,
+      updatedBy: userId,
+    });
+
+    return mapToApiKeyItemDto(updated);
   },
 };
 
