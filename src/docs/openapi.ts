@@ -13,10 +13,48 @@ export const openApiSpec = {
   components: {
     securitySchemes: {
       bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' },
+      apiKeyAuth: { type: 'apiKey', in: 'header', name: 'X-API-Key' },
     },
   },
   paths: {
     ...pendingV2Paths,
+    '/integrations/wazuh/events': {
+      post: {
+        tags: ['Event Ingestion'],
+        summary: 'Ingest normalized security events from Wazuh',
+        description: 'Receive and ingest normalized events from Wazuh agent or edge normalizer. Requires a valid API Key with events:ingest scope.',
+        security: [{ apiKeyAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['source', 'eventFamily', 'eventType', 'timestamp', 'actor'],
+                properties: {
+                  source: { type: 'object' },
+                  eventFamily: { type: 'string' },
+                  eventType: { type: 'string' },
+                  timestamp: { type: 'string', format: 'date-time' },
+                  rawEventId: { type: 'string' },
+                  actor: { type: 'object' },
+                  sourceIp: { type: 'string' },
+                  agent: { type: 'object' },
+                  rule: { type: 'object' },
+                  metadata: { type: 'object' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '201': { description: 'Event ingested successfully' },
+          '401': { description: 'Missing, invalid, expired, or revoked API key' },
+          '403': { description: 'Insufficient scope (requires events:ingest)' },
+          '422': { description: 'Invalid event payload' },
+        },
+      },
+    },
     '/integrations/api-keys': {
       get: {
         tags: ['Audit & Security Reporting'],

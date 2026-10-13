@@ -1,7 +1,6 @@
 import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createApp } from '../src/app.js';
-import { integrationApiKeysRepository } from '../src/modules/audit-security-reporting/integration-api-keys.repository.js';
 import { integrationApiKeysService } from '../src/modules/audit-security-reporting/integration-api-keys.service.js';
 
 vi.mock('../src/common/middleware/authenticate.js', () => ({
