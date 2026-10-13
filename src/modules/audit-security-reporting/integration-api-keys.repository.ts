@@ -698,54 +698,114 @@ function buildWhereClause(
   query: ListIntegrationApiKeysQueryDto,
 ): Prisma.integration_api_keysWhereInput {
   const where: Prisma.integration_api_keysWhereInput = {};
+  const andClauses: Prisma.integration_api_keysWhereInput[] = [];
   const targetSourceId = query.eventSourceId || query.integrationId;
 
   if (targetSourceId) {
-    where.event_source_id = targetSourceId;
+    andClauses.push({ event_source_id: targetSourceId });
   }
 
   if (query.status) {
-    where.status = query.status;
+    andClauses.push({ status: query.status });
+  }
+
+  if (query.scope) {
+    andClauses.push({
+      api_key_scopes: {
+        some: {
+          scope_code: { contains: query.scope, mode: 'insensitive' },
+        },
+      },
+    });
+  }
+
+  if (query.creator) {
+    const creatorTerm = query.creator;
+    andClauses.push({
+      users_integration_api_keys_created_byTousers: {
+        OR: [
+          { full_name: { contains: creatorTerm, mode: 'insensitive' } },
+          { email: { contains: creatorTerm, mode: 'insensitive' } },
+          { username: { contains: creatorTerm, mode: 'insensitive' } },
+        ],
+      },
+    });
+  }
+
+  const now = new Date();
+  if (query.expirationPeriod) {
+    if (query.expirationPeriod === 'expired') {
+      andClauses.push({ expires_at: { lte: now } });
+    } else if (query.expirationPeriod === 'expiring_soon') {
+      const in30Days = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+      andClauses.push({
+        expires_at: {
+          gt: now,
+          lte: in30Days,
+        },
+      });
+    } else if (query.expirationPeriod === 'never') {
+      andClauses.push({ expires_at: null });
+    } else if (query.expirationPeriod === 'active') {
+      andClauses.push({
+        OR: [{ expires_at: null }, { expires_at: { gt: now } }],
+      });
+    }
+  }
+
+  if (query.expiresFrom || query.expiresTo) {
+    const dateFilter: Prisma.DateTimeNullableFilter = {};
+    if (query.expiresFrom) dateFilter.gte = query.expiresFrom;
+    if (query.expiresTo) dateFilter.lte = query.expiresTo;
+    andClauses.push({ expires_at: dateFilter });
   }
 
   if (query.isActive !== undefined) {
     if (query.isActive) {
-      where.status = 'ACTIVE';
-      where.OR = [
-        { expires_at: null },
-        { expires_at: { gt: new Date() } },
-      ];
+      andClauses.push({
+        status: 'ACTIVE',
+        OR: [{ expires_at: null }, { expires_at: { gt: now } }],
+      });
     } else {
-      where.OR = [
-        { status: { not: 'ACTIVE' } },
-        {
-          AND: [
-            { status: 'ACTIVE' },
-            { expires_at: { lte: new Date() } },
-          ],
-        },
-      ];
+      andClauses.push({
+        OR: [
+          { status: { not: 'ACTIVE' } },
+          {
+            AND: [{ status: 'ACTIVE' }, { expires_at: { lte: now } }],
+          },
+        ],
+      });
     }
   }
 
   if (query.search) {
     const term = query.search;
-    where.AND = [
-      ...(Array.isArray(where.AND) ? where.AND : where.AND ? [where.AND] : []),
-      {
-        OR: [
-          { name: { contains: term, mode: 'insensitive' } },
-          { key_prefix: { contains: term, mode: 'insensitive' } },
-          {
-            api_key_scopes: {
-              some: {
-                scope_code: { contains: term, mode: 'insensitive' },
-              },
+    andClauses.push({
+      OR: [
+        { name: { contains: term, mode: 'insensitive' } },
+        { key_prefix: { contains: term, mode: 'insensitive' } },
+        {
+          api_key_scopes: {
+            some: {
+              scope_code: { contains: term, mode: 'insensitive' },
             },
           },
-        ],
-      },
-    ];
+        },
+        {
+          users_integration_api_keys_created_byTousers: {
+            OR: [
+              { full_name: { contains: term, mode: 'insensitive' } },
+              { email: { contains: term, mode: 'insensitive' } },
+              { username: { contains: term, mode: 'insensitive' } },
+            ],
+          },
+        },
+      ],
+    });
+  }
+
+  if (andClauses.length > 0) {
+    where.AND = andClauses;
   }
 
   return where;

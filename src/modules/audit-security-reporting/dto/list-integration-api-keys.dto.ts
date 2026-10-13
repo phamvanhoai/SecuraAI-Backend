@@ -3,11 +3,19 @@ import { z } from 'zod';
 export const apiKeyStatusEnum = z.enum(['ACTIVE', 'EXPIRED', 'REVOKED', 'ROTATED']);
 export type ApiKeyStatus = z.infer<typeof apiKeyStatusEnum>;
 
+export const expirationPeriodEnum = z.enum(['all', 'active', 'expired', 'expiring_soon', 'never']);
+export type ExpirationPeriod = z.infer<typeof expirationPeriodEnum>;
+
 export const listIntegrationApiKeysQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(20),
   search: z.string().trim().optional(),
   status: apiKeyStatusEnum.optional(),
+  scope: z.string().trim().optional(),
+  creator: z.string().trim().optional(),
+  expirationPeriod: expirationPeriodEnum.optional(),
+  expiresFrom: z.coerce.date().optional(),
+  expiresTo: z.coerce.date().optional(),
   isActive: z
     .preprocess((val) => {
       if (val === 'true' || val === true) return true;

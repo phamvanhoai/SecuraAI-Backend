@@ -130,5 +130,30 @@ describe('Integration API Keys HTTP endpoints', () => {
         totalPages: 1,
       });
     });
+
+    it('forwards search, creator, scope, and expirationPeriod filters to service', async () => {
+      vi.mocked(integrationApiKeysService.listApiKeys).mockResolvedValue({
+        items: [sampleApiKeyItem],
+        pagination: { page: 1, limit: 10, totalItems: 1, totalPages: 1 },
+      });
+
+      const res = await request(app)
+        .get(
+          '/api/v1/audit-security-reporting/api-keys?search=Splunk&scope=events:ingest&creator=Admin&expirationPeriod=expiring_soon&status=ACTIVE',
+        )
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+      expect(integrationApiKeysService.listApiKeys).toHaveBeenCalledWith(
+        userId,
+        expect.objectContaining({
+          search: 'Splunk',
+          scope: 'events:ingest',
+          creator: 'Admin',
+          expirationPeriod: 'expiring_soon',
+          status: 'ACTIVE',
+        }),
+      );
+    });
   });
 });
