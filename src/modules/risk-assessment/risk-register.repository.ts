@@ -1216,16 +1216,22 @@ export const riskRegisterRepository = {
       }),
     ]);
   },
+  findTreatmentPlanScope(riskId: string) {
+    return prisma.risks.findUnique({ where: { id: riskId }, select: { owner_user_id: true } });
+  },
   createTreatmentPlan(actorId: string, input: CreateTreatmentPlanBody) {
     return prisma
       .$transaction(
         async (database) => {
+          await database.$queryRaw`SELECT id FROM risks WHERE id = ${input.riskId}::uuid FOR UPDATE`;
           const risk = await database.risks.findUnique({
             where: { id: input.riskId },
             select: {
               id: true,
               risk_code: true,
               owner_user_id: true,
+              status: true,
+              risk_acceptances: { where: { decision: 'PENDING' }, select: { id: true }, take: 1 },
               review_date: true,
               risk_assessments: { where: { assessment_type: { not: 'TARGET_DEFINITION' } }, orderBy: { assessed_at: 'desc' }, take: 1 },
               risk_treatment_plans: {
@@ -1234,7 +1240,7 @@ export const riskRegisterRepository = {
                 take: 1,
               },
               control_risk_links: {
-                where: { control_id: { in: input.controlIds } },
+                where: { control_id: { in: input.controlIds }, security_controls: { applicability: { not: 'NOT_APPLICABLE' } } },
                 select: { control_id: true },
               },
             },
@@ -1246,6 +1252,8 @@ export const riskRegisterRepository = {
           });
           if (actor?.role !== 'SECURITY_OFFICER' && risk.owner_user_id !== actorId)
             return { kind: 'forbidden' as const };
+          if (!['OPEN', 'UNDER_TREATMENT'].includes(risk.status) || risk.risk_acceptances.length)
+            return { kind: 'context_locked' as const };
           if (risk.risk_treatment_plans.length) return { kind: 'active_plan_exists' as const };
           const users = await database.users.count({
             where: {
@@ -1263,19 +1271,19 @@ export const riskRegisterRepository = {
           const controls = risk.control_risk_links;
           if (controls.length !== input.controlIds.length)
             return { kind: 'invalid_controls' as const };
-          const latest = risk.risk_assessments[0];
+          const latest = await database.risk_assessments.findFirst({
+            where: { risk_id: risk.id, residual_rating: { not: null }, assessment_type: { not: 'TARGET_DEFINITION' } },
+            orderBy: { assessed_at: 'desc' },
+          }) ?? risk.risk_assessments[0];
+          const rank = { LOW: 1, MEDIUM: 2, HIGH: 3, CRITICAL: 4 } as const;
+          const targetRating = input.targetRisk.toUpperCase() as keyof typeof rank;
+          if (latest?.residual_rating && rank[targetRating] > rank[latest.residual_rating])
+            return { kind: 'target_exceeds_residual' as const };
           const assessedAt = await contextWriteTime(database);
           const source = await database.risk_assessments.create({
             data: {
               risk_id: risk.id,
-              assessment_type: 'PERIODIC_REVIEW',
-              inherent_likelihood: latest?.inherent_likelihood ?? null,
-              inherent_impact: latest?.inherent_impact ?? null,
-              inherent_rating: latest?.inherent_rating ?? null,
-              control_effectiveness: latest?.control_effectiveness ?? null,
-              residual_likelihood: latest?.residual_likelihood ?? null,
-              residual_impact: latest?.residual_impact ?? null,
-              residual_rating: latest?.residual_rating ?? null,
+              assessment_type: 'TARGET_DEFINITION',
               target_risk: input.targetRisk.toUpperCase() as 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL',
               risk_appetite: latest?.risk_appetite ?? null,
               risk_tolerance: latest?.risk_tolerance ?? null,
@@ -1318,6 +1326,15 @@ export const riskRegisterRepository = {
               created_at: true,
             },
           });
+          const auditId = randomUUID();
+          const auditData = { assessmentId: source.id, treatmentPlanId: plan.id, treatmentPlanTitle: plan.title,
+            residualAssessmentId: latest?.residual_rating ? latest.id : null,
+            residualAssessedAt: latest?.residual_rating ? latest.assessed_at.toISOString() : null,
+            residualRating: latest?.residual_rating ?? null, targetRisk: targetRating,
+            strategy: input.strategy, ownerUserId: input.ownerUserId, controlIds: input.controlIds, actions: input.actions };
+          await database.audit_logs.create({ data: { id: auditId, actor_type: 'USER', actor_user_id: actorId,
+            action: 'RISK_TARGET_DEFINED', resource_type: 'RISK', resource_id: risk.id, source: 'API', after_data: auditData,
+            record_hash: createHash('sha256').update(JSON.stringify({ auditId, actorId, ...auditData })).digest('hex') } });
           return {
             kind: 'created' as const,
             plan,
