@@ -1,0 +1,129 @@
+import request from 'supertest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { createApp } from '../src/app.js';
+import { integrationApiKeysService } from '../src/modules/audit-security-reporting/integration-api-keys.service.js';
+
+vi.mock('../src/common/middleware/authenticate.js', () => ({
+  authenticate: (req: any, res: any, next: any) => {
+    res.locals.authenticatedUserId = '11111111-1111-1111-1111-111111111111';
+    next();
+  },
+}));
+
+describe('POST /api/v1/integrations/:id/api-keys/:keyId/rotate & /api/v1/integrations/api-keys/:keyId/rotate HTTP tests', () => {
+  const app = createApp();
+
+  const validKeyId = '33333333-3333-4333-a333-333333333333';
+  const validSourceId = '44444444-4444-4444-8444-444444444444';
+  const replacementKeyId = '55555555-5555-4555-b555-555555555555';
+
+  const mockRotatedResponse = {
+    id: replacementKeyId,
+    replacedKeyId: validKeyId,
+    eventSourceId: validSourceId,
+    integrationId: validSourceId,
+    name: 'Wazuh Ingest Key',
+    keyName: 'Wazuh Ingest Key',
+    keyPrefix: 'sec_live_9f0d9c7098',
+    keyFingerprint: 'sec_live_9f0d9c7098...****',
+    maskedKey: 'sec_live_9f0d9c7098...****',
+    secret: 'sec_live_9f0d9c7098abcdef1234567890abcdef1234567890abcdef12',
+    status: 'ACTIVE' as const,
+    isActive: true,
+    scopes: ['events:ingest'],
+    expiresAt: new Date('2026-12-31T23:59:59.000Z'),
+    lastUsedAt: null,
+    lastUsedIp: null,
+    creator: {
+      id: '11111111-1111-1111-1111-111111111111',
+      fullName: 'System Administrator',
+      email: 'admin@gmail.com',
+      username: 'admin',
+    },
+    createdBy: '11111111-1111-1111-1111-111111111111',
+    createdAt: new Date('2026-10-13T12:00:00.000Z'),
+    rotatedAt: null,
+    revokedAt: null,
+    eventSource: {
+      id: validSourceId,
+      name: 'Wazuh Manager',
+      sourceType: 'Wazuh',
+    },
+  };
+
+  beforeEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('POST /api/v1/integrations/:id/api-keys/:keyId/rotate returns 200 with rotated replacement key and secret', async () => {
+    vi.spyOn(integrationApiKeysService, 'rotateApiKey').mockResolvedValue(mockRotatedResponse);
+
+    const response = await request(app)
+      .post(`/api/v1/integrations/${validSourceId}/api-keys/${validKeyId}/rotate`)
+      .send({});
+
+    expect(response.status).toBe(200);
+    expect(response.body.success).toBe(true);
+    expect(response.body.data.id).toBe(replacementKeyId);
+    expect(response.body.data.replacedKeyId).toBe(validKeyId);
+    expect(response.body.data.secret).toBe(mockRotatedResponse.secret);
+    expect(response.body.data.status).toBe('ACTIVE');
+    expect(integrationApiKeysService.rotateApiKey).toHaveBeenCalledWith(
+      '11111111-1111-1111-1111-111111111111',
+      validKeyId,
+      {},
+      validSourceId,
+    );
+  });
+
+  it('POST /api/v1/integrations/api-keys/:keyId/rotate returns 200 without integrationId in path', async () => {
+    vi.spyOn(integrationApiKeysService, 'rotateApiKey').mockResolvedValue(mockRotatedResponse);
+
+    const response = await request(app)
+      .post(`/api/v1/integrations/api-keys/${validKeyId}/rotate`)
+      .send({});
+
+    expect(response.status).toBe(200);
+    expect(response.body.success).toBe(true);
+    expect(response.body.data.id).toBe(replacementKeyId);
+    expect(response.body.data.secret).toBe(mockRotatedResponse.secret);
+    expect(integrationApiKeysService.rotateApiKey).toHaveBeenCalledWith(
+      '11111111-1111-1111-1111-111111111111',
+      validKeyId,
+      {},
+    );
+  });
+
+  it('POST /api/v1/integrations/api-keys/:keyId/rotate accepts optional expiresAt in body', async () => {
+    vi.spyOn(integrationApiKeysService, 'rotateApiKey').mockResolvedValue(mockRotatedResponse);
+
+    const futureDate = '2027-01-01T00:00:00.000Z';
+    const response = await request(app)
+      .post(`/api/v1/integrations/api-keys/${validKeyId}/rotate`)
+      .send({ expiresAt: futureDate });
+
+    expect(response.status).toBe(200);
+    expect(response.body.success).toBe(true);
+    expect(integrationApiKeysService.rotateApiKey).toHaveBeenCalledWith(
+      '11111111-1111-1111-1111-111111111111',
+      validKeyId,
+      { expiresAt: futureDate },
+    );
+  });
+
+  it('returns 422 when keyId param is not a valid UUID', async () => {
+    const response = await request(app)
+      .post(`/api/v1/integrations/${validSourceId}/api-keys/not-a-uuid/rotate`)
+      .send({});
+
+    expect(response.status).toBe(422);
+  });
+
+  it('returns 422 when expiresAt in body is not a valid ISO date', async () => {
+    const response = await request(app)
+      .post(`/api/v1/integrations/api-keys/${validKeyId}/rotate`)
+      .send({ expiresAt: 'invalid-date' });
+
+    expect(response.status).toBe(422);
+  });
+});

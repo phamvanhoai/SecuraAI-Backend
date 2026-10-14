@@ -28,6 +28,11 @@ describe('List Integration API Keys DTOs', () => {
       search: ' Splunk ',
       status: 'ACTIVE',
       isActive: 'true',
+      scope: 'events:ingest',
+      creator: 'admin@secura.ai',
+      expirationPeriod: 'expiring_soon',
+      expiresFrom: '2026-10-01T00:00:00Z',
+      expiresTo: '2026-11-01T00:00:00Z',
       eventSourceId: sampleEventSourceId,
       sortBy: 'name',
       sortOrder: 'asc',
@@ -40,6 +45,11 @@ describe('List Integration API Keys DTOs', () => {
       expect(result.data.search).toBe('Splunk');
       expect(result.data.status).toBe('ACTIVE');
       expect(result.data.isActive).toBe(true);
+      expect(result.data.scope).toBe('events:ingest');
+      expect(result.data.creator).toBe('admin@secura.ai');
+      expect(result.data.expirationPeriod).toBe('expiring_soon');
+      expect(result.data.expiresFrom).toEqual(new Date('2026-10-01T00:00:00Z'));
+      expect(result.data.expiresTo).toEqual(new Date('2026-11-01T00:00:00Z'));
       expect(result.data.eventSourceId).toBe(sampleEventSourceId);
       expect(result.data.sortBy).toBe('name');
       expect(result.data.sortOrder).toBe('asc');

@@ -16,6 +16,15 @@ import {
   updateIntegrationApiKeySchema,
   type UpdateIntegrationApiKeyInput,
 } from './dto/update-integration-api-key.dto.js';
+import {
+  rotateIntegrationApiKeySchema,
+  type RotateIntegrationApiKeyInput,
+  type RotatedIntegrationApiKeyResponseDto,
+} from './dto/rotate-integration-api-key.dto.js';
+import {
+  revokeIntegrationApiKeySchema,
+  type RevokeIntegrationApiKeyInput,
+} from './dto/revoke-integration-api-key.dto.js';
 import type { api_key_status } from '@prisma/client';
 
 export const integrationApiKeysService = {
@@ -227,6 +236,120 @@ export const integrationApiKeysService = {
     });
 
     return mapToApiKeyItemDto(updated);
+  },
+
+  async rotateApiKey(
+    userId: string,
+    keyId: string,
+    rawInput?: RotateIntegrationApiKeyInput,
+    contextIntegrationId?: string,
+  ): Promise<RotatedIntegrationApiKeyResponseDto> {
+    await requireAuthorizedAdmin(userId);
+
+    const input = rotateIntegrationApiKeySchema.parse(rawInput ?? {});
+
+    const existing = await integrationApiKeysRepository.findById(keyId);
+    if (!existing) {
+      throw new AppError(404, 'NOT_FOUND', 'Integration API key not found');
+    }
+
+    if (
+      contextIntegrationId &&
+      existing.event_source_id &&
+      existing.event_source_id !== contextIntegrationId
+    ) {
+      throw new AppError(
+        404,
+        'NOT_FOUND',
+        'Integration API key not found for the specified integration',
+      );
+    }
+
+    if (existing.status === 'REVOKED') {
+      throw new AppError(400, 'BAD_REQUEST', 'Cannot rotate a revoked API key');
+    }
+
+    if (existing.status === 'ROTATED') {
+      throw new AppError(400, 'BAD_REQUEST', 'Cannot rotate an already rotated API key');
+    }
+
+    let nextExpiresAt: Date | null = existing.expires_at;
+    if (input.expiresAt !== undefined) {
+      nextExpiresAt = input.expiresAt ? new Date(input.expiresAt) : null;
+    }
+
+    if (nextExpiresAt && nextExpiresAt.getTime() <= Date.now()) {
+      throw new AppError(400, 'BAD_REQUEST', 'Expiration date must be in the future');
+    }
+
+    // Generate cryptographically secure replacement secret token
+    const rawRandom = randomBytes(24).toString('hex');
+    const secret = `sec_live_${rawRandom}`;
+    const keyPrefix = `sec_live_${rawRandom.slice(0, 10)}`;
+    const secretHash = createHash('sha256').update(secret).digest('hex');
+
+    const scopes = existing.api_key_scopes.map((s) => s.scope_code);
+    const effectiveScopes = scopes.length > 0 ? scopes : ['events:ingest'];
+
+    const replacementRecord = await integrationApiKeysRepository.rotateApiKey({
+      existingKeyId: keyId,
+      name: existing.name,
+      eventSourceId: existing.event_source_id,
+      keyPrefix,
+      secretHash,
+      status: 'ACTIVE',
+      expiresAt: nextExpiresAt,
+      rotatedBy: userId,
+      scopes: effectiveScopes,
+    });
+
+    const itemDto = mapToApiKeyItemDto(replacementRecord);
+
+    return {
+      ...itemDto,
+      secret,
+      replacedKeyId: keyId,
+    };
+  },
+
+  async revokeApiKey(
+    userId: string,
+    keyId: string,
+    rawInput?: RevokeIntegrationApiKeyInput,
+    contextIntegrationId?: string,
+  ): Promise<IntegrationApiKeyItemDto> {
+    await requireAuthorizedAdmin(userId);
+
+    const input = revokeIntegrationApiKeySchema.parse(rawInput ?? {});
+
+    const existing = await integrationApiKeysRepository.findById(keyId);
+    if (!existing) {
+      throw new AppError(404, 'NOT_FOUND', 'Integration API key not found');
+    }
+
+    if (
+      contextIntegrationId &&
+      existing.event_source_id &&
+      existing.event_source_id !== contextIntegrationId
+    ) {
+      throw new AppError(
+        404,
+        'NOT_FOUND',
+        'Integration API key not found for the specified integration',
+      );
+    }
+
+    if (existing.status === 'REVOKED') {
+      throw new AppError(400, 'BAD_REQUEST', 'API key is already revoked');
+    }
+
+    const revokedRecord = await integrationApiKeysRepository.revokeApiKey(
+      keyId,
+      userId,
+      input.reason,
+    );
+
+    return mapToApiKeyItemDto(revokedRecord);
   },
 };
 

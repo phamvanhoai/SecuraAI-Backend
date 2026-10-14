@@ -12,6 +12,8 @@ import {
   getIntegrationSourceApiKeyDetailParamsSchema,
 } from './dto/get-integration-api-key-detail.dto.js';
 import { updateIntegrationApiKeySchema } from './dto/update-integration-api-key.dto.js';
+import { rotateIntegrationApiKeySchema } from './dto/rotate-integration-api-key.dto.js';
+import { revokeIntegrationApiKeySchema } from './dto/revoke-integration-api-key.dto.js';
 import {
   createIntegrationApiKey,
   createIntegrationApiKeyBySource,
@@ -19,6 +21,10 @@ import {
   getIntegrationApiKeyDetailBySource,
   listIntegrationApiKeys,
   listIntegrationApiKeysBySource,
+  revokeIntegrationApiKey,
+  revokeIntegrationApiKeyBySource,
+  rotateIntegrationApiKey,
+  rotateIntegrationApiKeyBySource,
   updateIntegrationApiKey,
   updateIntegrationApiKeyBySource,
 } from './integration-api-keys.controller.js';
@@ -54,6 +60,26 @@ integrationApiKeysRouter.patch(
     body: updateIntegrationApiKeySchema,
   }),
   asyncHandler(updateIntegrationApiKey),
+);
+
+integrationApiKeysRouter.post(
+  '/:keyId/rotate',
+  authenticate,
+  validate({
+    params: getIntegrationApiKeyDetailParamsSchema,
+    body: rotateIntegrationApiKeySchema,
+  }),
+  asyncHandler(rotateIntegrationApiKey),
+);
+
+integrationApiKeysRouter.post(
+  '/:keyId/revoke',
+  authenticate,
+  validate({
+    params: getIntegrationApiKeyDetailParamsSchema,
+    body: revokeIntegrationApiKeySchema,
+  }),
+  asyncHandler(revokeIntegrationApiKey),
 );
 
 export const integrationSourceApiKeysRouter = Router({ mergeParams: true });
@@ -93,4 +119,24 @@ integrationSourceApiKeysRouter.post(
     body: createIntegrationApiKeySchema,
   }),
   asyncHandler(createIntegrationApiKeyBySource),
+);
+
+integrationSourceApiKeysRouter.post(
+  '/:id/api-keys/:keyId/rotate',
+  authenticate,
+  validate({
+    params: getIntegrationSourceApiKeyDetailParamsSchema,
+    body: rotateIntegrationApiKeySchema,
+  }),
+  asyncHandler(rotateIntegrationApiKeyBySource),
+);
+
+integrationSourceApiKeysRouter.post(
+  '/:id/api-keys/:keyId/revoke',
+  authenticate,
+  validate({
+    params: getIntegrationSourceApiKeyDetailParamsSchema,
+    body: revokeIntegrationApiKeySchema,
+  }),
+  asyncHandler(revokeIntegrationApiKeyBySource),
 );

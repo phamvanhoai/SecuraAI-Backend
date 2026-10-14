@@ -157,4 +157,30 @@ describe('Integration API Keys Service', () => {
     expect(result).toHaveLength(1);
     expect(result[0]?.id).toBe(mockApiKeyRecord.id);
   });
+
+  it('passes search, creator, scope, and expirationPeriod filters to repository', async () => {
+    vi.spyOn(integrationApiKeysRepository, 'findUserById').mockResolvedValue(mockAdminUser);
+    const findManySpy = vi
+      .spyOn(integrationApiKeysRepository, 'findMany')
+      .mockResolvedValue([mockApiKeyRecord]);
+    const countSpy = vi.spyOn(integrationApiKeysRepository, 'count').mockResolvedValue(1);
+
+    const filterQuery = {
+      page: 1,
+      limit: 10,
+      search: 'Splunk',
+      scope: 'events:ingest',
+      creator: 'Lead Administrator',
+      expirationPeriod: 'expiring_soon' as const,
+      sortBy: 'name' as const,
+      sortOrder: 'asc' as const,
+    };
+
+    const result = await integrationApiKeysService.listApiKeys(mockAdminUser.id, filterQuery);
+
+    expect(findManySpy).toHaveBeenCalledWith(filterQuery);
+    expect(countSpy).toHaveBeenCalledWith(filterQuery);
+    expect(result.items).toHaveLength(1);
+    expect(result.pagination.totalItems).toBe(1);
+  });
 });

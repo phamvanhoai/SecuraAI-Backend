@@ -17,6 +17,7 @@ import {
   auditLogsRouter,
   integrationApiKeysRouter,
   integrationSourceApiKeysRouter,
+  securityDashboardRouter,
 } from '../modules/audit-security-reporting/index.js';
 import {
   riskRegisterRouter,
@@ -72,6 +73,8 @@ apiRouter.use('/integrations/api-keys', integrationApiKeysRouter);
 apiRouter.use('/audit-logs', auditLogsRouter);
 apiRouter.use('/audit-security-reporting/audit-logs', auditLogsRouter);
 apiRouter.use('/audit-security-reporting/api-keys', integrationApiKeysRouter);
+apiRouter.use('/audit-security-reporting/dashboard', securityDashboardRouter);
+apiRouter.use('/dashboard', securityDashboardRouter);
 apiRouter.use('/api-keys', integrationApiKeysRouter);
 apiRouter.use('/audits', auditLogsRouter);
 apiRouter.use(pendingV2Router);

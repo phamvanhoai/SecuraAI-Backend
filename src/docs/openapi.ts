@@ -912,6 +912,178 @@ export const openApiSpec = {
         },
       },
     },
+    '/integrations/api-keys/{keyId}/rotate': {
+      post: {
+        tags: ['Audit & Security Reporting'],
+        summary: 'Rotate Integration API Key',
+        description:
+          'Allow administrators to rotate an existing integration API key by generating a replacement key with a new secret token and invalidating the previous key. Scopes and event source bindings are preserved. Restricted to ADMIN role.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'keyId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+        ],
+        requestBody: {
+          required: false,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  expiresAt: { type: 'string', format: 'date-time', nullable: true },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'Integration API key rotated successfully with replacement secret token' },
+          '400': { description: 'Bad request (e.g. key already revoked or rotated, or invalid expiration)' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Admin role required' },
+          '404': { description: 'Integration API key not found' },
+          '422': { description: 'Validation failed' },
+        },
+      },
+    },
+    '/integrations/{id}/api-keys/{keyId}/rotate': {
+      post: {
+        tags: ['Audit & Security Reporting'],
+        summary: 'Rotate Integration API Key by Event Source',
+        description:
+          'Allow administrators to rotate an existing integration API key belonging to a specific event source by generating a replacement key with a new secret token and invalidating the previous key. Restricted to ADMIN role.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+          { name: 'keyId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+        ],
+        requestBody: {
+          required: false,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  expiresAt: { type: 'string', format: 'date-time', nullable: true },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'Integration API key rotated successfully with replacement secret token' },
+          '400': { description: 'Bad request (e.g. key already revoked or rotated, or invalid expiration)' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Admin role required' },
+          '404': { description: 'Integration API key not found for the specified integration' },
+          '422': { description: 'Validation failed' },
+        },
+      },
+    },
+    '/integrations/api-keys/{keyId}/revoke': {
+      post: {
+        tags: ['Audit & Security Reporting'],
+        summary: 'Revoke Integration API Key',
+        description:
+          'Allow administrators to revoke an integration API key so that it can no longer be used for authentication. The system updates the key status to REVOKED and records the revocation for audit purposes. Restricted to ADMIN role.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'keyId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+        ],
+        requestBody: {
+          required: false,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  reason: { type: 'string', maxLength: 500 },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'Integration API key revoked successfully' },
+          '400': { description: 'Bad request (e.g. key already revoked)' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Admin role required' },
+          '404': { description: 'Integration API key not found' },
+          '422': { description: 'Validation failed' },
+        },
+      },
+    },
+    '/integrations/{id}/api-keys/{keyId}/revoke': {
+      post: {
+        tags: ['Audit & Security Reporting'],
+        summary: 'Revoke Integration API Key by Event Source',
+        description:
+          'Allow administrators to revoke an integration API key belonging to a specific event source so that it can no longer be used for authentication. Restricted to ADMIN role.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+          { name: 'keyId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+        ],
+        requestBody: {
+          required: false,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  reason: { type: 'string', maxLength: 500 },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'Integration API key revoked successfully' },
+          '400': { description: 'Bad request (e.g. key already revoked)' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Admin role required' },
+          '404': { description: 'Integration API key not found for the specified integration' },
+          '422': { description: 'Validation failed' },
+        },
+      },
+    },
+    '/dashboard/security-posture': {
+      get: {
+        tags: ['Audit & Security Reporting'],
+        summary: 'View Security / Risk / Incident Dashboard',
+        description:
+          "Allow Security Officers and authorized Executives to view a dashboard summarizing the organization's security posture. The dashboard presents available security indicators, risk metrics, incident statistics, and recent AI-generated alerts within the user's access scope. Strictly restricted to SECURITY_OFFICER and EXECUTIVE roles.",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          '200': {
+            description: 'Security dashboard posture and metrics retrieved successfully',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    data: {
+                      type: 'object',
+                      properties: {
+                        userRole: { type: 'string', enum: ['SECURITY_OFFICER', 'EXECUTIVE'] },
+                        securityIndicators: { type: 'object' },
+                        riskMetrics: { type: 'object' },
+                        incidentStatistics: { type: 'object' },
+                        aiAlertMetrics: { type: 'object' },
+                        operationalDetails: { type: 'object' },
+                        executiveSummary: { type: 'object' },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer or Executive role required' },
+        },
+      },
+    },
     '/event-sources': {
       get: {
         tags: ['Event Ingestion'],
