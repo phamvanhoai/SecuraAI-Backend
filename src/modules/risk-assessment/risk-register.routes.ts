@@ -20,6 +20,7 @@ import {
   updateTreatmentPlan,
   submitRiskAcceptance,
   decideRiskAcceptance,
+  openRiskAcceptanceReview,
 } from './risk-register.controller.js';
 import { listRiskRegisterQuerySchema, riskIdParamsSchema } from './dto/view-risk-register.dto.js';
 import {
@@ -53,7 +54,7 @@ import {
 } from './dto/define-target-risk.dto.js';
 import { createTreatmentPlanBodySchema, treatmentPlanOptionsQuerySchema } from './dto/create-treatment-plan.dto.js';
 import { updateTreatmentPlanBodySchema, updateTreatmentPlanParamsSchema } from './dto/update-treatment-plan.dto.js';
-import { decideRiskAcceptanceBodySchema, decideRiskAcceptanceParamsSchema, submitRiskAcceptanceBodySchema, submitRiskAcceptanceParamsSchema } from './dto/risk-acceptance.dto.js';
+import { decideRiskAcceptanceBodySchema, decideRiskAcceptanceParamsSchema, submitRiskAcceptanceBodySchema, submitRiskAcceptanceParamsSchema, openRiskReviewBodySchema } from './dto/risk-acceptance.dto.js';
 
 export const riskRegisterRouter = Router();
 riskRegisterRouter.get(
@@ -131,6 +132,8 @@ riskRegisterRouter.post(
   asyncHandler(defineTargetRisk),
 );
 riskRegisterRouter.post('/:riskId/acceptance', authenticate, validate({ params: submitRiskAcceptanceParamsSchema, body: submitRiskAcceptanceBodySchema }), asyncHandler(submitRiskAcceptance));
+// Review never rewrites the original approval or its expiry date.
+riskRegisterRouter.post('/:riskId/review', authenticate, validate({ params: submitRiskAcceptanceParamsSchema, body: openRiskReviewBodySchema }), asyncHandler(openRiskAcceptanceReview));
 riskRegisterRouter.get(
   '/:riskId',
   authenticate,

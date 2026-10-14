@@ -33,7 +33,7 @@ import {
 } from './dto/define-target-risk.dto.js';
 import { createTreatmentPlanBodySchema, treatmentPlanOptionsQuerySchema } from './dto/create-treatment-plan.dto.js';
 import { updateTreatmentPlanBodySchema, updateTreatmentPlanParamsSchema } from './dto/update-treatment-plan.dto.js';
-import { decideRiskAcceptanceBodySchema, decideRiskAcceptanceParamsSchema, submitRiskAcceptanceBodySchema, submitRiskAcceptanceParamsSchema } from './dto/risk-acceptance.dto.js';
+import { decideRiskAcceptanceBodySchema, decideRiskAcceptanceParamsSchema, submitRiskAcceptanceBodySchema, submitRiskAcceptanceParamsSchema, openRiskReviewBodySchema } from './dto/risk-acceptance.dto.js';
 
 function userId(value: unknown): string {
   if (typeof value !== 'string') throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
@@ -150,3 +150,4 @@ export const updateTreatmentPlan: RequestHandler = async (req, res) => {
 };
 export const submitRiskAcceptance: RequestHandler = async (req, res) => { const { riskId } = submitRiskAcceptanceParamsSchema.parse(req.params); const data = await riskRegisterService.submitAcceptance(userId(res.locals.authenticatedUserId), riskId, submitRiskAcceptanceBodySchema.parse(req.body)); res.status(201).json({ success: true, data }); };
 export const decideRiskAcceptance: RequestHandler = async (req, res) => { const { acceptanceId } = decideRiskAcceptanceParamsSchema.parse(req.params); const data = await riskRegisterService.decideAcceptance(userId(res.locals.authenticatedUserId), acceptanceId, decideRiskAcceptanceBodySchema.parse(req.body)); res.status(200).json({ success: true, data }); };
+export const openRiskAcceptanceReview: RequestHandler = async (req, res) => { const { riskId } = submitRiskAcceptanceParamsSchema.parse(req.params); const data = await riskRegisterService.openAcceptanceReview(userId(res.locals.authenticatedUserId), riskId, openRiskReviewBodySchema.parse(req.body)); res.status(200).json({ success: true, data }); };

@@ -23,6 +23,7 @@ import type { UpdateTreatmentPlanBody } from './dto/update-treatment-plan.dto.js
 import type {
   DecideRiskAcceptanceBody,
   SubmitRiskAcceptanceBody,
+  OpenRiskReviewBody,
 } from './dto/risk-acceptance.dto.js';
 import {
   riskRegisterRepository,
@@ -30,6 +31,7 @@ import {
   type RiskRegisterRecord,
 } from './risk-register.repository.js';
 import { calculateTreatmentPlanProgress } from './treatment-plan-progress.js';
+import { sameResidualControlBasis, validateResidualControls } from './residual-control-basis.js';
 
 const lower = <T extends string>(value: T): Lowercase<T> => value.toLowerCase() as Lowercase<T>;
 const person = (value: { id: string; full_name: string; status: string } | null) =>
@@ -118,6 +120,16 @@ async function requireSecurityOfficer(userId: string): Promise<void> {
 }
 
 export const riskRegisterService = {
+  async openAcceptanceReview(userId: string, riskId: string, input: OpenRiskReviewBody) {
+    const actor = await riskRegisterRepository.findActor(userId);
+    if (!actor || actor.status !== 'ACTIVE') throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+    const result = await riskRegisterRepository.openAcceptanceReview(riskId, userId, input);
+    if (result.kind === 'not_found') throw new AppError(404, 'RISK_NOT_FOUND', 'Risk not found');
+    if (result.kind === 'not_owner') throw new AppError(403, 'RISK_OWNER_REQUIRED', 'Only the assigned Risk Owner may open a review');
+    if (result.kind === 'stale') throw new AppError(409, 'RISK_CHANGED', 'Refresh the Risk before opening a review');
+    if (result.kind === 'context_locked') throw new AppError(409, 'RISK_CONTEXT_LOCKED', 'Open review only for an accepted Risk without pending acceptance');
+    return { riskId: result.updated.id, status: lower(result.updated.status), updatedAt: result.updated.updated_at };
+  },
   async submitAcceptance(userId: string, riskId: string, input: SubmitRiskAcceptanceBody) {
     const actor = await riskRegisterRepository.findActor(userId);
     if (!actor || actor.status !== 'ACTIVE')
@@ -125,6 +137,8 @@ export const riskRegisterService = {
     if (new Date(`${input.validUntil}T23:59:59.999Z`) <= new Date())
       throw new AppError(422, 'INVALID_VALID_UNTIL', 'Acceptance validity must be in the future');
     const result = await riskRegisterRepository.submitAcceptance(riskId, userId, input);
+    if (result.kind === 'control_assessments_required' || result.kind === 'control_assessments_stale')
+      throw new AppError(409, 'CONTROL_REASSESSMENT_REQUIRED', 'Reassess all related applicable, implemented controls using current evidence before submitting acceptance');
     if (result.kind === 'context_locked')
       throw new AppError(
         409,
@@ -155,7 +169,7 @@ export const riskRegisterService = {
       throw new AppError(
         422,
         'INVALID_TREATMENT_PLAN_STATUS',
-        'A completed treatment plan cannot be reopened',
+        'Treatment plan status is read-only here. Refresh the risk or use Update Treatment Plan separately.',
       );
     if (result.kind === 'incomplete_actions')
       throw new AppError(
@@ -163,6 +177,8 @@ export const riskRegisterService = {
         'INCOMPLETE_TREATMENT_ACTIONS',
         'Complete or cancel every treatment action before completing the plan',
       );
+    if (result.kind === 'no_completed_actions')
+      throw new AppError(422, 'NO_COMPLETED_ACTIONS', 'A non-acceptance Completed plan must have at least one completed action. Review the treatment plan first.');
     if (result.kind === 'pending_exists')
       throw new AppError(
         409,
@@ -184,6 +200,8 @@ export const riskRegisterService = {
     if (!actor || actor.status !== 'ACTIVE')
       throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
     const result = await riskRegisterRepository.decideAcceptance(acceptanceId, userId, input);
+    if (result.kind === 'control_assessments_required' || result.kind === 'control_assessments_stale')
+      throw new AppError(409, 'CONTROL_REASSESSMENT_REQUIRED', 'Control evidence or assessments are no longer current. Reject the request and reassess before resubmitting.');
     if (result.kind === 'expired')
       throw new AppError(409, 'ACCEPTANCE_EXPIRED', 'The proposed acceptance period has expired. Reject this request and submit a new request with an appropriate validity date.');
     if (result.kind === 'context_changed')
@@ -806,12 +824,49 @@ export const riskRegisterService = {
       throw new AppError(403, 'FORBIDDEN', 'Risk Owner or Security Officer access required');
     const risk: RiskRegisterDetailRecord = found;
     const targetHistory = await riskRegisterRepository.findTargetHistory(riskId);
+    const acceptanceAudits = await riskRegisterRepository.findAcceptanceAudits(riskId);
+    const acceptanceDecisionReasons = new Map<string, string>();
+    const acceptanceRequestReasons = new Map<string, string>();
+    const acceptanceBases = new Map<string, { assessmentId: string; treatmentPlanId: string; planUpdatedAt: string; controlBasis: unknown }>();
+    let reviewOpenedAt: Date | null = null;
+    for (const entry of acceptanceAudits) {
+      if (entry.action === 'RISK_REVIEW_OPENED' && !reviewOpenedAt) reviewOpenedAt = entry.occurred_at;
+      const data = entry.after_data;
+      if (!data || typeof data !== 'object' || Array.isArray(data) || typeof data.acceptanceId !== 'string') continue;
+      if (entry.action === 'RISK_ACCEPTANCE_DECIDED' && typeof data.decisionReason === 'string' && !acceptanceDecisionReasons.has(data.acceptanceId))
+        acceptanceDecisionReasons.set(data.acceptanceId, data.decisionReason);
+      if (entry.action === 'RISK_ACCEPTANCE_SUBMITTED' && typeof data.acceptanceReason === 'string' && !acceptanceRequestReasons.has(data.acceptanceId))
+        acceptanceRequestReasons.set(data.acceptanceId, data.acceptanceReason);
+      if (entry.action === 'RISK_ACCEPTANCE_SUBMITTED' && typeof data.assessmentId === 'string' && typeof data.treatmentPlanId === 'string' && typeof data.planUpdatedAt === 'string' && !acceptanceBases.has(data.acceptanceId))
+        acceptanceBases.set(data.acceptanceId, { assessmentId: data.assessmentId, treatmentPlanId: data.treatmentPlanId, planUpdatedAt: data.planUpdatedAt, controlBasis: data.controlBasis });
+    }
+    const pendingAcceptance = risk.risk_acceptances.some((item) => item.decision === 'PENDING');
+    const currentResidual = risk.risk_assessments.find((item) => item.assessment_type !== 'TARGET_DEFINITION');
+    let acceptanceBlockedReason = !['OPEN', 'UNDER_TREATMENT'].includes(risk.status)
+      ? 'Review the accepted Risk first; closed or archived Risks cannot submit acceptance.'
+      : pendingAcceptance ? 'Resolve the pending acceptance request first.'
+      : !currentResidual?.residual_rating ? 'Assess residual risk before submitting acceptance.'
+      : assessmentRequiresReview(currentResidual.assessed_at, [...risk.risk_vulnerabilities, ...risk.risk_threats])
+        ? 'Threat or Vulnerability context changed. Reassess inherent and residual risk.'
+        : !risk.risk_treatment_plans.some((plan) => ['DRAFT', 'ACTIVE', 'COMPLETED'].includes(plan.status))
+          ? 'Create an eligible treatment plan before submitting acceptance.' : null;
+    if (!acceptanceBlockedReason && reviewOpenedAt && currentResidual && currentResidual.assessed_at <= reviewOpenedAt)
+      acceptanceBlockedReason = 'Assess residual risk again after opening this review.';
+    const controlLinks = pendingAcceptance || (!acceptanceBlockedReason && risk.users_risks_owner_user_idTousers?.id === userId)
+      ? await riskRegisterRepository.getAcceptanceControlLinks(riskId) : null;
+    const controlBlock = controlLinks ? validateResidualControls(controlLinks) : null;
+    if (!acceptanceBlockedReason && controlBlock) acceptanceBlockedReason = 'Reassess all related applicable, implemented Controls using current Evidence.';
     const blockedReason = vulnerabilityBlockedReason(
       risk.status,
       risk.risk_acceptances.some((item) => item.decision === 'PENDING'),
     );
     return {
       ...listItem(risk),
+      acceptanceWorkflow: {
+        canSubmit: risk.users_risks_owner_user_idTousers?.id === userId && !acceptanceBlockedReason,
+        blockedReason: risk.users_risks_owner_user_idTousers?.id === userId ? acceptanceBlockedReason : 'Only the assigned Risk Owner may submit acceptance.',
+        canOpenReview: risk.users_risks_owner_user_idTousers?.id === userId && risk.status === 'ACCEPTED' && !pendingAcceptance,
+      },
       targetHistory: targetHistory.flatMap((entry) => {
         const data = entry.after_data;
         if (!data || typeof data !== 'object' || Array.isArray(data) ||
@@ -918,16 +973,32 @@ export const riskRegisterService = {
         status: lower(item.status),
         createdAt: item.created_at,
       })),
-      acceptances: risk.risk_acceptances.map((item) => ({
+      acceptances: risk.risk_acceptances.map((item) => {
+        const expired = Boolean(item.valid_until && item.valid_until.toISOString().slice(0, 10) < new Date().toISOString().slice(0, 10));
+        const basis = acceptanceBases.get(item.id);
+        const plan = risk.risk_treatment_plans.find((entry) => entry.id === basis?.treatmentPlanId);
+        const approvalBlockedReason = expired ? 'The proposed acceptance period has expired. Reject and resubmit.'
+          : !['OPEN', 'UNDER_TREATMENT'].includes(risk.status) || risk.users_risks_owner_user_idTousers?.id !== item.requested_by || assessmentRequiresReview(item.requested_at, [...risk.risk_vulnerabilities, ...risk.risk_threats])
+            ? 'Risk context or Owner changed. Reject and reassess.'
+            : controlBlock ? 'Control assessments or Evidence are no longer current. Reject and reassess.'
+            : !basis || !controlLinks || !sameResidualControlBasis(basis.controlBasis, controlLinks) || currentResidual?.id !== basis.assessmentId || !plan || !['DRAFT', 'ACTIVE', 'COMPLETED'].includes(plan.status) || plan.updated_at.toISOString() !== basis.planUpdatedAt
+              ? 'The submitted assessment/plan basis is missing or changed. Reject and resubmit.' : null;
+        return {
         id: item.id,
         decision: lower(item.decision),
         reason: item.reason,
+        requestReason: acceptanceRequestReasons.get(item.id) ?? (item.decision === 'PENDING' ? item.reason : null),
+        decisionReason: acceptanceDecisionReasons.get(item.id) ?? null,
+        expired,
+        historical: Boolean(reviewOpenedAt && item.decision === 'APPROVED' && item.decided_at && item.decided_at <= reviewOpenedAt),
+        approvalBlockedReason: item.decision === 'PENDING' ? approvalBlockedReason : null,
+        canDecide: item.decision === 'PENDING' && item.requested_by !== userId && ['SECURITY_OFFICER', 'EXECUTIVE'].includes(actor.role),
         requestedAt: item.requested_at,
         validUntil: item.valid_until,
         requestedBy: item.requested_by,
         decidedBy: item.decided_by,
         decidedAt: item.decided_at,
-      })),
+      }; }),
     };
   },
 };

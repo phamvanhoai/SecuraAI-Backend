@@ -351,7 +351,7 @@ export const openApiSpec = {
         summary: 'Submit risk acceptance',
         security: [{ bearerAuth: [] }],
         description:
-          'Assigned Risk Owner required. OPEN/UNDER_TREATMENT risk, eligible plan, no pending decision and a residual assessment newer than every vulnerability are required. Existing endpoint request body is unchanged. A copied target assessment cannot bypass review of stale context.',
+          'Active assigned Risk Owner only. Locks Risk and related Controls. Requires OPEN/UNDER_TREATMENT, no pending request, eligible plan, current inherent/residual context including Threat/Vulnerability edits, and current applicable implemented Control assessments with valid Evidence. Records a fresh residual assessment and an immutable acceptance audit basis; never changes plan status or its source assessment. Optional legacy treatmentPlanStatus must match the stored status. Appetite/tolerance exceedance is disclosed for approver review, not automatically rejected. Validity is an inclusive UTC calendar date. After opening review, a new residual assessment is required.',
         parameters: [
           {
             name: 'riskId',
@@ -371,7 +371,6 @@ export const openApiSpec = {
                   'residualImpact',
                   'assessmentReason',
                   'treatmentPlanId',
-                  'treatmentPlanStatus',
                   'validUntil',
                   'acceptanceReason',
                 ],
@@ -380,7 +379,7 @@ export const openApiSpec = {
                   residualImpact: { type: 'integer', minimum: 1, maximum: 5 },
                   assessmentReason: { type: 'string' },
                   treatmentPlanId: { type: 'string', format: 'uuid' },
-                  treatmentPlanStatus: { type: 'string', enum: ['draft', 'active', 'completed'] },
+                  treatmentPlanStatus: { type: 'string', enum: ['draft', 'active', 'completed'], description: 'Optional compatibility field; must equal current plan status, never changes it.' },
                   validUntil: { type: 'string', format: 'date' },
                   acceptanceReason: { type: 'string' },
                 },
@@ -398,6 +397,24 @@ export const openApiSpec = {
           },
           '422': { description: 'Invalid plan, actions, validity or input' },
         },
+      },
+    },
+    '/risks/{riskId}/review': {
+      post: {
+        tags: ['Risks'], summary: 'Open review of an accepted Risk', security: [{ bearerAuth: [] }],
+        description: 'Active assigned Risk Owner only. ACCEPTED with no pending request; requires exact expectedUpdatedAt and reason. Reopens the same Risk to UNDER_TREATMENT with an Active plan, otherwise OPEN. Preserves previous approvals/expiry, appends audit, requires a new residual assessment before new acceptance. No automatic renewal or deletion.',
+        parameters: [{ name: 'riskId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['reason', 'expectedUpdatedAt'], properties: { reason: { type: 'string', minLength: 10, maxLength: 2000 }, expectedUpdatedAt: { type: 'string', format: 'date-time' } } } } } },
+        responses: { '200': { description: 'Review opened' }, '401': { description: 'Authentication required' }, '403': { description: 'Owner required' }, '404': { description: 'Risk not found' }, '409': { description: 'Stale or locked Risk' }, '422': { description: 'Invalid input' } },
+      },
+    },
+    '/risks/acceptances/{acceptanceId}/decision': {
+      patch: {
+        tags: ['Risks'], summary: 'Decide risk acceptance', security: [{ bearerAuth: [] }],
+        description: 'Active Security Officer or Executive (existing approver group), never requester. Pending only. Approval checks expiry, owner reassignment, Threat/Vulnerability changes, current Control/Evidence basis and exact submitted assessment/plan basis. Legacy requests without verifiable audit basis must be rejected/resubmitted. Rejection remains available for expired/stale requests. Owner justification is preserved; decision reason is audited separately. Only approval sets ACCEPTED. Detail exposes expired/canDecide and actor-scoped acceptanceWorkflow. No named-approver assignment or automatic email.',
+        parameters: [{ name: 'acceptanceId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['decision', 'reason'], properties: { decision: { type: 'string', enum: ['approved', 'rejected'] }, reason: { type: 'string', minLength: 10, maxLength: 2000 } } } } } },
+        responses: { '200': { description: 'Decision recorded' }, '401': { description: 'Authentication required' }, '403': { description: 'Approver required or self-approval forbidden' }, '404': { description: 'Request not found' }, '409': { description: 'Already decided, expired or changed context' }, '422': { description: 'Invalid input' } },
       },
     },
     '/risks/treatment-plans': {
