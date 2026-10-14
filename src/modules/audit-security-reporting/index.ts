@@ -18,3 +18,4 @@ export * from './security-dashboard.repository.js';
 export * from './security-dashboard.service.js';
 export * from './security-dashboard.controller.js';
 export * from './security-dashboard.routes.js';
+export { auditRouter } from './audit.routes.js';
