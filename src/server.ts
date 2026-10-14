@@ -3,12 +3,17 @@ import { createApp } from './app.js';
 import { env } from './config/env.js';
 import { logger } from './config/logger.js';
 import { prisma } from './database/prisma.js';
+import {
+  startAutomatedDetectionWorker,
+  stopAutomatedDetectionWorker,
+} from './modules/ai-anomaly-detection-alerts/automated-detection.worker.js';
 
 const server = createServer(createApp());
 
 const startServer = async (): Promise<void> => {
   try {
     await prisma.$connect();
+    startAutomatedDetectionWorker();
     logger.info({ database: 'postgresql' }, 'Database connection established');
 
     server.listen(env.PORT, () =>
@@ -32,6 +37,7 @@ const startServer = async (): Promise<void> => {
 
 const shutdown = (signal: string): void => {
   logger.info({ signal }, 'Graceful shutdown started');
+  stopAutomatedDetectionWorker();
   server.close(async (error) => {
     await prisma.$disconnect();
     if (error) {
