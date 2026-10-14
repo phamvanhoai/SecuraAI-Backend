@@ -492,6 +492,8 @@ model evidence_items {
   source                                    String                   @db.VarChar(255)
   owner_user_id                             String?                  @db.Uuid
   storage_uri                               String?
+  evidence_type                             String                   @default("EXTERNAL_URL") @db.VarChar(32)
+  original_file_name                        String?                  @db.VarChar(255)
   mime_type                                 String?                  @db.VarChar(100)
   file_size                                 BigInt?
   collected_at                              DateTime                 @default(now()) @db.Timestamptz(6)
@@ -880,6 +882,7 @@ model risk_assessments {
   assessed_by                String                      @db.Uuid
   assessed_at                DateTime                    @default(now()) @db.Timestamptz(6)
   review_date                DateTime?                   @db.Date
+  methodology_version        String                     @default("SECURAAI-RISK-MATRIX-v1") @db.VarChar(100)
   reassessment_request_id    String?                     @unique @db.Uuid
   created_at                 DateTime                    @default(now()) @db.Timestamptz(6)
   users                      users                       @relation(fields: [assessed_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_risk_assessment_assessed_by")
@@ -934,8 +937,13 @@ model risk_threats {
   name                        String                        @db.VarChar(255)
   description                 String?
   created_at                  DateTime                      @default(now()) @db.Timestamptz(6)
+  updated_at                  DateTime                      @default(now()) @db.Timestamptz(6)
+  updated_by                  String                        @db.Uuid
   risks                       risks                         @relation(fields: [risk_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_risk_threat_risk")
+  users                       users                         @relation("risk_threats_updated_byTousers", fields: [updated_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_risk_threat_updated_by")
   risk_threat_vulnerabilities risk_threat_vulnerabilities[]
+
+  @@index([updated_by], map: "idx_risk_threats_updated_by")
 }
 
 model risk_vulnerability_controls {
@@ -977,24 +985,39 @@ model risk_treatment_actions {
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model risk_treatment_plans {
-  id                                              String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  risk_id                                         String                   @db.Uuid
-  source_assessment_id                            String?                  @db.Uuid
-  title                                           String                   @db.VarChar(255)
+  id                                              String                         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  risk_id                                         String                         @db.Uuid
+  source_assessment_id                            String?                        @db.Uuid
+  title                                           String                         @db.VarChar(255)
   strategy                                        treatment_strategy
-  status                                          treatment_status         @default(DRAFT)
-  owner_user_id                                   String?                  @db.Uuid
-  target_completion_date                          DateTime?                @db.Date
-  created_by                                      String                   @db.Uuid
-  created_at                                      DateTime                 @default(now()) @db.Timestamptz(6)
-  updated_at                                      DateTime                 @default(now()) @db.Timestamptz(6)
+  status                                          treatment_status               @default(DRAFT)
+  owner_user_id                                   String?                        @db.Uuid
+  target_completion_date                          DateTime?                      @db.Date
+  created_by                                      String                         @db.Uuid
+  created_at                                      DateTime                       @default(now()) @db.Timestamptz(6)
+  updated_at                                      DateTime                       @default(now()) @db.Timestamptz(6)
   risk_treatment_actions                          risk_treatment_actions[]
-  risk_assessments                                risk_assessments?        @relation(fields: [source_assessment_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_treatment_plan_assessment")
-  users_risk_treatment_plans_created_byTousers    users                    @relation("risk_treatment_plans_created_byTousers", fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_treatment_plan_created_by")
-  users_risk_treatment_plans_owner_user_idTousers users?                   @relation("risk_treatment_plans_owner_user_idTousers", fields: [owner_user_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_treatment_plan_owner")
-  risks                                           risks                    @relation(fields: [risk_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_treatment_plan_risk")
+  risk_treatment_plan_controls                    risk_treatment_plan_controls[]
+  risk_assessments                                risk_assessments?              @relation(fields: [source_assessment_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_treatment_plan_assessment")
+  users_risk_treatment_plans_created_byTousers    users                          @relation("risk_treatment_plans_created_byTousers", fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_treatment_plan_created_by")
+  users_risk_treatment_plans_owner_user_idTousers users?                         @relation("risk_treatment_plans_owner_user_idTousers", fields: [owner_user_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_treatment_plan_owner")
+  risks                                           risks                          @relation(fields: [risk_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_treatment_plan_risk")
 
   @@index([risk_id], map: "idx_risk_treatment_plans_risk")
+}
+
+model risk_treatment_plan_controls {
+  treatment_plan_id    String               @db.Uuid
+  control_id           String               @db.Uuid
+  linked_by            String               @db.Uuid
+  linked_at            DateTime             @default(now()) @db.Timestamptz(6)
+  risk_treatment_plans risk_treatment_plans @relation(fields: [treatment_plan_id], references: [id], onDelete: Cascade, onUpdate: NoAction, map: "fk_treatment_plan_control_plan")
+  security_controls    security_controls    @relation(fields: [control_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_treatment_plan_control_control")
+  users                users                @relation("risk_treatment_plan_controls_linked_byTousers", fields: [linked_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_treatment_plan_control_linked_by")
+
+  @@id([treatment_plan_id, control_id])
+  @@index([control_id], map: "idx_treatment_plan_controls_control")
+  @@index([linked_by], map: "idx_treatment_plan_controls_linked_by")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -1004,7 +1027,10 @@ model risk_vulnerabilities {
   name                        String                        @db.VarChar(255)
   description                 String?
   created_at                  DateTime                      @default(now()) @db.Timestamptz(6)
+  updated_at                  DateTime                      @default(now()) @db.Timestamptz(6)
+  updated_by                  String                        @db.Uuid
   risks                       risks                         @relation(fields: [risk_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_risk_vulnerability_risk")
+  users                       users                         @relation("risk_vulnerabilities_updated_byTousers", fields: [updated_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_risk_vulnerability_updated_by")
   risk_threat_vulnerabilities risk_threat_vulnerabilities[]
   risk_vulnerability_controls risk_vulnerability_controls[]
 }
@@ -1042,25 +1068,26 @@ model risks {
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model security_controls {
-  id                                           String                        @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  control_code                                 String                        @unique @db.VarChar(100)
-  name                                         String                        @db.VarChar(255)
+  id                                           String                         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  control_code                                 String                         @unique @db.VarChar(100)
+  name                                         String                         @db.VarChar(255)
   description                                  String?
-  owner_user_id                                String?                       @db.Uuid
+  owner_user_id                                String?                        @db.Uuid
   applicability                                control_applicability
   implementation_status                        control_implementation_status
-  created_by                                   String                        @db.Uuid
-  created_at                                   DateTime                      @default(now()) @db.Timestamptz(6)
-  updated_at                                   DateTime                      @default(now()) @db.Timestamptz(6)
+  created_by                                   String                         @db.Uuid
+  created_at                                   DateTime                       @default(now()) @db.Timestamptz(6)
+  updated_at                                   DateTime                       @default(now()) @db.Timestamptz(6)
   control_assessments                          control_assessments[]
   control_asset_links                          control_asset_links[]
   control_evidence_links                       control_evidence_links[]
   control_findings                             control_findings[]
   control_risk_links                           control_risk_links[]
   risk_vulnerability_controls                  risk_vulnerability_controls[]
+  risk_treatment_plan_controls                 risk_treatment_plan_controls[]
   incident_controls                            incident_controls[]
-  users_security_controls_created_byTousers    users                         @relation("security_controls_created_byTousers", fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_control_created_by")
-  users_security_controls_owner_user_idTousers users?                        @relation("security_controls_owner_user_idTousers", fields: [owner_user_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_control_owner")
+  users_security_controls_created_byTousers    users                          @relation("security_controls_created_byTousers", fields: [created_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_control_created_by")
+  users_security_controls_owner_user_idTousers users?                         @relation("security_controls_owner_user_idTousers", fields: [owner_user_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_control_owner")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -1250,6 +1277,9 @@ model users {
   risk_treatment_actions                                                          risk_treatment_actions[]
   risk_treatment_plans_risk_treatment_plans_created_byTousers                     risk_treatment_plans[]           @relation("risk_treatment_plans_created_byTousers")
   risk_treatment_plans_risk_treatment_plans_owner_user_idTousers                  risk_treatment_plans[]           @relation("risk_treatment_plans_owner_user_idTousers")
+  risk_treatment_plan_controls_risk_treatment_plan_controls_linked_byTousers      risk_treatment_plan_controls[]   @relation("risk_treatment_plan_controls_linked_byTousers")
+  risk_vulnerabilities_risk_vulnerabilities_updated_byTousers                     risk_vulnerabilities[]           @relation("risk_vulnerabilities_updated_byTousers")
+  risk_threats_risk_threats_updated_byTousers                                     risk_threats[]                    @relation("risk_threats_updated_byTousers")
   risks_risks_created_byTousers                                                   risks[]                          @relation("risks_created_byTousers")
   risks_risks_owner_user_idTousers                                                risks[]                          @relation("risks_owner_user_idTousers")
   security_controls_security_controls_created_byTousers                           security_controls[]              @relation("security_controls_created_byTousers")

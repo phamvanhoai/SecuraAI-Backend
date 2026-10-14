@@ -28,10 +28,11 @@ const service = {
     owner: {
       type: 'object',
       nullable: true,
-      required: ['id', 'fullName', 'inactive'],
+      required: ['id', 'fullName', 'email', 'inactive'],
       properties: {
         id: { type: 'string', format: 'uuid' },
         fullName: { type: 'string' },
+        email: { type: 'string', format: 'email' },
         inactive: { type: 'boolean' },
       },
     },
@@ -151,7 +152,7 @@ export const businessServicesPaths = {
       security: [{ bearerAuth: [] }],
       summary: 'Search active responsible owners for service creation',
       description:
-        'Active Security Officer required. At most 10 active users, ordered by fullName/id. Owner assignment does not grant authorization. All fixed roles may be responsible owners; no new role is introduced.',
+        'Active Security Officer required. Searches full name or email case-insensitively and returns at most 10 active users, ordered by fullName/id. Owner assignment does not grant authorization. All fixed roles may be responsible owners; no new role is introduced.',
       parameters: [{ name: 'q', in: 'query', schema: { type: 'string', maxLength: 100 } }],
       responses: {
         ...errors,
@@ -164,10 +165,11 @@ export const businessServicesPaths = {
               maxItems: 10,
               items: {
                 type: 'object',
-                required: ['id', 'fullName', 'role'],
+                required: ['id', 'fullName', 'email', 'role'],
                 properties: {
                   id: { type: 'string', format: 'uuid' },
                   fullName: { type: 'string' },
+                  email: { type: 'string', format: 'email' },
                   role: {
                     type: 'string',
                     enum: ['ADMIN', 'SECURITY_OFFICER', 'EMPLOYEE', 'EXECUTIVE'],

@@ -17,7 +17,7 @@ const serviceSelect = {
   status: true,
   created_at: true,
   updated_at: true,
-  users: { select: { id: true, full_name: true, status: true } },
+  users: { select: { id: true, full_name: true, email: true, status: true } },
   _count: { select: { assets: true } },
 } as const;
 
@@ -237,9 +237,16 @@ export const businessServicesRepository = {
     return prisma.users.findMany({
       where: {
         status: 'ACTIVE',
-        ...(q ? { full_name: { contains: q, mode: 'insensitive' } } : {}),
+        ...(q
+          ? {
+              OR: [
+                { full_name: { contains: q, mode: 'insensitive' } },
+                { email: { contains: q, mode: 'insensitive' } },
+              ],
+            }
+          : {}),
       },
-      select: { id: true, full_name: true, role: true },
+      select: { id: true, full_name: true, email: true, role: true },
       orderBy: [{ full_name: 'asc' }, { id: 'asc' }],
       take: 10,
     });

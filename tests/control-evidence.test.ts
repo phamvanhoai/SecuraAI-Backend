@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { Prisma } from '@prisma/client';
 const { tx, transaction } = vi.hoisted(() => {
   const tx = {
+    $executeRaw: vi.fn(),
     $queryRaw: vi.fn(),
     users: { findUnique: vi.fn() },
     security_controls: { findUnique: vi.fn() },
@@ -22,7 +23,14 @@ const { tx, transaction } = vi.hoisted(() => {
     transaction: vi.fn(async (callback: (value: typeof tx) => Promise<unknown>) => callback(tx)),
   };
 });
+const storage = vi.hoisted(() => ({
+  prepareEvidenceFile: vi.fn(),
+  storeEvidenceFile: vi.fn(),
+  readVerifiedEvidenceFile: vi.fn(),
+  removeEvidenceFile: vi.fn(),
+}));
 vi.mock('../src/database/prisma.js', () => ({ prisma: { ...tx, $transaction: transaction } }));
+vi.mock('../src/modules/policy-compliance-control/control-evidence.storage.js', () => storage);
 import { controlEvidenceService } from '../src/modules/policy-compliance-control/control-evidence.service.js';
 import {
   addControlEvidenceSchema,
@@ -52,6 +60,11 @@ const item = {
   source: input.source,
   description: input.description,
   storage_uri: input.documentUrl,
+  evidence_type: 'EXTERNAL_URL',
+  original_file_name: null,
+  mime_type: null,
+  file_size: null,
+  integrity_hash: null,
   owner_user_id: actorId,
   collected_at: past,
   valid_from: null,
@@ -79,7 +92,19 @@ beforeEach(() => {
   tx.control_evidence_links.findUnique.mockResolvedValue(null);
   tx.control_evidence_links.create.mockResolvedValue({});
   tx.audit_logs.create.mockResolvedValue({});
+  tx.$executeRaw.mockResolvedValue(0);
   tx.$queryRaw.mockResolvedValue([]);
+  storage.prepareEvidenceFile.mockResolvedValue({
+    buffer: Buffer.from('%PDF-1.7 test'),
+    storageKey: `control-evidence/${evidenceId}.pdf`,
+    originalFileName: 'mfa-report.pdf',
+    mimeType: 'application/pdf',
+    sizeBytes: 13,
+    sha256: 'a'.repeat(64),
+  });
+  storage.storeEvidenceFile.mockResolvedValue(true);
+  storage.readVerifiedEvidenceFile.mockResolvedValue(Buffer.from('%PDF-1.7 test'));
+  storage.removeEvidenceFile.mockResolvedValue(undefined);
 });
 describe('Evidence DTOs and usability', () => {
   it('accepts reference metadata but does not accept fabricated review/file fields', () => {
@@ -431,6 +456,55 @@ describe('Evidence HTTP contracts', () => {
       evidence: { documentUrl: input.documentUrl, reviewedAt: null },
     });
     expect(response.body.data).not.toHaveProperty('effectiveness');
+  });
+  it('uploads one authenticated file and downloads it through the protected endpoint', async () => {
+    const uploaded = {
+      ...item,
+      storage_uri: `control-evidence/${evidenceId}.pdf`,
+      evidence_type: 'UPLOADED_FILE',
+      original_file_name: 'mfa-report.pdf',
+      mime_type: 'application/pdf',
+      file_size: 13n,
+      integrity_hash: 'a'.repeat(64),
+    };
+    tx.evidence_items.create.mockResolvedValue(uploaded);
+    const response = await request(app)
+      .post(`${path}/evidence-files`)
+      .set('Authorization', `Bearer ${token}`)
+      .field('requestId', evidenceId)
+      .field('name', input.name)
+      .field('source', input.source)
+      .field('description', input.description)
+      .field('collectedAt', input.collectedAt)
+      .field('validUntil', '')
+      .attach('file', Buffer.from('%PDF-1.7 test'), {
+        filename: 'mfa-report.pdf',
+        contentType: 'application/pdf',
+      });
+    expect(response.status).toBe(201);
+    expect(response.body.data.evidence).toMatchObject({
+      evidenceType: 'uploaded_file',
+      documentUrl: null,
+      file: { name: 'mfa-report.pdf', sha256: 'a'.repeat(64) },
+    });
+    tx.evidence_items.findFirst.mockResolvedValue({
+      id: evidenceId,
+      storage_uri: uploaded.storage_uri,
+      original_file_name: uploaded.original_file_name,
+      mime_type: uploaded.mime_type,
+      integrity_hash: uploaded.integrity_hash,
+    });
+    const download = await request(app)
+      .get(`/api/v1/compliance/evidence/${evidenceId}/download`)
+      .set('Authorization', `Bearer ${token}`);
+    expect(download.status).toBe(200);
+    expect(download.headers['content-disposition']).toContain('mfa-report.pdf');
+    expect(download.headers['cache-control']).toBe('private, no-store');
+    expect(download.headers['x-content-sha256']).toBe('a'.repeat(64));
+    expect(storage.readVerifiedEvidenceFile).toHaveBeenCalledWith(
+      uploaded.storage_uri,
+      uploaded.integrity_hash,
+    );
   });
   it('checks DB ownership despite an elevated JWT claim and masks inaccessible IDs', async () => {
     tx.users.findUnique.mockResolvedValue({ role: 'EMPLOYEE', status: 'ACTIVE' });

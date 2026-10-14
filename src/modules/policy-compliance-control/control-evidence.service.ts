@@ -4,8 +4,16 @@ import { controlEvidenceRepository } from './control-evidence.repository.js';
 import type {
   AddControlEvidence,
   LinkControlEvidence,
+  UnlinkControlEvidence,
   ListControlEvidence,
 } from './dto/control-evidence.dto.js';
+import type { UploadControlEvidenceFields } from './dto/control-evidence.dto.js';
+import {
+  prepareEvidenceFile,
+  readVerifiedEvidenceFile,
+  removeEvidenceFile,
+  storeEvidenceFile,
+} from './control-evidence.storage.js';
 async function safely<T>(work: () => Promise<T>): Promise<T> {
   try {
     return await work();
@@ -31,5 +39,47 @@ export const controlEvidenceService = {
   },
   link(actorId: string, controlId: string, input: LinkControlEvidence) {
     return safely(() => controlEvidenceRepository.link(actorId, controlId, input));
+  },
+  unlink(actorId: string, controlId: string, evidenceId: string, input: UnlinkControlEvidence) {
+    return safely(() => controlEvidenceRepository.unlink(actorId, controlId, evidenceId, input));
+  },
+  async upload(
+    actorId: string,
+    controlId: string,
+    input: UploadControlEvidenceFields,
+    file: Express.Multer.File,
+  ) {
+    const prepared = await prepareEvidenceFile(file, input.requestId);
+    const createdFile = await storeEvidenceFile(prepared.storageKey, prepared.buffer);
+    if (!createdFile) {
+      await readVerifiedEvidenceFile(prepared.storageKey, prepared.sha256).catch(() => {
+        throw new AppError(
+          409,
+          'EVIDENCE_STORAGE_CONFLICT',
+          'A different file already uses this upload request. Close and reopen the form',
+        );
+      });
+    }
+    try {
+      return await safely(() =>
+        controlEvidenceRepository.addUploaded(actorId, controlId, {
+          ...input,
+          storageKey: prepared.storageKey,
+          originalFileName: prepared.originalFileName,
+          mimeType: prepared.mimeType,
+          sizeBytes: prepared.sizeBytes,
+          sha256: prepared.sha256,
+        }),
+      );
+    } catch (error) {
+      if (createdFile) await removeEvidenceFile(prepared.storageKey);
+      throw error;
+    }
+  },
+  async download(actorId: string, evidenceId: string) {
+    const item = await controlEvidenceRepository.getUploadedFile(actorId, evidenceId);
+    const buffer = await readVerifiedEvidenceFile(item.storageKey, item.sha256);
+    await controlEvidenceRepository.recordFileDownload(actorId, evidenceId);
+    return { ...item, buffer };
   },
 };

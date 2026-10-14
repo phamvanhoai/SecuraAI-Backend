@@ -22,6 +22,7 @@ export const openApiSpec = {
   components: {
     securitySchemes: {
       bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' },
+      apiKeyAuth: { type: 'apiKey', in: 'header', name: 'X-API-Key' },
     },
   },
   paths: {
@@ -35,6 +36,72 @@ export const openApiSpec = {
     ...notificationPaths,
     ...auditPaths,
     ...systemLogPaths,
+    '/integrations/api-keys': {
+      post: {
+        tags: ['Audit & Security Reporting'],
+        summary: 'Generate integration API key',
+        description:
+          'Generate a new integration API key by specifying its name, authorized scopes, and expiration settings. The plaintext secret is returned once. Restricted to administrators.',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['name'],
+                properties: {
+                  name: { type: 'string', minLength: 1, maxLength: 255 },
+                  keyName: { type: 'string', minLength: 1, maxLength: 255 },
+                  eventSourceId: { type: 'string', format: 'uuid', nullable: true },
+                  integrationId: { type: 'string', format: 'uuid', nullable: true },
+                  scopes: {
+                    type: 'array',
+                    items: { type: 'string' },
+                    default: ['events:ingest'],
+                  },
+                  expiresAt: { type: 'string', format: 'date-time', nullable: true },
+                  isActive: { type: 'boolean', default: true },
+                  status: { type: 'string', enum: ['ACTIVE', 'INACTIVE'], default: 'ACTIVE' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '201': { description: 'API key generated; plaintext secret returned once' },
+          '400': { description: 'Invalid expiration or key configuration' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Administrator role required' },
+          '404': { description: 'Event source or integration not found' },
+          '422': { description: 'Validation failed' },
+        },
+      },
+    },
+    '/integrations/api-keys/{keyId}': {
+      get: {
+        tags: ['Audit & Security Reporting'],
+        summary: 'View Integration API Key Detail',
+        description:
+          'Returns metadata, scopes, status, creator, expiration, and available usage information without exposing the secret value. Restricted to administrators.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'keyId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          '200': { description: 'Integration API key metadata' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Administrator role required' },
+          '404': { description: 'Integration API key not found' },
+          '422': { description: 'Invalid key identifier' },
+        },
+      },
+    },
     '/access-control/permissions': {
       get: {
         tags: ['Access Control'],
@@ -220,6 +287,48 @@ export const openApiSpec = {
               'RISK_CONTEXT_LOCKED or VULNERABILITY_ALREADY_EXISTS; reload risk and review the reason',
           },
           '422': { description: 'Invalid input or controls not linked to risk' },
+        },
+      },
+    },
+    '/risks/{riskId}/threats/{threatId}': {
+      patch: {
+        tags: ['Risks'],
+        summary: 'Update an identified threat',
+        security: [{ bearerAuth: [] }],
+        description:
+          'Active Security Officer required. Updates the existing threat and its vulnerability links without deleting history. OPEN/UNDER_TREATMENT context and no pending acceptance are required. A successful change requires risk reassessment.',
+        parameters: [
+          { name: 'riskId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+          { name: 'threatId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['name', 'description', 'vulnerabilityIds', 'expectedUpdatedAt'],
+                properties: {
+                  name: { type: 'string', minLength: 2, maxLength: 255 },
+                  description: { type: 'string', minLength: 3, maxLength: 3000 },
+                  vulnerabilityIds: {
+                    type: 'array', minItems: 1, maxItems: 50, uniqueItems: true,
+                    items: { type: 'string', format: 'uuid' },
+                  },
+                  expectedUpdatedAt: { type: 'string', format: 'date-time' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'Threat updated; reassessment required' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer required' },
+          '404': { description: 'Risk or threat not found' },
+          '409': { description: 'Risk context locked, duplicate name, or stale update' },
+          '422': { description: 'Invalid input or vulnerability links' },
         },
       },
     },
@@ -474,10 +583,9 @@ export const openApiSpec = {
             'application/json': {
               schema: {
                 type: 'object',
-                required: ['assetCode', 'name', 'assetType'],
+                required: ['name', 'assetType'],
                 additionalProperties: false,
                 properties: {
-                  assetCode: { type: 'string', maxLength: 100 },
                   name: { type: 'string', maxLength: 255 },
                   assetType: { type: 'string', maxLength: 100 },
                   ownerUserId: { type: 'string', format: 'uuid' },
@@ -768,6 +876,213 @@ export const openApiSpec = {
           '422': { description: 'Invalid or unavailable relationship' },
         },
       },
+      patch: {
+        tags: ['Audit & Security Reporting'],
+        summary: 'Edit API Key Scope & Expiration',
+        description:
+          'Allow administrators to edit an existing API key’s authorized scopes or expiration date. The system validates and saves the changes and applies the updated access restrictions.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'keyId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  name: { type: 'string', minLength: 1, maxLength: 255 },
+                  keyName: { type: 'string', minLength: 1, maxLength: 255 },
+                  scopes: { type: 'array', items: { type: 'string' }, minItems: 1 },
+                  expiresAt: { type: 'string', format: 'date-time', nullable: true },
+                  isActive: { type: 'boolean' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'Updated integration API key metadata' },
+          '400': { description: 'Bad request (e.g. past expiration date or empty scopes)' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Admin role required' },
+          '404': { description: 'Integration API key not found' },
+          '422': { description: 'Validation failed' },
+        },
+      },
+    },
+    '/integrations/api-keys/{keyId}/rotate': {
+      post: {
+        tags: ['Audit & Security Reporting'],
+        summary: 'Rotate Integration API Key',
+        description:
+          'Allow administrators to rotate an existing integration API key by generating a replacement key with a new secret token and invalidating the previous key. Scopes and event source bindings are preserved. Restricted to ADMIN role.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'keyId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+        ],
+        requestBody: {
+          required: false,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  expiresAt: { type: 'string', format: 'date-time', nullable: true },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'Integration API key rotated successfully with replacement secret token' },
+          '400': { description: 'Bad request (e.g. key already revoked or rotated, or invalid expiration)' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Admin role required' },
+          '404': { description: 'Integration API key not found' },
+          '422': { description: 'Validation failed' },
+        },
+      },
+    },
+    '/integrations/{id}/api-keys/{keyId}/rotate': {
+      post: {
+        tags: ['Audit & Security Reporting'],
+        summary: 'Rotate Integration API Key by Event Source',
+        description:
+          'Allow administrators to rotate an existing integration API key belonging to a specific event source by generating a replacement key with a new secret token and invalidating the previous key. Restricted to ADMIN role.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+          { name: 'keyId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+        ],
+        requestBody: {
+          required: false,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  expiresAt: { type: 'string', format: 'date-time', nullable: true },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'Integration API key rotated successfully with replacement secret token' },
+          '400': { description: 'Bad request (e.g. key already revoked or rotated, or invalid expiration)' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Admin role required' },
+          '404': { description: 'Integration API key not found for the specified integration' },
+          '422': { description: 'Validation failed' },
+        },
+      },
+    },
+    '/integrations/api-keys/{keyId}/revoke': {
+      post: {
+        tags: ['Audit & Security Reporting'],
+        summary: 'Revoke Integration API Key',
+        description:
+          'Allow administrators to revoke an integration API key so that it can no longer be used for authentication. The system updates the key status to REVOKED and records the revocation for audit purposes. Restricted to ADMIN role.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'keyId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+        ],
+        requestBody: {
+          required: false,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  reason: { type: 'string', maxLength: 500 },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'Integration API key revoked successfully' },
+          '400': { description: 'Bad request (e.g. key already revoked)' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Admin role required' },
+          '404': { description: 'Integration API key not found' },
+          '422': { description: 'Validation failed' },
+        },
+      },
+    },
+    '/integrations/{id}/api-keys/{keyId}/revoke': {
+      post: {
+        tags: ['Audit & Security Reporting'],
+        summary: 'Revoke Integration API Key by Event Source',
+        description:
+          'Allow administrators to revoke an integration API key belonging to a specific event source so that it can no longer be used for authentication. Restricted to ADMIN role.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+          { name: 'keyId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+        ],
+        requestBody: {
+          required: false,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  reason: { type: 'string', maxLength: 500 },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'Integration API key revoked successfully' },
+          '400': { description: 'Bad request (e.g. key already revoked)' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Admin role required' },
+          '404': { description: 'Integration API key not found for the specified integration' },
+          '422': { description: 'Validation failed' },
+        },
+      },
+    },
+    '/dashboard/security-posture': {
+      get: {
+        tags: ['Audit & Security Reporting'],
+        summary: 'View Security / Risk / Incident Dashboard',
+        description:
+          "Allow Security Officers and authorized Executives to view a dashboard summarizing the organization's security posture. The dashboard presents available security indicators, risk metrics, incident statistics, and recent AI-generated alerts within the user's access scope. Strictly restricted to SECURITY_OFFICER and EXECUTIVE roles.",
+        security: [{ bearerAuth: [] }],
+        responses: {
+          '200': {
+            description: 'Security dashboard posture and metrics retrieved successfully',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', example: true },
+                    data: {
+                      type: 'object',
+                      properties: {
+                        userRole: { type: 'string', enum: ['SECURITY_OFFICER', 'EXECUTIVE'] },
+                        securityIndicators: { type: 'object' },
+                        riskMetrics: { type: 'object' },
+                        incidentStatistics: { type: 'object' },
+                        aiAlertMetrics: { type: 'object' },
+                        operationalDetails: { type: 'object' },
+                        executiveSummary: { type: 'object' },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer or Executive role required' },
+        },
+      },
     },
     '/event-sources': {
       get: {
@@ -860,23 +1175,16 @@ export const openApiSpec = {
         tags: ['Event Ingestion'],
         summary: 'Ingest a normalized Wazuh event',
         description:
-          'Accepts one normalized event from the configured Wazuh integration. Requires the X-SecuraAI-Ingest-Key header or a bearer ingestion token.',
-        parameters: [
-          {
-            name: 'X-SecuraAI-Ingest-Key',
-            in: 'header',
-            required: false,
-            schema: { type: 'string' },
-          },
-        ],
+          'Accepts one normalized event from Wazuh. Requires an active integration API key with the events:ingest scope.',
+        security: [{ apiKeyAuth: [] }],
         requestBody: {
           required: true,
           content: { 'application/json': { schema: { type: 'object' } } },
         },
         responses: {
           '201': { description: 'Event ingested' },
-          '401': { description: 'Ingestion token missing' },
-          '403': { description: 'Ingestion token invalid' },
+          '401': { description: 'API key missing, invalid, expired, or revoked' },
+          '403': { description: 'API key lacks the events:ingest scope' },
           '422': { description: 'Invalid normalized event' },
           '503': { description: 'Wazuh ingestion is not configured' },
         },
@@ -3656,6 +3964,121 @@ export const openApiSpec = {
           '403': { description: 'Authorized audit role required' },
           '404': { description: 'Audit record not found' },
           '422': { description: 'Invalid audit record ID' },
+        },
+      },
+    },
+    '/integrations/{id}/api-keys': {
+      ...(pendingV2Paths['/integrations/{id}/api-keys'] ?? {}),
+      get: {
+        tags: ['Integrations', 'Audit & Security Reporting'],
+        summary: 'View Integration API Key List for an event source / integration',
+        description:
+          'Allow administrators to view the list of integration API keys assigned to a specific integration or event source, including key names, key prefixes/fingerprints, assigned scopes, status, creator, and expiration information. Secret key values are not exposed in the list.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'id',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+          { name: 'search', in: 'query', schema: { type: 'string' } },
+          { name: 'status', in: 'query', schema: { type: 'string', enum: ['ACTIVE', 'EXPIRED', 'REVOKED', 'ROTATED'] } },
+          { name: 'isActive', in: 'query', schema: { type: 'boolean' } },
+        ],
+        responses: {
+          '200': { description: 'List of integration API keys for the specified integration without secrets' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Administrator role required' },
+          '404': { description: 'Event source / integration not found' },
+          '422': { description: 'Invalid parameter format' },
+        },
+      },
+    },
+    '/integrations/{id}/api-keys/{keyId}': {
+      ...(pendingV2Paths['/integrations/{id}/api-keys/{keyId}'] ?? {}),
+      get: {
+        tags: ['Integrations', 'Audit & Security Reporting'],
+        summary: 'View Integration API Key Detail',
+        description:
+          'Returns metadata and available usage information for a key belonging to the selected integration without exposing the secret value.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+          {
+            name: 'keyId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          '200': { description: 'Integration API key metadata' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Administrator role required' },
+          '404': { description: 'Integration or API key not found' },
+          '422': { description: 'Invalid identifier' },
+        },
+      },
+      patch: {
+        tags: ['Integrations', 'Audit & Security Reporting'],
+        summary: 'Edit API Key Scope & Expiration for an integration',
+        description:
+          'Allow administrators to edit an existing API key’s authorized scopes or expiration date under a specific integration. The system validates and saves the changes and applies the updated access restrictions.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+          { name: 'keyId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  name: { type: 'string', minLength: 1, maxLength: 255 },
+                  keyName: { type: 'string', minLength: 1, maxLength: 255 },
+                  scopes: { type: 'array', items: { type: 'string' }, minItems: 1 },
+                  expiresAt: { type: 'string', format: 'date-time', nullable: true },
+                  isActive: { type: 'boolean' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'Updated integration API key metadata' },
+          '400': { description: 'Bad request (e.g. past expiration date or empty scopes)' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Admin role required' },
+          '404': { description: 'Integration API key or integration not found' },
+          '422': { description: 'Validation failed' },
+        },
+      },
+    },
+    '/audit-security-reporting/api-keys': {
+      get: {
+        tags: ['Audit & Security Reporting'],
+        summary: 'View all integration API keys with pagination and filtering',
+        description:
+          'Allow administrators to view the list of all integration API keys across the platform, including key names, assigned scopes, status, creator, and expiration information. Secret key values are never exposed.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 } },
+          { name: 'search', in: 'query', schema: { type: 'string' } },
+          { name: 'status', in: 'query', schema: { type: 'string', enum: ['ACTIVE', 'EXPIRED', 'REVOKED', 'ROTATED'] } },
+          { name: 'isActive', in: 'query', schema: { type: 'boolean' } },
+          { name: 'eventSourceId', in: 'query', schema: { type: 'string', format: 'uuid' } },
+          { name: 'sortBy', in: 'query', schema: { type: 'string', enum: ['createdAt', 'expiresAt', 'lastUsedAt', 'name'], default: 'createdAt' } },
+          { name: 'sortOrder', in: 'query', schema: { type: 'string', enum: ['asc', 'desc'], default: 'desc' } },
+        ],
+        responses: {
+          '200': { description: 'Paginated list of integration API keys' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Administrator role required' },
+          '422': { description: 'Invalid query parameters' },
         },
       },
     },

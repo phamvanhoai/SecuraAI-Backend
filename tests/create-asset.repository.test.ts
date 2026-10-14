@@ -5,9 +5,9 @@ import { assetsRepository } from '../src/modules/it-asset-management/assets.repo
 describe('create asset without classification', () => {
   beforeEach(() => vi.resetAllMocks());
   it('persists null classification and service, never an implicit level', async () => {
-    await assetsRepository.create('officer', { assetCode: 'AST-NEW', name: 'New server', assetType: 'SERVER', dependencies: [], eventSourceIds: [] });
+    await assetsRepository.create('officer', 'AST-12AB34CD', { name: 'New server', assetType: 'SERVER', dependencies: [], eventSourceIds: [] });
     expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
-      criticality: null, data_classification: null, business_service_id: null, created_by: 'officer',
+      asset_code: 'AST-12AB34CD', criticality: null, data_classification: null, business_service_id: null, created_by: 'officer',
     }) }));
   });
 });

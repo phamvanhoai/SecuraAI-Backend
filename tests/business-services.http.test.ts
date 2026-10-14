@@ -172,14 +172,23 @@ describe('business services HTTP reads', () => {
       status: 'active',
     });
     expect(repository.create).toHaveBeenCalledWith(id, { name: 'Support' });
-    vi.mocked(repository.ownerOptions).mockResolvedValue([]);
-    expect(
-      (
-        await request(app)
-          .get('/api/v1/business-services/owner-options?q=test')
-          .set('Authorization', `Bearer ${token}`)
-      ).status,
-    ).toBe(200);
+    vi.mocked(repository.ownerOptions).mockResolvedValue([
+      {
+        id,
+        full_name: 'Service Owner',
+        email: 'service.owner@example.test',
+        role: 'EMPLOYEE',
+      },
+    ]);
+    const ownersResponse = await request(app)
+      .get('/api/v1/business-services/owner-options?q=owner%40example.test')
+      .set('Authorization', `Bearer ${token}`);
+    expect(ownersResponse.status).toBe(200);
+    expect(ownersResponse.body.data.items[0]).toMatchObject({
+      fullName: 'Service Owner',
+      email: 'service.owner@example.test',
+    });
+    expect(repository.ownerOptions).toHaveBeenCalledWith('owner@example.test');
   });
   it('does not allow nonofficer creation', async () => {
     vi.mocked(repository.findActor).mockResolvedValue({ role: 'EMPLOYEE', status: 'ACTIVE' });

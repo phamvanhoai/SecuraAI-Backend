@@ -2,7 +2,12 @@ import { Prisma, user_role, user_status } from '@prisma/client';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../src/modules/risk-assessment/risk-register.repository.js', () => ({
-  riskRegisterRepository: { findActor: vi.fn(), list: vi.fn(), findById: vi.fn() },
+  riskRegisterRepository: {
+    findActor: vi.fn(),
+    list: vi.fn(),
+    findById: vi.fn(),
+    findContextHistory: vi.fn().mockResolvedValue([]),
+  },
 }));
 import { riskRegisterRepository } from '../src/modules/risk-assessment/risk-register.repository.js';
 import { riskRegisterService } from '../src/modules/risk-assessment/risk-register.service.js';
@@ -53,6 +58,7 @@ const record = {
       assessment_reason: 'Initial assessment',
       assessed_at: now,
       review_date: null,
+      methodology_version: 'SECURAAI-RISK-MATRIX-v1',
       users: {
         id: '00000000-0000-4000-8000-000000000005',
         full_name: 'Officer',
@@ -105,10 +111,26 @@ describe('view risk register service', () => {
     ).rejects.toMatchObject({ statusCode: 404, code: 'RISK_NOT_FOUND' });
   });
   it('returns the explicitly saved service without deriving it from assets', async () => {
-    vi.mocked(riskRegisterRepository.findActor).mockResolvedValue({ id: 'u', role: user_role.SECURITY_OFFICER, status: user_status.ACTIVE });
-    vi.mocked(riskRegisterRepository.list).mockResolvedValue([1, [{ ...record, scope_type: 'BUSINESS_SERVICE', business_services: { id: 'service', name: 'Customer service', status: 'INACTIVE' } }]]);
+    vi.mocked(riskRegisterRepository.findActor).mockResolvedValue({
+      id: 'u',
+      role: user_role.SECURITY_OFFICER,
+      status: user_status.ACTIVE,
+    });
+    vi.mocked(riskRegisterRepository.list).mockResolvedValue([
+      1,
+      [
+        {
+          ...record,
+          scope_type: 'BUSINESS_SERVICE',
+          business_services: { id: 'service', name: 'Customer service', status: 'INACTIVE' },
+        },
+      ],
+    ]);
     const result = await riskRegisterService.list('u', query);
-    expect(result.items[0]?.scope).toEqual({ type: 'business_service', businessService: { id: 'service', name: 'Customer service', status: 'inactive' } });
+    expect(result.items[0]?.scope).toEqual({
+      type: 'business_service',
+      businessService: { id: 'service', name: 'Customer service', status: 'inactive' },
+    });
     expect(result.items[0]?.assets).toHaveLength(1);
   });
 });

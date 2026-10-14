@@ -188,10 +188,10 @@ export const assetsRepository = {
       eventSourcesValid: sources === input.eventSourceIds.length,
     };
   },
-  create(actorUserId: string, input: CreateAssetInput) {
+  create(actorUserId: string, assetCode: string, input: CreateAssetInput) {
     return prisma.assets.create({
       data: {
-        asset_code: input.assetCode,
+        asset_code: assetCode,
         name: input.name,
         asset_type: input.assetType,
         criticality: null,

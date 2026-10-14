@@ -64,7 +64,6 @@ export const legacyV1RouteContracts = [
     path: '/compliance/control-assessments/{assessmentId}/evidence',
     tag: 'Policies',
   },
-  { method: 'get', path: '/compliance/evidence/{evidenceId}/download', tag: 'Policies' },
   {
     method: 'patch',
     path: '/security-monitoring/log-sources/{logSourceId}',
@@ -99,10 +98,4 @@ export const legacyV1RouteContracts = [
   { method: 'get', path: '/integrations/logs/stats', tag: 'Integrations' },
   { method: 'get', path: '/integrations/logs', tag: 'Integrations' },
   { method: 'get', path: '/integrations/{id}/logs', tag: 'Integrations' },
-  { method: 'post', path: '/integrations/{id}/api-keys', tag: 'Integrations' },
-  { method: 'get', path: '/integrations/{id}/api-keys', tag: 'Integrations' },
-  { method: 'get', path: '/integrations/{id}/api-keys/{keyId}', tag: 'Integrations' },
-  { method: 'patch', path: '/integrations/{id}/api-keys/{keyId}', tag: 'Integrations' },
-  { method: 'post', path: '/integrations/{id}/api-keys/{keyId}/rotate', tag: 'Integrations' },
-  { method: 'post', path: '/integrations/{id}/api-keys/{keyId}/revoke', tag: 'Integrations' },
 ] as const;

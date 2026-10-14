@@ -313,6 +313,7 @@ async function seedRiskRegisterDemo(transaction: Prisma.TransactionClient): Prom
     create: {
       id: '00000000-0000-4000-8000-000000000148',
       risk_id: primaryRiskId,
+      updated_by: officer.id,
       name: 'Credential theft',
       description: 'Phishing or malware captures privileged credentials.',
     },
@@ -325,6 +326,7 @@ async function seedRiskRegisterDemo(transaction: Prisma.TransactionClient): Prom
       risk_id: primaryRiskId,
       name: 'Incomplete privileged access review',
       description: 'Dormant administrative access is not removed consistently.',
+      updated_by: officer.id,
     },
   });
   await transaction.control_risk_links.upsert({

@@ -1,4 +1,8 @@
 import { Router } from 'express';
+import {
+  authenticateApiKey,
+  requireApiKeyScope,
+} from '../../common/middleware/authenticate-api-key.js';
 import { validate } from '../../common/middleware/validate.js';
 import { asyncHandler } from '../../common/utils/async-handler.js';
 import { wazuhEventIngestSchema } from './dto/wazuh-event-ingest.dto.js';
@@ -9,6 +13,8 @@ export const wazuhIngestionRouter = Router();
 // Endpoint for receiving normalized events from Wazuh Edge Normalizer: POST /api/v1/integrations/wazuh/events
 wazuhIngestionRouter.post(
   '/events',
+  authenticateApiKey,
+  requireApiKeyScope('events:ingest'),
   validate({ body: wazuhEventIngestSchema }),
   asyncHandler(handleIngestEvent),
 );
