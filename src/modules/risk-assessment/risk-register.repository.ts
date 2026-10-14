@@ -943,6 +943,12 @@ export const riskRegisterRepository = {
   assessResidualRisk(riskId: string, actorId: string, input: AssessResidualRiskBody) {
     return prisma.$transaction(async (database) => {
       await database.$queryRaw`SELECT id FROM risks WHERE id = ${riskId}::uuid FOR UPDATE`;
+      await database.$queryRaw`
+        SELECT control.id FROM security_controls AS control
+        JOIN control_risk_links AS link ON link.control_id = control.id
+        WHERE link.risk_id = ${riskId}::uuid
+        ORDER BY control.id FOR SHARE OF control
+      `;
       const risk = await database.risks.findUnique({
         where: { id: riskId },
         select: {
@@ -950,17 +956,22 @@ export const riskRegisterRepository = {
           risk_code: true,
           title: true,
           owner_user_id: true,
+          status: true,
+          risk_acceptances: { where: { decision: 'PENDING' }, select: { id: true }, take: 1 },
+          risk_threats: { select: { created_at: true, updated_at: true } },
           review_date: true,
           risk_vulnerabilities: {
-            select: { created_at: true },
-            orderBy: { created_at: 'desc' },
-            take: 1,
+            select: { created_at: true, updated_at: true },
           },
           risk_assessments: {
             where: {
               inherent_likelihood: { not: null },
               inherent_impact: { not: null },
               inherent_rating: { not: null },
+              OR: [
+                { residual_likelihood: null, residual_impact: null, residual_rating: null },
+                { assessment_type: 'INCIDENT_REASSESSMENT' },
+              ],
             },
             orderBy: { assessed_at: 'desc' },
             take: 1,
@@ -968,6 +979,8 @@ export const riskRegisterRepository = {
               inherent_likelihood: true,
               inherent_impact: true,
               inherent_rating: true,
+              risk_appetite: true,
+              risk_tolerance: true,
               assessed_at: true,
             },
           },
@@ -977,11 +990,18 @@ export const riskRegisterRepository = {
                 select: {
                   id: true,
                   implementation_status: true,
+                  applicability: true,
+                  updated_at: true,
+                  control_evidence_links: {
+                    select: { linked_at: true, evidence_items: { select: {
+                      id: true, status: true, collected_at: true, valid_from: true, valid_until: true,
+                    } } },
+                  },
                   control_assessments: {
                     where: { effectiveness: { not: null } },
                     orderBy: { assessed_at: 'desc' },
                     take: 1,
-                    select: { effectiveness: true },
+                    select: { id: true, effectiveness: true, assessed_at: true },
                   },
                 },
               },
@@ -991,10 +1011,21 @@ export const riskRegisterRepository = {
       });
       if (!risk) return { kind: 'risk_not_found' as const };
       if (risk.owner_user_id !== actorId) return { kind: 'not_owner' as const };
+      if (!['OPEN', 'UNDER_TREATMENT'].includes(risk.status) || risk.risk_acceptances.length)
+        return { kind: 'context_locked' as const };
       const inherent = risk.risk_assessments[0];
       if (!inherent) return { kind: 'inherent_required' as const };
-      if (assessmentRequiresReview(inherent.assessed_at, risk.risk_vulnerabilities))
+      if (assessmentRequiresReview(inherent.assessed_at, [...risk.risk_vulnerabilities, ...risk.risk_threats]))
         return { kind: 'context_changed' as const };
+      const establishedThresholds = await database.risk_assessments.findFirst({
+        where: { risk_id: riskId, risk_appetite: { not: null }, risk_tolerance: { not: null } },
+        orderBy: { assessed_at: 'desc' },
+        select: { risk_appetite: true, risk_tolerance: true },
+      });
+      if (
+        (establishedThresholds?.risk_appetite && establishedThresholds.risk_appetite.toLowerCase() !== input.riskAppetite) ||
+        (establishedThresholds?.risk_tolerance && establishedThresholds.risk_tolerance.toLowerCase() !== input.riskTolerance)
+      ) return { kind: 'thresholds_changed' as const };
       if (
         !risk.control_risk_links.length ||
         risk.control_risk_links.some(
@@ -1002,6 +1033,18 @@ export const riskRegisterRepository = {
         )
       )
         return { kind: 'control_assessments_required' as const };
+      if (risk.control_risk_links.some(({ security_controls: control }) => {
+        const latest = control.control_assessments[0];
+        return control.applicability !== 'APPLICABLE' ||
+          !['IMPLEMENTED', 'PARTIALLY_IMPLEMENTED'].includes(control.implementation_status) ||
+          !latest || latest.assessed_at < control.updated_at ||
+          !control.control_evidence_links.some(({ linked_at, evidence_items: evidence }) =>
+            evidence.status === 'ACTIVE' && linked_at <= latest.assessed_at &&
+            evidence.collected_at <= latest.assessed_at &&
+            (!evidence.valid_from || evidence.valid_from <= new Date()) &&
+            (!evidence.valid_until || evidence.valid_until > new Date()),
+          );
+      })) return { kind: 'control_assessments_stale' as const };
       const values = risk.control_risk_links.map(
         ({ security_controls }) =>
           security_controls.control_assessments[0]?.effectiveness?.toNumber() ?? 0,
@@ -1032,6 +1075,22 @@ export const riskRegisterRepository = {
         },
         select: { id: true, assessed_at: true },
       });
+      const auditId = randomUUID();
+      const controlBasis = risk.control_risk_links.map(({ security_controls: control }) => ({
+        controlId: control.id,
+        assessmentId: control.control_assessments[0]?.id ?? null,
+        effectiveness: control.control_assessments[0]?.effectiveness?.toNumber() ?? null,
+        assessedAt: control.control_assessments[0]?.assessed_at.toISOString() ?? null,
+        implementationStatus: control.implementation_status,
+        linkedEvidenceIds: control.control_evidence_links.map((link) => link.evidence_items.id),
+      }));
+      const auditData = { assessmentId: assessment.id, score, rating, controlBasis };
+      await database.audit_logs.create({ data: {
+        id: auditId, actor_type: 'USER', actor_user_id: actorId,
+        action: 'RISK_RESIDUAL_ASSESSED', resource_type: 'RISK', resource_id: riskId,
+        source: 'API', after_data: auditData,
+        record_hash: createHash('sha256').update(JSON.stringify({ auditId, actorId, ...auditData })).digest('hex'),
+      } });
       return { kind: 'created' as const, risk, assessment, score, rating, controlEffectiveness };
     });
   },
@@ -1543,6 +1602,11 @@ export const riskRegisterRepository = {
         if (!acceptance) return { kind: 'not_found' as const };
         if (acceptance.decision !== 'PENDING') return { kind: 'already_decided' as const };
         if (acceptance.requested_by === actorId) return { kind: 'self_approval' as const };
+        const decidedAt = await contextWriteTime(database);
+        if (
+          input.decision === 'approved' && acceptance.valid_until &&
+          acceptance.valid_until.toISOString().slice(0, 10) < decidedAt.toISOString().slice(0, 10)
+        ) return { kind: 'expired' as const };
         if (
           input.decision === 'approved' &&
           (!['OPEN', 'UNDER_TREATMENT'].includes(acceptance.risks.status) ||
@@ -1555,7 +1619,7 @@ export const riskRegisterRepository = {
         const decision = input.decision.toUpperCase() as 'APPROVED' | 'REJECTED';
         const updated = await database.risk_acceptances.update({
           where: { id: acceptanceId },
-          data: { decision, reason: input.reason, decided_by: actorId, decided_at: new Date() },
+          data: { decision, reason: input.reason, decided_by: actorId, decided_at: decidedAt },
         });
         if (decision === 'APPROVED')
           await database.risks.update({

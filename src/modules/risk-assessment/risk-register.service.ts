@@ -183,6 +183,8 @@ export const riskRegisterService = {
     if (!actor || actor.status !== 'ACTIVE')
       throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
     const result = await riskRegisterRepository.decideAcceptance(acceptanceId, userId, input);
+    if (result.kind === 'expired')
+      throw new AppError(409, 'ACCEPTANCE_EXPIRED', 'The proposed acceptance period has expired. Reject this request and submit a new request with an appropriate validity date.');
     if (result.kind === 'context_changed')
       throw new AppError(
         409,
@@ -442,6 +444,12 @@ export const riskRegisterService = {
     if (!foundActor || foundActor.status !== 'ACTIVE')
       throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
     const result = await riskRegisterRepository.assessResidualRisk(riskId, userId, input);
+    if (result.kind === 'context_locked')
+      throw new AppError(409, 'RISK_CONTEXT_LOCKED', 'Assess residual risk only for an open or under-treatment risk without a pending acceptance');
+    if (result.kind === 'thresholds_changed')
+      throw new AppError(409, 'RISK_THRESHOLDS_CHANGED', 'Use the appetite and tolerance already recorded for this Risk');
+    if (result.kind === 'control_assessments_stale')
+      throw new AppError(409, 'CONTROL_REASSESSMENT_REQUIRED', 'Reassess applicable, implemented controls after their latest changes');
     if (result.kind === 'context_changed')
       throw new AppError(
         409,

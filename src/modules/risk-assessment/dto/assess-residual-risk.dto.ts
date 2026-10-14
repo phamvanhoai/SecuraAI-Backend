@@ -10,5 +10,12 @@ export const assessResidualRiskBodySchema = z
     riskTolerance: rating,
     assessmentReason: z.string().trim().min(10).max(3000),
   })
-  .strict();
+  .strict()
+  .refine(
+    (input) => {
+      const rank = { low: 1, medium: 2, high: 3, critical: 4 };
+      return rank[input.riskAppetite] <= rank[input.riskTolerance];
+    },
+    { path: ['riskTolerance'], message: 'Risk tolerance must be at least the risk appetite' },
+  );
 export type AssessResidualRiskBody = z.infer<typeof assessResidualRiskBodySchema>;
