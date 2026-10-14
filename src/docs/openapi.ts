@@ -298,8 +298,18 @@ export const openApiSpec = {
         description:
           'Active Security Officer required. Updates the existing threat and its vulnerability links without deleting history. OPEN/UNDER_TREATMENT context and no pending acceptance are required. A successful change requires risk reassessment.',
         parameters: [
-          { name: 'riskId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
-          { name: 'threatId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+          {
+            name: 'riskId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+          {
+            name: 'threatId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
         ],
         requestBody: {
           required: true,
@@ -313,7 +323,10 @@ export const openApiSpec = {
                   name: { type: 'string', minLength: 2, maxLength: 255 },
                   description: { type: 'string', minLength: 3, maxLength: 3000 },
                   vulnerabilityIds: {
-                    type: 'array', minItems: 1, maxItems: 50, uniqueItems: true,
+                    type: 'array',
+                    minItems: 1,
+                    maxItems: 50,
+                    uniqueItems: true,
                     items: { type: 'string', format: 'uuid' },
                   },
                   expectedUpdatedAt: { type: 'string', format: 'date-time' },
@@ -384,6 +397,60 @@ export const openApiSpec = {
             description: 'RISK_REASSESSMENT_REQUIRED, RISK_CONTEXT_LOCKED or ACCEPTANCE_PENDING',
           },
           '422': { description: 'Invalid plan, actions, validity or input' },
+        },
+      },
+    },
+    '/risks/{riskId}/residual-assessments': {
+      post: {
+        tags: ['Risks'],
+        summary: 'Assess residual risk',
+        security: [{ bearerAuth: [] }],
+        description:
+          'Assigned active Risk Owner only. OPEN or UNDER_TREATMENT with no pending acceptance. Requires current inherent context and applicable implemented controls with current effectiveness assessments and usable evidence. Appetite must not exceed tolerance; existing Risk thresholds cannot be changed here. Residual rating is likelihood × impact; control effectiveness is a reference average. Audit preserves the Control Assessment IDs used.',
+        parameters: [
+          {
+            name: 'riskId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                additionalProperties: false,
+                required: [
+                  'likelihood',
+                  'impact',
+                  'targetRisk',
+                  'riskAppetite',
+                  'riskTolerance',
+                  'assessmentReason',
+                ],
+                properties: {
+                  likelihood: { type: 'integer', minimum: 1, maximum: 5 },
+                  impact: { type: 'integer', minimum: 1, maximum: 5 },
+                  targetRisk: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] },
+                  riskAppetite: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] },
+                  riskTolerance: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] },
+                  assessmentReason: { type: 'string', minLength: 10, maxLength: 3000 },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '201': { description: 'Assessment saved with score, rating and threshold comparison' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Assigned Risk Owner required' },
+          '404': { description: 'Risk not found' },
+          '409': {
+            description: 'Locked state, changed context, stale controls or changed thresholds',
+          },
+          '422': { description: 'Invalid values or missing prerequisite assessments' },
         },
       },
     },
@@ -936,8 +1003,12 @@ export const openApiSpec = {
           },
         },
         responses: {
-          '200': { description: 'Integration API key rotated successfully with replacement secret token' },
-          '400': { description: 'Bad request (e.g. key already revoked or rotated, or invalid expiration)' },
+          '200': {
+            description: 'Integration API key rotated successfully with replacement secret token',
+          },
+          '400': {
+            description: 'Bad request (e.g. key already revoked or rotated, or invalid expiration)',
+          },
           '401': { description: 'Authentication required' },
           '403': { description: 'Admin role required' },
           '404': { description: 'Integration API key not found' },
@@ -970,8 +1041,12 @@ export const openApiSpec = {
           },
         },
         responses: {
-          '200': { description: 'Integration API key rotated successfully with replacement secret token' },
-          '400': { description: 'Bad request (e.g. key already revoked or rotated, or invalid expiration)' },
+          '200': {
+            description: 'Integration API key rotated successfully with replacement secret token',
+          },
+          '400': {
+            description: 'Bad request (e.g. key already revoked or rotated, or invalid expiration)',
+          },
           '401': { description: 'Authentication required' },
           '403': { description: 'Admin role required' },
           '404': { description: 'Integration API key not found for the specified integration' },
@@ -3920,7 +3995,11 @@ export const openApiSpec = {
         security: [{ bearerAuth: [] }],
         parameters: [
           { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
-          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 } },
+          {
+            name: 'limit',
+            in: 'query',
+            schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
+          },
           { name: 'search', in: 'query', schema: { type: 'string', maxLength: 100 } },
           { name: 'actor', in: 'query', schema: { type: 'string', maxLength: 100 } },
           { name: 'action', in: 'query', schema: { type: 'string', maxLength: 100 } },
@@ -3942,7 +4021,9 @@ export const openApiSpec = {
         tags: ['Audit & Security Reporting'],
         summary: 'View audit log detail',
         security: [{ bearerAuth: [] }],
-        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+        ],
         responses: {
           '200': { description: 'Detailed audit record' },
           '401': { description: 'Authentication required' },
@@ -3957,7 +4038,9 @@ export const openApiSpec = {
         tags: ['Audit & Security Reporting'],
         summary: 'View before and after changes',
         security: [{ bearerAuth: [] }],
-        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+        ],
         responses: {
           '200': { description: 'Property-level before and after comparison' },
           '401': { description: 'Authentication required' },
@@ -3983,11 +4066,18 @@ export const openApiSpec = {
             schema: { type: 'string', format: 'uuid' },
           },
           { name: 'search', in: 'query', schema: { type: 'string' } },
-          { name: 'status', in: 'query', schema: { type: 'string', enum: ['ACTIVE', 'EXPIRED', 'REVOKED', 'ROTATED'] } },
+          {
+            name: 'status',
+            in: 'query',
+            schema: { type: 'string', enum: ['ACTIVE', 'EXPIRED', 'REVOKED', 'ROTATED'] },
+          },
           { name: 'isActive', in: 'query', schema: { type: 'boolean' } },
         ],
         responses: {
-          '200': { description: 'List of integration API keys for the specified integration without secrets' },
+          '200': {
+            description:
+              'List of integration API keys for the specified integration without secrets',
+          },
           '401': { description: 'Authentication required' },
           '403': { description: 'Administrator role required' },
           '404': { description: 'Event source / integration not found' },
@@ -4066,13 +4156,33 @@ export const openApiSpec = {
         security: [{ bearerAuth: [] }],
         parameters: [
           { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
-          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 } },
+          {
+            name: 'limit',
+            in: 'query',
+            schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
+          },
           { name: 'search', in: 'query', schema: { type: 'string' } },
-          { name: 'status', in: 'query', schema: { type: 'string', enum: ['ACTIVE', 'EXPIRED', 'REVOKED', 'ROTATED'] } },
+          {
+            name: 'status',
+            in: 'query',
+            schema: { type: 'string', enum: ['ACTIVE', 'EXPIRED', 'REVOKED', 'ROTATED'] },
+          },
           { name: 'isActive', in: 'query', schema: { type: 'boolean' } },
           { name: 'eventSourceId', in: 'query', schema: { type: 'string', format: 'uuid' } },
-          { name: 'sortBy', in: 'query', schema: { type: 'string', enum: ['createdAt', 'expiresAt', 'lastUsedAt', 'name'], default: 'createdAt' } },
-          { name: 'sortOrder', in: 'query', schema: { type: 'string', enum: ['asc', 'desc'], default: 'desc' } },
+          {
+            name: 'sortBy',
+            in: 'query',
+            schema: {
+              type: 'string',
+              enum: ['createdAt', 'expiresAt', 'lastUsedAt', 'name'],
+              default: 'createdAt',
+            },
+          },
+          {
+            name: 'sortOrder',
+            in: 'query',
+            schema: { type: 'string', enum: ['asc', 'desc'], default: 'desc' },
+          },
         ],
         responses: {
           '200': { description: 'Paginated list of integration API keys' },
