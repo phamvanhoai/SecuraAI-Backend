@@ -400,6 +400,13 @@ export const openApiSpec = {
         },
       },
     },
+    '/risks/treatment-plans': {
+      post: {
+        tags: ['Risks'], summary: 'Create Risk Treatment Plan', security: [{ bearerAuth: [] }],
+        description: 'Active Security Officer or assigned Risk Owner. Locks selected Risk. OPEN/UNDER_TREATMENT with no pending acceptance or Draft/Active plan. Eligible controls must belong to the Risk; mitigate requires at least one, other strategies allow none. Non-accept strategies require actions. Unique control IDs and action titles, active owners, future dates and action dates within plan date required. Target cannot exceed known residual and is saved as TARGET_DEFINITION without copying inherent/residual. Creation remains Draft and does not approve acceptance.',
+        responses: { '201': { description: 'Draft plan with intended target saved' }, '401': { description: 'Authentication required' }, '403': { description: 'Security Officer or Risk Owner required' }, '404': { description: 'Risk not found' }, '409': { description: 'Risk locked or existing Draft/Active plan' }, '422': { description: 'Invalid owners, controls, actions, dates or target' } },
+      },
+    },
     '/risks/treatment-plans/{treatmentPlanId}': {
       patch: {
         tags: ['Risks'], summary: 'Update Risk Treatment Plan', security: [{ bearerAuth: [] }],

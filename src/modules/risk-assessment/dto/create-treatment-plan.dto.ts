@@ -3,8 +3,12 @@ const action = z.object({ title: z.string().trim().min(3).max(255), description:
 export const createTreatmentPlanBodySchema = z.object({
   riskId: z.uuid(), title: z.string().trim().min(3).max(255), strategy: z.enum(['avoid', 'mitigate', 'transfer', 'accept']),
   ownerUserId: z.uuid(), targetDate: z.iso.date(), targetRisk: z.enum(['low', 'medium', 'high', 'critical']),
-  controlIds: z.array(z.uuid()).min(1).max(100), actions: z.array(action).max(100),
+  controlIds: z.array(z.uuid()).max(100), actions: z.array(action).max(100),
 }).strict().superRefine((value, context) => {
+  if (value.strategy === 'mitigate' && !value.controlIds.length) context.addIssue({ code: 'custom', path: ['controlIds'], message: 'Mitigation plans require at least one related control' });
+  if (new Set(value.controlIds).size !== value.controlIds.length) context.addIssue({ code: 'custom', path: ['controlIds'], message: 'Control IDs must be unique' });
+  const titles = value.actions.map((item) => item.title.normalize('NFKC').replace(/\s+/g, ' ').toLowerCase());
+  if (new Set(titles).size !== titles.length) context.addIssue({ code: 'custom', path: ['actions'], message: 'Action titles must be unique' });
   if (value.strategy !== 'accept' && !value.actions.length) context.addIssue({ code: 'custom', path: ['actions'], message: 'Treatment actions are required' });
   value.actions.forEach((item, index) => { if (item.dueDate > value.targetDate) context.addIssue({ code: 'custom', path: ['actions', index, 'dueDate'], message: 'Action due date must not exceed plan target date' }); });
 });

@@ -322,6 +322,14 @@ export const riskRegisterService = {
     const actor = await riskRegisterRepository.findActor(userId);
     if (!actor || actor.status !== 'ACTIVE')
       throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+    if (query.riskId) {
+      const scope = await riskRegisterRepository.findTreatmentPlanScope(query.riskId);
+      if (!scope) throw new AppError(404, 'RISK_NOT_FOUND', 'Risk not found');
+      if (actor.role !== 'SECURITY_OFFICER' && scope.owner_user_id !== userId)
+        throw new AppError(403, 'FORBIDDEN', 'Security Officer or assigned Risk Owner required');
+    } else if (actor.role !== 'SECURITY_OFFICER') {
+      throw new AppError(403, 'FORBIDDEN', 'Select an owned Risk to load plan options');
+    }
     const [users, controls] = await riskRegisterRepository.treatmentPlanOptions(
       query.riskId,
       query.q,
@@ -349,6 +357,10 @@ export const riskRegisterService = {
         'Plan and action due dates must be in the future',
       );
     const result = await riskRegisterRepository.createTreatmentPlan(userId, input);
+    if (result.kind === 'context_locked')
+      throw new AppError(409, 'RISK_CONTEXT_LOCKED', 'Create a plan only for an open or under-treatment Risk without pending acceptance');
+    if (result.kind === 'target_exceeds_residual')
+      throw new AppError(422, 'TARGET_EXCEEDS_RESIDUAL', 'Target risk cannot exceed current residual risk');
     if (result.kind === 'risk_not_found')
       throw new AppError(404, 'RISK_NOT_FOUND', 'Risk record not found');
     if (result.kind === 'forbidden')
