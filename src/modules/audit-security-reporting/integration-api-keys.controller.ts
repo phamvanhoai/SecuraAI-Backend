@@ -10,6 +10,7 @@ import {
   getIntegrationApiKeyDetailParamsSchema,
   getIntegrationSourceApiKeyDetailParamsSchema,
 } from './dto/get-integration-api-key-detail.dto.js';
+import { updateIntegrationApiKeySchema } from './dto/update-integration-api-key.dto.js';
 
 function authenticatedUserId(value: unknown): string {
   if (typeof value !== 'string') {
@@ -92,6 +93,38 @@ export async function getIntegrationApiKeyDetailBySource(
   const userId = authenticatedUserId(res.locals.authenticatedUserId);
   const params = getIntegrationSourceApiKeyDetailParamsSchema.parse(req.params);
   const result = await integrationApiKeysService.getApiKeyDetail(userId, params.keyId, params.id);
+
+  res.status(200).json({
+    success: true,
+    data: result,
+  });
+}
+
+export async function updateIntegrationApiKey(req: Request, res: Response): Promise<void> {
+  const userId = authenticatedUserId(res.locals.authenticatedUserId);
+  const params = getIntegrationApiKeyDetailParamsSchema.parse(req.params);
+  const input = updateIntegrationApiKeySchema.parse(req.body);
+  const result = await integrationApiKeysService.updateApiKey(userId, params.keyId, input);
+
+  res.status(200).json({
+    success: true,
+    data: result,
+  });
+}
+
+export async function updateIntegrationApiKeyBySource(
+  req: Request,
+  res: Response,
+): Promise<void> {
+  const userId = authenticatedUserId(res.locals.authenticatedUserId);
+  const params = getIntegrationSourceApiKeyDetailParamsSchema.parse(req.params);
+  const input = updateIntegrationApiKeySchema.parse(req.body);
+  const result = await integrationApiKeysService.updateApiKey(
+    userId,
+    params.keyId,
+    input,
+    params.id,
+  );
 
   res.status(200).json({
     success: true,
