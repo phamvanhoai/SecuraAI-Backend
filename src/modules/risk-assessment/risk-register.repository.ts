@@ -79,6 +79,7 @@ const listSelect = {
   },
   risk_assessments: {
     select: assessmentSelect,
+    where: { assessment_type: { not: 'TARGET_DEFINITION' as const } },
     orderBy: { assessed_at: 'desc' as const },
     take: 1,
   },
@@ -282,6 +283,13 @@ export const riskRegisterRepository = {
   },
   findById(riskId: string) {
     return prisma.risks.findUnique({ where: { id: riskId }, select: detailSelect });
+  },
+  findTargetHistory(riskId: string) {
+    return prisma.audit_logs.findMany({
+      where: { resource_id: riskId, resource_type: 'RISK', action: 'RISK_TARGET_DEFINED', outcome: 'SUCCESS' },
+      orderBy: [{ occurred_at: 'desc' }, { id: 'desc' }], take: 100,
+      select: { after_data: true },
+    });
   },
   findContextHistory(riskId: string) {
     return prisma.audit_logs.findMany({
@@ -1104,11 +1112,12 @@ export const riskRegisterRepository = {
           risk_code: true,
           title: true,
           owner_user_id: true,
+          status: true,
+          risk_acceptances: { where: { decision: 'PENDING' }, select: { id: true }, take: 1 },
+          risk_threats: { select: { created_at: true, updated_at: true } },
           review_date: true,
           risk_vulnerabilities: {
-            select: { created_at: true },
-            orderBy: { created_at: 'desc' },
-            take: 1,
+            select: { created_at: true, updated_at: true },
           },
           risk_assessments: {
             where: { residual_rating: { not: null } },
@@ -1123,9 +1132,11 @@ export const riskRegisterRepository = {
       });
       if (!risk) return { kind: 'risk_not_found' as const };
       if (risk.owner_user_id !== actorId) return { kind: 'not_owner' as const };
+      if (!['OPEN', 'UNDER_TREATMENT'].includes(risk.status) || risk.risk_acceptances.length)
+        return { kind: 'context_locked' as const };
       const current = risk.risk_assessments[0];
       if (!current) return { kind: 'residual_required' as const };
-      if (assessmentRequiresReview(current.assessed_at, risk.risk_vulnerabilities))
+      if (assessmentRequiresReview(current.assessed_at, [...risk.risk_vulnerabilities, ...risk.risk_threats]))
         return { kind: 'context_changed' as const };
       const plan = risk.risk_treatment_plans[0];
       if (!plan) return { kind: 'plan_required' as const };
@@ -1137,18 +1148,12 @@ export const riskRegisterRepository = {
       const assessment = await database.risk_assessments.create({
         data: {
           risk_id: riskId,
-          assessment_type: 'PERIODIC_REVIEW',
-          inherent_likelihood: current.inherent_likelihood,
-          inherent_impact: current.inherent_impact,
-          inherent_rating: current.inherent_rating,
-          control_effectiveness: current.control_effectiveness,
-          residual_likelihood: current.residual_likelihood,
-          residual_impact: current.residual_impact,
-          residual_rating: current.residual_rating,
+          assessment_type: 'TARGET_DEFINITION',
           target_risk: target,
           risk_appetite: current.risk_appetite,
           risk_tolerance: current.risk_tolerance,
           assessment_reason: input.rationale,
+          methodology_version: current.methodology_version,
           assessed_by: actorId,
           assessed_at: assessedAt,
           review_date: currentOrFutureReviewDate(risk.review_date, assessedAt),
@@ -1159,6 +1164,18 @@ export const riskRegisterRepository = {
         where: { id: plan.id },
         data: { source_assessment_id: assessment.id },
       });
+      const auditId = randomUUID();
+      const targetData = {
+        assessmentId: assessment.id, treatmentPlanId: plan.id, treatmentPlanTitle: plan.title,
+        residualAssessmentId: current.id, residualAssessedAt: current.assessed_at.toISOString(),
+        residualRating: current.residual_rating, targetRisk: target,
+        riskAppetite: current.risk_appetite, riskTolerance: current.risk_tolerance,
+      };
+      await database.audit_logs.create({ data: {
+        id: auditId, actor_type: 'USER', actor_user_id: actorId, action: 'RISK_TARGET_DEFINED',
+        resource_type: 'RISK', resource_id: riskId, source: 'API', after_data: targetData,
+        record_hash: createHash('sha256').update(JSON.stringify({ auditId, actorId, ...targetData })).digest('hex'),
+      } });
       return { kind: 'created' as const, risk, current, plan, assessment, target };
     });
   },
@@ -1210,7 +1227,7 @@ export const riskRegisterRepository = {
               risk_code: true,
               owner_user_id: true,
               review_date: true,
-              risk_assessments: { orderBy: { assessed_at: 'desc' }, take: 1 },
+              risk_assessments: { where: { assessment_type: { not: 'TARGET_DEFINITION' } }, orderBy: { assessed_at: 'desc' }, take: 1 },
               risk_treatment_plans: {
                 where: { status: { in: ['DRAFT', 'ACTIVE'] } },
                 select: { id: true },
@@ -1476,7 +1493,7 @@ export const riskRegisterRepository = {
               orderBy: { created_at: 'desc' },
               take: 1,
             },
-            risk_assessments: { orderBy: { assessed_at: 'desc' }, take: 1 },
+            risk_assessments: { where: { assessment_type: { not: 'TARGET_DEFINITION' } }, orderBy: { assessed_at: 'desc' }, take: 1 },
             risk_treatment_plans: {
               where: {
                 id: input.treatmentPlanId,
@@ -1486,6 +1503,7 @@ export const riskRegisterRepository = {
                 id: true,
                 status: true,
                 risk_treatment_actions: { select: { status: true } },
+                risk_assessments: { select: { target_risk: true } },
               },
             },
             risk_acceptances: { where: { decision: 'PENDING' }, select: { id: true }, take: 1 },
@@ -1528,7 +1546,7 @@ export const riskRegisterRepository = {
             residual_likelihood: input.residualLikelihood,
             residual_impact: input.residualImpact,
             residual_rating: rating,
-            target_risk: latest?.target_risk ?? null,
+            target_risk: selectedPlan.risk_assessments?.target_risk ?? latest?.target_risk ?? null,
             risk_appetite: latest?.risk_appetite ?? null,
             risk_tolerance: latest?.risk_tolerance ?? null,
             assessment_reason: input.assessmentReason,

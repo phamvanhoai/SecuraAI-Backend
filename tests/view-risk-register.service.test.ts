@@ -7,6 +7,7 @@ vi.mock('../src/modules/risk-assessment/risk-register.repository.js', () => ({
     list: vi.fn(),
     findById: vi.fn(),
     findContextHistory: vi.fn().mockResolvedValue([]),
+    findTargetHistory: vi.fn().mockResolvedValue([]),
   },
 }));
 import { riskRegisterRepository } from '../src/modules/risk-assessment/risk-register.repository.js';
