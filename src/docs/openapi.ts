@@ -400,6 +400,14 @@ export const openApiSpec = {
         },
       },
     },
+    '/risks/treatment-plans/{treatmentPlanId}': {
+      patch: {
+        tags: ['Risks'], summary: 'Update Risk Treatment Plan', security: [{ bearerAuth: [] }],
+        description: 'Active Security Officer or assigned Risk Owner. Locks Risk and plan, checks expectedUpdatedAt and blocks pending acceptance or finalized records. Existing overdue deadlines may be retained; dates cannot predate record creation. Completed/cancelled actions are read-only, original completion timestamps are preserved. In-progress actions cannot return to pending. Non-acceptance plans with all actions cancelled cannot be completed. Changes append an audit snapshot. Progress uses status weights and excludes cancelled actions.',
+        parameters: [{ name: 'treatmentPlanId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+        responses: { '200': { description: 'Updated plan and computed progress' }, '401': { description: 'Authentication required' }, '403': { description: 'Security Officer or Risk Owner required' }, '404': { description: 'Plan not found' }, '409': { description: 'Stale update, pending acceptance, locked record or invalid transition' }, '422': { description: 'Invalid actions, dates, owners or controls' } },
+      },
+    },
     '/risks/{riskId}/target-risk': {
       post: {
         tags: ['Risks'],

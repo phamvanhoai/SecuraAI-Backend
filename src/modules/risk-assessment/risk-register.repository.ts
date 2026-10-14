@@ -1338,6 +1338,10 @@ export const riskRegisterRepository = {
   updateTreatmentPlan(planId: string, actorId: string, input: UpdateTreatmentPlanBody) {
     return prisma.$transaction(
       async (database) => {
+        const target = await database.risk_treatment_plans.findUnique({ where: { id: planId }, select: { risk_id: true } });
+        if (!target) return { kind: 'not_found' as const };
+        await database.$queryRaw`SELECT id FROM risks WHERE id = ${target.risk_id}::uuid FOR UPDATE`;
+        await database.$queryRaw`SELECT id FROM risk_treatment_plans WHERE id = ${planId}::uuid FOR UPDATE`;
         const plan = await database.risk_treatment_plans.findUnique({
           where: { id: planId },
           include: {
@@ -1364,6 +1368,10 @@ export const riskRegisterRepository = {
           return { kind: 'forbidden' as const };
         if (plan.updated_at.toISOString() !== input.expectedUpdatedAt)
           return { kind: 'conflict' as const };
+        if (await database.risk_acceptances.count({ where: { risk_id: plan.risks.id, decision: 'PENDING' } }))
+          return { kind: 'pending_acceptance' as const };
+        if (input.status === 'completed' && input.strategy !== 'accept' && !input.actions.some((item) => item.status === 'completed'))
+          return { kind: 'no_completed_actions' as const };
         if (
           input.status === 'completed' &&
           input.actions.some((item) => !['completed', 'cancelled'].includes(item.status))
@@ -1378,6 +1386,18 @@ export const riskRegisterRepository = {
         )
           return { kind: 'invalid_users' as const };
         const existing = new Map(plan.risk_treatment_actions.map((item) => [item.id, item]));
+        if (input.targetDate < plan.created_at.toISOString().slice(0, 10) || input.actions.some((item) => {
+          const prior = item.id ? existing.get(item.id) : undefined;
+          return item.dueDate < (prior?.created_at ?? new Date()).toISOString().slice(0, 10);
+        })) return { kind: 'invalid_dates' as const };
+        if (input.actions.some((item) => {
+          const prior = item.id ? existing.get(item.id) : undefined;
+          if (!prior) return false;
+          if (['COMPLETED', 'CANCELLED'].includes(prior.status))
+            return item.status.toUpperCase() !== prior.status || item.title !== prior.action_description ||
+              item.assignedToUserId !== prior.owner_user_id || item.dueDate !== prior.due_date?.toISOString().slice(0, 10);
+          return prior.status === 'IN_PROGRESS' && item.status === 'pending';
+        })) return { kind: 'invalid_action_transition' as const };
         if (input.actions.some((item) => item.id && !existing.has(item.id)))
           return { kind: 'invalid_actions' as const };
         const riskControls = await database.control_risk_links.count({
@@ -1409,7 +1429,8 @@ export const riskRegisterRepository = {
             due_date: new Date(`${item.dueDate}T00:00:00.000Z`),
             status: item.status.toUpperCase() as
               'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED',
-            completed_at: item.status === 'completed' ? new Date() : null,
+            completed_at: item.status === 'completed' ? (item.id ? existing.get(item.id)?.completed_at : null) ?? new Date() : null,
+            updated_at: new Date(),
           };
           if (item.id)
             await database.risk_treatment_actions.update({ where: { id: item.id }, data });
@@ -1466,6 +1487,12 @@ export const riskRegisterRepository = {
             riskStatus = risk.status;
           }
         }
+        const auditId = randomUUID();
+        const before = { title: plan.title, status: plan.status, strategy: plan.strategy, ownerUserId: plan.owner_user_id, targetDate: plan.target_completion_date?.toISOString() ?? null,
+          controls: plan.risk_treatment_plan_controls.map((item) => item.control_id),
+          actions: plan.risk_treatment_actions.map((item) => ({ id: item.id, title: item.action_description, status: item.status, ownerUserId: item.owner_user_id, dueDate: item.due_date?.toISOString() ?? null, completedAt: item.completed_at?.toISOString() ?? null })) };
+        const after = { ...input, actions: updated.risk_treatment_actions.map((item) => ({ id: item.id, title: item.action_description, status: item.status, ownerUserId: item.owner_user_id, dueDate: item.due_date?.toISOString() ?? null, completedAt: item.completed_at?.toISOString() ?? null })) };
+        await database.audit_logs.create({ data: { id: auditId, actor_type: 'USER', actor_user_id: actorId, action: 'RISK_TREATMENT_PLAN_UPDATED', resource_type: 'RISK', resource_id: plan.risks.id, source: 'API', before_data: { planId, ...before }, after_data: { planId, ...after }, record_hash: createHash('sha256').update(JSON.stringify({ auditId, actorId, before, after })).digest('hex') } });
         return {
           kind: 'updated' as const,
           updated,

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const db = vi.hoisted(() => ({
+  $queryRaw: vi.fn(), risk_acceptances: { count: vi.fn() }, audit_logs: { create: vi.fn() },
   risks: { update: vi.fn() },
   control_risk_links: { count: vi.fn() },
   risk_treatment_plan_controls: { deleteMany: vi.fn(), createMany: vi.fn() },
@@ -37,6 +38,8 @@ function plan(status: 'DRAFT' | 'ACTIVE', riskStatus: 'OPEN' | 'UNDER_TREATMENT'
     id: planId,
     status,
     updated_at: updatedAt,
+    risk_id: riskId,
+    created_at: new Date('2026-10-01'),
     risks: {
       id: riskId,
       owner_user_id: actorId,
@@ -44,7 +47,7 @@ function plan(status: 'DRAFT' | 'ACTIVE', riskStatus: 'OPEN' | 'UNDER_TREATMENT'
       status: riskStatus,
     },
     risk_treatment_actions: [
-      { id: actionId, status: 'PENDING' },
+      { id: actionId, status: 'PENDING', created_at: new Date('2026-10-01') },
     ],
     risk_treatment_plan_controls: [{ control_id: controlId }],
   };
@@ -70,8 +73,30 @@ function input(status: 'active' | 'cancelled') {
 }
 
 describe('treatment plan and Risk status synchronization', () => {
+  it('blocks pending acceptance before writing actions', async () => {
+    db.risk_treatment_plans.findUnique.mockResolvedValue(plan('ACTIVE', 'UNDER_TREATMENT'));
+    db.risk_acceptances.count.mockResolvedValue(1);
+    await expect(riskRegisterRepository.updateTreatmentPlan(planId, actorId, input('active'))).resolves.toEqual({ kind: 'pending_acceptance' });
+    expect(db.risk_treatment_actions.update).not.toHaveBeenCalled();
+  });
+  it('rejects stale snapshots after locking the Risk and plan', async () => {
+    db.risk_treatment_plans.findUnique.mockResolvedValue(plan('ACTIVE', 'UNDER_TREATMENT'));
+    await expect(riskRegisterRepository.updateTreatmentPlan(planId, actorId, { ...input('active'), expectedUpdatedAt: new Date('2026-01-01').toISOString() })).resolves.toEqual({ kind: 'conflict' });
+    expect(db.$queryRaw).toHaveBeenCalledTimes(2);
+    expect(db.risk_treatment_actions.update).not.toHaveBeenCalled();
+  });
+  it('retains completion timestamp on later plan edits', async () => {
+    const completedAt = new Date('2026-10-10');
+    const saved = plan('ACTIVE', 'UNDER_TREATMENT');
+    db.risk_treatment_plans.findUnique.mockResolvedValue({ ...saved, risk_treatment_actions: [{ ...saved.risk_treatment_actions[0], action_description: 'Test database restoration', owner_user_id: actorId, due_date: new Date('2026-10-28'), status: 'COMPLETED', completed_at: completedAt }] });
+    const request = input('active');
+    await riskRegisterRepository.updateTreatmentPlan(planId, actorId, { ...request, actions: request.actions.map((item) => ({ ...item, status: 'completed' as const })) });
+    expect(db.risk_treatment_actions.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ completed_at: completedAt }) }));
+    expect(db.audit_logs.create).toHaveBeenCalled();
+  });
   beforeEach(() => {
     vi.clearAllMocks();
+    db.risk_acceptances.count.mockResolvedValue(0);
     db.users.findUnique.mockResolvedValue({ role: 'SECURITY_OFFICER' });
     db.users.count.mockResolvedValue(1);
     db.risk_treatment_actions.deleteMany.mockResolvedValue({ count: 0 });

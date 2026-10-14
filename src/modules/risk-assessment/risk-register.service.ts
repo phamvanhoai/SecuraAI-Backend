@@ -224,17 +224,15 @@ export const riskRegisterService = {
     const actor = await riskRegisterRepository.findActor(userId);
     if (!actor || actor.status !== 'ACTIVE')
       throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
-    const today = new Date().toISOString().slice(0, 10);
-    if (
-      input.targetDate <= today ||
-      input.actions.some((item) => item.dueDate <= today && item.status !== 'completed')
-    )
-      throw new AppError(
-        422,
-        'INVALID_DUE_DATE',
-        'Open action and plan due dates must be in the future',
-      );
     const result = await riskRegisterRepository.updateTreatmentPlan(planId, userId, input);
+    if (result.kind === 'pending_acceptance')
+      throw new AppError(409, 'ACCEPTANCE_PENDING', 'Resolve pending acceptance before changing the treatment plan');
+    if (result.kind === 'invalid_action_transition')
+      throw new AppError(409, 'INVALID_ACTION_TRANSITION', 'Completed or cancelled actions are read-only; in-progress actions cannot return to pending');
+    if (result.kind === 'invalid_dates')
+      throw new AppError(422, 'INVALID_DUE_DATE', 'New or changed deadlines must not predate record creation. Existing overdue deadlines may be retained.');
+    if (result.kind === 'no_completed_actions')
+      throw new AppError(422, 'NO_COMPLETED_ACTIONS', 'A non-acceptance plan with every action cancelled must be cancelled, not completed');
     if (result.kind === 'not_found')
       throw new AppError(404, 'TREATMENT_PLAN_NOT_FOUND', 'Treatment plan not found');
     if (result.kind === 'forbidden')
