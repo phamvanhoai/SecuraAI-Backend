@@ -59,6 +59,7 @@ function assessment(value: RiskRegisterRecord['risk_assessments'][number]) {
 }
 
 function listItem(risk: RiskRegisterRecord) {
+  const latestAssessment = risk.risk_assessments.find((item) => item.assessment_type !== 'TARGET_DEFINITION');
   const activeTreatmentPlan = risk.risk_treatment_plans.find((plan) =>
     ['DRAFT', 'ACTIVE'].includes(plan.status),
   );
@@ -90,7 +91,7 @@ function listItem(risk: RiskRegisterRecord) {
       status: lower(assets.status),
       criticality: assets.criticality,
     })),
-    latestAssessment: risk.risk_assessments[0] ? assessment(risk.risk_assessments[0]) : null,
+    latestAssessment: latestAssessment ? assessment(latestAssessment) : null,
     linkedCounts: {
       controls: risk._count.control_risk_links,
       treatmentPlans: risk._count.risk_treatment_plans,
@@ -390,6 +391,8 @@ export const riskRegisterService = {
     if (!foundActor || foundActor.status !== 'ACTIVE')
       throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
     const result = await riskRegisterRepository.defineTargetRisk(riskId, userId, input);
+    if (result.kind === 'context_locked')
+      throw new AppError(409, 'RISK_CONTEXT_LOCKED', 'Define target risk only for an open or under-treatment Risk without pending acceptance');
     if (result.kind === 'context_changed')
       throw new AppError(
         409,
@@ -792,17 +795,32 @@ export const riskRegisterService = {
     )
       throw new AppError(403, 'FORBIDDEN', 'Risk Owner or Security Officer access required');
     const risk: RiskRegisterDetailRecord = found;
+    const targetHistory = await riskRegisterRepository.findTargetHistory(riskId);
     const blockedReason = vulnerabilityBlockedReason(
       risk.status,
       risk.risk_acceptances.some((item) => item.decision === 'PENDING'),
     );
     return {
       ...listItem(risk),
+      targetHistory: targetHistory.flatMap((entry) => {
+        const data = entry.after_data;
+        if (!data || typeof data !== 'object' || Array.isArray(data) ||
+          typeof data.assessmentId !== 'string') return [];
+        const stringValue = (key: string) => typeof data[key] === 'string' ? data[key] : null;
+        return [{
+          assessmentId: data.assessmentId,
+          treatmentPlanId: stringValue('treatmentPlanId'),
+          treatmentPlanTitle: stringValue('treatmentPlanTitle'),
+          residualAssessmentId: stringValue('residualAssessmentId'),
+          residualAssessedAt: stringValue('residualAssessedAt'),
+          residualRating: stringValue('residualRating')?.toLowerCase() ?? null,
+        }];
+      }),
       vulnerabilityWorkflow: {
         canIdentify: actor.role === 'SECURITY_OFFICER' && !blockedReason,
         blockedReason:
           actor.role === 'SECURITY_OFFICER' ? blockedReason : 'Security Officer role required.',
-        assessmentReviewRequired: assessmentRequiresReview(risk.risk_assessments[0]?.assessed_at, [
+        assessmentReviewRequired: assessmentRequiresReview(risk.risk_assessments.find((item) => item.assessment_type !== 'TARGET_DEFINITION')?.assessed_at, [
           ...risk.risk_vulnerabilities,
           ...risk.risk_threats,
         ]),

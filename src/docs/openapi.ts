@@ -400,6 +400,51 @@ export const openApiSpec = {
         },
       },
     },
+    '/risks/{riskId}/target-risk': {
+      post: {
+        tags: ['Risks'],
+        summary: 'Define target risk',
+        security: [{ bearerAuth: [] }],
+        description:
+          'Assigned active Risk Owner only. Requires OPEN/UNDER_TREATMENT, no pending acceptance, a residual assessment newer than Threat/Vulnerability edits, and a Draft/Active plan belonging to this Risk. Target cannot exceed residual. A target outside appetite/tolerance is allowed with rationale. Saves TARGET_DEFINITION separately and audits the original residual ID/time and plan ID. Comparison is null when its threshold is missing.',
+        parameters: [
+          {
+            in: 'path',
+            name: 'riskId',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['treatmentPlanId', 'targetRisk', 'rationale'],
+                properties: {
+                  treatmentPlanId: { type: 'string', format: 'uuid' },
+                  targetRisk: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] },
+                  rationale: { type: 'string', minLength: 10, maxLength: 3000 },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '201': {
+            description:
+              'Target recorded with plan, original residual rating and nullable threshold comparisons',
+          },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Assigned Risk Owner required' },
+          '404': { description: 'Risk not found' },
+          '409': { description: 'Risk locked or context changed' },
+          '422': { description: 'Invalid target, missing residual or eligible plan' },
+        },
+      },
+    },
     '/risks/{riskId}/residual-assessments': {
       post: {
         tags: ['Risks'],
