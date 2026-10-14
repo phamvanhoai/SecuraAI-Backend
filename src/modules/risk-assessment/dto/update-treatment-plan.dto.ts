@@ -18,6 +18,8 @@ export const updateTreatmentPlanBodySchema = z.object({
   actions: z.array(action).max(100),
   expectedUpdatedAt: z.iso.datetime({ offset: true }),
 }).strict().superRefine((value, context) => {
+  const actionIds = value.actions.flatMap((item) => item.id ? [item.id] : []);
+  if (new Set(actionIds).size !== actionIds.length) context.addIssue({ code: 'custom', path: ['actions'], message: 'Action IDs must be unique' });
   if (value.strategy !== 'accept' && !value.actions.length) context.addIssue({ code: 'custom', path: ['actions'], message: 'Treatment actions are required' });
   value.actions.forEach((item, index) => { if (item.dueDate > value.targetDate) context.addIssue({ code: 'custom', path: ['actions', index, 'dueDate'], message: 'Action due date must not exceed plan target date' }); });
 });
