@@ -18,3 +18,8 @@ export * from './security-dashboard.repository.js';
 export * from './security-dashboard.service.js';
 export * from './security-dashboard.controller.js';
 export * from './security-dashboard.routes.js';
+export * from './dto/export-security-reports.dto.js';
+export * from './report-exports.repository.js';
+export * from './report-exports.service.js';
+export * from './report-exports.controller.js';
+export * from './report-exports.routes.js';
