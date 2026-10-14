@@ -22,6 +22,7 @@ export const openApiSpec = {
   components: {
     securitySchemes: {
       bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' },
+      apiKeyAuth: { type: 'apiKey', in: 'header', name: 'X-API-Key' },
     },
   },
   paths: {
@@ -1002,23 +1003,16 @@ export const openApiSpec = {
         tags: ['Event Ingestion'],
         summary: 'Ingest a normalized Wazuh event',
         description:
-          'Accepts one normalized event from the configured Wazuh integration. Requires the X-SecuraAI-Ingest-Key header or a bearer ingestion token.',
-        parameters: [
-          {
-            name: 'X-SecuraAI-Ingest-Key',
-            in: 'header',
-            required: false,
-            schema: { type: 'string' },
-          },
-        ],
+          'Accepts one normalized event from Wazuh. Requires an active integration API key with the events:ingest scope.',
+        security: [{ apiKeyAuth: [] }],
         requestBody: {
           required: true,
           content: { 'application/json': { schema: { type: 'object' } } },
         },
         responses: {
           '201': { description: 'Event ingested' },
-          '401': { description: 'Ingestion token missing' },
-          '403': { description: 'Ingestion token invalid' },
+          '401': { description: 'API key missing, invalid, expired, or revoked' },
+          '403': { description: 'API key lacks the events:ingest scope' },
           '422': { description: 'Invalid normalized event' },
           '503': { description: 'Wazuh ingestion is not configured' },
         },
