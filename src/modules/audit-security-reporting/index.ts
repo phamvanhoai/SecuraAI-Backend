@@ -23,3 +23,4 @@ export * from './report-exports.repository.js';
 export * from './report-exports.service.js';
 export * from './report-exports.controller.js';
 export * from './report-exports.routes.js';
+export { auditRouter } from './audit.routes.js';

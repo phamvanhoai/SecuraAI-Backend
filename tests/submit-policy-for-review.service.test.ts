@@ -25,6 +25,7 @@ function draft(status: 'DRAFT' | 'IN_REVIEW' = 'DRAFT') {
     status,
     author_user_id: userId,
     created_at: createdAt,
+    policy_applicabilities: { id: '773d8356-e68c-421b-9ce3-29ea4601970f' },
     policies_policy_versions_policy_idTopolicies: {
       id: policyId,
       policy_code: 'TEST',
@@ -96,6 +97,17 @@ describe('submit policy for review service', () => {
     await expect(
       policyComplianceService.submitForReview(userId, policyId, versionId),
     ).rejects.toMatchObject({ statusCode: 409, code: 'POLICY_DRAFT_NOT_SUBMITTABLE' });
+  });
+
+  it('requires applicability before the draft can be submitted', async () => {
+    vi.mocked(policyComplianceRepository.findDraftForSubmission).mockResolvedValue({
+      ...draft(),
+      policy_applicabilities: null,
+    });
+    await expect(
+      policyComplianceService.submitForReview(userId, policyId, versionId),
+    ).rejects.toMatchObject({ statusCode: 409, code: 'POLICY_APPLICABILITY_REQUIRED' });
+    expect(policyComplianceRepository.submitDraft).not.toHaveBeenCalled();
   });
 
   it('rejects a concurrent status change', async () => {
