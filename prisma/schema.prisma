@@ -1467,6 +1467,7 @@ enum risk_assessment_type {
   INITIAL
   PERIODIC_REVIEW
   INCIDENT_REASSESSMENT
+  TARGET_DEFINITION
 }
 
 enum risk_rating {

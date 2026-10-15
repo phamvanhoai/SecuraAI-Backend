@@ -298,8 +298,18 @@ export const openApiSpec = {
         description:
           'Active Security Officer required. Updates the existing threat and its vulnerability links without deleting history. OPEN/UNDER_TREATMENT context and no pending acceptance are required. A successful change requires risk reassessment.',
         parameters: [
-          { name: 'riskId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
-          { name: 'threatId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+          {
+            name: 'riskId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+          {
+            name: 'threatId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
         ],
         requestBody: {
           required: true,
@@ -313,7 +323,10 @@ export const openApiSpec = {
                   name: { type: 'string', minLength: 2, maxLength: 255 },
                   description: { type: 'string', minLength: 3, maxLength: 3000 },
                   vulnerabilityIds: {
-                    type: 'array', minItems: 1, maxItems: 50, uniqueItems: true,
+                    type: 'array',
+                    minItems: 1,
+                    maxItems: 50,
+                    uniqueItems: true,
                     items: { type: 'string', format: 'uuid' },
                   },
                   expectedUpdatedAt: { type: 'string', format: 'date-time' },
@@ -338,7 +351,7 @@ export const openApiSpec = {
         summary: 'Submit risk acceptance',
         security: [{ bearerAuth: [] }],
         description:
-          'Assigned Risk Owner required. OPEN/UNDER_TREATMENT risk, eligible plan, no pending decision and a residual assessment newer than every vulnerability are required. Existing endpoint request body is unchanged. A copied target assessment cannot bypass review of stale context.',
+          'Active assigned Risk Owner only. Locks Risk and related Controls. Requires OPEN/UNDER_TREATMENT, no pending request, eligible plan, current inherent/residual context including Threat/Vulnerability edits, and current applicable implemented Control assessments with valid Evidence. Records a fresh residual assessment and an immutable acceptance audit basis; never changes plan status or its source assessment. Optional legacy treatmentPlanStatus must match the stored status. Appetite/tolerance exceedance is disclosed for approver review, not automatically rejected. Validity is an inclusive UTC calendar date. After opening review, a new residual assessment is required.',
         parameters: [
           {
             name: 'riskId',
@@ -358,7 +371,6 @@ export const openApiSpec = {
                   'residualImpact',
                   'assessmentReason',
                   'treatmentPlanId',
-                  'treatmentPlanStatus',
                   'validUntil',
                   'acceptanceReason',
                 ],
@@ -367,7 +379,7 @@ export const openApiSpec = {
                   residualImpact: { type: 'integer', minimum: 1, maximum: 5 },
                   assessmentReason: { type: 'string' },
                   treatmentPlanId: { type: 'string', format: 'uuid' },
-                  treatmentPlanStatus: { type: 'string', enum: ['draft', 'active', 'completed'] },
+                  treatmentPlanStatus: { type: 'string', enum: ['draft', 'active', 'completed'], description: 'Optional compatibility field; must equal current plan status, never changes it.' },
                   validUntil: { type: 'string', format: 'date' },
                   acceptanceReason: { type: 'string' },
                 },
@@ -384,6 +396,138 @@ export const openApiSpec = {
             description: 'RISK_REASSESSMENT_REQUIRED, RISK_CONTEXT_LOCKED or ACCEPTANCE_PENDING',
           },
           '422': { description: 'Invalid plan, actions, validity or input' },
+        },
+      },
+    },
+    '/risks/{riskId}/review': {
+      post: {
+        tags: ['Risks'], summary: 'Open review of an accepted Risk', security: [{ bearerAuth: [] }],
+        description: 'Active assigned Risk Owner only. ACCEPTED with no pending request; requires exact expectedUpdatedAt and reason. Reopens the same Risk to UNDER_TREATMENT with an Active plan, otherwise OPEN. Preserves previous approvals/expiry, appends audit, requires a new residual assessment before new acceptance. No automatic renewal or deletion.',
+        parameters: [{ name: 'riskId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['reason', 'expectedUpdatedAt'], properties: { reason: { type: 'string', minLength: 10, maxLength: 2000 }, expectedUpdatedAt: { type: 'string', format: 'date-time' } } } } } },
+        responses: { '200': { description: 'Review opened' }, '401': { description: 'Authentication required' }, '403': { description: 'Owner required' }, '404': { description: 'Risk not found' }, '409': { description: 'Stale or locked Risk' }, '422': { description: 'Invalid input' } },
+      },
+    },
+    '/risks/acceptances/{acceptanceId}/decision': {
+      patch: {
+        tags: ['Risks'], summary: 'Decide risk acceptance', security: [{ bearerAuth: [] }],
+        description: 'Active Security Officer or Executive (existing approver group), never requester. Pending only. Approval checks expiry, owner reassignment, Threat/Vulnerability changes, current Control/Evidence basis and exact submitted assessment/plan basis. Legacy requests without verifiable audit basis must be rejected/resubmitted. Rejection remains available for expired/stale requests. Owner justification is preserved; decision reason is audited separately. Only approval sets ACCEPTED. Detail exposes expired/canDecide and actor-scoped acceptanceWorkflow. No named-approver assignment or automatic email.',
+        parameters: [{ name: 'acceptanceId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['decision', 'reason'], properties: { decision: { type: 'string', enum: ['approved', 'rejected'] }, reason: { type: 'string', minLength: 10, maxLength: 2000 } } } } } },
+        responses: { '200': { description: 'Decision recorded' }, '401': { description: 'Authentication required' }, '403': { description: 'Approver required or self-approval forbidden' }, '404': { description: 'Request not found' }, '409': { description: 'Already decided, expired or changed context' }, '422': { description: 'Invalid input' } },
+      },
+    },
+    '/risks/treatment-plans': {
+      post: {
+        tags: ['Risks'], summary: 'Create Risk Treatment Plan', security: [{ bearerAuth: [] }],
+        description: 'Active Security Officer or assigned Risk Owner. Locks selected Risk. OPEN/UNDER_TREATMENT with no pending acceptance or Draft/Active plan. Eligible controls must belong to the Risk; mitigate requires at least one, other strategies allow none. Non-accept strategies require actions. Unique control IDs and action titles, active owners, future dates and action dates within plan date required. Target cannot exceed known residual and is saved as TARGET_DEFINITION without copying inherent/residual. Creation remains Draft and does not approve acceptance.',
+        responses: { '201': { description: 'Draft plan with intended target saved' }, '401': { description: 'Authentication required' }, '403': { description: 'Security Officer or Risk Owner required' }, '404': { description: 'Risk not found' }, '409': { description: 'Risk locked or existing Draft/Active plan' }, '422': { description: 'Invalid owners, controls, actions, dates or target' } },
+      },
+    },
+    '/risks/treatment-plans/{treatmentPlanId}': {
+      patch: {
+        tags: ['Risks'], summary: 'Update Risk Treatment Plan', security: [{ bearerAuth: [] }],
+        description: 'Active Security Officer or assigned Risk Owner. Locks Risk and plan, checks expectedUpdatedAt and blocks pending acceptance or finalized records. Existing overdue deadlines may be retained; dates cannot predate record creation. Completed/cancelled actions are read-only, original completion timestamps are preserved. In-progress actions cannot return to pending. Non-acceptance plans with all actions cancelled cannot be completed. Changes append an audit snapshot. Progress uses status weights and excludes cancelled actions.',
+        parameters: [{ name: 'treatmentPlanId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+        responses: { '200': { description: 'Updated plan and computed progress' }, '401': { description: 'Authentication required' }, '403': { description: 'Security Officer or Risk Owner required' }, '404': { description: 'Plan not found' }, '409': { description: 'Stale update, pending acceptance, locked record or invalid transition' }, '422': { description: 'Invalid actions, dates, owners or controls' } },
+      },
+    },
+    '/risks/{riskId}/target-risk': {
+      post: {
+        tags: ['Risks'],
+        summary: 'Define target risk',
+        security: [{ bearerAuth: [] }],
+        description:
+          'Assigned active Risk Owner only. Requires OPEN/UNDER_TREATMENT, no pending acceptance, a residual assessment newer than Threat/Vulnerability edits, and a Draft/Active plan belonging to this Risk. Target cannot exceed residual. A target outside appetite/tolerance is allowed with rationale. Saves TARGET_DEFINITION separately and audits the original residual ID/time and plan ID. Comparison is null when its threshold is missing.',
+        parameters: [
+          {
+            in: 'path',
+            name: 'riskId',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['treatmentPlanId', 'targetRisk', 'rationale'],
+                properties: {
+                  treatmentPlanId: { type: 'string', format: 'uuid' },
+                  targetRisk: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] },
+                  rationale: { type: 'string', minLength: 10, maxLength: 3000 },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '201': {
+            description:
+              'Target recorded with plan, original residual rating and nullable threshold comparisons',
+          },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Assigned Risk Owner required' },
+          '404': { description: 'Risk not found' },
+          '409': { description: 'Risk locked or context changed' },
+          '422': { description: 'Invalid target, missing residual or eligible plan' },
+        },
+      },
+    },
+    '/risks/{riskId}/residual-assessments': {
+      post: {
+        tags: ['Risks'],
+        summary: 'Assess residual risk',
+        security: [{ bearerAuth: [] }],
+        description:
+          'Assigned active Risk Owner only. OPEN or UNDER_TREATMENT with no pending acceptance. Requires current inherent context and applicable implemented controls with current effectiveness assessments and usable evidence. Appetite must not exceed tolerance; existing Risk thresholds cannot be changed here. Residual rating is likelihood × impact; control effectiveness is a reference average. Audit preserves the Control Assessment IDs used.',
+        parameters: [
+          {
+            name: 'riskId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                additionalProperties: false,
+                required: [
+                  'likelihood',
+                  'impact',
+                  'targetRisk',
+                  'riskAppetite',
+                  'riskTolerance',
+                  'assessmentReason',
+                ],
+                properties: {
+                  likelihood: { type: 'integer', minimum: 1, maximum: 5 },
+                  impact: { type: 'integer', minimum: 1, maximum: 5 },
+                  targetRisk: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] },
+                  riskAppetite: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] },
+                  riskTolerance: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] },
+                  assessmentReason: { type: 'string', minLength: 10, maxLength: 3000 },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '201': { description: 'Assessment saved with score, rating and threshold comparison' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Assigned Risk Owner required' },
+          '404': { description: 'Risk not found' },
+          '409': {
+            description: 'Locked state, changed context, stale controls or changed thresholds',
+          },
+          '422': { description: 'Invalid values or missing prerequisite assessments' },
         },
       },
     },
@@ -936,8 +1080,12 @@ export const openApiSpec = {
           },
         },
         responses: {
-          '200': { description: 'Integration API key rotated successfully with replacement secret token' },
-          '400': { description: 'Bad request (e.g. key already revoked or rotated, or invalid expiration)' },
+          '200': {
+            description: 'Integration API key rotated successfully with replacement secret token',
+          },
+          '400': {
+            description: 'Bad request (e.g. key already revoked or rotated, or invalid expiration)',
+          },
           '401': { description: 'Authentication required' },
           '403': { description: 'Admin role required' },
           '404': { description: 'Integration API key not found' },
@@ -970,8 +1118,12 @@ export const openApiSpec = {
           },
         },
         responses: {
-          '200': { description: 'Integration API key rotated successfully with replacement secret token' },
-          '400': { description: 'Bad request (e.g. key already revoked or rotated, or invalid expiration)' },
+          '200': {
+            description: 'Integration API key rotated successfully with replacement secret token',
+          },
+          '400': {
+            description: 'Bad request (e.g. key already revoked or rotated, or invalid expiration)',
+          },
           '401': { description: 'Authentication required' },
           '403': { description: 'Admin role required' },
           '404': { description: 'Integration API key not found for the specified integration' },
@@ -1081,6 +1233,117 @@ export const openApiSpec = {
           },
           '401': { description: 'Authentication required' },
           '403': { description: 'Security Officer or Executive role required' },
+        },
+      },
+    },
+    '/reports/exports': {
+      post: {
+        tags: ['Audit & Security Reporting'],
+        summary: 'Export Risk / Incident / Security Report',
+        description:
+          'Allow Security Officers and authorized Executives to generate and export risk, incident, and security reports for a selected period using available filters into PDF or Excel/CSV formats.',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['reportType'],
+                properties: {
+                  reportType: { type: 'string', enum: ['RISK', 'INCIDENT', 'SECURITY_POSTURE'] },
+                  format: { type: 'string', enum: ['EXCEL', 'PDF', 'CSV'], default: 'EXCEL' },
+                  startDate: { type: 'string', format: 'date' },
+                  endDate: { type: 'string', format: 'date' },
+                  severity: { type: 'string' },
+                  status: { type: 'string' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '201': { description: 'Report export generated successfully' },
+          '400': { description: 'Bad request / validation failed' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer or Executive role required' },
+        },
+      },
+      get: {
+        tags: ['Audit & Security Reporting'],
+        summary: 'List exported reports',
+        description: 'Retrieve a paginated list of exported reports requested by the organization.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'page', in: 'query', schema: { type: 'integer', default: 1 } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', default: 10 } },
+          {
+            name: 'reportType',
+            in: 'query',
+            schema: { type: 'string', enum: ['RISK', 'INCIDENT', 'SECURITY_POSTURE'] },
+          },
+          {
+            name: 'status',
+            in: 'query',
+            schema: { type: 'string', enum: ['REQUESTED', 'GENERATING', 'COMPLETED', 'FAILED'] },
+          },
+        ],
+        responses: {
+          '200': { description: 'List of exported reports' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer or Executive role required' },
+        },
+      },
+    },
+    '/reports/exports/{id}/download': {
+      get: {
+        tags: ['Audit & Security Reporting'],
+        summary: 'Download exported report file',
+        description: 'Download the compiled report in CSV/Excel or printable HTML/PDF format.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+        ],
+        responses: {
+          '200': { description: 'Report file stream download' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer or Executive role required' },
+          '404': { description: 'Report export not found' },
+          '410': { description: 'Report export has been revoked' },
+        },
+      },
+    },
+    '/reports/exports/{id}/revoke': {
+      post: {
+        tags: ['Audit & Security Reporting'],
+        summary: 'Revoke exported report',
+        description:
+          'Allow Security Officers and Executives to revoke an erroneous or outdated report export, preventing further downloads (returning HTTP 410 Gone) and recording an audit trail.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['reason'],
+                properties: {
+                  reason: { type: 'string', minLength: 5, maxLength: 500 },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'Report export revoked successfully' },
+          '400': { description: 'Bad request (e.g. invalid reason or already revoked)' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer or Executive role required' },
+          '404': { description: 'Report export not found' },
+          '422': { description: 'Validation failed' },
         },
       },
     },
@@ -3920,7 +4183,11 @@ export const openApiSpec = {
         security: [{ bearerAuth: [] }],
         parameters: [
           { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
-          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 } },
+          {
+            name: 'limit',
+            in: 'query',
+            schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
+          },
           { name: 'search', in: 'query', schema: { type: 'string', maxLength: 100 } },
           { name: 'actor', in: 'query', schema: { type: 'string', maxLength: 100 } },
           { name: 'action', in: 'query', schema: { type: 'string', maxLength: 100 } },
@@ -3942,7 +4209,9 @@ export const openApiSpec = {
         tags: ['Audit & Security Reporting'],
         summary: 'View audit log detail',
         security: [{ bearerAuth: [] }],
-        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+        ],
         responses: {
           '200': { description: 'Detailed audit record' },
           '401': { description: 'Authentication required' },
@@ -3957,7 +4226,9 @@ export const openApiSpec = {
         tags: ['Audit & Security Reporting'],
         summary: 'View before and after changes',
         security: [{ bearerAuth: [] }],
-        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+        ],
         responses: {
           '200': { description: 'Property-level before and after comparison' },
           '401': { description: 'Authentication required' },
@@ -3983,11 +4254,18 @@ export const openApiSpec = {
             schema: { type: 'string', format: 'uuid' },
           },
           { name: 'search', in: 'query', schema: { type: 'string' } },
-          { name: 'status', in: 'query', schema: { type: 'string', enum: ['ACTIVE', 'EXPIRED', 'REVOKED', 'ROTATED'] } },
+          {
+            name: 'status',
+            in: 'query',
+            schema: { type: 'string', enum: ['ACTIVE', 'EXPIRED', 'REVOKED', 'ROTATED'] },
+          },
           { name: 'isActive', in: 'query', schema: { type: 'boolean' } },
         ],
         responses: {
-          '200': { description: 'List of integration API keys for the specified integration without secrets' },
+          '200': {
+            description:
+              'List of integration API keys for the specified integration without secrets',
+          },
           '401': { description: 'Authentication required' },
           '403': { description: 'Administrator role required' },
           '404': { description: 'Event source / integration not found' },
@@ -4066,13 +4344,33 @@ export const openApiSpec = {
         security: [{ bearerAuth: [] }],
         parameters: [
           { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
-          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 } },
+          {
+            name: 'limit',
+            in: 'query',
+            schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
+          },
           { name: 'search', in: 'query', schema: { type: 'string' } },
-          { name: 'status', in: 'query', schema: { type: 'string', enum: ['ACTIVE', 'EXPIRED', 'REVOKED', 'ROTATED'] } },
+          {
+            name: 'status',
+            in: 'query',
+            schema: { type: 'string', enum: ['ACTIVE', 'EXPIRED', 'REVOKED', 'ROTATED'] },
+          },
           { name: 'isActive', in: 'query', schema: { type: 'boolean' } },
           { name: 'eventSourceId', in: 'query', schema: { type: 'string', format: 'uuid' } },
-          { name: 'sortBy', in: 'query', schema: { type: 'string', enum: ['createdAt', 'expiresAt', 'lastUsedAt', 'name'], default: 'createdAt' } },
-          { name: 'sortOrder', in: 'query', schema: { type: 'string', enum: ['asc', 'desc'], default: 'desc' } },
+          {
+            name: 'sortBy',
+            in: 'query',
+            schema: {
+              type: 'string',
+              enum: ['createdAt', 'expiresAt', 'lastUsedAt', 'name'],
+              default: 'createdAt',
+            },
+          },
+          {
+            name: 'sortOrder',
+            in: 'query',
+            schema: { type: 'string', enum: ['asc', 'desc'], default: 'desc' },
+          },
         ],
         responses: {
           '200': { description: 'Paginated list of integration API keys' },

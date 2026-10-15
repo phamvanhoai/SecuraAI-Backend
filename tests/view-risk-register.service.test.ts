@@ -7,6 +7,9 @@ vi.mock('../src/modules/risk-assessment/risk-register.repository.js', () => ({
     list: vi.fn(),
     findById: vi.fn(),
     findContextHistory: vi.fn().mockResolvedValue([]),
+    findTargetHistory: vi.fn().mockResolvedValue([]),
+    findAcceptanceAudits: vi.fn().mockResolvedValue([]),
+    getAcceptanceControlLinks: vi.fn().mockResolvedValue([]),
   },
 }));
 import { riskRegisterRepository } from '../src/modules/risk-assessment/risk-register.repository.js';
@@ -109,6 +112,28 @@ describe('view risk register service', () => {
     await expect(
       riskRegisterService.get('u', '00000000-0000-4000-8000-000000000001'),
     ).rejects.toMatchObject({ statusCode: 404, code: 'RISK_NOT_FOUND' });
+  });
+  it('keeps request and decision reasons separate and exposes expired rejection to an approver', async () => {
+    const acceptanceId = '00000000-0000-4000-8000-000000000099';
+    vi.mocked(riskRegisterRepository.findActor).mockResolvedValue({ id: 'approver', role: user_role.SECURITY_OFFICER, status: user_status.ACTIVE });
+    vi.mocked(riskRegisterRepository.findById).mockResolvedValue({ ...record, users_risks_created_byTousers: record.users_risks_owner_user_idTousers,
+      risk_threats: [], risk_vulnerabilities: [], control_risk_links: [], risk_treatment_plans: [], incident_risks: [],
+      risk_acceptances: [{ id: acceptanceId, decision: 'PENDING', reason: 'Owner justification', requested_at: now, valid_until: new Date('2020-01-01'), requested_by: record.users_risks_owner_user_idTousers.id, decided_by: null, decided_at: null }],
+    });
+    vi.mocked(riskRegisterRepository.findAcceptanceAudits).mockResolvedValue([{ action: 'RISK_ACCEPTANCE_SUBMITTED', occurred_at: now, after_data: { acceptanceId, acceptanceReason: 'Original Owner justification' } }]);
+    const result = await riskRegisterService.get('approver', record.id);
+    expect(result.acceptances[0]).toMatchObject({ requestReason: 'Original Owner justification', decisionReason: null, expired: true, canDecide: true });
+    expect(result.acceptances[0]?.approvalBlockedReason).toMatch(/expired/);
+  });
+  it('exposes review only to the assigned Owner of an accepted Risk', async () => {
+    const ownerId = record.users_risks_owner_user_idTousers.id;
+    vi.mocked(riskRegisterRepository.findActor).mockResolvedValue({ id: ownerId, role: user_role.EMPLOYEE, status: user_status.ACTIVE });
+    vi.mocked(riskRegisterRepository.findById).mockResolvedValue({ ...record, status: 'ACCEPTED', users_risks_created_byTousers: record.users_risks_owner_user_idTousers,
+      risk_threats: [], risk_vulnerabilities: [], control_risk_links: [], risk_treatment_plans: [], incident_risks: [], risk_acceptances: [],
+    });
+    vi.mocked(riskRegisterRepository.findAcceptanceAudits).mockResolvedValue([]);
+    const result = await riskRegisterService.get(ownerId, record.id);
+    expect(result.acceptanceWorkflow).toMatchObject({ canOpenReview: true, canSubmit: false });
   });
   it('returns the explicitly saved service without deriving it from assets', async () => {
     vi.mocked(riskRegisterRepository.findActor).mockResolvedValue({

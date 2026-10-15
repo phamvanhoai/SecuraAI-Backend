@@ -11,6 +11,14 @@ describe('assess residual risk contract', () => {
   } as const;
   it('accepts a complete assessment', () =>
     expect(assessResidualRiskBodySchema.safeParse(valid).success).toBe(true));
+  it('rejects appetite above tolerance', () =>
+    expect(
+      assessResidualRiskBodySchema.safeParse({
+        ...valid,
+        riskAppetite: 'high',
+        riskTolerance: 'low',
+      }).success,
+    ).toBe(false));
   it('rejects invalid scores', () =>
     expect(assessResidualRiskBodySchema.safeParse({ ...valid, likelihood: 0 }).success).toBe(
       false,

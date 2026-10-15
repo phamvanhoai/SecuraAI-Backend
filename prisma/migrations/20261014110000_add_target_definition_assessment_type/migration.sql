@@ -1,0 +1,1 @@
+ALTER TYPE public.risk_assessment_type ADD VALUE IF NOT EXISTS 'TARGET_DEFINITION';
