@@ -1,5 +1,7 @@
 # V2 modules
 
+Audit, Security & Reporting supports scoped PDF, Excel and CSV report generation through `POST /api/v1/reports/exports` and bounded export-history reads through `GET /api/v1/reports/exports`.
+
 UC23 Risk acceptance uses current Control/Evidence checks shared with Assess Residual, including all Threat/Vulnerability edits. Submission records a fresh residual and immutable assessment/plan/control basis in existing audit_logs without changing the plan. Approval by the existing active Security Officer/Executive group verifies the submitted basis, excludes the requester, and preserves separate Owner and Approver reasons. Expired/stale Pending requests can be rejected, never approved. Legacy requests lacking a verifiable basis must be rejected/resubmitted; overwritten legacy justification cannot be recovered. Detail returns actor-scoped acceptanceWorkflow/canDecide and expired flags. POST /risks/:riskId/review allows the Owner to reopen an Accepted Risk using reason + expectedUpdatedAt, preserving decisions and requiring new Residual before another acceptance. No schema changes, cron renewal, named-approver assignment or email routing. Dates remain inclusive UTC calendar dates.
 
 Audit, Security & Reporting exposes the scoped Security Officer/Executive security-posture dashboard through `GET /api/v1/dashboard/security-posture`. Integration API keys support bounded search/filtering plus Admin-only scope/expiration updates, rotation and revocation with audited lifecycle changes.

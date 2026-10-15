@@ -1236,6 +1236,117 @@ export const openApiSpec = {
         },
       },
     },
+    '/reports/exports': {
+      post: {
+        tags: ['Audit & Security Reporting'],
+        summary: 'Export Risk / Incident / Security Report',
+        description:
+          'Allow Security Officers and authorized Executives to generate and export risk, incident, and security reports for a selected period using available filters into PDF or Excel/CSV formats.',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['reportType'],
+                properties: {
+                  reportType: { type: 'string', enum: ['RISK', 'INCIDENT', 'SECURITY_POSTURE'] },
+                  format: { type: 'string', enum: ['EXCEL', 'PDF', 'CSV'], default: 'EXCEL' },
+                  startDate: { type: 'string', format: 'date' },
+                  endDate: { type: 'string', format: 'date' },
+                  severity: { type: 'string' },
+                  status: { type: 'string' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '201': { description: 'Report export generated successfully' },
+          '400': { description: 'Bad request / validation failed' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer or Executive role required' },
+        },
+      },
+      get: {
+        tags: ['Audit & Security Reporting'],
+        summary: 'List exported reports',
+        description: 'Retrieve a paginated list of exported reports requested by the organization.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'page', in: 'query', schema: { type: 'integer', default: 1 } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', default: 10 } },
+          {
+            name: 'reportType',
+            in: 'query',
+            schema: { type: 'string', enum: ['RISK', 'INCIDENT', 'SECURITY_POSTURE'] },
+          },
+          {
+            name: 'status',
+            in: 'query',
+            schema: { type: 'string', enum: ['REQUESTED', 'GENERATING', 'COMPLETED', 'FAILED'] },
+          },
+        ],
+        responses: {
+          '200': { description: 'List of exported reports' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer or Executive role required' },
+        },
+      },
+    },
+    '/reports/exports/{id}/download': {
+      get: {
+        tags: ['Audit & Security Reporting'],
+        summary: 'Download exported report file',
+        description: 'Download the compiled report in CSV/Excel or printable HTML/PDF format.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+        ],
+        responses: {
+          '200': { description: 'Report file stream download' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer or Executive role required' },
+          '404': { description: 'Report export not found' },
+          '410': { description: 'Report export has been revoked' },
+        },
+      },
+    },
+    '/reports/exports/{id}/revoke': {
+      post: {
+        tags: ['Audit & Security Reporting'],
+        summary: 'Revoke exported report',
+        description:
+          'Allow Security Officers and Executives to revoke an erroneous or outdated report export, preventing further downloads (returning HTTP 410 Gone) and recording an audit trail.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['reason'],
+                properties: {
+                  reason: { type: 'string', minLength: 5, maxLength: 500 },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'Report export revoked successfully' },
+          '400': { description: 'Bad request (e.g. invalid reason or already revoked)' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer or Executive role required' },
+          '404': { description: 'Report export not found' },
+          '422': { description: 'Validation failed' },
+        },
+      },
+    },
     '/event-sources': {
       get: {
         tags: ['Event Ingestion'],
