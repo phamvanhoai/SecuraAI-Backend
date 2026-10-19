@@ -7,6 +7,7 @@ vi.mock('../src/modules/authentication-account/auth.repository.js', () => ({
     findActiveUserByEmail: vi.fn(),
     createPasswordResetToken: vi.fn(),
     deletePasswordResetToken: vi.fn(),
+    isPasswordResetTokenValid: vi.fn(),
     consumePasswordResetToken: vi.fn(),
     findUserForPasswordChange: vi.fn(),
     changePassword: vi.fn(),
@@ -75,6 +76,17 @@ describe('V2 password management service', () => {
         confirmPassword: 'NewPassword!',
       }),
     ).rejects.toMatchObject({ code: 'INVALID_PASSWORD_RESET_TOKEN' });
+  });
+
+  it('rejects a reset code that was replaced by a newer request', async () => {
+    vi.mocked(authRepository.isPasswordResetTokenValid).mockResolvedValue(false);
+
+    await expect(authService.verifyPasswordResetCode({ token: '123456' })).rejects.toMatchObject({
+      code: 'INVALID_PASSWORD_RESET_TOKEN',
+    });
+    expect(authRepository.isPasswordResetTokenValid).toHaveBeenCalledWith(
+      expect.stringMatching(/^[a-f0-9]{64}$/),
+    );
   });
 
   it('changes a password only when the current password matches', async () => {
