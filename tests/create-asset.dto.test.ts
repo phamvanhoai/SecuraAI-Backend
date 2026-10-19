@@ -3,13 +3,13 @@ import { createAssetBodySchema } from '../src/modules/it-asset-management/dto/cr
 
 describe('createAssetBodySchema', () => {
   it.each(['criticality', 'dataClassification', 'businessServiceId'])('rejects deferred field %s', (field) => {
-    expect(createAssetBodySchema.safeParse({ name: 'Server', assetType: 'server', [field]: null }).success).toBe(false);
+    expect(createAssetBodySchema.safeParse({ name: 'Server', assetType: 'SERVER', [field]: null }).success).toBe(false);
   });
   it('normalizes a valid asset and supplies bounded relationship defaults', () => {
     expect(
       createAssetBodySchema.parse({
         name: ' App Server ',
-        assetType: 'server',
+        assetType: 'SERVER',
       }),
     ).toMatchObject({
       name: 'App Server',
@@ -21,7 +21,7 @@ describe('createAssetBodySchema', () => {
     expect(createAssetBodySchema.safeParse({
       assetCode: 'AST-MANUAL',
       name: 'App Server',
-      assetType: 'server',
+      assetType: 'SERVER',
     }).success).toBe(false);
   });
   it('rejects duplicate relationships', () => {
@@ -29,7 +29,7 @@ describe('createAssetBodySchema', () => {
     expect(
       createAssetBodySchema.safeParse({
         name: 'App Server',
-        assetType: 'server',
+        assetType: 'SERVER',
         eventSourceIds: [id, id],
       }).success,
     ).toBe(false);

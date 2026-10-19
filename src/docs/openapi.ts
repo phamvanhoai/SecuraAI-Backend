@@ -1,4 +1,5 @@
 import { env } from '../config/env.js';
+import { assetTypes } from '../modules/it-asset-management/dto/asset-type.dto.js';
 import { incidentClosurePaths } from './incident-closure.openapi.js';
 import { incidentProgressPaths } from './incident-progress.openapi.js';
 import { incidentAnalysisPaths } from './incident-analysis.openapi.js';
@@ -705,7 +706,7 @@ export const openApiSpec = {
             schema: { type: 'integer', minimum: 1, maximum: 100, default: 10 },
           },
           { name: 'q', in: 'query', schema: { type: 'string', maxLength: 100 } },
-          { name: 'assetType', in: 'query', schema: { type: 'string', maxLength: 100 } },
+          { name: 'assetType', in: 'query', schema: { type: 'string', enum: [...assetTypes] } },
           { name: 'criticality', in: 'query', schema: { type: 'string', maxLength: 50 } },
           { name: 'status', in: 'query', schema: { type: 'string', enum: ['active', 'archived'] } },
         ],
@@ -731,7 +732,7 @@ export const openApiSpec = {
                 additionalProperties: false,
                 properties: {
                   name: { type: 'string', maxLength: 255 },
-                  assetType: { type: 'string', maxLength: 100 },
+                  assetType: { type: 'string', enum: [...assetTypes] },
                   ownerUserId: { type: 'string', format: 'uuid' },
                   description: { type: 'string', maxLength: 10000 },
                   dependencies: { type: 'array', maxItems: 50 },
@@ -837,7 +838,7 @@ export const openApiSpec = {
                 required: ['name', 'assetType', 'description'],
                 properties: {
                   name: { type: 'string', maxLength: 255 },
-                  assetType: { type: 'string', maxLength: 100 },
+                  assetType: { type: 'string', enum: [...assetTypes] },
                   description: { type: 'string', maxLength: 10000, nullable: true },
                 },
               },
