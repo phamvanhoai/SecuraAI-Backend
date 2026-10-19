@@ -3,7 +3,7 @@ import { createTreatmentPlanBodySchema } from '../src/modules/risk-assessment/dt
 
 const id = '11111111-1111-4111-8111-111111111111';
 describe('create treatment plan DTO', () => {
-  const base = { riskId: id, title: 'Plan example', strategy: 'accept', ownerUserId: id, targetDate: '2027-12-31', targetRisk: 'low', controlIds: [], actions: [] };
+  const base = { riskId: id, title: 'Plan example', strategy: 'accept', ownerUserId: id, targetDate: '2027-12-31', targetRisk: 'low', controlIds: [], actions: [], acceptanceCost: { costToFix: '100000000', expectedLoss: '5000000', currency: 'VND', periodMonths: 12, basis: 'Synthetic twelve month comparison including one-time and operating costs.' } };
   it('allows non-mitigation plans without controls', () => expect(createTreatmentPlanBodySchema.safeParse(base).success).toBe(true));
   it('rejects duplicated controls', () => expect(createTreatmentPlanBodySchema.safeParse({ ...base, controlIds: [id, id] }).success).toBe(false));
   it('rejects duplicated action titles', () => {

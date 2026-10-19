@@ -115,6 +115,18 @@ beforeEach(() => {
   db.audit_logs.findFirst.mockResolvedValue(null);
 });
 describe('acceptance submission', () => {
+  it('blocks legacy Accept plans without costs before creating a request', async () => {
+    db.risks.findUnique.mockResolvedValue({ ...risk, risk_treatment_plans: [{ ...risk.risk_treatment_plans[0], strategy: 'ACCEPT', acceptance_cost_basis: null }] });
+    expect(await riskRegisterRepository.submitAcceptance('risk', 'owner', input)).toEqual({ kind: 'acceptance_cost_required' });
+    expect(db.risk_acceptances.create).not.toHaveBeenCalled();
+  });
+  it('snapshots Accept costs without approving the Risk', async () => {
+    const acceptanceCost = { costToFix: '100000000', expectedLoss: '5000000', currency: 'VND', periodMonths: 12, basis: 'Synthetic comparison over twelve months.' };
+    db.risks.findUnique.mockResolvedValue({ ...risk, risk_treatment_plans: [{ ...risk.risk_treatment_plans[0], strategy: 'ACCEPT', acceptance_cost_basis: acceptanceCost, risk_treatment_actions: [] }] });
+    expect(await riskRegisterRepository.submitAcceptance('risk', 'owner', input)).toMatchObject({ kind: 'submitted' });
+    expect(db.audit_logs.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ after_data: expect.objectContaining({ acceptanceCost }) }) }));
+    expect(db.risks.update).not.toHaveBeenCalled();
+  });
   it('rejects an imported Completed mitigation plan with all actions cancelled', async () => {
     db.risks.findUnique.mockResolvedValue({ ...risk, risk_treatment_plans: [{ ...risk.risk_treatment_plans[0], status: 'COMPLETED', strategy: 'MITIGATE', risk_treatment_actions: [{ status: 'CANCELLED' }] }] });
     expect(await riskRegisterRepository.submitAcceptance('risk', 'owner', input)).toEqual({ kind: 'no_completed_actions' });
@@ -182,6 +194,25 @@ describe('acceptance submission', () => {
   });
 });
 describe('acceptance decision', () => {
+  it.each(['DRAFT', 'ACTIVE'])('completes only the submitted Accept plan from %s on approval', async (status) => {
+    const cost = { costToFix: '100', expectedLoss: '5', currency: 'VND', periodMonths: 12, basis: 'Synthetic comparison of estimated costs.' };
+    db.audit_logs.findFirst.mockResolvedValue({ after_data: { assessmentId: 'residual', treatmentPlanId: 'plan', planUpdatedAt: old.toISOString(), controlBasis: residualControlBasis(links) } });
+    db.risk_treatment_plans.findFirst.mockResolvedValue({ id: 'plan', status, strategy: 'ACCEPT', updated_at: old, acceptance_cost_basis: cost });
+    expect(await riskRegisterRepository.decideAcceptance('request', 'approver', { decision: 'approved', reason: 'Approve after independent review.' })).toMatchObject({ kind: 'decided' });
+    expect(db.risk_treatment_plans.update).toHaveBeenCalledExactlyOnceWith({ where: { id: 'plan' }, data: { status: 'COMPLETED', updated_at: now } });
+    expect(db.audit_logs.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ action: 'RISK_TREATMENT_PLAN_COMPLETED_BY_ACCEPTANCE', after_data: expect.objectContaining({ acceptanceId: 'request', status: 'COMPLETED' }) }) }));
+  });
+  it('does not complete an Accept plan on rejection', async () => {
+    expect(await riskRegisterRepository.decideAcceptance('request', 'approver', { decision: 'rejected', reason: 'More justification is required.' })).toMatchObject({ kind: 'decided' });
+    expect(db.risk_treatment_plans.update).not.toHaveBeenCalled();
+    expect(db.risks.update).not.toHaveBeenCalled();
+  });
+  it.each(['MITIGATE', 'AVOID', 'TRANSFER'])('does not auto-complete a %s plan', async (strategy) => {
+    db.audit_logs.findFirst.mockResolvedValue({ after_data: { assessmentId: 'residual', treatmentPlanId: 'plan', planUpdatedAt: old.toISOString(), controlBasis: residualControlBasis(links) } });
+    db.risk_treatment_plans.findFirst.mockResolvedValue({ id: 'plan', strategy, status: 'ACTIVE', updated_at: old });
+    expect(await riskRegisterRepository.decideAcceptance('request', 'approver', { decision: 'approved', reason: 'Approve after independent review.' })).toMatchObject({ kind: 'decided' });
+    expect(db.risk_treatment_plans.update).not.toHaveBeenCalled();
+  });
   const approve = { decision: 'approved' as const, reason: 'Approved after independent review.' };
   const basis = {
     after_data: {

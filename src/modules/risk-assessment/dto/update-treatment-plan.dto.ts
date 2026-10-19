@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { acceptanceCostSchema, validateAcceptanceCost } from './acceptance-cost.dto.js';
 
 const action = z.object({
   id: z.uuid().optional(),
@@ -17,7 +18,9 @@ export const updateTreatmentPlanBodySchema = z.object({
   controlIds: z.array(z.uuid()).max(100).refine((ids) => new Set(ids).size === ids.length, 'Control IDs must be unique'),
   actions: z.array(action).max(100),
   expectedUpdatedAt: z.iso.datetime({ offset: true }),
+  acceptanceCost: acceptanceCostSchema.nullish(),
 }).strict().superRefine((value, context) => {
+  validateAcceptanceCost(value, context);
   if (value.strategy === 'mitigate' && !value.controlIds.length) context.addIssue({ code: 'custom', path: ['controlIds'], message: 'Mitigation plans require at least one related control' });
   const actionIds = value.actions.flatMap((item) => item.id ? [item.id] : []);
   if (new Set(actionIds).size !== actionIds.length) context.addIssue({ code: 'custom', path: ['actions'], message: 'Action IDs must be unique' });

@@ -1,4 +1,5 @@
 import { env } from '../config/env.js';
+import { createTreatmentPlanOpenApi, updateTreatmentPlanOpenApi } from './treatment-acceptance-cost.openapi.js';
 import { assetTypes } from '../modules/it-asset-management/dto/asset-type.dto.js';
 import { incidentClosurePaths } from './incident-closure.openapi.js';
 import { incidentProgressPaths } from './incident-progress.openapi.js';
@@ -490,6 +491,10 @@ export const openApiSpec = {
         tags: ['Risks'],
         summary: 'Create Risk Treatment Plan',
         security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: createTreatmentPlanOpenApi } },
+        },
         description:
           'Active Security Officer or assigned Risk Owner. Locks selected Risk. OPEN/UNDER_TREATMENT with no pending acceptance or Draft/Active plan. Eligible controls must belong to the Risk; mitigate requires at least one, other strategies allow none. Non-accept strategies require actions. Unique control IDs and action titles, active owners, future dates and action dates within plan date required. Target cannot exceed known residual and is saved as TARGET_DEFINITION without copying inherent/residual. Creation remains Draft and does not approve acceptance.',
         responses: {
@@ -507,6 +512,10 @@ export const openApiSpec = {
         tags: ['Risks'],
         summary: 'Update Risk Treatment Plan',
         security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: updateTreatmentPlanOpenApi } },
+        },
         description:
           'Active Security Officer or assigned Risk Owner. Locks Risk and plan, checks expectedUpdatedAt and blocks pending acceptance or finalized records. Existing overdue deadlines may be retained; dates cannot predate record creation. Completed/cancelled actions are read-only, original completion timestamps are preserved. In-progress actions cannot return to pending. Non-acceptance plans with all actions cancelled cannot be completed. Changes append an audit snapshot. Progress uses status weights and excludes cancelled actions.',
         parameters: [

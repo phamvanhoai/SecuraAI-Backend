@@ -1,3 +1,4 @@
+import { readAcceptanceCost } from './dto/acceptance-cost.dto.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { Prisma, type risk_status, type treatment_status } from '@prisma/client';
 import { assessmentRequiresReview, vulnerabilityBlockedReason } from './vulnerability-workflow.js';
@@ -154,6 +155,7 @@ const detailSelect = {
       strategy: true,
       status: true,
       target_completion_date: true,
+      acceptance_cost_basis: true,
       users_risk_treatment_plans_owner_user_idTousers: {
         select: { id: true, full_name: true, status: true },
       },
@@ -454,10 +456,13 @@ export const riskRegisterRepository = {
   identifyThreat(riskId: string, actorId: string, input: IdentifyThreatBody) {
     return prisma.$transaction(
       async (database) => {
+        await database.$queryRaw`SELECT id FROM risks WHERE id = ${riskId}::uuid FOR UPDATE`;
         const risk = await database.risks.findUnique({
           where: { id: riskId },
           select: {
             id: true,
+            status: true,
+            risk_acceptances: { where: { decision: 'PENDING' }, select: { id: true }, take: 1 },
             risk_threats: {
               where: { name: { equals: input.name, mode: 'insensitive' } },
               select: { id: true },
@@ -470,6 +475,8 @@ export const riskRegisterRepository = {
           },
         });
         if (!risk) return { kind: 'risk_not_found' as const };
+        const blockedReason = vulnerabilityBlockedReason(risk.status, risk.risk_acceptances.length > 0);
+        if (blockedReason) return { kind: 'context_locked' as const, blockedReason };
         if (risk.risk_threats.length) return { kind: 'duplicate' as const };
         if (risk.risk_vulnerabilities.length !== input.vulnerabilityIds.length)
           return { kind: 'invalid_vulnerabilities' as const };
@@ -1285,6 +1292,7 @@ export const riskRegisterRepository = {
               risk_id: risk.id,
               source_assessment_id: source.id,
               title: input.title,
+              acceptance_cost_basis: input.acceptanceCost ?? Prisma.DbNull,
               strategy: input.strategy.toUpperCase() as
                 'AVOID' | 'MITIGATE' | 'TRANSFER' | 'ACCEPT',
               owner_user_id: input.ownerUserId,
@@ -1317,7 +1325,7 @@ export const riskRegisterRepository = {
             residualAssessmentId: latest?.residual_rating ? latest.id : null,
             residualAssessedAt: latest?.residual_rating ? latest.assessed_at.toISOString() : null,
             residualRating: latest?.residual_rating ?? null, targetRisk: targetRating,
-            strategy: input.strategy, ownerUserId: input.ownerUserId, controlIds: input.controlIds, actions: input.actions };
+            strategy: input.strategy, acceptanceCost: input.acceptanceCost ?? null, ownerUserId: input.ownerUserId, controlIds: input.controlIds, actions: input.actions };
           await database.audit_logs.create({ data: { id: auditId, actor_type: 'USER', actor_user_id: actorId,
             action: 'RISK_TARGET_DEFINED', resource_type: 'RISK', resource_id: risk.id, source: 'API', after_data: auditData,
             record_hash: createHash('sha256').update(JSON.stringify({ auditId, actorId, ...auditData })).digest('hex') } });
@@ -1455,6 +1463,7 @@ export const riskRegisterRepository = {
           where: { id: planId },
           data: {
             title: input.title,
+            acceptance_cost_basis: input.acceptanceCost ?? Prisma.DbNull,
             strategy: input.strategy.toUpperCase() as 'AVOID' | 'MITIGATE' | 'TRANSFER' | 'ACCEPT',
             owner_user_id: input.ownerUserId,
             target_completion_date: new Date(`${input.targetDate}T00:00:00.000Z`),
@@ -1491,7 +1500,7 @@ export const riskRegisterRepository = {
           }
         }
         const auditId = randomUUID();
-        const before = { title: plan.title, status: plan.status, strategy: plan.strategy, ownerUserId: plan.owner_user_id, targetDate: plan.target_completion_date?.toISOString() ?? null,
+        const before = { title: plan.title, status: plan.status, strategy: plan.strategy, acceptanceCost: readAcceptanceCost(plan.acceptance_cost_basis), ownerUserId: plan.owner_user_id, targetDate: plan.target_completion_date?.toISOString() ?? null,
           controls: plan.risk_treatment_plan_controls.map((item) => item.control_id),
           actions: plan.risk_treatment_actions.map((item) => ({ id: item.id, title: item.action_description, status: item.status, ownerUserId: item.owner_user_id, dueDate: item.due_date?.toISOString() ?? null, completedAt: item.completed_at?.toISOString() ?? null })) };
         const after = { ...input, actions: updated.risk_treatment_actions.map((item) => ({ id: item.id, title: item.action_description, status: item.status, ownerUserId: item.owner_user_id, dueDate: item.due_date?.toISOString() ?? null, completedAt: item.completed_at?.toISOString() ?? null })) };
@@ -1539,6 +1548,7 @@ export const riskRegisterRepository = {
                 status: true,
                 updated_at: true,
                 strategy: true,
+                acceptance_cost_basis: true,
                 risk_treatment_actions: { select: { status: true } },
                 risk_assessments: { select: { target_risk: true } },
               },
@@ -1552,6 +1562,7 @@ export const riskRegisterRepository = {
           return { kind: 'context_locked' as const };
         if (!risk.risk_treatment_plans[0]) return { kind: 'invalid_plan' as const };
         const selectedPlan = risk.risk_treatment_plans[0];
+        if (selectedPlan.strategy === 'ACCEPT' && !readAcceptanceCost(selectedPlan.acceptance_cost_basis)) return { kind: 'acceptance_cost_required' as const };
         if (input.treatmentPlanStatus && selectedPlan.status.toLowerCase() !== input.treatmentPlanStatus)
           return { kind: 'invalid_plan_status' as const };
         if (
@@ -1624,6 +1635,7 @@ export const riskRegisterRepository = {
         const auditData = { acceptanceId: acceptance.id, assessmentId: assessment.id,
           inherentAssessmentId: inherent.id, treatmentPlanId: selectedPlan.id,
           planUpdatedAt: selectedPlan.updated_at.toISOString(), controlBasis,
+          acceptanceCost: readAcceptanceCost(selectedPlan.acceptance_cost_basis),
           acceptanceReason: input.acceptanceReason, residualScore: score, residualRating: rating,
           validUntil: input.validUntil };
         await database.audit_logs.create({ data: { id: auditId, actor_type: 'USER', actor_user_id: actorId,
@@ -1697,6 +1709,7 @@ export const riskRegisterRepository = {
             ))
         )
           return { kind: 'context_changed' as const };
+        let completedAcceptPlanId: string | null = null;
         if (input.decision === 'approved') {
           const controlsBlocked = validateResidualControls(acceptance.risks.control_risk_links, decidedAt);
           if (controlsBlocked === 'control_assessments_required') return { kind: 'control_assessments_required' as const };
@@ -1713,10 +1726,25 @@ export const riskRegisterRepository = {
             return { kind: 'context_changed' as const };
           const [currentAssessment, currentPlan] = await Promise.all([
             database.risk_assessments.findFirst({ where: { risk_id: acceptance.risk_id, assessment_type: { not: 'TARGET_DEFINITION' } }, orderBy: { assessed_at: 'desc' }, select: { id: true } }),
-            database.risk_treatment_plans.findFirst({ where: { id: basis.treatmentPlanId, risk_id: acceptance.risk_id, status: { in: ['DRAFT', 'ACTIVE', 'COMPLETED'] } }, select: { updated_at: true } }),
+            database.risk_treatment_plans.findFirst({ where: { id: basis.treatmentPlanId, risk_id: acceptance.risk_id, status: { in: ['DRAFT', 'ACTIVE', 'COMPLETED'] } }, select: { id: true, status: true, updated_at: true, strategy: true, acceptance_cost_basis: true } }),
           ]);
+          if (currentPlan?.strategy === 'ACCEPT' && !readAcceptanceCost(currentPlan.acceptance_cost_basis)) return { kind: 'context_changed' as const };
           if (currentAssessment?.id !== basis.assessmentId || currentPlan?.updated_at.toISOString() !== basis.planUpdatedAt)
             return { kind: 'context_changed' as const };
+          if (currentPlan?.strategy === 'ACCEPT' && currentPlan.status !== 'COMPLETED') {
+            await database.risk_treatment_plans.update({
+              where: { id: basis.treatmentPlanId },
+              data: { status: 'COMPLETED', updated_at: decidedAt },
+            });
+            completedAcceptPlanId = basis.treatmentPlanId;
+            const planAuditId = randomUUID();
+            const before = { planId: basis.treatmentPlanId, status: currentPlan.status };
+            const after = { planId: basis.treatmentPlanId, status: 'COMPLETED', acceptanceId, reason: 'Accept proposal completed by independent acceptance approval; no remediation actions were performed.' };
+            await database.audit_logs.create({ data: { id: planAuditId, actor_type: 'USER', actor_user_id: actorId,
+              action: 'RISK_TREATMENT_PLAN_COMPLETED_BY_ACCEPTANCE', resource_type: 'RISK', resource_id: acceptance.risk_id,
+              source: 'API', occurred_at: decidedAt, before_data: before, after_data: after,
+              record_hash: createHash('sha256').update(JSON.stringify({ planAuditId, actorId, before, after })).digest('hex') } });
+          }
         }
         const decision = input.decision.toUpperCase() as 'APPROVED' | 'REJECTED';
         const updated = await database.risk_acceptances.update({
@@ -1724,7 +1752,7 @@ export const riskRegisterRepository = {
           data: { decision, decided_by: actorId, decided_at: decidedAt },
         });
         const auditId = randomUUID();
-        const auditData = { acceptanceId, decision, decisionReason: input.reason,
+        const auditData = { acceptanceId, decision, decisionReason: input.reason, completedAcceptPlanId,
           requestReason: acceptance.reason, validUntil: acceptance.valid_until?.toISOString() ?? null };
         await database.audit_logs.create({ data: { id: auditId, actor_type: 'USER', actor_user_id: actorId,
           action: 'RISK_ACCEPTANCE_DECIDED', resource_type: 'RISK', resource_id: acceptance.risk_id, source: 'API', occurred_at: decidedAt,
