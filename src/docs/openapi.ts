@@ -381,7 +381,12 @@ export const openApiSpec = {
                   residualImpact: { type: 'integer', minimum: 1, maximum: 5 },
                   assessmentReason: { type: 'string' },
                   treatmentPlanId: { type: 'string', format: 'uuid' },
-                  treatmentPlanStatus: { type: 'string', enum: ['draft', 'active', 'completed'], description: 'Optional compatibility field; must equal current plan status, never changes it.' },
+                  treatmentPlanStatus: {
+                    type: 'string',
+                    enum: ['draft', 'active', 'completed'],
+                    description:
+                      'Optional compatibility field; must equal current plan status, never changes it.',
+                  },
                   validUntil: { type: 'string', format: 'date' },
                   acceptanceReason: { type: 'string' },
                 },
@@ -403,37 +408,134 @@ export const openApiSpec = {
     },
     '/risks/{riskId}/review': {
       post: {
-        tags: ['Risks'], summary: 'Open review of an accepted Risk', security: [{ bearerAuth: [] }],
-        description: 'Active assigned Risk Owner only. ACCEPTED with no pending request; requires exact expectedUpdatedAt and reason. Reopens the same Risk to UNDER_TREATMENT with an Active plan, otherwise OPEN. Preserves previous approvals/expiry, appends audit, requires a new residual assessment before new acceptance. No automatic renewal or deletion.',
-        parameters: [{ name: 'riskId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
-        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['reason', 'expectedUpdatedAt'], properties: { reason: { type: 'string', minLength: 10, maxLength: 2000 }, expectedUpdatedAt: { type: 'string', format: 'date-time' } } } } } },
-        responses: { '200': { description: 'Review opened' }, '401': { description: 'Authentication required' }, '403': { description: 'Owner required' }, '404': { description: 'Risk not found' }, '409': { description: 'Stale or locked Risk' }, '422': { description: 'Invalid input' } },
+        tags: ['Risks'],
+        summary: 'Open review of an accepted Risk',
+        security: [{ bearerAuth: [] }],
+        description:
+          'Active assigned Risk Owner only. ACCEPTED with no pending request; requires exact expectedUpdatedAt and reason. Reopens the same Risk to UNDER_TREATMENT with an Active plan, otherwise OPEN. Preserves previous approvals/expiry, appends audit, requires a new residual assessment before new acceptance. No automatic renewal or deletion.',
+        parameters: [
+          {
+            name: 'riskId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['reason', 'expectedUpdatedAt'],
+                properties: {
+                  reason: { type: 'string', minLength: 10, maxLength: 2000 },
+                  expectedUpdatedAt: { type: 'string', format: 'date-time' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'Review opened' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Owner required' },
+          '404': { description: 'Risk not found' },
+          '409': { description: 'Stale or locked Risk' },
+          '422': { description: 'Invalid input' },
+        },
       },
     },
     '/risks/acceptances/{acceptanceId}/decision': {
       patch: {
-        tags: ['Risks'], summary: 'Decide risk acceptance', security: [{ bearerAuth: [] }],
-        description: 'Active Security Officer or Executive (existing approver group), never requester. Pending only. Approval checks expiry, owner reassignment, Threat/Vulnerability changes, current Control/Evidence basis and exact submitted assessment/plan basis. Legacy requests without verifiable audit basis must be rejected/resubmitted. Rejection remains available for expired/stale requests. Owner justification is preserved; decision reason is audited separately. Only approval sets ACCEPTED. Detail exposes expired/canDecide and actor-scoped acceptanceWorkflow. No named-approver assignment or automatic email.',
-        parameters: [{ name: 'acceptanceId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
-        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['decision', 'reason'], properties: { decision: { type: 'string', enum: ['approved', 'rejected'] }, reason: { type: 'string', minLength: 10, maxLength: 2000 } } } } } },
-        responses: { '200': { description: 'Decision recorded' }, '401': { description: 'Authentication required' }, '403': { description: 'Approver required or self-approval forbidden' }, '404': { description: 'Request not found' }, '409': { description: 'Already decided, expired or changed context' }, '422': { description: 'Invalid input' } },
+        tags: ['Risks'],
+        summary: 'Decide risk acceptance',
+        security: [{ bearerAuth: [] }],
+        description:
+          'Active Security Officer or Executive (existing approver group), never requester. Pending only. Approval checks expiry, owner reassignment, Threat/Vulnerability changes, current Control/Evidence basis and exact submitted assessment/plan basis. Legacy requests without verifiable audit basis must be rejected/resubmitted. Rejection remains available for expired/stale requests. Owner justification is preserved; decision reason is audited separately. Only approval sets ACCEPTED. Detail exposes expired/canDecide and actor-scoped acceptanceWorkflow. No named-approver assignment or automatic email.',
+        parameters: [
+          {
+            name: 'acceptanceId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['decision', 'reason'],
+                properties: {
+                  decision: { type: 'string', enum: ['approved', 'rejected'] },
+                  reason: { type: 'string', minLength: 10, maxLength: 2000 },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'Decision recorded' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Approver required or self-approval forbidden' },
+          '404': { description: 'Request not found' },
+          '409': { description: 'Already decided, expired or changed context' },
+          '422': { description: 'Invalid input' },
+        },
       },
     },
     '/risks/treatment-plans': {
       post: {
-        tags: ['Risks'], summary: 'Create Risk Treatment Plan', security: [{ bearerAuth: [] }],
-        requestBody: { required: true, content: { 'application/json': { schema: createTreatmentPlanOpenApi } } },
-        description: 'Active Security Officer or assigned Risk Owner. Locks selected Risk. OPEN/UNDER_TREATMENT with no pending acceptance or Draft/Active plan. Eligible controls must belong to the Risk; mitigate requires at least one, other strategies allow none. Non-accept strategies require actions. Unique control IDs and action titles, active owners, future dates and action dates within plan date required. Target cannot exceed known residual and is saved as TARGET_DEFINITION without copying inherent/residual. Creation remains Draft and does not approve acceptance.',
-        responses: { '201': { description: 'Draft plan with intended target saved' }, '401': { description: 'Authentication required' }, '403': { description: 'Security Officer or Risk Owner required' }, '404': { description: 'Risk not found' }, '409': { description: 'Risk locked or existing Draft/Active plan' }, '422': { description: 'Invalid owners, controls, actions, dates or target' } },
+        tags: ['Risks'],
+        summary: 'Create Risk Treatment Plan',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: createTreatmentPlanOpenApi } },
+        },
+        description:
+          'Active Security Officer or assigned Risk Owner. Locks selected Risk. OPEN/UNDER_TREATMENT with no pending acceptance or Draft/Active plan. Eligible controls must belong to the Risk; mitigate requires at least one, other strategies allow none. Non-accept strategies require actions. Unique control IDs and action titles, active owners, future dates and action dates within plan date required. Target cannot exceed known residual and is saved as TARGET_DEFINITION without copying inherent/residual. Creation remains Draft and does not approve acceptance.',
+        responses: {
+          '201': { description: 'Draft plan with intended target saved' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer or Risk Owner required' },
+          '404': { description: 'Risk not found' },
+          '409': { description: 'Risk locked or existing Draft/Active plan' },
+          '422': { description: 'Invalid owners, controls, actions, dates or target' },
+        },
       },
     },
     '/risks/treatment-plans/{treatmentPlanId}': {
       patch: {
-        tags: ['Risks'], summary: 'Update Risk Treatment Plan', security: [{ bearerAuth: [] }],
-        requestBody: { required: true, content: { 'application/json': { schema: updateTreatmentPlanOpenApi } } },
-        description: 'Active Security Officer or assigned Risk Owner. Locks Risk and plan, checks expectedUpdatedAt and blocks pending acceptance or finalized records. Existing overdue deadlines may be retained; dates cannot predate record creation. Completed/cancelled actions are read-only, original completion timestamps are preserved. In-progress actions cannot return to pending. Non-acceptance plans with all actions cancelled cannot be completed. Changes append an audit snapshot. Progress uses status weights and excludes cancelled actions.',
-        parameters: [{ name: 'treatmentPlanId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
-        responses: { '200': { description: 'Updated plan and computed progress' }, '401': { description: 'Authentication required' }, '403': { description: 'Security Officer or Risk Owner required' }, '404': { description: 'Plan not found' }, '409': { description: 'Stale update, pending acceptance, locked record or invalid transition' }, '422': { description: 'Invalid actions, dates, owners or controls' } },
+        tags: ['Risks'],
+        summary: 'Update Risk Treatment Plan',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: updateTreatmentPlanOpenApi } },
+        },
+        description:
+          'Active Security Officer or assigned Risk Owner. Locks Risk and plan, checks expectedUpdatedAt and blocks pending acceptance or finalized records. Existing overdue deadlines may be retained; dates cannot predate record creation. Completed/cancelled actions are read-only, original completion timestamps are preserved. In-progress actions cannot return to pending. Non-acceptance plans with all actions cancelled cannot be completed. Changes append an audit snapshot. Progress uses status weights and excludes cancelled actions.',
+        parameters: [
+          {
+            name: 'treatmentPlanId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          '200': { description: 'Updated plan and computed progress' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer or Risk Owner required' },
+          '404': { description: 'Plan not found' },
+          '409': {
+            description: 'Stale update, pending acceptance, locked record or invalid transition',
+          },
+          '422': { description: 'Invalid actions, dates, owners or controls' },
+        },
       },
     },
     '/risks/{riskId}/target-risk': {
@@ -3884,6 +3986,36 @@ export const openApiSpec = {
         responses: {
           '200': { description: 'Access and refresh token pair' },
           '401': { description: 'Invalid credentials or inactive account' },
+          '422': { description: 'Invalid request body' },
+          '429': { description: 'Too many attempts' },
+        },
+      },
+    },
+    '/auth/password-reset/verify': {
+      post: {
+        tags: ['Authentication'],
+        summary: 'Verify that a password reset code is active',
+        description:
+          'Checks whether a six-digit password reset code exists, is unused, has not expired, and belongs to an active account. The code is not consumed by this operation.',
+        security: [],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['token'],
+                additionalProperties: false,
+                properties: {
+                  token: { type: 'string', pattern: '^\\d{6}$' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'Password reset code is currently valid' },
+          '400': { description: 'Password reset code is invalid, expired, replaced, or used' },
           '422': { description: 'Invalid request body' },
           '429': { description: 'Too many attempts' },
         },

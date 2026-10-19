@@ -6,6 +6,7 @@ import {
   changePasswordBodySchema,
   confirmPasswordResetBodySchema,
   requestPasswordResetBodySchema,
+  verifyPasswordResetBodySchema,
 } from './dto/password.dto.js';
 
 export const login: RequestHandler = async (req, res) => {
@@ -43,6 +44,14 @@ export const confirmPasswordReset: RequestHandler = async (req, res) => {
   res.status(200).json({
     success: true,
     data: { message: 'Password reset successfully. Please log in with your new password.' },
+  });
+};
+
+export const verifyPasswordResetCode: RequestHandler = async (req, res) => {
+  await authService.verifyPasswordResetCode(verifyPasswordResetBodySchema.parse(req.body));
+  res.status(200).json({
+    success: true,
+    data: { message: 'Password reset code is valid.' },
   });
 };
 

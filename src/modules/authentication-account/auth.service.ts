@@ -12,6 +12,7 @@ import type {
   ChangePasswordBody,
   ConfirmPasswordResetBody,
   RequestPasswordResetBody,
+  VerifyPasswordResetBody,
 } from './dto/password.dto.js';
 
 const dummyHash = argon2.hash('invalid-account-password', { type: argon2.argon2id });
@@ -152,6 +153,17 @@ export const authService = {
       passwordHash,
     );
     if (!consumed) {
+      throw new AppError(
+        400,
+        'INVALID_PASSWORD_RESET_TOKEN',
+        'Password reset token is invalid or expired',
+      );
+    }
+  },
+
+  async verifyPasswordResetCode(input: VerifyPasswordResetBody): Promise<void> {
+    const valid = await authRepository.isPasswordResetTokenValid(hashToken(input.token));
+    if (!valid) {
       throw new AppError(
         400,
         'INVALID_PASSWORD_RESET_TOKEN',
