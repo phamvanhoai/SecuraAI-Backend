@@ -985,6 +985,7 @@ model risk_treatment_actions {
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model risk_treatment_plans {
+  acceptance_cost_basis                           Json?                          @db.JsonB
   id                                              String                         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   risk_id                                         String                         @db.Uuid
   source_assessment_id                            String?                        @db.Uuid

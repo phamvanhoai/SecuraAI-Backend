@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { Prisma } from '@prisma/client';
 
 const assessedAt = new Date('2026-10-12T07:00:00.000Z');
 const db = vi.hoisted(() => ({
@@ -46,7 +47,10 @@ describe('create treatment plan with an overdue Risk review', () => {
   it('allows an acceptance plan without controls or actions and preserves residual history', async () => {
     const risk = await db.risks.findUnique();
     db.risks.findUnique.mockResolvedValue({ ...risk, control_risk_links: [] });
-    await expect(riskRegisterRepository.createTreatmentPlan(actorId, { ...request(), strategy: 'accept', controlIds: [], actions: [] })).resolves.toMatchObject({ kind: 'created' });
+    const acceptanceCost = { costToFix: '100000000', expectedLoss: '5000000', currency: 'VND' as const, periodMonths: 12, basis: 'Synthetic comparison over twelve months.' };
+    await expect(riskRegisterRepository.createTreatmentPlan(actorId, { ...request(), strategy: 'accept', acceptanceCost, controlIds: [], actions: [] })).resolves.toMatchObject({ kind: 'created' });
+    expect(db.risk_treatment_plans.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ acceptance_cost_basis: acceptanceCost, risk_treatment_actions: { create: [] } }) }));
+    expect(db.audit_logs.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ after_data: expect.objectContaining({ acceptanceCost }) }) }));
     const data = db.risk_assessments.create.mock.calls[0]?.[0].data;
     expect(data.assessment_type).toBe('TARGET_DEFINITION');
     expect(data).not.toHaveProperty('residual_rating');
@@ -103,6 +107,7 @@ describe('create treatment plan with an overdue Risk review', () => {
     });
 
     expect(result).toMatchObject({ kind: 'created', riskCode: 'RSK-ABCCADFC' });
+    expect(db.risk_treatment_plans.create.mock.calls[0]?.[0].data.acceptance_cost_basis).toBe(Prisma.DbNull);
     expect(db.risk_assessments.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({ assessment_type: 'TARGET_DEFINITION', assessed_at: assessedAt, review_date: null }),
