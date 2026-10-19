@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { authenticate } from '../../common/middleware/authenticate.js';
-import { authorizePermission } from '../../common/middleware/authorize-permission.js';
+import { authorizeRoles } from '../../common/middleware/authorize-roles.js';
 import { validate } from '../../common/middleware/validate.js';
 import { asyncHandler } from '../../common/utils/async-handler.js';
 import { sendEmailNotificationSchema } from './dto/send-email-notification.dto.js';
@@ -23,27 +23,25 @@ notificationsRouter.get('/history', authenticate, asyncHandler(getNotificationHi
 notificationsRouter.get(
   '/preferences',
   authenticate,
-  authorizePermission('notifications.preferences'),
   asyncHandler(getNotificationPreferences),
 );
 notificationsRouter.patch(
   '/preferences',
   authenticate,
-  authorizePermission('notifications.preferences'),
   validate({ body: updateNotificationPreferencesSchema }),
   asyncHandler(updateNotificationPreferences),
 );
 notificationsRouter.post(
   '/email',
   authenticate,
-  authorizePermission('notifications.send-email'),
+  authorizeRoles('ADMIN'),
   validate({ body: sendEmailNotificationSchema }),
   asyncHandler(sendEmailNotification),
 );
 notificationsRouter.post(
   '/',
   authenticate,
-  authorizePermission('notifications.send'),
+  authorizeRoles('ADMIN'),
   validate({ body: sendInSystemNotificationSchema }),
   asyncHandler(sendInSystemNotification),
 );

@@ -2,9 +2,12 @@ import jwt from 'jsonwebtoken';
 import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('../src/database/prisma.js', () => ({ prisma: {} }));
-vi.mock('../src/modules/access-control/access-control.service.js', () => ({
-  accessControlService: { hasPermission: vi.fn().mockResolvedValue(true) },
+vi.mock('../src/database/prisma.js', () => ({
+  prisma: {
+    users: {
+      findUnique: vi.fn().mockResolvedValue({ role: 'ADMIN', status: 'ACTIVE' }),
+    },
+  },
 }));
 vi.mock('../src/modules/audit-security-reporting/user-activity-audit.service.js', () => ({
   userActivityAuditService: { list: vi.fn() },
