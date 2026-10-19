@@ -14,6 +14,10 @@ export const requestPasswordResetBodySchema = z.strictObject({
     .transform((value) => value.trim().toLowerCase()),
 });
 
+export const verifyPasswordResetBodySchema = z.strictObject({
+  token: z.string().regex(/^\d{6}$/, 'Reset token must be a 6-digit code'),
+});
+
 export const confirmPasswordResetBodySchema = z
   .strictObject({
     token: z.string().regex(/^\d{6}$/, 'Reset token must be a 6-digit code'),
@@ -37,5 +41,6 @@ export const changePasswordBodySchema = z
   });
 
 export type RequestPasswordResetBody = z.infer<typeof requestPasswordResetBodySchema>;
+export type VerifyPasswordResetBody = z.infer<typeof verifyPasswordResetBodySchema>;
 export type ConfirmPasswordResetBody = z.infer<typeof confirmPasswordResetBodySchema>;
 export type ChangePasswordBody = z.infer<typeof changePasswordBodySchema>;
