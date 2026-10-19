@@ -21,9 +21,10 @@ async function verifyDatabaseSchema() {
     ]),
   ].sort();
   // The approved baseline remains immutable. These totals include every
-  // applied additive migration through Send In-System Notification.
+  // applied additive migration through Send In-System Notification, plus
+  // chk_assets_asset_type from 20261019093000_standardize_asset_types.
   const expectedForeignKeys = 135;
-  const expectedChecks = 184;
+  const expectedChecks = 185;
   const rows = await prisma.$queryRaw`
     SELECT table_name
     FROM information_schema.tables
