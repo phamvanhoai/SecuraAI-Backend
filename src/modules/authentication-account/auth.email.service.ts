@@ -2,6 +2,7 @@ import nodemailer from 'nodemailer';
 import type { Transporter } from 'nodemailer';
 import { AppError } from '../../common/errors/app-error.js';
 import { env } from '../../config/env.js';
+import { renderPasswordResetEmail } from './password-reset-email.template.js';
 
 let transporter: Transporter | null = null;
 
@@ -25,7 +26,11 @@ export const authEmailService = {
       to: input.to,
       subject: `Reset your ${env.APP_NAME} password`,
       text: `Your ${env.APP_NAME} password reset code is: ${input.token}\n\nThis code expires in 60 minutes and can only be used once.`,
-      html: `<p>Your ${env.APP_NAME} password reset code is:</p><p style="font-size:24px;font-weight:bold;letter-spacing:4px">${input.token}</p><p>This code expires in 60 minutes and can only be used once.</p>`,
+      html: renderPasswordResetEmail({
+        appName: env.APP_NAME,
+        resetCode: input.token,
+        expiresInMinutes: 60,
+      }),
     });
   },
 };
