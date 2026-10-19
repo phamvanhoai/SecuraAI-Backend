@@ -32,6 +32,7 @@ import { validate } from '../../common/middleware/validate.js';
 import { asyncHandler } from '../../common/utils/async-handler.js';
 import {
   getPolicyDraftReview,
+  getOwnPolicyDraft,
   listOwnPolicyDrafts,
   submitPolicyForReview,
   listReviewablePolicyDrafts,
@@ -150,6 +151,12 @@ policyComplianceRouter.post(
   authenticate,
   validate({ body: createControlSchema }),
   asyncHandler(createCatalogControl),
+);
+policyComplianceRouter.get(
+  '/policies/:policyId/drafts/:versionId',
+  authenticate,
+  validate({ params: editPolicyDraftParamsSchema }),
+  asyncHandler(getOwnPolicyDraft),
 );
 policyComplianceRouter.patch(
   '/controls/:controlId',
