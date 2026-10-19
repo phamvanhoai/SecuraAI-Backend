@@ -2559,7 +2559,28 @@ export const openApiSpec = {
       },
     },
     '/compliance/policies/{policyId}/drafts/{versionId}': {
-      ...pendingV2Paths['/compliance/policies/{policyId}/drafts/{versionId}'],
+      get: {
+        tags: ['Policies'],
+        summary: 'View an owned policy draft',
+        description:
+          'Active Security Officer only. Requires both draft authorship and policy ownership, matching drafts/mine. Both policy and version must remain DRAFT. Missing, inaccessible, mismatched or no-longer-draft records return 404. Read-only; no status changes.',
+        security: [{ bearerAuth: [] }],
+        parameters: ['policyId', 'versionId'].map((name) => ({
+          name,
+          in: 'path',
+          required: true,
+          schema: { type: 'string', format: 'uuid' },
+        })),
+        responses: {
+          '200': {
+            description: 'Owned draft metadata and version content, matching drafts/mine items',
+          },
+          '401': { description: 'Authentication required or inactive account' },
+          '403': { description: 'Security Officer role required' },
+          '404': { description: 'Policy draft not found or inaccessible' },
+          '422': { description: 'Invalid policy or version UUID' },
+        },
+      },
       patch: {
         tags: ['Policies'],
         summary: 'Edit an owned policy draft',

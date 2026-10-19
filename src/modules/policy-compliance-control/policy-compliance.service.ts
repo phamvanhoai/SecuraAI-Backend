@@ -563,6 +563,17 @@ export const policyComplianceService = {
     };
   },
 
+  async getOwnDraft(userId: string, policyId: string, versionId: string) {
+    const actor = await policyComplianceRepository.findActor(userId);
+    if (!actor || actor.status !== 'ACTIVE')
+      throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+    if (actor.role !== 'SECURITY_OFFICER')
+      throw new AppError(403, 'FORBIDDEN', 'Security Officer role required');
+    const draft = await policyComplianceRepository.findOwnDraftDetail(userId, policyId, versionId);
+    if (!draft) throw new AppError(404, 'POLICY_DRAFT_NOT_FOUND', 'Policy draft not found');
+    return mapOwnedPolicyDraft(draft);
+  },
+
   async editOwnDraft(
     userId: string,
     policyId: string,

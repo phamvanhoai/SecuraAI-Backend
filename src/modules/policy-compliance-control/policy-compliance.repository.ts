@@ -764,6 +764,22 @@ export const policyComplianceRepository = {
     });
   },
 
+  findOwnDraftDetail(userId: string, policyId: string, versionId: string) {
+    return prisma.policy_versions.findFirst({
+      where: {
+        id: versionId,
+        policy_id: policyId,
+        status: 'DRAFT',
+        author_user_id: userId,
+        policies_policy_versions_policy_idTopolicies: {
+          owner_user_id: userId,
+          status: 'DRAFT',
+        },
+      },
+      select: ownedPolicyDraftSelect,
+    });
+  },
+
   findDraftForEdit(policyId: string, versionId: string) {
     return prisma.policy_versions.findFirst({
       where: { id: versionId, policy_id: policyId },
