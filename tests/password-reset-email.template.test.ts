@@ -13,7 +13,8 @@ describe('password reset email template', () => {
     expect(html).toContain('Account security');
     expect(html).toContain('Reset your password');
     expect(html).toContain('482913');
-    expect(html).toContain('expires in 60 minutes');
+    expect(html).toContain('Expires in');
+    expect(html).toContain('60 minutes');
     expect(html).toContain('Never share this code');
   });
 

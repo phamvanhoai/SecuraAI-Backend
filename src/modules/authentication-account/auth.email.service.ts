@@ -21,15 +21,20 @@ function getTransporter(): Transporter {
 
 export const authEmailService = {
   async sendPasswordResetEmail(input: { to: string; token: string }): Promise<void> {
+    const subject = `Reset your ${env.APP_NAME} password`;
     await getTransporter().sendMail({
       from: env.SMTP_USER,
       to: input.to,
-      subject: `Reset your ${env.APP_NAME} password`,
-      text: `Your ${env.APP_NAME} password reset code is: ${input.token}\n\nThis code expires in 60 minutes and can only be used once.`,
+      subject,
+      text:
+        `Your ${env.APP_NAME} password reset code is: ${input.token}\n\n` +
+        `This code expires in 60 minutes and can only be used once.\n\n` +
+        `If you did not request a password reset, ignore this email.`,
       html: renderPasswordResetEmail({
         appName: env.APP_NAME,
         resetCode: input.token,
         expiresInMinutes: 60,
+        recipientEmail: input.to,
       }),
     });
   },
