@@ -2,6 +2,7 @@ import nodemailer from 'nodemailer';
 import type { Transporter } from 'nodemailer';
 import { AppError } from '../../common/errors/app-error.js';
 import { env } from '../../config/env.js';
+import { renderAccountCreatedEmail } from './account-created-email.template.js';
 
 let transporter: Transporter | undefined;
 
@@ -24,11 +25,24 @@ export const usersEmailService = {
     fullName: string;
     temporaryPassword: string;
   }): Promise<void> {
+    const subject = `Your ${env.APP_NAME} account is ready`;
     await mailTransporter().sendMail({
       from: env.SMTP_USER,
       to: input.email,
-      subject: `${env.APP_NAME} account created`,
-      text: `Hello ${input.fullName},\n\nYour ${env.APP_NAME} account has been created.\nEmail: ${input.email}\nTemporary password: ${input.temporaryPassword}\n\nSign in and change this password immediately.`,
+      subject,
+      text:
+        `Hello ${input.fullName},\n\n` +
+        `Your ${env.APP_NAME} account has been created.\n` +
+        `Email: ${input.email}\n` +
+        `Temporary password: ${input.temporaryPassword}\n\n` +
+        `Sign in and change this password immediately.\n\n` +
+        `Do not share this email or your temporary password with anyone.`,
+      html: renderAccountCreatedEmail({
+        appName: env.APP_NAME,
+        fullName: input.fullName,
+        email: input.email,
+        temporaryPassword: input.temporaryPassword,
+      }),
     });
   },
 };
