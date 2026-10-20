@@ -3,9 +3,9 @@ import { updateAssetBodySchema } from '../src/modules/it-asset-management/dto/up
 
 describe('updateAssetBodySchema', () => {
   it('accepts only editable asset identity fields', () => {
-    expect(updateAssetBodySchema.parse({ name: ' Core Server ', assetType: ' Server ', description: null })).toEqual({ name: 'Core Server', assetType: 'Server', description: null });
+    expect(updateAssetBodySchema.parse({ name: ' Core Server ', assetType: 'SERVER', description: null })).toEqual({ name: 'Core Server', assetType: 'SERVER', description: null });
   });
   it('rejects ownership and relationship changes', () => {
-    expect(updateAssetBodySchema.safeParse({ name: 'Core Server', assetType: 'Server', description: null, ownerUserId: null }).success).toBe(false);
+    expect(updateAssetBodySchema.safeParse({ name: 'Core Server', assetType: 'SERVER', description: null, ownerUserId: null }).success).toBe(false);
   });
 });

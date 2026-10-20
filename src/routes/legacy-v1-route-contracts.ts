@@ -2,8 +2,6 @@
 // Source: reference/legacy-v3/src/docs/openapi.ts at commit 8adcb5a.
 // Training is intentionally excluded because that domain was removed from V2 scope.
 export const legacyV1RouteContracts = [
-  { method: 'get', path: '/login-history', tag: 'Login History' },
-  { method: 'get', path: '/administration/login-history', tag: 'Login History' },
   { method: 'get', path: '/notifications/compliance-reminders', tag: 'Policies' },
   {
     method: 'patch',
@@ -19,9 +17,6 @@ export const legacyV1RouteContracts = [
   { method: 'post', path: '/users/{userId}/unlock', tag: 'Users' },
   { method: 'post', path: '/admin/users/{userId}/lock', tag: 'Users' },
   { method: 'post', path: '/admin/users/{userId}/unlock', tag: 'Users' },
-  { method: 'post', path: '/access-control/roles', tag: 'Role Management' },
-  { method: 'patch', path: '/access-control/roles/{roleId}', tag: 'Role Management' },
-  { method: 'delete', path: '/access-control/roles/{roleId}', tag: 'Role Management' },
   { method: 'post', path: '/auth/mfa/setup', tag: 'Authentication' },
   { method: 'post', path: '/auth/mfa/verify', tag: 'Authentication' },
   { method: 'post', path: '/auth/mfa/challenge/verify', tag: 'Authentication' },
@@ -51,7 +46,6 @@ export const legacyV1RouteContracts = [
   },
   { method: 'get', path: '/compliance/policies/department-assignments', tag: 'Policies' },
   { method: 'put', path: '/compliance/policies/{policyId}/departments', tag: 'Policies' },
-  { method: 'get', path: '/compliance/policies/{policyId}/drafts/{versionId}', tag: 'Policies' },
   { method: 'get', path: '/security-monitoring/log-sources', tag: 'Security Monitoring' },
   { method: 'post', path: '/security-monitoring/log-sources', tag: 'Security Monitoring' },
   { method: 'post', path: '/ai-alerts/models', tag: 'AI Alerts' },

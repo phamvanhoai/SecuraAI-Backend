@@ -10,8 +10,6 @@ import type { user_role } from '@prisma/client';
  */
 export const capabilitiesByRole = {
   ADMIN: [
-    'roles.read',
-    'roles.update',
     'assets.read',
     'users.read',
     'users.create',

@@ -12,6 +12,8 @@ export { wazuhIngestionRepository } from './wazuh-ingestion.repository.js';
 export { eventGovernanceRouter } from './event-governance.routes.js';
 export { eventGovernanceService } from './event-governance.service.js';
 export { eventGovernanceRepository } from './event-governance.repository.js';
+export { eventAutoMappingService } from './event-auto-mapping.service.js';
+export { eventAutoMappingRepository } from './event-auto-mapping.repository.js';
 export * from './dto/create-event-source.dto.js';
 export * from './dto/list-event-sources.dto.js';
 export * from './dto/get-event-source-detail.dto.js';

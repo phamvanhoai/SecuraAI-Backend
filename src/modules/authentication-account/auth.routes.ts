@@ -11,12 +11,14 @@ import {
   logout,
   refresh,
   requestPasswordReset,
+  verifyPasswordResetCode,
 } from './auth.controller.js';
 import { googleLoginBodySchema, loginBodySchema, refreshBodySchema } from './dto/auth.dto.js';
 import {
   changePasswordBodySchema,
   confirmPasswordResetBodySchema,
   requestPasswordResetBodySchema,
+  verifyPasswordResetBodySchema,
 } from './dto/password.dto.js';
 
 export const authRouter = Router();
@@ -47,6 +49,12 @@ authRouter.post(
   authLimiter,
   validate({ body: requestPasswordResetBodySchema }),
   asyncHandler(requestPasswordReset),
+);
+authRouter.post(
+  '/password-reset/verify',
+  authLimiter,
+  validate({ body: verifyPasswordResetBodySchema }),
+  asyncHandler(verifyPasswordResetCode),
 );
 authRouter.post(
   '/password-reset/confirm',

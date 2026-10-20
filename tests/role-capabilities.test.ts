@@ -25,8 +25,8 @@ describe('WBS role capability compatibility', () => {
     const all = Object.values(user_role).flatMap((role) => capabilitiesForRole(role));
     expect(all.some((capability) => capability.startsWith('training-'))).toBe(false);
     expect(all).not.toContain('risks.cancel');
-    expect(capabilitiesForRole(user_role.ADMIN)).toContain('roles.update');
-    expect(capabilitiesForRole(user_role.SECURITY_OFFICER)).not.toContain('roles.update');
+    expect(all).not.toContain('roles.read');
+    expect(all).not.toContain('roles.update');
   });
 
   it('allows only Security Officer to run anomaly detection', () => {

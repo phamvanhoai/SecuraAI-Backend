@@ -1,11 +1,12 @@
 import { z } from 'zod';
+import { assetTypeSchema } from './asset-type.dto.js';
 
 const optionalUuid = z.uuid().optional();
 
 export const createAssetBodySchema = z
   .object({
     name: z.string().trim().min(1).max(255),
-    assetType: z.string().trim().min(1).max(100),
+    assetType: assetTypeSchema,
     ownerUserId: optionalUuid,
     description: z.string().trim().max(10_000).optional(),
     dependencies: z

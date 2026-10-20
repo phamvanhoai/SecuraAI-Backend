@@ -166,6 +166,19 @@ export const authRepository = {
     await prisma.password_reset_tokens.deleteMany({ where: { token_hash: tokenHash } });
   },
 
+  async isPasswordResetTokenValid(tokenHash: string): Promise<boolean> {
+    const token = await prisma.password_reset_tokens.findFirst({
+      where: {
+        token_hash: tokenHash,
+        used_at: null,
+        expires_at: { gt: new Date() },
+        users: { status: 'ACTIVE' },
+      },
+      select: { id: true },
+    });
+    return token !== null;
+  },
+
   consumePasswordResetToken(tokenHash: string, passwordHash: string) {
     return prisma.$transaction(async (database) => {
       const token = await database.password_reset_tokens.findUnique({

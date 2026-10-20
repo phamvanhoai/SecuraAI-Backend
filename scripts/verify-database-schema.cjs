@@ -11,6 +11,7 @@ async function verifyDatabaseSchema() {
     'notification_preferences',
     'notification_recipients',
     'notifications',
+    'authentication_history',
   ];
   const expected = [
     ...new Set([
@@ -21,9 +22,10 @@ async function verifyDatabaseSchema() {
     ]),
   ].sort();
   // The approved baseline remains immutable. These totals include every
-  // applied additive migration through Send In-System Notification.
-  const expectedForeignKeys = 135;
-  const expectedChecks = 184;
+  // applied additive migration through Send In-System Notification, plus
+  // chk_assets_asset_type from 20261019093000_standardize_asset_types.
+  const expectedForeignKeys = 136;
+  const expectedChecks = 188; // Includes authentication history status constraints.
   const rows = await prisma.$queryRaw`
     SELECT table_name
     FROM information_schema.tables

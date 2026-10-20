@@ -13,7 +13,7 @@ vi.mock('../src/modules/it-asset-management/assets.repository.js', () => ({
 const userId = '11111111-1111-4111-8111-111111111111';
 const input = {
   name: 'App Server',
-  assetType: 'server',
+  assetType: 'SERVER' as const,
   dependencies: [],
   eventSourceIds: [],
 };

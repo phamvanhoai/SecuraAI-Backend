@@ -17,6 +17,7 @@ import {
   auditLogsRouter,
   integrationApiKeysRouter,
   integrationSourceApiKeysRouter,
+  loginHistoryRouter,
   reportExportsRouter,
   securityDashboardRouter,
 } from '../modules/audit-security-reporting/index.js';
@@ -34,7 +35,6 @@ import {
   incidentsRouter,
 } from '../modules/information-security-incident-management/index.js';
 import { pendingV2Router } from './pending-v2.routes.js';
-import { accessControlRouter } from '../modules/access-control/index.js';
 import { notificationsRouter, systemLogsRouter } from '../modules/notification-system-logs/index.js';
 import { auditRouter } from '../modules/audit-security-reporting/index.js';
 
@@ -42,7 +42,6 @@ export const apiRouter = Router();
 apiRouter.use('/health', healthRouter);
 apiRouter.use('/auth', authRouter);
 apiRouter.use('/users', usersRouter);
-apiRouter.use('/access-control', accessControlRouter);
 apiRouter.use('/notifications', notificationsRouter);
 apiRouter.use('/system-logs', systemLogsRouter);
 apiRouter.use('/audit', auditRouter);
@@ -72,6 +71,8 @@ apiRouter.use('/event-ingestion/wazuh', wazuhIngestionRouter);
 apiRouter.use('/integrations', integrationSourceApiKeysRouter);
 apiRouter.use('/integrations/api-keys', integrationApiKeysRouter);
 apiRouter.use('/audit-logs', auditLogsRouter);
+apiRouter.use('/login-history', loginHistoryRouter);
+apiRouter.use('/administration/login-history', loginHistoryRouter);
 apiRouter.use('/audit-security-reporting/audit-logs', auditLogsRouter);
 apiRouter.use('/audit-security-reporting/api-keys', integrationApiKeysRouter);
 apiRouter.use('/audit-security-reporting/dashboard', securityDashboardRouter);

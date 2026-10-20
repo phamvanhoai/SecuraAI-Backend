@@ -1,4 +1,6 @@
 import { env } from '../config/env.js';
+import { createTreatmentPlanOpenApi, updateTreatmentPlanOpenApi } from './treatment-acceptance-cost.openapi.js';
+import { assetTypes } from '../modules/it-asset-management/dto/asset-type.dto.js';
 import { incidentClosurePaths } from './incident-closure.openapi.js';
 import { incidentProgressPaths } from './incident-progress.openapi.js';
 import { incidentAnalysisPaths } from './incident-analysis.openapi.js';
@@ -9,6 +11,7 @@ import { businessServicesPaths } from './business-services.openapi.js';
 import { notificationPaths } from './notifications.openapi.js';
 import { auditPaths } from './audit.openapi.js';
 import { systemLogPaths } from './system-logs.openapi.js';
+import { USER_FULL_NAME_MAX_LENGTH } from '../modules/user-management-authorization/dto/user-profile.constants.js';
 
 export const openApiSpec = {
   openapi: '3.0.3',
@@ -99,144 +102,6 @@ export const openApiSpec = {
           '403': { description: 'Administrator role required' },
           '404': { description: 'Integration API key not found' },
           '422': { description: 'Invalid key identifier' },
-        },
-      },
-    },
-    '/access-control/permissions': {
-      get: {
-        tags: ['Access Control'],
-        summary: 'List the configurable permission catalog',
-        security: [{ bearerAuth: [] }],
-        responses: {
-          '200': {
-            description: 'Paginated permission definitions grouped by module and operation',
-          },
-          '401': { description: 'Authentication required' },
-          '403': { description: 'Detailed-permission read access required' },
-        },
-      },
-    },
-    '/access-control/roles': {
-      ...pendingV2Paths['/access-control/roles'],
-      get: {
-        tags: ['Access Control'],
-        summary: 'List fixed roles and their effective permission grants',
-        security: [{ bearerAuth: [] }],
-        responses: {
-          '200': { description: 'Paginated fixed-role permission configuration' },
-          '401': { description: 'Authentication required' },
-          '403': { description: 'Administrator required' },
-        },
-      },
-    },
-    '/access-control/roles/{roleId}': {
-      ...pendingV2Paths['/access-control/roles/{roleId}'],
-      get: {
-        tags: ['Access Control'],
-        summary: 'View one fixed role and its permission grants',
-        security: [{ bearerAuth: [] }],
-        parameters: [
-          {
-            name: 'roleId',
-            in: 'path',
-            required: true,
-            schema: { type: 'string', format: 'uuid' },
-          },
-        ],
-        responses: {
-          '200': { description: 'Role permission details' },
-          '404': { description: 'Role not found' },
-        },
-      },
-    },
-    '/access-control/roles/{roleId}/permissions': {
-      put: {
-        tags: ['Access Control'],
-        summary: 'Replace detailed permissions for a non-administrator role',
-        description:
-          'Uses optimistic concurrency, records the reason in the audit log, and revokes active sessions for affected users.',
-        security: [{ bearerAuth: [] }],
-        parameters: [
-          {
-            name: 'roleId',
-            in: 'path',
-            required: true,
-            schema: { type: 'string', format: 'uuid' },
-          },
-        ],
-        requestBody: {
-          required: true,
-          content: {
-            'application/json': {
-              schema: {
-                type: 'object',
-                required: ['permissionIds', 'expectedUpdatedAt', 'reason'],
-                additionalProperties: false,
-              },
-            },
-          },
-        },
-        responses: {
-          '200': { description: 'Updated role permissions' },
-          '403': { description: 'Administrator required' },
-          '409': { description: 'Role configuration changed since it was loaded' },
-          '422': { description: 'Invalid permission or immutable administrator role' },
-        },
-      },
-    },
-    '/access-control/users/{userId}/permissions': {
-      get: {
-        tags: ['Access Control'],
-        summary: 'View role grants, user overrides, and effective permissions',
-        description:
-          'Also returns whether the account is editable and the permission codes that may receive an explicit allow override for the target fixed role.',
-        security: [{ bearerAuth: [] }],
-        parameters: [
-          {
-            name: 'userId',
-            in: 'path',
-            required: true,
-            schema: { type: 'string', format: 'uuid' },
-          },
-        ],
-        responses: {
-          '200': { description: 'Effective user permissions' },
-          '404': { description: 'User not found' },
-        },
-      },
-      put: {
-        tags: ['Access Control'],
-        summary: 'Replace allow and deny overrides for one user',
-        description:
-          'Deny overrides take precedence over role grants. Administrator accounts are immutable, and administrator-only permissions cannot be allowed for another fixed role. The operation is audited and revokes the user active sessions.',
-        security: [{ bearerAuth: [] }],
-        parameters: [
-          {
-            name: 'userId',
-            in: 'path',
-            required: true,
-            schema: { type: 'string', format: 'uuid' },
-          },
-        ],
-        requestBody: {
-          required: true,
-          content: {
-            'application/json': {
-              schema: {
-                type: 'object',
-                required: ['allow', 'deny', 'reason'],
-                additionalProperties: false,
-              },
-            },
-          },
-        },
-        responses: {
-          '200': { description: 'Updated effective user permissions' },
-          '403': { description: 'Administrator required' },
-          '422': {
-            description:
-              'Invalid or conflicting permissions, immutable administrator account, or administrator-only permission not allowed for the target role',
-          },
         },
       },
     },
@@ -379,7 +244,12 @@ export const openApiSpec = {
                   residualImpact: { type: 'integer', minimum: 1, maximum: 5 },
                   assessmentReason: { type: 'string' },
                   treatmentPlanId: { type: 'string', format: 'uuid' },
-                  treatmentPlanStatus: { type: 'string', enum: ['draft', 'active', 'completed'], description: 'Optional compatibility field; must equal current plan status, never changes it.' },
+                  treatmentPlanStatus: {
+                    type: 'string',
+                    enum: ['draft', 'active', 'completed'],
+                    description:
+                      'Optional compatibility field; must equal current plan status, never changes it.',
+                  },
                   validUntil: { type: 'string', format: 'date' },
                   acceptanceReason: { type: 'string' },
                 },
@@ -401,35 +271,134 @@ export const openApiSpec = {
     },
     '/risks/{riskId}/review': {
       post: {
-        tags: ['Risks'], summary: 'Open review of an accepted Risk', security: [{ bearerAuth: [] }],
-        description: 'Active assigned Risk Owner only. ACCEPTED with no pending request; requires exact expectedUpdatedAt and reason. Reopens the same Risk to UNDER_TREATMENT with an Active plan, otherwise OPEN. Preserves previous approvals/expiry, appends audit, requires a new residual assessment before new acceptance. No automatic renewal or deletion.',
-        parameters: [{ name: 'riskId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
-        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['reason', 'expectedUpdatedAt'], properties: { reason: { type: 'string', minLength: 10, maxLength: 2000 }, expectedUpdatedAt: { type: 'string', format: 'date-time' } } } } } },
-        responses: { '200': { description: 'Review opened' }, '401': { description: 'Authentication required' }, '403': { description: 'Owner required' }, '404': { description: 'Risk not found' }, '409': { description: 'Stale or locked Risk' }, '422': { description: 'Invalid input' } },
+        tags: ['Risks'],
+        summary: 'Open review of an accepted Risk',
+        security: [{ bearerAuth: [] }],
+        description:
+          'Active assigned Risk Owner only. ACCEPTED with no pending request; requires exact expectedUpdatedAt and reason. Reopens the same Risk to UNDER_TREATMENT with an Active plan, otherwise OPEN. Preserves previous approvals/expiry, appends audit, requires a new residual assessment before new acceptance. No automatic renewal or deletion.',
+        parameters: [
+          {
+            name: 'riskId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['reason', 'expectedUpdatedAt'],
+                properties: {
+                  reason: { type: 'string', minLength: 10, maxLength: 2000 },
+                  expectedUpdatedAt: { type: 'string', format: 'date-time' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'Review opened' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Owner required' },
+          '404': { description: 'Risk not found' },
+          '409': { description: 'Stale or locked Risk' },
+          '422': { description: 'Invalid input' },
+        },
       },
     },
     '/risks/acceptances/{acceptanceId}/decision': {
       patch: {
-        tags: ['Risks'], summary: 'Decide risk acceptance', security: [{ bearerAuth: [] }],
-        description: 'Active Security Officer or Executive (existing approver group), never requester. Pending only. Approval checks expiry, owner reassignment, Threat/Vulnerability changes, current Control/Evidence basis and exact submitted assessment/plan basis. Legacy requests without verifiable audit basis must be rejected/resubmitted. Rejection remains available for expired/stale requests. Owner justification is preserved; decision reason is audited separately. Only approval sets ACCEPTED. Detail exposes expired/canDecide and actor-scoped acceptanceWorkflow. No named-approver assignment or automatic email.',
-        parameters: [{ name: 'acceptanceId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
-        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', required: ['decision', 'reason'], properties: { decision: { type: 'string', enum: ['approved', 'rejected'] }, reason: { type: 'string', minLength: 10, maxLength: 2000 } } } } } },
-        responses: { '200': { description: 'Decision recorded' }, '401': { description: 'Authentication required' }, '403': { description: 'Approver required or self-approval forbidden' }, '404': { description: 'Request not found' }, '409': { description: 'Already decided, expired or changed context' }, '422': { description: 'Invalid input' } },
+        tags: ['Risks'],
+        summary: 'Decide risk acceptance',
+        security: [{ bearerAuth: [] }],
+        description:
+          'Active Security Officer or Executive (existing approver group), never requester. Pending only. Approval checks expiry, owner reassignment, Threat/Vulnerability changes, current Control/Evidence basis and exact submitted assessment/plan basis. Legacy requests without verifiable audit basis must be rejected/resubmitted. Rejection remains available for expired/stale requests. Owner justification is preserved; decision reason is audited separately. Only approval sets ACCEPTED. Detail exposes expired/canDecide and actor-scoped acceptanceWorkflow. No named-approver assignment or automatic email.',
+        parameters: [
+          {
+            name: 'acceptanceId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['decision', 'reason'],
+                properties: {
+                  decision: { type: 'string', enum: ['approved', 'rejected'] },
+                  reason: { type: 'string', minLength: 10, maxLength: 2000 },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'Decision recorded' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Approver required or self-approval forbidden' },
+          '404': { description: 'Request not found' },
+          '409': { description: 'Already decided, expired or changed context' },
+          '422': { description: 'Invalid input' },
+        },
       },
     },
     '/risks/treatment-plans': {
       post: {
-        tags: ['Risks'], summary: 'Create Risk Treatment Plan', security: [{ bearerAuth: [] }],
-        description: 'Active Security Officer or assigned Risk Owner. Locks selected Risk. OPEN/UNDER_TREATMENT with no pending acceptance or Draft/Active plan. Eligible controls must belong to the Risk; mitigate requires at least one, other strategies allow none. Non-accept strategies require actions. Unique control IDs and action titles, active owners, future dates and action dates within plan date required. Target cannot exceed known residual and is saved as TARGET_DEFINITION without copying inherent/residual. Creation remains Draft and does not approve acceptance.',
-        responses: { '201': { description: 'Draft plan with intended target saved' }, '401': { description: 'Authentication required' }, '403': { description: 'Security Officer or Risk Owner required' }, '404': { description: 'Risk not found' }, '409': { description: 'Risk locked or existing Draft/Active plan' }, '422': { description: 'Invalid owners, controls, actions, dates or target' } },
+        tags: ['Risks'],
+        summary: 'Create Risk Treatment Plan',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: createTreatmentPlanOpenApi } },
+        },
+        description:
+          'Active Security Officer or assigned Risk Owner. Locks selected Risk. OPEN/UNDER_TREATMENT with no pending acceptance or Draft/Active plan. Eligible controls must belong to the Risk; mitigate requires at least one, other strategies allow none. Non-accept strategies require actions. Unique control IDs and action titles, active owners, future dates and action dates within plan date required. Target cannot exceed known residual and is saved as TARGET_DEFINITION without copying inherent/residual. Creation remains Draft and does not approve acceptance.',
+        responses: {
+          '201': { description: 'Draft plan with intended target saved' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer or Risk Owner required' },
+          '404': { description: 'Risk not found' },
+          '409': { description: 'Risk locked or existing Draft/Active plan' },
+          '422': { description: 'Invalid owners, controls, actions, dates or target' },
+        },
       },
     },
     '/risks/treatment-plans/{treatmentPlanId}': {
       patch: {
-        tags: ['Risks'], summary: 'Update Risk Treatment Plan', security: [{ bearerAuth: [] }],
-        description: 'Active Security Officer or assigned Risk Owner. Locks Risk and plan, checks expectedUpdatedAt and blocks pending acceptance or finalized records. Existing overdue deadlines may be retained; dates cannot predate record creation. Completed/cancelled actions are read-only, original completion timestamps are preserved. In-progress actions cannot return to pending. Non-acceptance plans with all actions cancelled cannot be completed. Changes append an audit snapshot. Progress uses status weights and excludes cancelled actions.',
-        parameters: [{ name: 'treatmentPlanId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
-        responses: { '200': { description: 'Updated plan and computed progress' }, '401': { description: 'Authentication required' }, '403': { description: 'Security Officer or Risk Owner required' }, '404': { description: 'Plan not found' }, '409': { description: 'Stale update, pending acceptance, locked record or invalid transition' }, '422': { description: 'Invalid actions, dates, owners or controls' } },
+        tags: ['Risks'],
+        summary: 'Update Risk Treatment Plan',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: updateTreatmentPlanOpenApi } },
+        },
+        description:
+          'Active Security Officer or assigned Risk Owner. Locks Risk and plan, checks expectedUpdatedAt and blocks pending acceptance or finalized records. Existing overdue deadlines may be retained; dates cannot predate record creation. Completed/cancelled actions are read-only, original completion timestamps are preserved. In-progress actions cannot return to pending. Non-acceptance plans with all actions cancelled cannot be completed. Changes append an audit snapshot. Progress uses status weights and excludes cancelled actions.',
+        parameters: [
+          {
+            name: 'treatmentPlanId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        responses: {
+          '200': { description: 'Updated plan and computed progress' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer or Risk Owner required' },
+          '404': { description: 'Plan not found' },
+          '409': {
+            description: 'Stale update, pending acceptance, locked record or invalid transition',
+          },
+          '422': { description: 'Invalid actions, dates, owners or controls' },
+        },
       },
     },
     '/risks/{riskId}/target-risk': {
@@ -705,7 +674,7 @@ export const openApiSpec = {
             schema: { type: 'integer', minimum: 1, maximum: 100, default: 10 },
           },
           { name: 'q', in: 'query', schema: { type: 'string', maxLength: 100 } },
-          { name: 'assetType', in: 'query', schema: { type: 'string', maxLength: 100 } },
+          { name: 'assetType', in: 'query', schema: { type: 'string', enum: [...assetTypes] } },
           { name: 'criticality', in: 'query', schema: { type: 'string', maxLength: 50 } },
           { name: 'status', in: 'query', schema: { type: 'string', enum: ['active', 'archived'] } },
         ],
@@ -731,7 +700,7 @@ export const openApiSpec = {
                 additionalProperties: false,
                 properties: {
                   name: { type: 'string', maxLength: 255 },
-                  assetType: { type: 'string', maxLength: 100 },
+                  assetType: { type: 'string', enum: [...assetTypes] },
                   ownerUserId: { type: 'string', format: 'uuid' },
                   description: { type: 'string', maxLength: 10000 },
                   dependencies: { type: 'array', maxItems: 50 },
@@ -837,7 +806,7 @@ export const openApiSpec = {
                 required: ['name', 'assetType', 'description'],
                 properties: {
                   name: { type: 'string', maxLength: 255 },
-                  assetType: { type: 'string', maxLength: 100 },
+                  assetType: { type: 'string', enum: [...assetTypes] },
                   description: { type: 'string', maxLength: 10000, nullable: true },
                 },
               },
@@ -2559,7 +2528,28 @@ export const openApiSpec = {
       },
     },
     '/compliance/policies/{policyId}/drafts/{versionId}': {
-      ...pendingV2Paths['/compliance/policies/{policyId}/drafts/{versionId}'],
+      get: {
+        tags: ['Policies'],
+        summary: 'View an owned policy draft',
+        description:
+          'Active Security Officer only. Requires both draft authorship and policy ownership, matching drafts/mine. Both policy and version must remain DRAFT. Missing, inaccessible, mismatched or no-longer-draft records return 404. Read-only; no status changes.',
+        security: [{ bearerAuth: [] }],
+        parameters: ['policyId', 'versionId'].map((name) => ({
+          name,
+          in: 'path',
+          required: true,
+          schema: { type: 'string', format: 'uuid' },
+        })),
+        responses: {
+          '200': {
+            description: 'Owned draft metadata and version content, matching drafts/mine items',
+          },
+          '401': { description: 'Authentication required or inactive account' },
+          '403': { description: 'Security Officer role required' },
+          '404': { description: 'Policy draft not found or inaccessible' },
+          '422': { description: 'Invalid policy or version UUID' },
+        },
+      },
       patch: {
         tags: ['Policies'],
         summary: 'Edit an owned policy draft',
@@ -3864,6 +3854,36 @@ export const openApiSpec = {
         },
       },
     },
+    '/auth/password-reset/verify': {
+      post: {
+        tags: ['Authentication'],
+        summary: 'Verify that a password reset code is active',
+        description:
+          'Checks whether a six-digit password reset code exists, is unused, has not expired, and belongs to an active account. The code is not consumed by this operation.',
+        security: [],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['token'],
+                additionalProperties: false,
+                properties: {
+                  token: { type: 'string', pattern: '^\\d{6}$' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'Password reset code is currently valid' },
+          '400': { description: 'Password reset code is invalid, expired, replaced, or used' },
+          '422': { description: 'Invalid request body' },
+          '429': { description: 'Too many attempts' },
+        },
+      },
+    },
     '/auth/refresh': {
       post: {
         tags: ['Authentication'],
@@ -4032,7 +4052,11 @@ export const openApiSpec = {
                 required: ['email', 'fullName', 'role'],
                 properties: {
                   email: { type: 'string', format: 'email', maxLength: 255 },
-                  fullName: { type: 'string', minLength: 2, maxLength: 255 },
+                  fullName: {
+                    type: 'string',
+                    minLength: 2,
+                    maxLength: USER_FULL_NAME_MAX_LENGTH,
+                  },
                   phone: { type: 'string', minLength: 3, maxLength: 30 },
                   employeeCode: { type: 'string', minLength: 1, maxLength: 50 },
                   departmentId: { type: 'string', format: 'uuid' },
@@ -4155,7 +4179,11 @@ export const openApiSpec = {
                 additionalProperties: false,
                 required: ['fullName', 'phone', 'employeeCode', 'departmentId', 'status'],
                 properties: {
-                  fullName: { type: 'string', minLength: 2, maxLength: 255 },
+                  fullName: {
+                    type: 'string',
+                    minLength: 2,
+                    maxLength: USER_FULL_NAME_MAX_LENGTH,
+                  },
                   phone: { type: ['string', 'null'], minLength: 3, maxLength: 30 },
                   employeeCode: { type: ['string', 'null'], minLength: 1, maxLength: 50 },
                   departmentId: { type: ['string', 'null'], format: 'uuid' },
@@ -4171,6 +4199,36 @@ export const openApiSpec = {
           '403': { description: 'Admin role required' },
           '404': { description: 'User not found' },
           '422': { description: 'Invalid request' },
+        },
+      },
+    },
+    '/login-history': {
+      get: {
+        tags: ['Audit & Security Reporting'],
+        summary: 'View login history',
+        description:
+          'Returns successful and failed authentication attempts for active Administrators and Security Officers, including timestamps, client IP addresses, browser or device user agents, and failure reasons when available.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
+          {
+            name: 'limit',
+            in: 'query',
+            schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
+          },
+          { name: 'search', in: 'query', schema: { type: 'string', maxLength: 255 } },
+          { name: 'status', in: 'query', schema: { type: 'string', enum: ['success', 'failed'] } },
+          { name: 'userId', in: 'query', schema: { type: 'string', format: 'uuid' } },
+          { name: 'ipAddress', in: 'query', schema: { type: 'string' } },
+          { name: 'from', in: 'query', schema: { type: 'string', format: 'date-time' } },
+          { name: 'to', in: 'query', schema: { type: 'string', format: 'date-time' } },
+          { name: 'sortOrder', in: 'query', schema: { type: 'string', enum: ['asc', 'desc'] } },
+        ],
+        responses: {
+          '200': { description: 'Paginated login history' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Administrator or Security Officer role required' },
+          '422': { description: 'Invalid query parameters' },
         },
       },
     },

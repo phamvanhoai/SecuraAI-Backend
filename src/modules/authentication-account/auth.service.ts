@@ -7,11 +7,13 @@ import { AppError } from '../../common/errors/app-error.js';
 import { env } from '../../config/env.js';
 import { authRepository } from './auth.repository.js';
 import { authEmailService } from './auth.email.service.js';
+import { loginHistoryRepository } from '../audit-security-reporting/login-history.repository.js';
 import type { GoogleLoginBody, LoginBody } from './dto/auth.dto.js';
 import type {
   ChangePasswordBody,
   ConfirmPasswordResetBody,
   RequestPasswordResetBody,
+  VerifyPasswordResetBody,
 } from './dto/password.dto.js';
 
 const dummyHash = argon2.hash('invalid-account-password', { type: argon2.argon2id });
@@ -45,7 +47,7 @@ function tokenPair(user: { id: string; role: user_role }, refreshToken: string) 
 }
 
 export const authService = {
-  async loginWithGoogle(input: GoogleLoginBody) {
+  async loginWithGoogle(input: GoogleLoginBody, context: { ipAddress?: string; userAgent?: string } = {}) {
     if (!env.GOOGLE_CLIENT_ID) {
       throw new AppError(503, 'GOOGLE_LOGIN_UNAVAILABLE', 'Google sign-in is unavailable');
     }
@@ -57,9 +59,11 @@ export const authService = {
       });
       payload = ticket.getPayload();
     } catch {
+      await Promise.resolve(loginHistoryRepository.record({ email: 'unknown', status: 'FAILED', failureReason: 'INVALID_GOOGLE_CREDENTIAL', ...context })).catch(() => undefined);
       throw new AppError(401, 'INVALID_GOOGLE_CREDENTIAL', 'Unable to sign in with Google');
     }
     if (!payload?.sub || !payload.email || payload.email_verified !== true) {
+      await Promise.resolve(loginHistoryRepository.record({ email: payload?.email?.trim().toLowerCase() || 'unknown', status: 'FAILED', failureReason: 'INVALID_GOOGLE_CREDENTIAL', ...context })).catch(() => undefined);
       throw new AppError(401, 'INVALID_GOOGLE_CREDENTIAL', 'Unable to sign in with Google');
     }
     const email = payload.email.trim().toLowerCase();
@@ -70,6 +74,7 @@ export const authService = {
       user.email.toLowerCase() !== email ||
       (user.google_subject !== null && user.google_subject !== payload.sub)
     ) {
+      await Promise.resolve(loginHistoryRepository.record({ email, ...(user?.id ? { userId: user.id } : {}), status: 'FAILED', failureReason: 'ACCOUNT_INACTIVE', ...context })).catch(() => undefined);
       throw new AppError(401, 'INVALID_GOOGLE_CREDENTIAL', 'Unable to sign in with Google');
     }
     const refreshToken = createRefreshToken();
@@ -80,11 +85,13 @@ export const authService = {
       refreshExpiresAt(),
     );
     if (!sessionUser) {
+      await Promise.resolve(loginHistoryRepository.record({ email, userId: user.id, status: 'FAILED', failureReason: 'SESSION_CREATION_FAILED', ...context })).catch(() => undefined);
       throw new AppError(401, 'INVALID_GOOGLE_CREDENTIAL', 'Unable to sign in with Google');
     }
+    await Promise.resolve(loginHistoryRepository.record({ email, userId: sessionUser.id, status: 'SUCCESS', ...context })).catch(() => undefined);
     return tokenPair(sessionUser, refreshToken);
   },
-  async login(input: LoginBody) {
+  async login(input: LoginBody, context: { ipAddress?: string; userAgent?: string } = {}) {
     const user = await authRepository.findByEmail(input.email);
     let validPassword = false;
     try {
@@ -93,6 +100,7 @@ export const authService = {
       validPassword = false;
     }
     if (!user || !validPassword || user.status !== 'ACTIVE') {
+      await Promise.resolve(loginHistoryRepository.record({ email: input.email, ...(user?.id ? { userId: user.id } : {}), status: 'FAILED', failureReason: user ? (user.status === 'ACTIVE' ? 'INVALID_CREDENTIALS' : 'ACCOUNT_INACTIVE') : 'INVALID_CREDENTIALS', ...context })).catch(() => undefined);
       throw new AppError(401, 'INVALID_CREDENTIALS', 'Email or password is incorrect');
     }
 
@@ -104,8 +112,10 @@ export const authService = {
       refreshExpiresAt(),
     );
     if (!sessionUser) {
+      await Promise.resolve(loginHistoryRepository.record({ email: input.email, userId: user.id, status: 'FAILED', failureReason: 'SESSION_CREATION_FAILED', ...context })).catch(() => undefined);
       throw new AppError(401, 'INVALID_CREDENTIALS', 'Email or password is incorrect');
     }
+    await Promise.resolve(loginHistoryRepository.record({ email: input.email, userId: sessionUser.id, status: 'SUCCESS', ...context })).catch(() => undefined);
     return tokenPair(sessionUser, refreshToken);
   },
 
@@ -152,6 +162,17 @@ export const authService = {
       passwordHash,
     );
     if (!consumed) {
+      throw new AppError(
+        400,
+        'INVALID_PASSWORD_RESET_TOKEN',
+        'Password reset token is invalid or expired',
+      );
+    }
+  },
+
+  async verifyPasswordResetCode(input: VerifyPasswordResetBody): Promise<void> {
+    const valid = await authRepository.isPasswordResetTokenValid(hashToken(input.token));
+    if (!valid) {
       throw new AppError(
         400,
         'INVALID_PASSWORD_RESET_TOKEN',

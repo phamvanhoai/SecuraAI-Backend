@@ -3,9 +3,6 @@ import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../src/database/prisma.js', () => ({ prisma: {} }));
-vi.mock('../src/modules/access-control/access-control.service.js', () => ({
-  accessControlService: { hasPermission: vi.fn().mockResolvedValue(true) },
-}));
 vi.mock('../src/modules/notification-system-logs/notifications.service.js', () => ({
   notificationsService: {
     getPreferences: vi.fn(),
