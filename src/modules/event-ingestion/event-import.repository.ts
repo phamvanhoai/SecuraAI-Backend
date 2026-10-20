@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import type {
   event_family,
   ingestion_batch_status,
@@ -6,6 +7,7 @@ import type {
 } from '@prisma/client';
 import { prisma } from '../../database/prisma.js';
 import type { ImportEventItem, InvalidEventRecord } from './dto/import-events.dto.js';
+import { eventAutoMappingService } from './event-auto-mapping.service.js';
 
 export type CreateBatchParams = {
   eventSourceId: string;
@@ -69,9 +71,27 @@ export const eventImportRepository = {
     return prisma.$transaction(async (tx) => {
       // 1. Insert valid normalized events
       if (validRecords.length > 0) {
-        const normalizedData: Prisma.normalized_eventsCreateManyInput[] = validRecords.map((item) => {
+        const eventsWithId = validRecords.map((item) => ({
+          ...item,
+          id: randomUUID(),
+        }));
+
+        // Execute auto-mapping pipeline
+        const autoMappingResult = await eventAutoMappingService.resolveAutoMappings(
+          eventsWithId.map((e) => ({
+            id: e.id,
+            accountIdentifier: e.accountIdentifier,
+            deviceIdentifier: e.deviceIdentifier,
+            sourceIp: e.sourceIp,
+            destinationIp: e.destinationIp,
+          })),
+        );
+
+        const normalizedData: Prisma.normalized_eventsCreateManyInput[] = eventsWithId.map((item) => {
           const payload = (item.normalizedPayload ?? item) as unknown as Prisma.InputJsonValue;
+          const mappingStatus = autoMappingResult.mappingStatusMap.get(item.id) ?? 'UNMAPPED';
           return {
+            id: item.id,
             event_source_id: eventSourceId,
             ingestion_batch_id: batchId,
             external_event_id: item.externalEventId ?? null,
@@ -83,7 +103,7 @@ export const eventImportRepository = {
             destination_ip: item.destinationIp ?? null,
             device_identifier: item.deviceIdentifier ?? null,
             severity: item.severity ?? null,
-            mapping_status: 'UNMAPPED',
+            mapping_status: mappingStatus,
             normalized_payload: payload,
           };
         });
@@ -93,6 +113,13 @@ export const eventImportRepository = {
           data: normalizedData,
           skipDuplicates: true,
         });
+
+        // Insert auto-generated entity mappings
+        if (autoMappingResult.mappingsToCreate.length > 0) {
+          await tx.event_entity_mappings.createMany({
+            data: autoMappingResult.mappingsToCreate,
+          });
+        }
       }
 
       // 2. Insert invalid events
