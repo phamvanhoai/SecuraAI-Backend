@@ -17,6 +17,7 @@ import {
   auditLogsRouter,
   integrationApiKeysRouter,
   integrationSourceApiKeysRouter,
+  loginHistoryRouter,
   reportExportsRouter,
   securityDashboardRouter,
 } from '../modules/audit-security-reporting/index.js';
@@ -70,6 +71,8 @@ apiRouter.use('/event-ingestion/wazuh', wazuhIngestionRouter);
 apiRouter.use('/integrations', integrationSourceApiKeysRouter);
 apiRouter.use('/integrations/api-keys', integrationApiKeysRouter);
 apiRouter.use('/audit-logs', auditLogsRouter);
+apiRouter.use('/login-history', loginHistoryRouter);
+apiRouter.use('/administration/login-history', loginHistoryRouter);
 apiRouter.use('/audit-security-reporting/audit-logs', auditLogsRouter);
 apiRouter.use('/audit-security-reporting/api-keys', integrationApiKeysRouter);
 apiRouter.use('/audit-security-reporting/dashboard', securityDashboardRouter);
