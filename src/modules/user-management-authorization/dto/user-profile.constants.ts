@@ -1,0 +1,1 @@
+export const USER_FULL_NAME_MAX_LENGTH = 80;

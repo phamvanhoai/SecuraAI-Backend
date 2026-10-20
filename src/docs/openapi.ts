@@ -11,6 +11,7 @@ import { businessServicesPaths } from './business-services.openapi.js';
 import { notificationPaths } from './notifications.openapi.js';
 import { auditPaths } from './audit.openapi.js';
 import { systemLogPaths } from './system-logs.openapi.js';
+import { USER_FULL_NAME_MAX_LENGTH } from '../modules/user-management-authorization/dto/user-profile.constants.js';
 
 export const openApiSpec = {
   openapi: '3.0.3',
@@ -4051,7 +4052,11 @@ export const openApiSpec = {
                 required: ['email', 'fullName', 'role'],
                 properties: {
                   email: { type: 'string', format: 'email', maxLength: 255 },
-                  fullName: { type: 'string', minLength: 2, maxLength: 255 },
+                  fullName: {
+                    type: 'string',
+                    minLength: 2,
+                    maxLength: USER_FULL_NAME_MAX_LENGTH,
+                  },
                   phone: { type: 'string', minLength: 3, maxLength: 30 },
                   employeeCode: { type: 'string', minLength: 1, maxLength: 50 },
                   departmentId: { type: 'string', format: 'uuid' },
@@ -4174,7 +4179,11 @@ export const openApiSpec = {
                 additionalProperties: false,
                 required: ['fullName', 'phone', 'employeeCode', 'departmentId', 'status'],
                 properties: {
-                  fullName: { type: 'string', minLength: 2, maxLength: 255 },
+                  fullName: {
+                    type: 'string',
+                    minLength: 2,
+                    maxLength: USER_FULL_NAME_MAX_LENGTH,
+                  },
                   phone: { type: ['string', 'null'], minLength: 3, maxLength: 30 },
                   employeeCode: { type: ['string', 'null'], minLength: 1, maxLength: 50 },
                   departmentId: { type: ['string', 'null'], format: 'uuid' },
