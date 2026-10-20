@@ -2,7 +2,14 @@ import jwt from 'jsonwebtoken';
 import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('../src/database/prisma.js', () => ({ prisma: { $queryRaw: vi.fn() } }));
+vi.mock('../src/database/prisma.js', () => ({
+  prisma: {
+    $queryRaw: vi.fn(),
+    users: {
+      findUnique: vi.fn(),
+    },
+  },
+}));
 vi.mock('../src/modules/event-ingestion/event-governance.service.js', () => ({
   eventGovernanceService: {
     listPolicies: vi.fn(),
@@ -14,6 +21,7 @@ vi.mock('../src/modules/event-ingestion/event-governance.service.js', () => ({
 
 import { createApp } from '../src/app.js';
 import { env } from '../src/config/env.js';
+import { prisma } from '../src/database/prisma.js';
 import { AppError } from '../src/common/errors/app-error.js';
 import { eventGovernanceService } from '../src/modules/event-ingestion/event-governance.service.js';
 
@@ -56,12 +64,31 @@ const samplePolicyDto = {
 };
 
 describe('Event Governance HTTP endpoints', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(prisma.users.findUnique).mockResolvedValue({
+      role: 'ADMIN',
+      status: 'ACTIVE',
+    } as any);
+  });
 
   describe('GET /api/v1/event-governance/policies', () => {
     it('requires authentication', async () => {
       const res = await request(app).get('/api/v1/event-governance/policies');
       expect(res.status).toBe(401);
+    });
+
+    it('returns 403 when user is not ADMIN', async () => {
+      vi.mocked(prisma.users.findUnique).mockResolvedValue({
+        role: 'SECURITY_OFFICER',
+        status: 'ACTIVE',
+      } as any);
+
+      const res = await request(app)
+        .get('/api/v1/event-governance/policies')
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(403);
     });
 
     it('returns paginated policies for authenticated administrator', async () => {

@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { authenticate } from '../../common/middleware/authenticate.js';
+import { authorizeRoles } from '../../common/middleware/authorize-roles.js';
 import { validate } from '../../common/middleware/validate.js';
 import {
   exportReportRequestSchema,
@@ -10,7 +11,10 @@ import { reportExportsController } from './report-exports.controller.js';
 
 export const reportExportsRouter = Router();
 
-reportExportsRouter.use(authenticate);
+reportExportsRouter.use(
+  authenticate,
+  authorizeRoles('SECURITY_OFFICER', 'EXECUTIVE'),
+);
 
 reportExportsRouter.post(
   '/',
