@@ -22,6 +22,9 @@ vi.mock('../src/modules/authentication-account/auth.repository.js', () => ({
     createGoogleSession: vi.fn(),
   },
 }));
+vi.mock('../src/modules/audit-security-reporting/login-history.repository.js', () => ({
+  loginHistoryRepository: { record: vi.fn() },
+}));
 
 import { authRepository } from '../src/modules/authentication-account/auth.repository.js';
 import { authService } from '../src/modules/authentication-account/auth.service.js';

@@ -2,13 +2,14 @@ import type { Prisma } from '@prisma/client';
 import { prisma } from '../../database/prisma.js';
 import type { ListLoginHistoryQuery } from './dto/list-login-history.dto.js';
 
-function buildWhere(query: ListLoginHistoryQuery): Prisma.auth_sessionsWhereInput {
+function buildWhere(query: ListLoginHistoryQuery): Prisma.authentication_historyWhereInput {
   return {
-    ...(query.status === 'failed' ? { id: { equals: '00000000-0000-0000-0000-000000000000' } } : {}),
+    ...(query.status ? { status: query.status === 'success' ? 'SUCCESS' : 'FAILED' } : {}),
     ...(query.userId ? { user_id: query.userId } : {}),
+    ...(query.ipAddress ? { ip_address: query.ipAddress } : {}),
     ...(query.from || query.to
       ? {
-          created_at: {
+          occurred_at: {
             ...(query.from ? { gte: new Date(query.from) } : {}),
             ...(query.to ? { lte: new Date(query.to) } : {}),
           },
@@ -28,6 +29,13 @@ function buildWhere(query: ListLoginHistoryQuery): Prisma.auth_sessionsWhereInpu
 }
 
 export const loginHistoryRepository = {
+  record(input: { userId?: string; email: string; status: 'SUCCESS' | 'FAILED'; failureReason?: string; ipAddress?: string; userAgent?: string }) {
+    return prisma.authentication_history.create({
+      data: { email_attempted: input.email, status: input.status, ...(input.userId ? { user_id: input.userId } : {}), ...(input.failureReason ? { failure_reason: input.failureReason } : {}), ...(input.ipAddress ? { ip_address: input.ipAddress } : {}), ...(input.userAgent ? { user_agent: input.userAgent } : {}) },
+      select: { id: true },
+    });
+  },
+
   findViewer(userId: string) {
     return prisma.users.findUnique({
       where: { id: userId },
@@ -36,22 +44,26 @@ export const loginHistoryRepository = {
   },
 
   async list(query: ListLoginHistoryQuery) {
-    if (query.ipAddress) return { items: [], total: 0 };
     const where = buildWhere(query);
     const [items, total] = await prisma.$transaction([
-      prisma.auth_sessions.findMany({
+      prisma.authentication_history.findMany({
         where,
         skip: (query.page - 1) * query.limit,
         take: query.limit,
-        orderBy: [{ created_at: query.sortOrder }, { id: query.sortOrder }],
+        orderBy: [{ occurred_at: query.sortOrder }, { id: query.sortOrder }],
         select: {
           id: true,
           user_id: true,
-          created_at: true,
+          occurred_at: true,
+          status: true,
+          email_attempted: true,
+          failure_reason: true,
+          ip_address: true,
+          user_agent: true,
           users: { select: { full_name: true, email: true } },
         },
       }),
-      prisma.auth_sessions.count({ where }),
+      prisma.authentication_history.count({ where }),
     ]);
     return { items, total };
   },

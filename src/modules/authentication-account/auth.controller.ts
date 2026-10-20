@@ -10,12 +10,12 @@ import {
 } from './dto/password.dto.js';
 
 export const login: RequestHandler = async (req, res) => {
-  const data = await authService.login(loginBodySchema.parse(req.body));
+  const data = await authService.login(loginBodySchema.parse(req.body), { ...(req.ip ? { ipAddress: req.ip } : {}), ...(req.get('user-agent') ? { userAgent: req.get('user-agent') as string } : {}) });
   res.status(200).json({ success: true, data });
 };
 
 export const loginWithGoogle: RequestHandler = async (req, res) => {
-  const data = await authService.loginWithGoogle(googleLoginBodySchema.parse(req.body));
+  const data = await authService.loginWithGoogle(googleLoginBodySchema.parse(req.body), { ...(req.ip ? { ipAddress: req.ip } : {}), ...(req.get('user-agent') ? { userAgent: req.get('user-agent') as string } : {}) });
   res.status(200).json({ success: true, data });
 };
 

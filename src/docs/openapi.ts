@@ -4207,7 +4207,7 @@ export const openApiSpec = {
         tags: ['Audit & Security Reporting'],
         summary: 'View login history',
         description:
-          'Returns successful authentication sessions for active Administrators and Security Officers. The V2 baseline does not persist failed attempts, client IP addresses, or user agents.',
+          'Returns successful and failed authentication attempts for active Administrators and Security Officers, including timestamps, client IP addresses, browser or device user agents, and failure reasons when available.',
         security: [{ bearerAuth: [] }],
         parameters: [
           { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
