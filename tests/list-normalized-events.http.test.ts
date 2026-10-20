@@ -2,7 +2,14 @@ import jwt from 'jsonwebtoken';
 import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('../src/database/prisma.js', () => ({ prisma: { $queryRaw: vi.fn() } }));
+vi.mock('../src/database/prisma.js', () => ({
+  prisma: {
+    $queryRaw: vi.fn(),
+    users: {
+      findUnique: vi.fn().mockResolvedValue({ role: 'SECURITY_OFFICER', status: 'ACTIVE' }),
+    },
+  },
+}));
 vi.mock('../src/modules/event-ingestion/normalized-events.service.js', () => ({
   normalizedEventsService: {
     listEvents: vi.fn(),
@@ -140,6 +147,26 @@ describe('Normalized Security Events HTTP Endpoints', () => {
         .set('Authorization', `Bearer ${token}`);
 
       expect(response.status).toBe(422);
+    });
+
+    it('rejects users without SECURITY_OFFICER role with 403 Forbidden', async () => {
+      const prismaModule = await import('../src/database/prisma.js');
+      vi.mocked(prismaModule.prisma.users.findUnique).mockResolvedValueOnce({
+        role: 'ADMIN',
+        status: 'ACTIVE',
+      } as any);
+
+      const response = await request(app)
+        .get('/api/v1/events')
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(response.status).toBe(403);
+      expect(response.body).toMatchObject({
+        success: false,
+        error: expect.objectContaining({
+          code: 'FORBIDDEN',
+        }),
+      });
     });
   });
 

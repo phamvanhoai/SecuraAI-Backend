@@ -2,7 +2,14 @@ import jwt from 'jsonwebtoken';
 import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('../src/database/prisma.js', () => ({ prisma: { $queryRaw: vi.fn() } }));
+vi.mock('../src/database/prisma.js', () => ({
+  prisma: {
+    $queryRaw: vi.fn(),
+    users: {
+      findUnique: vi.fn().mockResolvedValue({ role: 'ADMIN', status: 'ACTIVE' }),
+    },
+  },
+}));
 vi.mock('../src/modules/event-ingestion/event-sources.service.js', () => ({
   eventSourcesService: {
     registerEventSource: vi.fn(),

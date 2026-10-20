@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { authenticate } from '../../common/middleware/authenticate.js';
+import { authorizeRoles } from '../../common/middleware/authorize-roles.js';
 import { validate } from '../../common/middleware/validate.js';
 import { asyncHandler } from '../../common/utils/async-handler.js';
 import {
@@ -37,6 +38,7 @@ export const eventSourcesRouter = Router();
 eventSourcesRouter.post(
   '/test-connection',
   authenticate,
+  authorizeRoles('ADMIN', 'SECURITY_OFFICER'),
   validate({ body: testEventSourceConnectionSchema }),
   asyncHandler(testEventSourceConnection),
 );
@@ -44,6 +46,7 @@ eventSourcesRouter.post(
 eventSourcesRouter.post(
   '/:id/test-connection',
   authenticate,
+  authorizeRoles('ADMIN', 'SECURITY_OFFICER'),
   validate({
     params: eventSourceIdParamsSchema,
     body: testExistingEventSourceConnectionSchema,
@@ -55,6 +58,7 @@ eventSourcesRouter.post(
 eventSourcesRouter.get(
   '/batches/:batchId',
   authenticate,
+  authorizeRoles('ADMIN', 'SECURITY_OFFICER'),
   validate({ params: batchIdParamSchema }),
   asyncHandler(getBatchDetail),
 );
@@ -62,6 +66,7 @@ eventSourcesRouter.get(
 eventSourcesRouter.get(
   '/batches/:batchId/invalid-events',
   authenticate,
+  authorizeRoles('ADMIN', 'SECURITY_OFFICER'),
   validate({
     params: batchIdParamSchema,
     query: getBatchInvalidEventsQuerySchema,
@@ -72,6 +77,7 @@ eventSourcesRouter.get(
 eventSourcesRouter.get(
   '/:id/batches',
   authenticate,
+  authorizeRoles('ADMIN', 'SECURITY_OFFICER'),
   validate({
     params: eventSourceIdParamsSchema,
     query: getSourceBatchesQuerySchema,
@@ -82,6 +88,7 @@ eventSourcesRouter.get(
 eventSourcesRouter.get(
   '/',
   authenticate,
+  authorizeRoles('ADMIN', 'SECURITY_OFFICER'),
   validate({ query: listEventSourcesQuerySchema }),
   asyncHandler(listEventSources),
 );
@@ -89,6 +96,7 @@ eventSourcesRouter.get(
 eventSourcesRouter.get(
   '/:id',
   authenticate,
+  authorizeRoles('ADMIN', 'SECURITY_OFFICER'),
   validate({ params: eventSourceIdParamsSchema }),
   asyncHandler(getEventSourceDetail),
 );
@@ -96,6 +104,7 @@ eventSourcesRouter.get(
 eventSourcesRouter.post(
   '/',
   authenticate,
+  authorizeRoles('ADMIN', 'SECURITY_OFFICER'),
   validate({ body: createEventSourceSchema }),
   asyncHandler(createEventSource),
 );
@@ -103,6 +112,7 @@ eventSourcesRouter.post(
 eventSourcesRouter.put(
   '/:id',
   authenticate,
+  authorizeRoles('ADMIN', 'SECURITY_OFFICER'),
   validate({
     params: updateEventSourceParamsSchema,
     body: updateEventSourceSchema,
@@ -113,6 +123,7 @@ eventSourcesRouter.put(
 eventSourcesRouter.patch(
   '/:id',
   authenticate,
+  authorizeRoles('ADMIN', 'SECURITY_OFFICER'),
   validate({
     params: updateEventSourceParamsSchema,
     body: updateEventSourceSchema,
@@ -123,6 +134,7 @@ eventSourcesRouter.patch(
 eventSourcesRouter.post(
   '/:id/import',
   authenticate,
+  authorizeRoles('ADMIN', 'SECURITY_OFFICER'),
   validate({
     params: eventSourceIdParamsSchema,
     body: importEventsBodySchema,
