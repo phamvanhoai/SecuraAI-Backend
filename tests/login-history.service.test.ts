@@ -22,7 +22,12 @@ describe('login history service', () => {
         {
           id: '550e8400-e29b-41d4-a716-446655440000',
           user_id: viewerId,
-          created_at: new Date('2026-10-20T08:00:00.000Z'),
+          occurred_at: new Date('2026-10-20T08:00:00.000Z'),
+          email_attempted: 'admin@example.test',
+          status: 'SUCCESS',
+          failure_reason: null,
+          ip_address: null,
+          user_agent: null,
           users: { full_name: 'System Admin', email: 'admin@example.test' },
         },
       ],
