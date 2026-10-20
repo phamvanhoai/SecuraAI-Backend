@@ -4202,6 +4202,36 @@ export const openApiSpec = {
         },
       },
     },
+    '/login-history': {
+      get: {
+        tags: ['Audit & Security Reporting'],
+        summary: 'View login history',
+        description:
+          'Returns successful authentication sessions for active Administrators and Security Officers. The V2 baseline does not persist failed attempts, client IP addresses, or user agents.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
+          {
+            name: 'limit',
+            in: 'query',
+            schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
+          },
+          { name: 'search', in: 'query', schema: { type: 'string', maxLength: 255 } },
+          { name: 'status', in: 'query', schema: { type: 'string', enum: ['success', 'failed'] } },
+          { name: 'userId', in: 'query', schema: { type: 'string', format: 'uuid' } },
+          { name: 'ipAddress', in: 'query', schema: { type: 'string' } },
+          { name: 'from', in: 'query', schema: { type: 'string', format: 'date-time' } },
+          { name: 'to', in: 'query', schema: { type: 'string', format: 'date-time' } },
+          { name: 'sortOrder', in: 'query', schema: { type: 'string', enum: ['asc', 'desc'] } },
+        ],
+        responses: {
+          '200': { description: 'Paginated login history' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Administrator or Security Officer role required' },
+          '422': { description: 'Invalid query parameters' },
+        },
+      },
+    },
     '/audit-logs': {
       get: {
         tags: ['Audit & Security Reporting'],

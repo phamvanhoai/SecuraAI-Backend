@@ -2,8 +2,6 @@
 // Source: reference/legacy-v3/src/docs/openapi.ts at commit 8adcb5a.
 // Training is intentionally excluded because that domain was removed from V2 scope.
 export const legacyV1RouteContracts = [
-  { method: 'get', path: '/login-history', tag: 'Login History' },
-  { method: 'get', path: '/administration/login-history', tag: 'Login History' },
   { method: 'get', path: '/notifications/compliance-reminders', tag: 'Policies' },
   {
     method: 'patch',
