@@ -11,11 +11,20 @@ export const loginHistoryService = {
     if (!viewer || viewer.status !== 'ACTIVE') {
       throw new AppError(401, 'UNAUTHORIZED', 'Invalid or inactive user session');
     }
-    if (viewer.role !== 'ADMIN' && viewer.role !== 'SECURITY_OFFICER') {
+    if (
+      viewer.role !== 'ADMIN' &&
+      viewer.role !== 'SECURITY_OFFICER' &&
+      viewer.role !== 'EMPLOYEE' &&
+      viewer.role !== 'EXECUTIVE'
+    ) {
       throw new AppError(403, 'FORBIDDEN', 'Login history access is restricted');
     }
 
-    const result = await loginHistoryRepository.list(query);
+    const scopedQuery =
+      viewer.role === 'EMPLOYEE' || viewer.role === 'EXECUTIVE'
+        ? { ...query, userId: viewer.id }
+        : query;
+    const result = await loginHistoryRepository.list(scopedQuery);
     return {
       items: result.items.map((item) => ({
         id: item.id,
