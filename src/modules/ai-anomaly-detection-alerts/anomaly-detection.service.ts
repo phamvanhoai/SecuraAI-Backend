@@ -120,12 +120,14 @@ async function runDetection(
       );
       const assetId = event.event_entity_mappings[0]?.asset_id;
       const customThreshold = assetId ? parameters.assetThresholds[assetId] : undefined;
+      const thresholdSource = customThreshold?.enabled ? 'ASSET_OVERRIDE' : 'MODEL_DEFAULT';
       const threshold = customThreshold?.enabled ? customThreshold.threshold : parameters.threshold;
       return {
         id: randomUUID(),
         eventId: event.id,
         score,
         threshold,
+        thresholdSource,
         isAnomaly: score >= threshold,
       };
     });
