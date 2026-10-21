@@ -126,7 +126,7 @@ export const anomalyDetectionRepository = {
         });
         return { detectionsCreated: created.count, alertsCreated: alerts.count };
       },
-      { isolationLevel: 'Serializable' },
+      { isolationLevel: 'ReadCommitted' },
     );
   },
 };
