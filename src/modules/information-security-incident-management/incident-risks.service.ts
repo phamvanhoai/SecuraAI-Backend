@@ -29,6 +29,7 @@ export const incidentRisksService = {
     await requireSecurityOfficer(userId);
     const { incident, risks, total } = await incidentRisksRepository.findOptions(incidentId, query);
     if (!incident) throw new AppError(404, 'INCIDENT_NOT_FOUND', 'Incident not found');
+    if (incident.status === 'CLOSED') throw new AppError(409, 'INCIDENT_CLOSED', 'Closed incidents are read-only');
     return {
       incident: {
         id: incident.id,
@@ -55,6 +56,7 @@ export const incidentRisksService = {
       incidentRisksRepository.findRisk(input.riskId),
     ]);
     if (!incident) throw new AppError(404, 'INCIDENT_NOT_FOUND', 'Incident not found');
+    if (incident.status === 'CLOSED') throw new AppError(409, 'INCIDENT_CLOSED', 'Closed incidents are read-only');
     if (!risk) throw new AppError(404, 'RISK_NOT_FOUND', 'Existing risk not found');
     try {
       const link = await incidentRisksRepository.link(incidentId, input.riskId, userId);
