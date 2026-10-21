@@ -66,6 +66,7 @@ export const capabilitiesByRole = {
     'controls.update',
     'login-history.read',
     'log-sources.read',
+    'audit.read',
     'reports.read',
     'notifications.preferences',
     'system-logs.search',

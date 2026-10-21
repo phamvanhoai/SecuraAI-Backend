@@ -1,10 +1,19 @@
 import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createApp } from '../src/app.js';
+import { prisma } from '../src/database/prisma.js';
 import { reportExportsService } from '../src/modules/audit-security-reporting/report-exports.service.js';
 import { AppError } from '../src/common/errors/app-error.js';
 
 let mockAuthenticatedUserId: string | null = '11111111-1111-1111-1111-111111111111';
+
+vi.mock('../src/database/prisma.js', () => ({
+  prisma: {
+    users: {
+      findUnique: vi.fn(),
+    },
+  },
+}));
 
 vi.mock('../src/common/middleware/authenticate.js', () => ({
   authenticate: (_req: any, res: any, next: any) => {
@@ -32,6 +41,10 @@ describe('Report Exports HTTP API tests', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockAuthenticatedUserId = '11111111-1111-1111-1111-111111111111';
+    vi.mocked(prisma.users.findUnique).mockResolvedValue({
+      role: 'SECURITY_OFFICER',
+      status: 'ACTIVE',
+    } as any);
   });
 
   it('requires authentication and returns 401 when unauthenticated', async () => {
@@ -45,9 +58,10 @@ describe('Report Exports HTTP API tests', () => {
   });
 
   it('returns 403 when user is not Security Officer or Executive', async () => {
-    vi.mocked(reportExportsService.exportReport).mockRejectedValue(
-      new AppError(403, 'FORBIDDEN', 'Security Officer or Executive role required'),
-    );
+    vi.mocked(prisma.users.findUnique).mockResolvedValue({
+      role: 'ADMIN',
+      status: 'ACTIVE',
+    } as any);
 
     const res = await request(app).post('/api/v1/reports/exports').send({
       reportType: 'RISK',
@@ -55,7 +69,6 @@ describe('Report Exports HTTP API tests', () => {
     });
     expect(res.status).toBe(403);
     expect(res.body.success).toBe(false);
-    expect(res.body.error.message).toContain('Security Officer or Executive');
   });
 
   it('returns 201 on successful report export request', async () => {

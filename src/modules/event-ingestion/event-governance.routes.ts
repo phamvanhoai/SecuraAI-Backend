@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { authenticate } from '../../common/middleware/authenticate.js';
+import { authorizeRoles } from '../../common/middleware/authorize-roles.js';
 import { validate } from '../../common/middleware/validate.js';
 import { asyncHandler } from '../../common/utils/async-handler.js';
 import {
@@ -15,6 +16,8 @@ import {
 } from './event-governance.controller.js';
 
 export const eventGovernanceRouter = Router();
+
+eventGovernanceRouter.use(authenticate, authorizeRoles('ADMIN'));
 
 eventGovernanceRouter.get(
   '/policies/summary',

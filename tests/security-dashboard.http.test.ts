@@ -1,10 +1,19 @@
 import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createApp } from '../src/app.js';
+import { prisma } from '../src/database/prisma.js';
 import { securityDashboardService } from '../src/modules/audit-security-reporting/security-dashboard.service.js';
 import { AppError } from '../src/common/errors/app-error.js';
 
 let mockAuthenticatedUserId: string | null = '11111111-1111-1111-1111-111111111111';
+
+vi.mock('../src/database/prisma.js', () => ({
+  prisma: {
+    users: {
+      findUnique: vi.fn(),
+    },
+  },
+}));
 
 vi.mock('../src/common/middleware/authenticate.js', () => ({
   authenticate: (_req: any, res: any, next: any) => {
@@ -28,6 +37,10 @@ describe('GET /api/v1/dashboard/security-posture & /api/v1/dashboard HTTP tests'
   beforeEach(() => {
     vi.clearAllMocks();
     mockAuthenticatedUserId = '11111111-1111-1111-1111-111111111111';
+    vi.mocked(prisma.users.findUnique).mockResolvedValue({
+      role: 'SECURITY_OFFICER',
+      status: 'ACTIVE',
+    } as any);
   });
 
   it('requires authentication and returns 401 when unauthenticated', async () => {
@@ -38,14 +51,14 @@ describe('GET /api/v1/dashboard/security-posture & /api/v1/dashboard HTTP tests'
   });
 
   it('returns 403 when user does not have authorized role', async () => {
-    vi.mocked(securityDashboardService.getDashboard).mockRejectedValue(
-      new AppError(403, 'FORBIDDEN', 'Security Officer or Executive role required'),
-    );
+    vi.mocked(prisma.users.findUnique).mockResolvedValue({
+      role: 'EMPLOYEE',
+      status: 'ACTIVE',
+    } as any);
 
     const res = await request(app).get('/api/v1/dashboard/security-posture');
     expect(res.status).toBe(403);
     expect(res.body.success).toBe(false);
-    expect(res.body.error.message).toContain('Security Officer or Executive');
   });
 
   it('returns 200 with dashboard metrics for Security Officer', async () => {
