@@ -315,6 +315,10 @@ export const aiAlertsRepository = {
         } satisfies Prisma.InputJsonObject;
         const parameters = readParameters(model.parameters);
         const thresholds = readThresholdMap(model.parameters);
+        const existing = thresholds[assetId];
+        if (input.mode === 'create' && existing?.enabled === true) {
+          return { outcome: 'active_override_exists' as const };
+        }
         await transaction.ai_model_versions.update({
           where: { id: model.id },
           data: {
