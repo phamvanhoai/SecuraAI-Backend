@@ -45,7 +45,7 @@ export const reportExportsRepository = {
       },
       include: {
         users: {
-          select: { id: true, full_name: true, role: true },
+          select: { id: true, full_name: true, role: true, email: true },
         },
       },
     });
@@ -82,7 +82,7 @@ export const reportExportsRepository = {
         orderBy: orderByMap[params.sortBy] ?? { created_at: 'desc' },
         include: {
           users: {
-            select: { id: true, full_name: true, role: true },
+            select: { id: true, full_name: true, role: true, email: true },
           },
         },
       }),
@@ -97,7 +97,7 @@ export const reportExportsRepository = {
       where: { id },
       include: {
         users: {
-          select: { id: true, full_name: true, role: true },
+          select: { id: true, full_name: true, role: true, email: true },
         },
       },
     });
@@ -120,7 +120,7 @@ export const reportExportsRepository = {
         },
         include: {
           users: {
-            select: { id: true, full_name: true, role: true },
+            select: { id: true, full_name: true, role: true, email: true },
           },
         },
       });
@@ -134,7 +134,7 @@ export const reportExportsRepository = {
         },
         include: {
           users: {
-            select: { id: true, full_name: true, role: true },
+            select: { id: true, full_name: true, role: true, email: true },
           },
         },
       });

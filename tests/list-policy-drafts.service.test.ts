@@ -25,6 +25,7 @@ describe('list Security Officer policy drafts service', () => {
       [
         {
           id: versionId,
+          policy_decisions: [],
           policy_id: policyId,
           version_number: '1.0',
           content: 'Policy content',

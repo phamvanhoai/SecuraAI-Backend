@@ -35,6 +35,7 @@ describe('PATCH /api/v1/compliance/policies/:policyId/drafts/:versionId', () => 
 
   it('validates and updates the policy draft', async () => {
     vi.mocked(policyComplianceService.editOwnDraft).mockResolvedValue({
+      revisionRequest: null,
       policyId,
       policyCode: 'TEST',
       title: 'Updated policy',
