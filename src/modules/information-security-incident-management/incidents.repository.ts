@@ -644,6 +644,21 @@ export const incidentsRepository = {
     return [total, await withAssignmentTimes(records)] as const;
   },
 
+  async listCreatedBy(userId: string, query: ViewIncidentsQuery) {
+    const where: Prisma.incidentsWhereInput = { created_by: userId };
+    const [total, records] = await prisma.$transaction([
+      prisma.incidents.count({ where }),
+      prisma.incidents.findMany({
+        where,
+        select: incidentViewSelect,
+        orderBy: [{ created_at: 'desc' }, { id: 'asc' }],
+        skip: (query.page - 1) * query.limit,
+        take: query.limit,
+      }),
+    ]);
+    return [total, await withAssignmentTimes(records)] as const;
+  },
+
   async findById(incidentId: string) {
     const record = await prisma.incidents.findUnique({
       where: { id: incidentId },

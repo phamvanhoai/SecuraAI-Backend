@@ -4,6 +4,7 @@ vi.mock('../src/modules/information-security-incident-management/incidents.repos
   incidentsRepository: {
     findActor: vi.fn(),
     list: vi.fn(),
+    listCreatedBy: vi.fn(),
     findById: vi.fn(),
     classificationMetadata: vi.fn(),
   },
@@ -147,6 +148,41 @@ describe('view incidents service', () => {
     });
   });
 
+  it('allows an Employee to view an incident they reported', async () => {
+    vi.mocked(incidentsRepository.findActor).mockResolvedValue({
+      id: userId,
+      role: 'EMPLOYEE',
+      status: 'ACTIVE',
+    });
+    vi.mocked(incidentsRepository.findById).mockResolvedValue(record);
+
+    await expect(incidentsService.detail(userId, incidentId)).resolves.toMatchObject({
+      id: incidentId,
+      incidentCode: 'INC-2026-001',
+    });
+  });
+
+  it("prevents an Employee from viewing another reporter's incident", async () => {
+    vi.mocked(incidentsRepository.findActor).mockResolvedValue({
+      id: userId,
+      role: 'EMPLOYEE',
+      status: 'ACTIVE',
+    });
+    vi.mocked(incidentsRepository.findById).mockResolvedValue({
+      ...record,
+      users_incidents_created_byTousers: {
+        id: 'dc16fbad-1605-4a23-b31b-21f45de51ced',
+        full_name: 'Another employee',
+        email: 'another@example.com',
+      },
+    });
+
+    await expect(incidentsService.detail(userId, incidentId)).rejects.toMatchObject({
+      statusCode: 403,
+      code: 'FORBIDDEN',
+    });
+  });
+
   it('rejects roles outside the use case', async () => {
     vi.mocked(incidentsRepository.findActor).mockResolvedValue({
       id: userId,
@@ -157,5 +193,39 @@ describe('view incidents service', () => {
       statusCode: 403,
       code: 'FORBIDDEN',
     });
+  });
+
+  it('returns only incidents created by an active Employee', async () => {
+    vi.mocked(incidentsRepository.findActor).mockResolvedValue({
+      id: userId,
+      role: 'EMPLOYEE',
+      status: 'ACTIVE',
+    });
+    vi.mocked(incidentsRepository.listCreatedBy).mockResolvedValue([1, [record]]);
+
+    const result = await incidentsService.listMine(userId, { page: 1, limit: 10 });
+
+    expect(incidentsRepository.listCreatedBy).toHaveBeenCalledWith(userId, {
+      page: 1,
+      limit: 10,
+    });
+    expect(result).toMatchObject({
+      items: [{ incidentCode: 'INC-2026-001' }],
+      pagination: { total: 1, totalPages: 1 },
+    });
+  });
+
+  it('rejects inactive users from their incident report list', async () => {
+    vi.mocked(incidentsRepository.findActor).mockResolvedValue({
+      id: userId,
+      role: 'EMPLOYEE',
+      status: 'INACTIVE',
+    });
+
+    await expect(incidentsService.listMine(userId, { page: 1, limit: 10 })).rejects.toMatchObject({
+      statusCode: 401,
+      code: 'UNAUTHORIZED',
+    });
+    expect(incidentsRepository.listCreatedBy).not.toHaveBeenCalled();
   });
 });

@@ -8,7 +8,6 @@ export const legacyV1RouteContracts = [
     path: '/notifications/compliance-reminders/{notificationId}/read',
     tag: 'Policies',
   },
-  { method: 'get', path: '/incidents/mine', tag: 'Incidents' },
   { method: 'get', path: '/incidents/{incidentId}/evidence', tag: 'Incidents' },
   { method: 'post', path: '/incidents/{incidentId}/evidence', tag: 'Incidents' },
   { method: 'get', path: '/incidents/evidence/{evidenceId}/download', tag: 'Incidents' },
