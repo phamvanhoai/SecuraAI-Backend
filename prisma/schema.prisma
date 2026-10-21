@@ -111,6 +111,7 @@ model anomaly_detections {
   model_version_id              String                          @db.Uuid
   anomaly_score                 Decimal                         @db.Decimal(10, 8)
   threshold                     Decimal                         @db.Decimal(10, 8)
+  threshold_source              String                          @default("MODEL_DEFAULT") @db.VarChar(30)
   is_anomaly                    Boolean
   detected_at                   DateTime                        @default(now()) @db.Timestamptz(6)
   created_at                    DateTime                        @default(now()) @db.Timestamptz(6)

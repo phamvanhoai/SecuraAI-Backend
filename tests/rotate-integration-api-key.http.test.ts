@@ -1,7 +1,16 @@
 import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { createApp } from '../src/app.js';
+import { prisma } from '../src/database/prisma.js';
 import { integrationApiKeysService } from '../src/modules/audit-security-reporting/integration-api-keys.service.js';
+
+vi.mock('../src/database/prisma.js', () => ({
+  prisma: {
+    users: {
+      findUnique: vi.fn(),
+    },
+  },
+}));
 
 vi.mock('../src/common/middleware/authenticate.js', () => ({
   authenticate: (req: any, res: any, next: any) => {
@@ -53,6 +62,10 @@ describe('POST /api/v1/integrations/:id/api-keys/:keyId/rotate & /api/v1/integra
 
   beforeEach(() => {
     vi.restoreAllMocks();
+    vi.mocked(prisma.users.findUnique).mockResolvedValue({
+      role: 'ADMIN',
+      status: 'ACTIVE',
+    } as any);
   });
 
   it('POST /api/v1/integrations/:id/api-keys/:keyId/rotate returns 200 with rotated replacement key and secret', async () => {

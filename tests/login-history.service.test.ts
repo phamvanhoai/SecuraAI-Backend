@@ -72,20 +72,44 @@ describe('login history service', () => {
     ).resolves.toBeDefined();
   });
 
-  it('rejects employees before querying sessions', async () => {
+  it('scopes employees to their own login history', async () => {
     vi.mocked(loginHistoryRepository.findViewer).mockResolvedValue({
       id: viewerId,
       role: 'EMPLOYEE',
       status: 'ACTIVE',
     });
-    await expect(
-      loginHistoryService.list(viewerId, {
-        page: 1,
-        limit: 20,
-        sortBy: 'loginTime',
-        sortOrder: 'desc',
-      }),
-    ).rejects.toMatchObject({ statusCode: 403 });
-    expect(loginHistoryRepository.list).not.toHaveBeenCalled();
+    vi.mocked(loginHistoryRepository.list).mockResolvedValue({ items: [], total: 0 });
+
+    await loginHistoryService.list(viewerId, {
+      page: 1,
+      limit: 20,
+      sortBy: 'loginTime',
+      sortOrder: 'desc',
+      userId: '00000000-0000-0000-0000-000000000099',
+    });
+
+    expect(loginHistoryRepository.list).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: viewerId }),
+    );
+  });
+
+  it('scopes Executives to their own login history', async () => {
+    vi.mocked(loginHistoryRepository.findViewer).mockResolvedValue({
+      id: viewerId,
+      role: 'EXECUTIVE',
+      status: 'ACTIVE',
+    });
+    vi.mocked(loginHistoryRepository.list).mockResolvedValue({ items: [], total: 0 });
+
+    await loginHistoryService.list(viewerId, {
+      page: 1,
+      limit: 20,
+      sortBy: 'loginTime',
+      sortOrder: 'desc',
+    });
+
+    expect(loginHistoryRepository.list).toHaveBeenCalledWith(
+      expect.objectContaining({ userId: viewerId }),
+    );
   });
 });

@@ -66,6 +66,7 @@ export const capabilitiesByRole = {
     'controls.update',
     'login-history.read',
     'log-sources.read',
+    'audit.read',
     'reports.read',
     'notifications.preferences',
     'system-logs.search',
@@ -78,8 +79,14 @@ export const capabilitiesByRole = {
     'incidents.read',
     'reports.read',
     'notifications.preferences',
+    'login-history.read',
   ],
-  EMPLOYEE: ['assets.read', 'policies.acknowledge', 'notifications.preferences'],
+  EMPLOYEE: [
+    'assets.read',
+    'policies.acknowledge',
+    'notifications.preferences',
+    'login-history.read',
+  ],
 } as const satisfies Record<user_role, readonly string[]>;
 
 export function capabilitiesForRole(role: user_role): readonly string[] {

@@ -15,6 +15,7 @@ export const listAlertThresholdAssetOptionsQuerySchema = z.object({
 export const alertThresholdAssetParamsSchema = z.object({ assetId: z.uuid() });
 
 export const setAlertThresholdBodySchema = z.object({
+  mode: z.enum(['create', 'edit']).default('create'),
   threshold: z.number().min(0.01).max(1),
   riskLevelMin: z.enum(alertThresholdRiskLevels).nullable().default(null),
   enabled: z.boolean().default(true),
@@ -24,4 +25,6 @@ export type ListAlertThresholdsQuery = z.infer<typeof listAlertThresholdsQuerySc
 export type ListAlertThresholdAssetOptionsQuery = z.infer<
   typeof listAlertThresholdAssetOptionsQuerySchema
 >;
-export type SetAlertThresholdBody = z.infer<typeof setAlertThresholdBodySchema>;
+export type SetAlertThresholdBody = Omit<z.infer<typeof setAlertThresholdBodySchema>, 'mode'> & {
+  mode?: 'create' | 'edit';
+};

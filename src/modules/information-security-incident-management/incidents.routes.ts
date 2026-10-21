@@ -28,6 +28,7 @@ import {
   getIncidentDetail,
   listIncidentSourceOptions,
   listIncidents,
+  listMyIncidents,
   listIncidentAssignmentOptions,
   assignIncidentHandler,
   getAssignmentHistory,
@@ -177,6 +178,13 @@ incidentsRouter.get(
   authenticate,
   validate({ query: incidentSourceOptionsQuerySchema }),
   asyncHandler(listIncidentSourceOptions),
+);
+
+incidentsRouter.get(
+  '/mine',
+  authenticate,
+  validate({ query: viewIncidentsQuerySchema }),
+  asyncHandler(listMyIncidents),
 );
 
 incidentsRouter.get(

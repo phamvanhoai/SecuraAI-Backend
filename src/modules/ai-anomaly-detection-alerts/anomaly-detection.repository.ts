@@ -65,6 +65,7 @@ export const anomalyDetectionRepository = {
       eventId: string;
       score: number;
       threshold: number;
+      thresholdSource: string;
       isAnomaly: boolean;
     }[];
     summary: Prisma.InputJsonValue;
@@ -79,6 +80,7 @@ export const anomalyDetectionRepository = {
             model_version_id: input.modelVersionId,
             anomaly_score: item.score,
             threshold: item.threshold,
+            threshold_source: item.thresholdSource,
             is_anomaly: item.isAnomaly,
           })),
           skipDuplicates: true,

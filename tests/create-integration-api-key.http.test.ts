@@ -2,7 +2,14 @@ import jwt from 'jsonwebtoken';
 import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('../src/database/prisma.js', () => ({ prisma: { $queryRaw: vi.fn() } }));
+vi.mock('../src/database/prisma.js', () => ({
+  prisma: {
+    $queryRaw: vi.fn(),
+    users: {
+      findUnique: vi.fn(),
+    },
+  },
+}));
 vi.mock('../src/modules/audit-security-reporting/integration-api-keys.service.js', () => ({
   integrationApiKeysService: {
     listApiKeys: vi.fn(),
@@ -13,6 +20,7 @@ vi.mock('../src/modules/audit-security-reporting/integration-api-keys.service.js
 
 import { createApp } from '../src/app.js';
 import { env } from '../src/config/env.js';
+import { prisma } from '../src/database/prisma.js';
 import { AppError } from '../src/common/errors/app-error.js';
 import { integrationApiKeysService } from '../src/modules/audit-security-reporting/integration-api-keys.service.js';
 
@@ -63,6 +71,10 @@ const sampleCreatedApiKey = {
 describe('Create Integration API Key HTTP Endpoints', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(prisma.users.findUnique).mockResolvedValue({
+      role: 'ADMIN',
+      status: 'ACTIVE',
+    } as any);
   });
 
   describe('POST /api/v1/integrations/api-keys', () => {
@@ -72,6 +84,20 @@ describe('Create Integration API Key HTTP Endpoints', () => {
         .send({ name: 'Test Key' });
 
       expect(res.status).toBe(401);
+    });
+
+    it('returns 403 when user is not ADMIN', async () => {
+      vi.mocked(prisma.users.findUnique).mockResolvedValue({
+        role: 'SECURITY_OFFICER',
+        status: 'ACTIVE',
+      } as any);
+
+      const res = await request(app)
+        .post('/api/v1/integrations/api-keys')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ name: 'Test Key' });
+
+      expect(res.status).toBe(403);
     });
 
     it('returns 201 with created API key metadata and plaintext secret', async () => {

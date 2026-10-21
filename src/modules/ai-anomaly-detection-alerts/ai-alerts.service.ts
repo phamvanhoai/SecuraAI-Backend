@@ -252,6 +252,8 @@ export const aiAlertsService = {
         'NO_DEPLOYED_MODEL',
         'Deploy an anomaly detection model before setting thresholds',
       );
+    if (result.outcome === 'active_override_exists')
+      throw new AppError(409, 'ACTIVE_OVERRIDE_EXISTS', 'This asset already has an active threshold override. Edit or disable the existing override.');
     return thresholdResponse(result);
   },
   async metrics(userId: string) {

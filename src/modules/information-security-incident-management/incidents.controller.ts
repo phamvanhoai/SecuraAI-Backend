@@ -156,6 +156,14 @@ export const listIncidents: RequestHandler = async (req, res) => {
   res.status(200).json({ success: true, data });
 };
 
+export const listMyIncidents: RequestHandler = async (req, res) => {
+  const data = await incidentsService.listMine(
+    authenticatedUserId(res.locals.authenticatedUserId),
+    viewIncidentsQuerySchema.parse(req.query),
+  );
+  res.status(200).json({ success: true, data });
+};
+
 export const getIncidentDetail: RequestHandler = async (req, res) => {
   const { incidentId } = incidentDetailParamsSchema.parse(req.params);
   const data = await incidentsService.detail(
