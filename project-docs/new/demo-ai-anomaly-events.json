@@ -1,0 +1,66 @@
+{
+  "fileName": "demo-ai-anomaly-events.json",
+  "fileFormat": "JSON",
+  "events": [
+    {
+      "externalEventId": "demo-ai-alert-003",
+      "eventFamily": "AUTHENTICATION",
+      "eventType": "PRIVILEGED_LOGIN_FAILURE",
+      "occurredAt": "2026-10-20T23:15:00.000Z",
+      "accountIdentifier": "administrator",
+      "sourceIp": "203.0.113.77",
+      "deviceIdentifier": "WIN-PROD-01",
+      "severity": "critical",
+      "normalizedPayload": {
+        "failureCount": 12,
+        "logonType": "10",
+        "targetResource": "production-server"
+      }
+    },
+    {
+      "externalEventId": "demo-ai-alert-004",
+      "eventFamily": "VPN_SSO",
+      "eventType": "UNUSUAL_VPN_LOGIN",
+      "occurredAt": "2026-10-20T23:18:00.000Z",
+      "accountIdentifier": "security.admin",
+      "sourceIp": "198.51.100.24",
+      "deviceIdentifier": "VPN-GATEWAY-01",
+      "severity": "high",
+      "normalizedPayload": {
+        "country": "Unknown",
+        "newDevice": true,
+        "outsideBusinessHours": true
+      }
+    },
+    {
+      "externalEventId": "demo-ai-no-alert-003",
+      "eventFamily": "AUTHENTICATION",
+      "eventType": "NORMAL_USER_LOGIN",
+      "occurredAt": "2026-10-21T09:20:00.000Z",
+      "accountIdentifier": "employee.demo",
+      "sourceIp": "10.10.20.15",
+      "deviceIdentifier": "LAPTOP-EMP-01",
+      "severity": "low",
+      "normalizedPayload": {
+        "failureCount": 0,
+        "mfaUsed": true,
+        "knownDevice": true
+      }
+    },
+    {
+      "externalEventId": "demo-ai-no-alert-004",
+      "eventFamily": "APPLICATION_ACCESS",
+      "eventType": "NORMAL_APPLICATION_ACCESS",
+      "occurredAt": "2026-10-21T09:22:00.000Z",
+      "accountIdentifier": "employee.demo",
+      "sourceIp": "10.10.20.15",
+      "deviceIdentifier": "LAPTOP-EMP-01",
+      "severity": "informational",
+      "normalizedPayload": {
+        "application": "internal-portal",
+        "knownDevice": true,
+        "accessResult": "allowed"
+      }
+    }
+  ]
+}
