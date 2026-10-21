@@ -14,6 +14,7 @@ const id = '00000000-0000-4000-8000-000000000001';
 const versionId = '00000000-0000-4000-8000-000000000002';
 const at = new Date('2026-10-01T00:00:00Z');
 const draft = {
+  policy_decisions: [],
   id: versionId,
   policy_id: id,
   version_number: '1.0',
@@ -82,6 +83,44 @@ it('serves detail through the real route, service and scoped repository instead 
 it('requires authentication', async () => {
   expect((await request(app).get(url)).status).toBe(401);
   expect(mocks.findFirst).not.toHaveBeenCalled();
+});
+it('includes the latest saved revision feedback with its author and timestamp', async () => {
+  mocks.findFirst.mockResolvedValue({
+    ...draft,
+    policy_decisions: [
+      {
+        id: versionId,
+        comment: 'Clarify the reporting responsibilities.',
+        decided_at: at,
+        actor_user_id: id,
+        users: { full_name: 'Reviewing Admin' },
+      },
+    ],
+  });
+  const response = await request(app).get(url).auth(token, { type: 'bearer' });
+  expect(response.status).toBe(200);
+  expect(response.body.data.revisionRequest).toEqual({
+    id: versionId,
+    reason: 'Clarify the reporting responsibilities.',
+    requestedAt: at.toISOString(),
+    requestedBy: { id, name: 'Reviewing Admin' },
+  });
+  expect(mocks.findFirst.mock.calls[0]?.[0].select.policy_decisions).toEqual({
+    where: { action: 'REVISION_REQUESTED' },
+    orderBy: [{ decided_at: 'desc' }, { id: 'desc' }],
+    take: 1,
+    select: {
+      id: true,
+      comment: true,
+      decided_at: true,
+      actor_user_id: true,
+      users: { select: { full_name: true } },
+    },
+  });
+});
+it('returns null rather than fabricated feedback for a draft without revision requests', async () => {
+  const result = await policyComplianceService.getOwnDraft(id, id, versionId);
+  expect(result.revisionRequest).toBeNull();
 });
 it.each(['ADMIN', 'EMPLOYEE', 'EXECUTIVE'])('denies %s before querying content', async (role) => {
   mocks.actor.mockResolvedValue({ role, status: 'ACTIVE' });
