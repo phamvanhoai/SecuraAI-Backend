@@ -4232,7 +4232,7 @@ export const openApiSpec = {
         tags: ['Audit & Security Reporting'],
         summary: 'View login history',
         description:
-          'Returns successful and failed authentication attempts for active Administrators and Security Officers, including timestamps, client IP addresses, browser or device user agents, and failure reasons when available.',
+          'Returns successful and failed authentication attempts for active Administrators and Security Officers across the organization. Active Employees and Executives can use the same endpoint to view only their own attempts. Results include timestamps, client IP addresses, browser or device user agents, and failure reasons when available.',
         security: [{ bearerAuth: [] }],
         parameters: [
           { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
@@ -4252,7 +4252,7 @@ export const openApiSpec = {
         responses: {
           '200': { description: 'Paginated login history' },
           '401': { description: 'Authentication required' },
-          '403': { description: 'Administrator or Security Officer role required' },
+          '403': { description: 'A supported login-history role is required' },
           '422': { description: 'Invalid query parameters' },
         },
       },
