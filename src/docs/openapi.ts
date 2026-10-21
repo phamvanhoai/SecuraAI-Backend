@@ -1,5 +1,8 @@
 import { env } from '../config/env.js';
-import { createTreatmentPlanOpenApi, updateTreatmentPlanOpenApi } from './treatment-acceptance-cost.openapi.js';
+import {
+  createTreatmentPlanOpenApi,
+  updateTreatmentPlanOpenApi,
+} from './treatment-acceptance-cost.openapi.js';
 import { assetTypes } from '../modules/it-asset-management/dto/asset-type.dto.js';
 import { incidentClosurePaths } from './incident-closure.openapi.js';
 import { incidentProgressPaths } from './incident-progress.openapi.js';
@@ -1428,7 +1431,7 @@ export const openApiSpec = {
         tags: ['Incident Management'],
         summary: 'Create an incident manually or from a confirmed source',
         description:
-          'Creates a V2 incident manually or from an eligible confirmed alert/security finding. Source-backed incidents retain a unique finding link; manual incidents have no finding link. Requires an active Security Officer.',
+          'Creates a V2 incident manually or from an eligible confirmed alert/security finding. Any active signed-in user can submit a manual incident report. Only an active Security Officer can create a source-backed incident, which retains a unique finding link.',
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
@@ -1540,6 +1543,28 @@ export const openApiSpec = {
           '401': { description: 'Authentication required' },
           '403': { description: 'Security Officer role required' },
           '422': { description: 'Invalid query parameters' },
+        },
+      },
+    },
+    '/incidents/mine': {
+      get: {
+        tags: ['Incident Management'],
+        summary: 'List incident reports created by the current user',
+        description:
+          'Returns a bounded, paginated list containing only incidents whose createdBy relation is the authenticated active user. This endpoint supports Employee self-service reporting without exposing the organization-wide incident register.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
+          {
+            name: 'limit',
+            in: 'query',
+            schema: { type: 'integer', minimum: 1, maximum: 100, default: 10 },
+          },
+        ],
+        responses: {
+          '200': { description: 'Paginated list of the current user incident reports' },
+          '401': { description: 'Authentication required or account inactive' },
+          '422': { description: 'Invalid pagination parameters' },
         },
       },
     },
@@ -2002,7 +2027,7 @@ export const openApiSpec = {
         tags: ['Incident Management'],
         summary: 'View security incident details',
         description:
-          'Returns the incident description, severity, status, affected assets, assigned handler, response actions, and chronological handling history from the V2 database. Requires an active Security Officer or Executive.',
+          'Returns the incident description, severity, status, affected assets, assigned handler, response actions, and chronological handling history from the V2 database. Active Security Officers and Executives can view all accessible incidents; other active users can view incidents they reported.',
         security: [{ bearerAuth: [] }],
         parameters: [
           {
@@ -2052,7 +2077,7 @@ export const openApiSpec = {
             },
           },
           '401': { description: 'Authentication required' },
-          '403': { description: 'Security Officer or Executive role required' },
+          '403': { description: 'The signed-in user did not report this incident' },
           '404': { description: 'Incident not found' },
           '422': { description: 'Invalid incident identifier' },
         },

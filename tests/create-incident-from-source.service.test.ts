@@ -51,4 +51,55 @@ describe('incidentsService.createFromSource', () => {
       code: 'INCIDENT_SOURCE_ALREADY_CONVERTED',
     });
   });
+
+  it('allows an active Employee to create a manual incident report', async () => {
+    vi.mocked(incidentsRepository.findActor).mockResolvedValue({
+      id: userId,
+      role: 'EMPLOYEE',
+      status: 'ACTIVE',
+    });
+    const manualInput = {
+      sourceType: 'manual' as const,
+      title: 'Suspicious email reported by employee',
+      description: 'The employee received an unexpected attachment requesting credentials.',
+      severity: 'medium' as const,
+    };
+    vi.mocked(incidentsRepository.createFromSource).mockResolvedValue({
+      outcome: 'created',
+      incident: {
+        id: sourceId,
+        incident_code: 'INC-EMPLOYEE-001',
+        title: manualInput.title,
+        description: manualInput.description,
+        severity: 'MEDIUM',
+        status: 'OPEN',
+        handler_user_id: null,
+        detected_at: null,
+        confirmed_at: null,
+        closed_at: null,
+        created_at: new Date('2026-10-21T00:00:00Z'),
+        updated_at: new Date('2026-10-21T00:00:00Z'),
+        incident_analysis: null,
+        users_incidents_created_byTousers: {
+          id: userId,
+          full_name: 'Employee Reporter',
+          email: 'employee@example.com',
+        },
+        users_incidents_handler_user_idTousers: null,
+        security_findings: null,
+        _count: {
+          incident_actions: 0,
+          incident_assets: 0,
+          incident_controls: 0,
+          incident_evidence: 0,
+          incident_risks: 0,
+        },
+      },
+    });
+
+    await expect(incidentsService.createFromSource(userId, manualInput)).resolves.toMatchObject({
+      incidentCode: 'INC-EMPLOYEE-001',
+      status: 'open',
+    });
+  });
 });

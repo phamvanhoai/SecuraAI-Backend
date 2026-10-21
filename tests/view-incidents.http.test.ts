@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../src/database/prisma.js', () => ({ prisma: { $queryRaw: vi.fn() } }));
 vi.mock('../src/modules/information-security-incident-management/incidents.service.js', () => ({
-  incidentsService: { list: vi.fn(), detail: vi.fn() },
+  incidentsService: { list: vi.fn(), listMine: vi.fn(), detail: vi.fn() },
 }));
 
 import { createApp } from '../src/app.js';
@@ -61,11 +61,24 @@ describe('view incidents HTTP routes', () => {
     });
   });
 
-  it('leaves pending mine route available to the legacy handler', async () => {
+  it('returns only the authenticated user incident reports through the scoped service', async () => {
+    vi.mocked(incidentsService.listMine).mockResolvedValue({
+      items: [],
+      pagination: { page: 2, limit: 10, total: 0, totalPages: 0 },
+    });
     const response = await request(app)
-      .get('/api/v1/incidents/mine')
+      .get('/api/v1/incidents/mine?page=2&limit=10')
       .set('Authorization', `Bearer ${token}`);
-    expect(response.status).toBe(501);
-    expect(response.body.error.code).toBe('ENDPOINT_NOT_IMPLEMENTED');
+    expect(response.status).toBe(200);
+    expect(response.body.data.pagination).toEqual({
+      page: 2,
+      limit: 10,
+      total: 0,
+      totalPages: 0,
+    });
+    expect(incidentsService.listMine).toHaveBeenCalledWith(userId, {
+      page: 2,
+      limit: 10,
+    });
   });
 });
