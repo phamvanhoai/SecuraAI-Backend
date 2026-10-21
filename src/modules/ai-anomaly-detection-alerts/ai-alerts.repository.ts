@@ -390,6 +390,8 @@ export const aiAlertsRepository = {
         id: true,
         severity: true,
         created_at: true,
+        explanation_text: true,
+        explanation_generated_at: true,
         anomaly_detections: {
           select: {
             id: true,

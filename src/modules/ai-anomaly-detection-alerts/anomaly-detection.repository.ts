@@ -67,6 +67,8 @@ export const anomalyDetectionRepository = {
       threshold: number;
       thresholdSource: string;
       isAnomaly: boolean;
+      explanationText?: string;
+      explanationGeneratedAt?: Date;
     }[];
     summary: Prisma.InputJsonValue;
   }) {
@@ -92,7 +94,18 @@ export const anomalyDetectionRepository = {
             })
           : [];
         const alerts = await transaction.anomaly_alerts.createMany({
-          data: persistedAnomalies.map(({ id }) => ({ detection_id: id, severity: 'HIGH' })),
+          data: persistedAnomalies.map(({ id }) => {
+            const detection = input.detections.find((item) => item.id === id);
+            if (!detection?.explanationText || !detection.explanationGeneratedAt) {
+              throw new Error(`Missing stored explanation for anomaly detection ${id}`);
+            }
+            return {
+              detection_id: id,
+              severity: 'HIGH',
+              explanation_text: detection.explanationText,
+              explanation_generated_at: detection.explanationGeneratedAt,
+            };
+          }),
           skipDuplicates: true,
         });
         const previous = await transaction.audit_logs.findFirst({
