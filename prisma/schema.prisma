@@ -88,18 +88,20 @@ model alert_triage_records {
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model anomaly_alerts {
-  id                   String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  detection_id         String                 @unique @db.Uuid
-  severity             String?                @db.VarChar(50)
-  status               alert_status           @default(NEW)
-  assigned_to          String?                @db.Uuid
-  generated_at         DateTime               @default(now()) @db.Timestamptz(6)
-  created_at           DateTime               @default(now()) @db.Timestamptz(6)
-  updated_at           DateTime               @default(now()) @db.Timestamptz(6)
-  alert_triage_records alert_triage_records[]
-  users                users?                 @relation(fields: [assigned_to], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_alert_assigned_to")
-  anomaly_detections   anomaly_detections     @relation(fields: [detection_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_alert_detection")
-  security_findings    security_findings?
+  id                       String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  detection_id             String                 @unique @db.Uuid
+  severity                 String?                @db.VarChar(50)
+  status                   alert_status           @default(NEW)
+  assigned_to              String?                @db.Uuid
+  generated_at             DateTime               @default(now()) @db.Timestamptz(6)
+  explanation_text         String
+  explanation_generated_at DateTime               @default(now()) @db.Timestamptz(6)
+  created_at               DateTime               @default(now()) @db.Timestamptz(6)
+  updated_at               DateTime               @default(now()) @db.Timestamptz(6)
+  alert_triage_records     alert_triage_records[]
+  users                    users?                 @relation(fields: [assigned_to], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_alert_assigned_to")
+  anomaly_detections       anomaly_detections     @relation(fields: [detection_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_alert_detection")
+  security_findings        security_findings?
 
   @@index([status, generated_at(sort: Desc)], map: "idx_anomaly_alerts_status")
 }

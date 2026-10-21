@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { AppError } from '../../common/errors/app-error.js';
 import type { RunAnomalyDetectionBody } from './dto/run-anomaly-detection.dto.js';
 import { anomalyDetectionRepository, type DetectionEvent } from './anomaly-detection.repository.js';
+import { generateStoredAlertExplanation } from './alert-explanation.generator.js';
 
 const parametersSchema = z
   .object({
@@ -103,15 +104,17 @@ async function runDetection(
     userAgent?: string | undefined;
   },
 ) {
-    const parsed = parametersSchema.safeParse(model.parameters ?? {});
-    const parameters = parsed.success ? parsed.data : parametersSchema.parse({});
-    const since = new Date(Date.now() - input.lookbackHours * 3_600_000);
-    const batch = await anomalyDetectionRepository.findPendingEvents(
-      model.id,
-      since,
-      input.maxEvents,
-    );
-    const detections = batch.events.map((event) => {
+  const parsed = parametersSchema.safeParse(model.parameters ?? {});
+  const parameters = parsed.success ? parsed.data : parametersSchema.parse({});
+  const since = new Date(Date.now() - input.lookbackHours * 3_600_000);
+  const batch = await anomalyDetectionRepository.findPendingEvents(
+    model.id,
+    since,
+    input.maxEvents,
+  );
+  const detectedAt = new Date();
+  const detections = await Promise.all(
+    batch.events.map(async (event) => {
       const score = scoreEvent(
         event,
         batch.frequencies.get(event.event_type) ?? 0,
@@ -122,47 +125,60 @@ async function runDetection(
       const customThreshold = assetId ? parameters.assetThresholds[assetId] : undefined;
       const thresholdSource = customThreshold?.enabled ? 'ASSET_OVERRIDE' : 'MODEL_DEFAULT';
       const threshold = customThreshold?.enabled ? customThreshold.threshold : parameters.threshold;
+      const isAnomaly = score >= threshold;
+      const explanationText = isAnomaly
+        ? await generateStoredAlertExplanation({
+            anomalyScore: score,
+            threshold,
+            suggestedRiskLevel: 'high',
+            detectedAt,
+            featureContributions: [],
+            eventId: event.id,
+          })
+        : undefined;
       return {
         id: randomUUID(),
         eventId: event.id,
         score,
         threshold,
         thresholdSource,
-        isAnomaly: score >= threshold,
+        isAnomaly,
+        ...(explanationText ? { explanationText, explanationGeneratedAt: detectedAt } : {}),
       };
-    });
-    const summary = {
-      modelVersionId: model.id,
-      modelName: model.model_name,
-      modelVersion: model.version,
-      lookbackHours: input.lookbackHours,
-      eventsEvaluated: detections.length,
-      anomaliesDetected: detections.filter((item) => item.isAnomaly).length,
-      customThresholdsApplied: detections.filter((item) => item.threshold !== parameters.threshold)
-        .length,
-    } satisfies Prisma.InputJsonObject;
-    if (detections.length === 0) {
-      return {
-        ...summary,
-        detectionsCreated: 0,
-        alertsCreated: 0,
-        threshold: parameters.threshold,
-        completedAt: new Date().toISOString(),
-      };
-    }
-    const persisted = await anomalyDetectionRepository.persistRun({
-      actor: audit.actor,
-      modelVersionId: model.id,
-      ...(audit.correlationId ? { correlationId: audit.correlationId } : {}),
-      detections,
-      summary,
-      sourceIp: audit.sourceIp,
-      userAgent: audit.userAgent,
-    });
+    }),
+  );
+  const summary = {
+    modelVersionId: model.id,
+    modelName: model.model_name,
+    modelVersion: model.version,
+    lookbackHours: input.lookbackHours,
+    eventsEvaluated: detections.length,
+    anomaliesDetected: detections.filter((item) => item.isAnomaly).length,
+    customThresholdsApplied: detections.filter((item) => item.threshold !== parameters.threshold)
+      .length,
+  } satisfies Prisma.InputJsonObject;
+  if (detections.length === 0) {
     return {
       ...summary,
-      ...persisted,
+      detectionsCreated: 0,
+      alertsCreated: 0,
       threshold: parameters.threshold,
       completedAt: new Date().toISOString(),
     };
+  }
+  const persisted = await anomalyDetectionRepository.persistRun({
+    actor: audit.actor,
+    modelVersionId: model.id,
+    ...(audit.correlationId ? { correlationId: audit.correlationId } : {}),
+    detections,
+    summary,
+    sourceIp: audit.sourceIp,
+    userAgent: audit.userAgent,
+  });
+  return {
+    ...summary,
+    ...persisted,
+    threshold: parameters.threshold,
+    completedAt: new Date().toISOString(),
+  };
 }

@@ -9,12 +9,21 @@ vi.mock('../src/modules/ai-anomaly-detection-alerts/anomaly-detection.repository
     persistRun: vi.fn(),
   },
 }));
+vi.mock('../src/modules/ai-anomaly-detection-alerts/alert-explanation.generator.js', () => ({
+  generateStoredAlertExplanation: vi.fn(),
+}));
 
+import { generateStoredAlertExplanation } from '../src/modules/ai-anomaly-detection-alerts/alert-explanation.generator.js';
 import { anomalyDetectionRepository } from '../src/modules/ai-anomaly-detection-alerts/anomaly-detection.repository.js';
 import { anomalyDetectionService } from '../src/modules/ai-anomaly-detection-alerts/anomaly-detection.service.js';
 
 describe('run anomaly detection service', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(generateStoredAlertExplanation).mockResolvedValue(
+      'The anomaly score exceeded the model threshold.',
+    );
+  });
 
   it('allows only an active Security Officer', async () => {
     vi.mocked(anomalyDetectionRepository.findActor).mockResolvedValue({
@@ -78,7 +87,14 @@ describe('run anomaly detection service', () => {
         actor: { type: 'USER', userId: 'u' },
         modelVersionId: 'model',
         correlationId: 'request-id',
-        detections: [expect.objectContaining({ eventId: 'event', isAnomaly: true })],
+        detections: [
+          expect.objectContaining({
+            eventId: 'event',
+            isAnomaly: true,
+            explanationText: expect.stringContaining('exceeded the model threshold'),
+            explanationGeneratedAt: expect.any(Date),
+          }),
+        ],
       }),
     );
   });
