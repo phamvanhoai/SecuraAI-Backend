@@ -88,6 +88,8 @@ export const controlWeaknessesService = {
       controlWeaknessesRepository.findOpenWeakness(incidentId, input.controlId),
     ]);
     if (!incident) throw new AppError(404, 'INCIDENT_NOT_FOUND', 'Incident not found');
+    if (incident.status === 'CLOSED')
+      throw new AppError(409, 'INCIDENT_CLOSED', 'Closed incidents are read-only');
     if (!link)
       throw new AppError(
         422,

@@ -21,6 +21,7 @@ export const incidentAssetsService = {
       query,
     );
     if (!incident) throw new AppError(404, 'INCIDENT_NOT_FOUND', 'Incident not found');
+    if (incident.status === 'CLOSED') throw new AppError(409, 'INCIDENT_CLOSED', 'Closed incidents are read-only');
     return {
       incident: {
         id: incident.id,
@@ -52,6 +53,7 @@ export const incidentAssetsService = {
       incidentAssetsRepository.findActiveAsset(input.assetId),
     ]);
     if (!incident) throw new AppError(404, 'INCIDENT_NOT_FOUND', 'Incident not found');
+    if (incident.status === 'CLOSED') throw new AppError(409, 'INCIDENT_CLOSED', 'Closed incidents are read-only');
     if (!asset) throw new AppError(404, 'ASSET_NOT_FOUND', 'Active asset not found');
 
     try {
