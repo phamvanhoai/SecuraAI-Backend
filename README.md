@@ -1,5 +1,7 @@
 # SecuraAI Backend — V2 baseline
 
+Policy revision feedback: owned draft list/detail/edit responses now include revisionRequest (null or latest saved REVISION_REQUESTED decision with id, nullable reason, requestedAt and requestedBy id/name). Queries select only one decision per version, ordered by decided_at then id descending. Existing role/ownership/status restrictions remain; editing does not clear feedback. Uses existing policy_decisions, no database migration or new endpoint/pending count change. Names reflect current account names.
+
 Draft details: `GET /api/v1/compliance/policies/:policyId/drafts/:versionId` reads V2 metadata and content. Active Security Officers must own the policy and author the version; both must remain DRAFT, matching drafts/mine. Missing, inaccessible, reassigned or no-longer-draft records return 404. No schema changes. Current pending legacy contracts: 63 (previously 64); counts in older use-case notes below are historical.
 
 UC63: `GET/POST /api/v1/incidents/:incidentId/close` supports closure review and active Security Officer closure. Requires Lessons learned, saved RCA/lessons/improvement recommendations, a summary, explicit readiness confirmation and optimistic timestamp. Server closure time and audit are atomic; repeat closure is idempotent and existing history is retained. No database changes; 71 legacy contracts remain pending. See [workflow rules](project-docs/incident-workflow.md).

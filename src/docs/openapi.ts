@@ -26,6 +26,21 @@ export const openApiSpec = {
   },
   servers: [{ url: env.API_PREFIX, description: 'Current server' }],
   components: {
+    schemas: {
+      PolicyRevisionRequest: {
+        type: 'object', nullable: true,
+        description: 'Latest saved REVISION_REQUESTED decision for this version, retained after edits. Null if absent. Equal timestamps use descending decision ID. Names reflect current accounts, not historical name snapshots.',
+        required: ['id', 'reason', 'requestedAt', 'requestedBy'],
+        properties: {
+          id: { type: 'string', format: 'uuid' },
+          reason: { type: 'string', nullable: true },
+          requestedAt: { type: 'string', format: 'date-time' },
+          requestedBy: { type: 'object', required: ['id', 'name'], properties: {
+            id: { type: 'string', format: 'uuid' }, name: { type: 'string' },
+          } },
+        },
+      },
+    },
     securitySchemes: {
       bearerAuth: { type: 'http', scheme: 'bearer', bearerFormat: 'JWT' },
       apiKeyAuth: { type: 'apiKey', in: 'header', name: 'X-API-Key' },
@@ -2567,7 +2582,15 @@ export const openApiSpec = {
         })),
         responses: {
           '200': {
-            description: 'Owned draft metadata and version content, matching drafts/mine items',
+            description: 'Owned draft metadata and content, including latest revisionRequest (null if absent), matching drafts/mine items',
+            content: { 'application/json': { schema: {
+              type: 'object', properties: {
+                success: { type: 'boolean', enum: [true] },
+                data: { type: 'object', properties: {
+                  revisionRequest: { $ref: '#/components/schemas/PolicyRevisionRequest' },
+                } },
+              },
+            } } },
           },
           '401': { description: 'Authentication required or inactive account' },
           '403': { description: 'Security Officer role required' },
@@ -2615,7 +2638,7 @@ export const openApiSpec = {
           },
         },
         responses: {
-          '200': { description: 'Updated policy draft' },
+          '200': { description: 'Updated policy draft, including revisionRequest as documented in PolicyRevisionRequest; editing does not clear the saved feedback.' },
           '401': { description: 'Authentication required' },
           '403': { description: 'Security Officer role and draft ownership required' },
           '404': { description: 'Policy draft not found' },
@@ -2937,7 +2960,7 @@ export const openApiSpec = {
         tags: ['Policies'],
         summary: 'List policy drafts owned by the current Security Officer',
         description:
-          'Returns a bounded, searchable page of V2 draft policy versions owned and authored by the active Security Officer.',
+          'Returns a bounded, searchable page of V2 draft policy versions owned and authored by the active Security Officer. Each item includes revisionRequest (PolicyRevisionRequest schema): latest saved request for this version, or null. Feedback is retained after edits.',
         security: [{ bearerAuth: [] }],
         parameters: [
           { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },

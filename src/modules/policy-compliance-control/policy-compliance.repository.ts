@@ -71,6 +71,18 @@ const policyReviewSelect = {
 } as const;
 
 const ownedPolicyDraftSelect = {
+  policy_decisions: {
+    where: { action: 'REVISION_REQUESTED' },
+    orderBy: [{ decided_at: 'desc' }, { id: 'desc' }],
+    take: 1,
+    select: {
+      id: true,
+      comment: true,
+      decided_at: true,
+      actor_user_id: true,
+      users: { select: { full_name: true } },
+    },
+  },
   id: true,
   policy_id: true,
   version_number: true,
