@@ -11,8 +11,13 @@ export const handleIngestEvent: RequestHandler = async (req, res) => {
       ? req.headers['authorization']
       : undefined);
 
+  const isAlreadyAuthenticated = Boolean(res.locals.apiKey);
   const body = req.body as WazuhEventIngestInput;
-  const result = await wazuhIngestionService.ingestNormalizedEvent(rawAuth, body);
+  const result = await wazuhIngestionService.ingestNormalizedEvent(
+    rawAuth,
+    body,
+    isAlreadyAuthenticated,
+  );
 
   res.status(201).json({
     success: true,
