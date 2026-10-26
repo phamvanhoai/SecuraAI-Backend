@@ -10,6 +10,9 @@ import { assignAssetOwnerBodySchema } from './dto/assign-asset-owner.dto.js';
 import { classifyAssetBodySchema } from './dto/classify-asset.dto.js';
 import { linkAssetContextBodySchema } from './dto/link-asset-context.dto.js';
 import { archiveAssetBodySchema } from './dto/archive-asset.dto.js';
+import { getAssetContextHistory, getAssetClassificationHistory } from './assets.controller.js';
+import { assetClassificationHistoryQuerySchema } from './dto/classify-asset.dto.js';
+import { assetContextHistoryQuerySchema } from './dto/link-asset-context.dto.js';
 export const assetsRouter = Router();
 assetsRouter.get('/create-options', authenticate, asyncHandler(getAssetCreateOptions));
 assetsRouter.get(
@@ -23,6 +26,8 @@ assetsRouter.delete('/:assetId', authenticate, validate({ params: assetIdParamsS
 assetsRouter.put('/:assetId/owner', authenticate, validate({ params: assetIdParamsSchema, body: assignAssetOwnerBodySchema }), asyncHandler(assignAssetOwner));
 assetsRouter.post('/:assetId/classify-criticality', authenticate, validate({ params: assetIdParamsSchema, body: classifyAssetBodySchema }), asyncHandler(classifyAsset));
 assetsRouter.put('/:assetId/context', authenticate, validate({ params: assetIdParamsSchema, body: linkAssetContextBodySchema }), asyncHandler(linkAssetContext));
+assetsRouter.get('/:assetId/context/history', authenticate, validate({ params: assetIdParamsSchema, query: assetContextHistoryQuerySchema }), asyncHandler(getAssetContextHistory));
+assetsRouter.get('/:assetId/classify-criticality/history', authenticate, validate({ params: assetIdParamsSchema, query: assetClassificationHistoryQuerySchema }), asyncHandler(getAssetClassificationHistory));
 assetsRouter.post(
   '/',
   authenticate,

@@ -27,6 +27,28 @@ export const openApiSpec = {
   servers: [{ url: env.API_PREFIX, description: 'Current server' }],
   components: {
     schemas: {
+      AssetClassificationSnapshot: {
+        type: 'object', nullable: true,
+        required: ['confidentialityImpact', 'integrityImpact', 'availabilityImpact', 'businessImpact', 'criticality', 'dataClassification', 'rationale', 'dataClassificationBasis', 'methodVersion', 'dataClassificationMethodVersion', 'assessedBy', 'assessedAt'],
+        properties: {
+          confidentialityImpact: { type: 'integer', minimum: 1, maximum: 5, nullable: true },
+          integrityImpact: { type: 'integer', minimum: 1, maximum: 5, nullable: true },
+          availabilityImpact: { type: 'integer', minimum: 1, maximum: 5, nullable: true },
+          businessImpact: { type: 'integer', minimum: 1, maximum: 5, nullable: true },
+          criticality: { type: 'string', nullable: true }, dataClassification: { type: 'string', nullable: true },
+          rationale: { type: 'string', nullable: true }, dataClassificationBasis: { type: 'string', nullable: true },
+          methodVersion: { type: 'string', nullable: true }, dataClassificationMethodVersion: { type: 'string', nullable: true },
+          assessedBy: { type: 'string', format: 'uuid', nullable: true }, assessedAt: { type: 'string', format: 'date-time', nullable: true },
+        },
+      },
+      AssetContextSnapshot: {
+        type: 'object', nullable: true, required: ['businessService', 'dependencies', 'eventSources'],
+        properties: {
+          businessService: { type: 'object', nullable: true, required: ['id', 'name'], properties: { id: { type: 'string', format: 'uuid' }, name: { type: 'string' } } },
+          dependencies: { type: 'array', items: { type: 'object', required: ['id', 'assetCode', 'name'], properties: { id: { type: 'string', format: 'uuid' }, assetCode: { type: 'string' }, name: { type: 'string' } } } },
+          eventSources: { type: 'array', items: { type: 'object', required: ['id', 'name'], properties: { id: { type: 'string', format: 'uuid' }, name: { type: 'string' } } } },
+        },
+      },
       PolicyRevisionRequest: {
         type: 'object', nullable: true,
         description: 'Latest saved REVISION_REQUESTED decision for this version, retained after edits. Null if absent. Equal timestamps use descending decision ID. Names reflect current accounts, not historical name snapshots.',
@@ -888,12 +910,42 @@ export const openApiSpec = {
         },
       },
     },
+    '/assets/{assetId}/classify-criticality/history': {
+      get: {
+        tags: ['IT Asset Management'], summary: 'Read asset classification history',
+        description: 'Paginated ASSET_CLASSIFICATION_UPDATED snapshots, newest first. Active Security Officers or the current Asset Owner may read, including archived assets. Initial classification has null before; legacy classifications retain their known before values without inventing older events. No historical backfill.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'assetId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+          { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100000, default: 1 } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 10 } },
+        ],
+        responses: {
+          '200': { description: 'Success envelope with classification snapshots and pagination.', content: { 'application/json': { schema: {
+            type: 'object', required: ['success', 'data'], properties: {
+              success: { type: 'boolean', enum: [true] }, data: { type: 'object', required: ['items', 'pagination'], properties: {
+                items: { type: 'array', items: { type: 'object', required: ['id', 'occurredAt', 'actor', 'before', 'after'], properties: {
+                  id: { type: 'string', format: 'uuid' }, occurredAt: { type: 'string', format: 'date-time' },
+                  actor: { type: 'object', nullable: true, required: ['id', 'fullName'], properties: { id: { type: 'string', format: 'uuid' }, fullName: { type: 'string' } } },
+                  before: { $ref: '#/components/schemas/AssetClassificationSnapshot' }, after: { $ref: '#/components/schemas/AssetClassificationSnapshot' },
+                } } },
+                pagination: { type: 'object', required: ['page', 'limit', 'total', 'totalPages'], properties: {
+                  page: { type: 'integer' }, limit: { type: 'integer' }, total: { type: 'integer' }, totalPages: { type: 'integer' },
+                } },
+              } },
+            },
+          } } } },
+          '401': { description: 'Authentication required or inactive account' }, '403': { description: 'Security Officer or current Asset Owner required' },
+          '404': { description: 'Asset not found' }, '422': { description: 'Invalid ID or pagination' },
+        },
+      },
+    },
     '/assets/{assetId}/classify-criticality': {
       post: {
         tags: ['IT Asset Management'],
         summary: 'Classify asset criticality and data sensitivity',
         description:
-          'SECURAAI-ASSET-IMPACT-v1: max(C,I,A,Business), 1=low, 2-3=medium, 4=high, 5=critical. Internal method informed by FIPS PUB 199 (2004), Section 3, not a FIPS categorization. Saves latest scores, rationale, actor, time and method version; data sensitivity is independent. Requires an active Security Officer and active asset.',
+          'SECURAAI-ASSET-IMPACT-v1: max(C,I,A,Business), 1=low, 2-3=medium, 4=high, 5=critical. Internal method informed by FIPS PUB 199 (2004), Section 3, not a FIPS categorization. Saves latest scores, rationale, actor, time and method version; data sensitivity is independent. Changed values or bases append an atomic ASSET_CLASSIFICATION_UPDATED before/after audit; unchanged input preserves timestamps and adds no event. Requires an active Security Officer and active asset.',
         security: [{ bearerAuth: [] }],
         parameters: [
           {
@@ -957,12 +1009,44 @@ export const openApiSpec = {
         },
       },
     },
+    '/assets/{assetId}/context/history': {
+      get: {
+        tags: ['IT Asset Management'], summary: 'Read asset context change history',
+        description: 'Read-only, newest-first ASSET_CONTEXT_UPDATED audit snapshots. Active Security Officers or the current Asset Owner may read, including archived assets. Historical names/codes are snapshotted. Only changes recorded since tracking was introduced are available; no backfill or fabricated initial entry.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'assetId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+          { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100000, default: 1 } },
+          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 10 } },
+        ],
+        responses: {
+          '200': { description: 'Success envelope: data.items contains id, occurredAt, actor {id, fullName} or null, before/after snapshots or null; data.pagination contains page, limit, total, totalPages.', content: { 'application/json': { schema: {
+            type: 'object', required: ['success', 'data'], properties: {
+              success: { type: 'boolean', enum: [true] },
+              data: { type: 'object', required: ['items', 'pagination'], properties: {
+                items: { type: 'array', items: { type: 'object', required: ['id', 'occurredAt', 'actor', 'before', 'after'], properties: {
+                  id: { type: 'string', format: 'uuid' }, occurredAt: { type: 'string', format: 'date-time' },
+                  actor: { type: 'object', nullable: true, required: ['id', 'fullName'], properties: { id: { type: 'string', format: 'uuid' }, fullName: { type: 'string' } } },
+                  before: { $ref: '#/components/schemas/AssetContextSnapshot' }, after: { $ref: '#/components/schemas/AssetContextSnapshot' },
+                } } },
+                pagination: { type: 'object', required: ['page', 'limit', 'total', 'totalPages'], properties: {
+                  page: { type: 'integer' }, limit: { type: 'integer' }, total: { type: 'integer' }, totalPages: { type: 'integer' },
+                } },
+              } },
+            },
+          } } } },
+          '401': { description: 'Authentication required or inactive account' },
+          '403': { description: 'Not a Security Officer or current Asset Owner' },
+          '404': { description: 'Asset not found' }, '422': { description: 'Invalid asset ID or pagination' },
+        },
+      },
+    },
     '/assets/{assetId}/context': {
       put: {
         tags: ['IT Asset Management'],
         summary: 'Link asset business context',
         description:
-          'Updates the desired asset context atomically. Preserves retained links and their metadata, permits retaining existing inactive links, requires active records for new links, and rejects circular dependencies. Requires an active Security Officer.',
+          'Updates the desired asset context atomically with an ASSET_CONTEXT_UPDATED before/after audit snapshot when links actually change. Order-only or unchanged submissions produce no audit or write. Preserves retained link metadata, permits retaining existing inactive links, requires active records for new links, and rejects circular dependencies. Requires an active Security Officer.',
         security: [{ bearerAuth: [] }],
         parameters: [
           {
