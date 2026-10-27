@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('../src/modules/risk-assessment/risk-register.repository.js', () => ({
   riskRegisterRepository: {
     findActor: vi.fn(),
+    findAssetContextChange: vi.fn().mockResolvedValue(null),
     list: vi.fn(),
     findById: vi.fn(),
     findContextHistory: vi.fn().mockResolvedValue([]),
@@ -41,6 +42,7 @@ const record = {
         name: 'Identity platform',
         status: 'ACTIVE' as const,
         criticality: 'HIGH',
+        classified_at: null as Date | null,
       },
     },
   ],
@@ -75,6 +77,36 @@ const record = {
 
 describe('view risk register service', () => {
   beforeEach(() => vi.clearAllMocks());
+  it.each([true, false])('reports linked asset context changes from the audit lookup (%s)', async (changed) => {
+    vi.mocked(riskRegisterRepository.findActor).mockResolvedValue({ id: 'u', role: user_role.SECURITY_OFFICER, status: user_status.ACTIVE });
+    vi.mocked(riskRegisterRepository.findAcceptanceAudits).mockResolvedValue([]);
+    vi.mocked(riskRegisterRepository.findAssetContextChange).mockResolvedValueOnce(changed ? { id: 'audit' } : null);
+    vi.mocked(riskRegisterRepository.findById).mockResolvedValue({
+      ...record, users_risks_created_byTousers: record.users_risks_owner_user_idTousers,
+      risk_threats: [], risk_vulnerabilities: [], control_risk_links: [], incident_risks: [], risk_acceptances: [],
+      risk_assessments: record.risk_assessments.map((item) => ({ ...item, residual_rating: null })),
+    });
+    const result = await riskRegisterService.get('u', record.id);
+    expect(result.assetContextReviewRequired).toBe(changed);
+    expect(result.assetClassificationReviewRequired).toBe(false);
+    expect(riskRegisterRepository.findAssetContextChange).toHaveBeenCalledWith(record.risk_assets.map(({ assets }) => assets.id), now);
+  });
+  it.each([
+    [null, false],
+    [new Date('2026-09-28T00:00:00Z'), false],
+    [now, false],
+    [new Date('2026-09-30T00:00:00Z'), true],
+  ])('flags only classification after the inherent assessment (%s)', async (classifiedAt, expected) => {
+    vi.mocked(riskRegisterRepository.findActor).mockResolvedValue({ id: 'u', role: user_role.SECURITY_OFFICER, status: user_status.ACTIVE });
+    vi.mocked(riskRegisterRepository.findAcceptanceAudits).mockResolvedValue([]);
+    vi.mocked(riskRegisterRepository.findById).mockResolvedValue({
+      ...record, users_risks_created_byTousers: record.users_risks_owner_user_idTousers, risk_threats: [], risk_vulnerabilities: [],
+      control_risk_links: [], incident_risks: [], risk_acceptances: [],
+      risk_assets: record.risk_assets.map(({ assets }) => ({ assets: { ...assets, classified_at: classifiedAt } })),
+      risk_assessments: record.risk_assessments.map((item) => ({ ...item, residual_rating: null })),
+    });
+    expect((await riskRegisterService.get('u', record.id)).assetClassificationReviewRequired).toBe(expected);
+  });
   it('scopes non-Security Officers to risks they own', async () => {
     vi.mocked(riskRegisterRepository.findActor).mockResolvedValue({
       id: 'u',
@@ -85,6 +117,24 @@ describe('view risk register service', () => {
     await riskRegisterService.list('u', query);
     expect(riskRegisterRepository.list).toHaveBeenCalledWith({ ...query, ownerId: 'u' });
   });
+  it.each(['no-assessment', 'residual-only', 'reassessed', 'newer-residual'])(
+    'preserves the inherent assessment baseline: %s', async (scenario) => {
+      vi.mocked(riskRegisterRepository.findActor).mockResolvedValue({ id: 'u', role: user_role.SECURITY_OFFICER, status: user_status.ACTIVE });
+      vi.mocked(riskRegisterRepository.findAcceptanceAudits).mockResolvedValue([]);
+      const inherent = record.risk_assessments.map((item) => ({ ...item, residual_rating: null }));
+      const newer = record.risk_assessments.map((item) => ({ ...item, assessed_at: new Date('2026-10-02T00:00:00Z') }));
+      const assessments = scenario === 'no-assessment' ? [] : scenario === 'residual-only' ? newer
+        : scenario === 'reassessed' ? newer.map((item) => ({ ...item, residual_rating: null }))
+        : [...newer, ...inherent];
+      vi.mocked(riskRegisterRepository.findById).mockResolvedValue({
+        ...record, users_risks_created_byTousers: record.users_risks_owner_user_idTousers,
+        risk_threats: [], risk_vulnerabilities: [], control_risk_links: [], incident_risks: [], risk_acceptances: [],
+        risk_assessments: assessments,
+        risk_assets: record.risk_assets.map(({ assets }) => ({ assets: { ...assets, classified_at: new Date('2026-10-01T00:00:00Z') } })),
+      });
+      expect((await riskRegisterService.get('u', record.id)).assetClassificationReviewRequired).toBe(scenario === 'newer-residual');
+    },
+  );
   it('maps V2 risk relationships into a bounded register page', async () => {
     vi.mocked(riskRegisterRepository.findActor).mockResolvedValue({
       id: 'u',

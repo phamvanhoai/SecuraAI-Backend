@@ -71,7 +71,9 @@ export const assetsService = {
     if (result.kind === 'invalid_service') throw new AppError(422, 'INVALID_BUSINESS_SERVICE', 'New business service must be active');
     if (result.kind === 'invalid_dependency') throw new AppError(422, 'INVALID_ASSET_DEPENDENCY', 'New dependencies must be active');
     if (result.kind === 'invalid_source') throw new AppError(422, 'INVALID_EVENT_SOURCE', 'New event sources must be active');
-    if (result.kind === 'cycle') throw new AppError(422, 'ASSET_DEPENDENCY_CYCLE', 'These dependencies create a cycle back to this asset. Remove the circular dependency and try again.');
+    if (result.kind === 'cycle') throw new AppError(422, 'ASSET_DEPENDENCY_CYCLE',
+      'Cannot save dependencies because they create a circular dependency. Remove the dependency causing the loop or review its existing dependencies.',
+      { path: result.path });
     return { assetId: result.asset.id, businessServiceId: input.businessServiceId, dependencyIds: input.dependencyIds, eventSourceIds: input.eventSourceIds, linkedAt: result.asset.updated_at };
   },
   async classify(userId: string, assetId: string, input: ClassifyAssetInput) {
@@ -136,6 +138,11 @@ export const assetsService = {
     if (existing.status === 'ARCHIVED') throw new AppError(409, 'ASSET_ARCHIVED', 'Archived assets cannot be edited');
     const item = await assetsRepository.update(assetId, input);
     return { id: item.id, assetCode: item.asset_code, name: item.name, assetType: item.asset_type, criticality: item.criticality, dataClassification: item.data_classification, description: item.description, status: item.status.toLowerCase(), owner: person(item.users_assets_owner_user_idTousers), businessService: item.business_services ? { id: item.business_services.id, name: item.business_services.name, inactive: item.business_services.status !== 'ACTIVE' } : null, createdAt: item.created_at, updatedAt: item.updated_at };
+  },
+  async ownerOptions(userId: string, q: string) {
+    const actor = await activeActor(userId);
+    if (actor.role !== 'SECURITY_OFFICER') throw new AppError(403, 'FORBIDDEN', 'Security Officer role required');
+    return { items: (await assetsRepository.ownerOptions(q)).map((item) => ({ id: item.id, fullName: item.full_name, email: item.email })) };
   },
   async createOptions(userId: string) {
     const actor = await activeActor(userId);

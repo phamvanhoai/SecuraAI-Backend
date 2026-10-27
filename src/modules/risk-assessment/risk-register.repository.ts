@@ -99,6 +99,13 @@ const listSelect = {
 
 const detailSelect = {
   ...listSelect,
+  risk_assets: {
+    select: {
+      assets: {
+        select: { id: true, asset_code: true, name: true, status: true, criticality: true, classified_at: true },
+      },
+    },
+  },
   risk_assessments: {
     select: assessmentSelect,
     orderBy: { assessed_at: 'desc' as const },
@@ -293,6 +300,15 @@ export const riskRegisterRepository = {
       where: { resource_id: riskId, resource_type: 'RISK', action: 'RISK_TARGET_DEFINED', outcome: 'SUCCESS' },
       orderBy: [{ occurred_at: 'desc' }, { id: 'desc' }], take: 100,
       select: { after_data: true },
+    });
+  },
+  findAssetContextChange(assetIds: string[], assessedAt: Date) {
+    return prisma.audit_logs.findFirst({
+      where: {
+        resource_type: 'ASSET', resource_id: { in: assetIds },
+        action: 'ASSET_CONTEXT_UPDATED', outcome: 'SUCCESS', occurred_at: { gt: assessedAt },
+      },
+      select: { id: true },
     });
   },
   findContextHistory(riskId: string) {

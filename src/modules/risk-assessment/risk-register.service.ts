@@ -866,8 +866,16 @@ export const riskRegisterService = {
       risk.status,
       risk.risk_acceptances.some((item) => item.decision === 'PENDING'),
     );
+    const inherent = risk.risk_assessments.find((item) =>
+      item.assessment_type !== 'TARGET_DEFINITION' && item.inherent_rating !== null && item.residual_rating === null);
+    const assetContextChange = inherent && risk.risk_assets.length
+      ? await riskRegisterRepository.findAssetContextChange(risk.risk_assets.map(({ assets }) => assets.id), inherent.assessed_at)
+      : null;
     return {
       ...listItem(risk),
+      assetContextReviewRequired: Boolean(assetContextChange),
+      assetClassificationReviewRequired: Boolean(inherent && risk.risk_assets.some(({ assets }) =>
+        assets.classified_at && assets.classified_at > inherent.assessed_at)),
       acceptanceWorkflow: {
         canSubmit: risk.users_risks_owner_user_idTousers?.id === userId && !acceptanceBlockedReason,
         blockedReason: risk.users_risks_owner_user_idTousers?.id === userId ? acceptanceBlockedReason : 'Only the assigned Risk Owner may submit acceptance.',

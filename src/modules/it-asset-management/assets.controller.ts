@@ -1,4 +1,5 @@
 import type { RequestHandler } from 'express';
+import { assetOwnerOptionsQuerySchema } from './dto/asset-owner-options.dto.js';
 import { AppError } from '../../common/errors/app-error.js';
 import { assetIdParamsSchema, listAssetsQuerySchema } from './dto/list-assets.dto.js';
 import { createAssetBodySchema } from './dto/create-asset.dto.js';
@@ -31,6 +32,11 @@ export const getAssetCreateOptions: RequestHandler = async (_req, res) => {
   const data = await assetsService.createOptions(
     authenticatedUserId(res.locals.authenticatedUserId),
   );
+  res.status(200).json({ success: true, data });
+};
+export const getAssetOwnerOptions: RequestHandler = async (req, res) => {
+  const { q } = assetOwnerOptionsQuerySchema.parse(req.query);
+  const data = await assetsService.ownerOptions(authenticatedUserId(res.locals.authenticatedUserId), q);
   res.status(200).json({ success: true, data });
 };
 export const createAsset: RequestHandler = async (req, res) => {

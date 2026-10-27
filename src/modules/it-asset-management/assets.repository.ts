@@ -110,6 +110,16 @@ export const assetsRepository = {
   findActor(userId: string) {
     return prisma.users.findUnique({ where: { id: userId }, select: { role: true, status: true } });
   },
+  ownerOptions(q: string) {
+    return prisma.users.findMany({
+      where: { status: 'ACTIVE', ...(q ? { OR: [
+        { full_name: { contains: q, mode: 'insensitive' } },
+        { email: { contains: q, mode: 'insensitive' } },
+      ] } : {}) },
+      select: { id: true, full_name: true, email: true },
+      orderBy: [{ full_name: 'asc' }, { id: 'asc' }], take: 10,
+    });
+  },
   list(query: ListAssetsQuery) {
     const filters = where(query);
     return prisma.$transaction([
@@ -363,19 +373,29 @@ export const assetsRepository = {
       if (input.businessServiceId && input.businessServiceId !== current.business_service_id && !await tx.business_services.findFirst({ where: { id: input.businessServiceId, status: 'ACTIVE' }, select: { id: true } })) return { kind: 'invalid_service' } as const;
       if (addedDependencies.length && await tx.assets.count({ where: { id: { in: addedDependencies }, status: 'ACTIVE' } }) !== addedDependencies.length) return { kind: 'invalid_dependency' } as const;
       if (addedSources.length && await tx.event_sources.count({ where: { id: { in: addedSources }, status: 'ACTIVE' } }) !== addedSources.length) return { kind: 'invalid_source' } as const;
-      // UNION deduplicates visited nodes, so pre-existing cycles cannot recurse forever.
+      // Track visited nodes per path so pre-existing cycles terminate safely.
       if (input.dependencyIds.length) {
-        const [cycle] = await tx.$queryRaw<Array<{ has_cycle: boolean }>>(Prisma.sql`
-          WITH RECURSIVE reachable(id) AS (
-            SELECT unnest(ARRAY[${Prisma.join(input.dependencyIds)}]::uuid[])
-            UNION
-            SELECT dependency.depends_on_asset_id
+        const [cycle] = await tx.$queryRaw<Array<{ has_cycle: boolean; path: string[] }>>(Prisma.sql`
+          WITH RECURSIVE reachable(id, visited) AS (
+            SELECT id, ARRAY[id] FROM unnest(ARRAY[${Prisma.join(input.dependencyIds)}]::uuid[]) AS start(id)
+            UNION ALL
+            SELECT dependency.depends_on_asset_id, reachable.visited || dependency.depends_on_asset_id
             FROM public.asset_dependencies AS dependency
             JOIN reachable ON dependency.asset_id = reachable.id
+            WHERE reachable.id <> ${assetId}::uuid
+              AND NOT dependency.depends_on_asset_id = ANY(reachable.visited)
+          ), found AS (
+            SELECT ARRAY[${assetId}::uuid] || visited AS ids
+            FROM reachable WHERE id = ${assetId}::uuid LIMIT 1
           )
-          SELECT EXISTS(SELECT 1 FROM reachable WHERE id = ${assetId}::uuid) AS has_cycle
+          SELECT true AS has_cycle, ARRAY(
+            SELECT asset.asset_code || ' — ' || asset.name
+            FROM unnest(found.ids) WITH ORDINALITY AS step(id, position)
+            JOIN public.assets AS asset ON asset.id = step.id
+            ORDER BY step.position
+          ) AS path FROM found
         `);
-        if (cycle?.has_cycle) return { kind: 'cycle' } as const;
+        if (cycle?.has_cycle) return { kind: 'cycle', path: cycle.path ?? [] } as const;
       }
       if (current.business_service_id === input.businessServiceId &&
           sameIds(oldDependencies, input.dependencyIds) && sameIds(oldSources, input.eventSourceIds)) {
