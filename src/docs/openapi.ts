@@ -3347,7 +3347,7 @@ export const openApiSpec = {
         tags: ['AI Anomaly Detection & Alerts'],
         summary: 'Run anomaly detection over unprocessed normalized events',
         description:
-          'Requires an active Security Officer account and a deployed model version. Each event is evaluated once per model version; anomalous detections create alerts atomically.',
+          'Requires an active Security Officer account and a deployed model version. Each request processes one bounded batch of pending normalized events, including events older than 24 hours. Run it again to process the next batch. Each event is evaluated once per model version; anomalous detections create alerts atomically.',
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
@@ -3357,15 +3357,32 @@ export const openApiSpec = {
                 type: 'object',
                 additionalProperties: false,
                 properties: {
-                  lookbackHours: { type: 'integer', minimum: 1, maximum: 720, default: 24 },
-                  maxEvents: { type: 'integer', minimum: 1, maximum: 500, default: 100 },
+                  lookbackHours: {
+                    type: 'integer',
+                    minimum: 1,
+                    maximum: 720,
+                    default: 24,
+                    deprecated: true,
+                    description:
+                      'Retained for client compatibility. Manual recovery now processes all pending events regardless of age.',
+                  },
+                  maxEvents: {
+                    type: 'integer',
+                    minimum: 1,
+                    maximum: 500,
+                    default: 100,
+                    description: 'Maximum number of pending events processed by this request.',
+                  },
                 },
               },
             },
           },
         },
         responses: {
-          '200': { description: 'Detection batch completed and persisted' },
+          '200': {
+            description:
+              'One pending-event batch completed and persisted',
+          },
           '401': { description: 'Authentication required' },
           '403': { description: 'Security Officer role required' },
           '409': { description: 'No deployed anomaly detection model is available' },
