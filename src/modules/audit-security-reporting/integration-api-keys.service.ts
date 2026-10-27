@@ -120,6 +120,14 @@ export const integrationApiKeysService = {
       throw new AppError(400, 'BAD_REQUEST', 'At least one authorized scope is required');
     }
 
+    if (scopes.includes('events:ingest') && !targetSourceId) {
+      throw new AppError(
+        400,
+        'BAD_REQUEST',
+        'Scope "events:ingest" requires an associated event source. Please specify an eventSourceId or generate the key from the event source.',
+      );
+    }
+
     const createdRecord = await integrationApiKeysRepository.createApiKey({
       name,
       eventSourceId: targetSourceId,
@@ -216,6 +224,13 @@ export const integrationApiKeysService = {
       const sanitized = Array.from(new Set(input.scopes.map((s) => s.trim()).filter(Boolean)));
       if (sanitized.length === 0) {
         throw new AppError(400, 'BAD_REQUEST', 'At least one authorized scope is required');
+      }
+      if (sanitized.includes('events:ingest') && !existing.event_source_id) {
+        throw new AppError(
+          400,
+          'BAD_REQUEST',
+          'Scope "events:ingest" requires an associated event source. An unassociated API key cannot be granted "events:ingest".',
+        );
       }
       nextScopes = sanitized;
     }

@@ -19,9 +19,27 @@ export const wazuhIngestionRepository = {
     });
   },
 
+  findSourceById(id: string) {
+    return prisma.event_sources.findUnique({
+      where: { id },
+      select: { id: true, name: true, status: true, source_type: true },
+    });
+  },
+
   async ensureDefaultWazuhSource(adminUserId?: string) {
+    const active = await prisma.event_sources.findFirst({
+      where: { source_type: 'WAZUH', status: 'ACTIVE' },
+      orderBy: { created_at: 'asc' },
+      select: { id: true, name: true, status: true },
+    });
+    if (active) {
+      return active;
+    }
+
+    // Wazuh sources exist but none is active: return one so the caller can reject (paused source).
     const existing = await prisma.event_sources.findFirst({
       where: { source_type: 'WAZUH' },
+      orderBy: { created_at: 'asc' },
       select: { id: true, name: true, status: true },
     });
     if (existing) {
