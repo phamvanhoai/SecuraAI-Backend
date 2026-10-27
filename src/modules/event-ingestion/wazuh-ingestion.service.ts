@@ -8,7 +8,11 @@ import type {
 import { wazuhIngestionRepository } from './wazuh-ingestion.repository.js';
 import { requestAutomatedDetection } from '../ai-anomaly-detection-alerts/automated-detection.worker.js';
 
-function verifyIngestToken(token?: string): void {
+function verifyIngestToken(token?: string, isAlreadyAuthenticated?: boolean): void {
+  if (isAlreadyAuthenticated) {
+    return;
+  }
+
   const configuredToken = env.WAZUH_INGEST_TOKEN;
   if (!configuredToken) {
     throw new AppError(503, 'WAZUH_INGESTION_NOT_CONFIGURED', 'Wazuh ingestion is not configured');
@@ -29,9 +33,10 @@ export const wazuhIngestionService = {
   async ingestNormalizedEvent(
     token: string | undefined,
     input: WazuhEventIngestInput,
+    isAlreadyAuthenticated?: boolean,
   ): Promise<WazuhIngestResponseDto> {
     // 1. Verify Ingest Token
-    verifyIngestToken(token);
+    verifyIngestToken(token, isAlreadyAuthenticated);
 
     // 2. Find or Provision Event Source Record
     const source = await wazuhIngestionRepository.ensureDefaultWazuhSource();
