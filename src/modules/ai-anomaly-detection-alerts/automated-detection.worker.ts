@@ -18,7 +18,6 @@ async function drainPendingEvents(): Promise<void> {
     do {
       rerunRequested = false;
       const result = await anomalyDetectionService.runAutomated({
-        lookbackHours: 24,
         maxEvents: 100,
       });
       if (!result || result.eventsEvaluated < 100) break;

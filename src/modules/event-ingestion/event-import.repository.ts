@@ -68,25 +68,26 @@ export const eventImportRepository = {
     validRecords: ValidatedEventRecord[],
     invalidRecords: InvalidEventRecord[],
   ) {
+    const eventsWithId = validRecords.map((item) => ({
+      ...item,
+      id: randomUUID(),
+    }));
+    // Resolve candidates before opening the interactive transaction. This lookup
+    // uses the shared Prisma client and must not compete with the transaction for
+    // the same small development connection pool.
+    const autoMappingResult = await eventAutoMappingService.resolveAutoMappings(
+      eventsWithId.map((event) => ({
+        id: event.id,
+        accountIdentifier: event.accountIdentifier,
+        deviceIdentifier: event.deviceIdentifier,
+        sourceIp: event.sourceIp,
+        destinationIp: event.destinationIp,
+      })),
+    );
+
     return prisma.$transaction(async (tx) => {
       // 1. Insert valid normalized events
-      if (validRecords.length > 0) {
-        const eventsWithId = validRecords.map((item) => ({
-          ...item,
-          id: randomUUID(),
-        }));
-
-        // Execute auto-mapping pipeline
-        const autoMappingResult = await eventAutoMappingService.resolveAutoMappings(
-          eventsWithId.map((e) => ({
-            id: e.id,
-            accountIdentifier: e.accountIdentifier,
-            deviceIdentifier: e.deviceIdentifier,
-            sourceIp: e.sourceIp,
-            destinationIp: e.destinationIp,
-          })),
-        );
-
+      if (eventsWithId.length > 0) {
         const normalizedData: Prisma.normalized_eventsCreateManyInput[] = eventsWithId.map((item) => {
           const payload = (item.normalizedPayload ?? item) as unknown as Prisma.InputJsonValue;
           const mappingStatus = autoMappingResult.mappingStatusMap.get(item.id) ?? 'UNMAPPED';
@@ -176,6 +177,14 @@ export const eventImportRepository = {
       });
 
       return updatedBatch;
+    }, { isolationLevel: 'ReadCommitted', maxWait: 10_000, timeout: 20_000 });
+  },
+
+  markBatchFailed(batchId: string) {
+    return prisma.event_ingestion_batches.update({
+      where: { id: batchId },
+      data: { status: 'FAILED', completed_at: new Date() },
+      select: { id: true },
     });
   },
 
