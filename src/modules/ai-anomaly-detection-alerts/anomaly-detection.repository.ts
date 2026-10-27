@@ -15,6 +15,7 @@ const eventSelect = {
   },
 } as const;
 export type DetectionEvent = Prisma.normalized_eventsGetPayload<{ select: typeof eventSelect }>;
+export type PendingEventScope = 'ALL' | 'WAZUH_REALTIME';
 
 export const anomalyDetectionRepository = {
   findActor(userId: string) {
@@ -30,12 +31,25 @@ export const anomalyDetectionRepository = {
       select: { id: true, model_name: true, version: true, parameters: true },
     });
   },
-  async findPendingEvents(modelVersionId: string, since: Date | null, take: number) {
+  async findPendingEvents(
+    modelVersionId: string,
+    since: Date | null,
+    take: number,
+    scope: PendingEventScope,
+  ) {
     const timeWindow = since ? { occurred_at: { gte: since } } : {};
+    const sourceScope: Prisma.normalized_eventsWhereInput =
+      scope === 'WAZUH_REALTIME'
+        ? {
+            ingestion_batch_id: null,
+            event_sources: { source_type: 'WAZUH', ingestion_method: 'API' },
+          }
+        : {};
     const [events, frequencies] = await Promise.all([
       prisma.normalized_events.findMany({
         where: {
           ...timeWindow,
+          ...sourceScope,
           anomaly_detections: { none: { model_version_id: modelVersionId } },
         },
         select: eventSelect,
@@ -44,7 +58,7 @@ export const anomalyDetectionRepository = {
       }),
       prisma.normalized_events.groupBy({
         by: ['event_type'],
-        where: timeWindow,
+        where: { ...timeWindow, ...sourceScope },
         orderBy: { event_type: 'asc' },
         _count: { _all: true },
       }),
