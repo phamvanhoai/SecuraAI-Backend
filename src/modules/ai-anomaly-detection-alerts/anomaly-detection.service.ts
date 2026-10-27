@@ -104,7 +104,7 @@ export const anomalyDetectionService = {
     return withDetectionLock(async () => {
       const result = await runDetection(
         model,
-        { lookbackHours: null, maxEvents: input.maxEvents },
+        { lookbackHours: null, maxEvents: input.maxEvents, eventScope: 'ALL' },
         audit,
       );
       const hasMore = await anomalyDetectionRepository.hasPendingEvents(model.id);
@@ -122,7 +122,7 @@ export const anomalyDetectionService = {
     return withDetectionLock(() =>
       runDetection(
         model,
-        { lookbackHours: null, maxEvents: input.maxEvents },
+        { lookbackHours: null, maxEvents: input.maxEvents, eventScope: 'WAZUH_REALTIME' },
         { actor: { type: 'SYSTEM' } },
       ),
     );
@@ -131,7 +131,11 @@ export const anomalyDetectionService = {
 
 async function runDetection(
   model: Awaited<ReturnType<typeof anomalyDetectionRepository.findDeployedModel>> & {},
-  input: { lookbackHours: number | null; maxEvents: number },
+  input: {
+    lookbackHours: number | null;
+    maxEvents: number;
+    eventScope: 'ALL' | 'WAZUH_REALTIME';
+  },
   audit: {
     actor: { type: 'USER'; userId: string } | { type: 'SYSTEM' };
     correlationId?: string | undefined;
@@ -149,6 +153,7 @@ async function runDetection(
     model.id,
     since,
     input.maxEvents,
+    input.eventScope,
   );
   const detectedAt = new Date();
   const detections = await Promise.all(
@@ -190,7 +195,12 @@ async function runDetection(
     modelName: model.model_name,
     modelVersion: model.version,
     lookbackHours: input.lookbackHours,
-    scope: input.lookbackHours === null ? 'ALL_PENDING' : 'LOOKBACK_WINDOW',
+    scope:
+      input.eventScope === 'WAZUH_REALTIME'
+        ? 'WAZUH_REALTIME'
+        : input.lookbackHours === null
+          ? 'ALL_PENDING'
+          : 'LOOKBACK_WINDOW',
     eventsEvaluated: detections.length,
     anomaliesDetected: detections.filter((item) => item.isAnomaly).length,
     customThresholdsApplied: detections.filter((item) => item.threshold !== parameters.threshold)

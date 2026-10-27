@@ -3365,7 +3365,7 @@ export const openApiSpec = {
         tags: ['AI Anomaly Detection & Alerts'],
         summary: 'Run anomaly detection over unprocessed normalized events',
         description:
-          'Requires an active Security Officer account and a deployed model version. Each request processes one bounded batch of pending normalized events, including events older than 24 hours. Run it again to process the next batch. Each event is evaluated once per model version; anomalous detections create alerts atomically.',
+          'Requires an active Security Officer account and a deployed model version. Each request processes one bounded batch of pending normalized events, including file-imported events and events older than 24 hours. Run it again to process the next batch. Direct Wazuh API events are also eligible if an automated run has not processed them yet. Each event is evaluated once per model version; anomalous detections create alerts atomically.',
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,

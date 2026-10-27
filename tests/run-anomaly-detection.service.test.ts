@@ -91,6 +91,7 @@ describe('run anomaly detection service', () => {
       'model',
       null,
       100,
+      'ALL',
     );
     expect(anomalyDetectionRepository.persistRun).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -138,11 +139,16 @@ describe('run anomaly detection service', () => {
       maxEvents: 100,
     });
 
-    expect(result).toMatchObject({ eventsEvaluated: 1, alertsCreated: 1 });
+    expect(result).toMatchObject({
+      eventsEvaluated: 1,
+      alertsCreated: 1,
+      scope: 'WAZUH_REALTIME',
+    });
     expect(anomalyDetectionRepository.findPendingEvents).toHaveBeenCalledWith(
       'model',
       null,
       100,
+      'WAZUH_REALTIME',
     );
     expect(anomalyDetectionRepository.persistRun).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -200,6 +206,7 @@ describe('run anomaly detection service', () => {
       'model',
       null,
       100,
+      'ALL',
     );
   });
 
