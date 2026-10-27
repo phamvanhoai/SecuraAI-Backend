@@ -256,7 +256,7 @@ export const openApiSpec = {
         summary: 'Submit risk acceptance',
         security: [{ bearerAuth: [] }],
         description:
-          'Active assigned Risk Owner only. Locks Risk and related Controls. Requires OPEN/UNDER_TREATMENT, no pending request, eligible plan, current inherent/residual context including Threat/Vulnerability edits, and current applicable implemented Control assessments with valid Evidence. Records a fresh residual assessment and an immutable acceptance audit basis; never changes plan status or its source assessment. Optional legacy treatmentPlanStatus must match the stored status. Appetite/tolerance exceedance is disclosed for approver review, not automatically rejected. Validity is an inclusive UTC calendar date. After opening review, a new residual assessment is required.',
+          'Active assigned Risk Owner only. Locks Risk and related Controls. Requires OPEN/UNDER_TREATMENT, no pending request, eligible plan, current inherent/residual context including Threat/Vulnerability edits, and current applicable implemented Control assessments with valid Evidence. Records a fresh residual assessment and an immutable acceptance audit basis; never changes plan status or its source assessment. Optional legacy treatmentPlanStatus must match the stored status. Appetite/tolerance exceedance is disclosed for approver review, not automatically rejected. Validity is an inclusive UTC calendar date. After opening review, a new residual assessment and Complete Risk Review are required before submission. An open review returns HTTP 409 RISK_REVIEW_IN_PROGRESS; detail exposes canSubmit=false and the completion instruction.',
         parameters: [
           {
             name: 'riskId',
@@ -309,13 +309,28 @@ export const openApiSpec = {
         },
       },
     },
+    '/risks/{riskId}/review/complete': {
+      post: {
+        tags: ['Risks'], summary: 'Complete an open Risk review and schedule the next review', security: [{ bearerAuth: [] }],
+        description: 'Active current Risk Owner only. Serializable completion checks exact Risk revision, opening timestamp, latest residual assessment ID and a residual after opening, current inherent/Asset/context/Controls/Evidence. Pending acceptance blocks completion. Next date must be after today in Vietnam and no later than completion day plus Critical 1, High 3, Medium 6 or Low 12 calendar months (month-end clamped). Earlier future dates allowed. Existing audit_logs store completion snapshot; Risk status and acceptance are unchanged. Detail exposes reviewHistory and canCompleteReview.',
+        parameters: [{ in: 'path', name: 'riskId', required: true, schema: { type: 'string', format: 'uuid' } }],
+        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', additionalProperties: false,
+          required: ['conclusion', 'nextReviewDate', 'expectedUpdatedAt', 'expectedOpenedAt', 'assessmentId'], properties: {
+            conclusion: { type: 'string', minLength: 10, maxLength: 2000 }, nextReviewDate: { type: 'string', format: 'date' },
+            expectedUpdatedAt: { type: 'string', format: 'date-time' }, expectedOpenedAt: { type: 'string', format: 'date-time' }, assessmentId: { type: 'string', format: 'uuid' },
+          } } } } },
+        responses: { '200': { description: 'Completed: data contains riskId, completedAt, nextReviewDate' },
+          '401': { description: 'Authentication required' }, '403': { description: 'Current Risk Owner required' }, '404': { description: 'Risk not found' },
+          '409': { description: 'Review stale/completed, pending acceptance or assessment requires review' }, '422': { description: 'Invalid conclusion or next deadline' } },
+      },
+    },
     '/risks/{riskId}/review': {
       post: {
         tags: ['Risks'],
-        summary: 'Open review of an accepted Risk',
+        summary: 'Start a Risk review',
         security: [{ bearerAuth: [] }],
         description:
-          'Active assigned Risk Owner only. ACCEPTED with no pending request; requires exact expectedUpdatedAt and reason. Reopens the same Risk to UNDER_TREATMENT with an Active plan, otherwise OPEN. Preserves previous approvals/expiry, appends audit, requires a new residual assessment before new acceptance. No automatic renewal or deletion.',
+          'Active assigned Risk Owner only. OPEN, UNDER_TREATMENT or ACCEPTED without pending acceptance or another open review. Requires exact expectedUpdatedAt and reason. OPEN/UNDER_TREATMENT retain status; ACCEPTED reopens to UNDER_TREATMENT with an Active plan, otherwise OPEN. Audit snapshots opener ID/name and prior review date; currentReview is returned on detail and reviewInProgress on register. Legacy missing snapshot fields are null. Deadline is unchanged. Existing independent acceptance approval ends the earlier reopened review for compatibility; Complete Review separately records conclusion and schedules the next deadline. Preserves previous approvals/expiry and requires fresh residual assessment before new acceptance.',
         parameters: [
           {
             name: 'riskId',

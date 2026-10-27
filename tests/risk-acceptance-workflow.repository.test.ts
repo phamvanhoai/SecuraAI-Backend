@@ -7,7 +7,7 @@ const db = vi.hoisted(() => ({
   risk_assessments: { findFirst: vi.fn(), create: vi.fn() },
   risk_treatment_plans: { findFirst: vi.fn(), update: vi.fn() },
   risk_acceptances: { findUnique: vi.fn(), create: vi.fn(), update: vi.fn() },
-  audit_logs: { findFirst: vi.fn(), create: vi.fn() },
+  audit_logs: { findFirst: vi.fn(), findMany: vi.fn().mockResolvedValue([]), create: vi.fn() },
 }));
 vi.mock('../src/database/prisma.js', () => ({
   prisma: { $transaction: (work: (database: typeof db) => Promise<unknown>) => work(db) },
@@ -113,8 +113,31 @@ beforeEach(() => {
   db.risk_acceptances.update.mockResolvedValue({ ...request, decision: 'APPROVED' });
   db.risk_treatment_plans.findFirst.mockResolvedValue({ updated_at: old });
   db.audit_logs.findFirst.mockResolvedValue(null);
+  db.audit_logs.findMany.mockResolvedValue([]);
 });
 describe('acceptance submission', () => {
+  it('blocks an open review before any acceptance or assessment writes', async () => {
+    db.audit_logs.findMany.mockResolvedValue([{ action: 'RISK_REVIEW_OPENED', occurred_at: old, after_data: { reason: 'Periodic review' } }]);
+    expect(await riskRegisterRepository.submitAcceptance('risk', 'owner', input)).toEqual({ kind: 'review_in_progress' });
+    expect(db.risk_acceptances.create).not.toHaveBeenCalled();
+    expect(db.risk_assessments.create).not.toHaveBeenCalled();
+  });
+  it('permits acceptance after the latest review was completed', async () => {
+    db.audit_logs.findMany.mockResolvedValue([
+      { action: 'RISK_REVIEW_COMPLETED', occurred_at: now, after_data: {} },
+      { action: 'RISK_REVIEW_OPENED', occurred_at: old, after_data: {} },
+    ]);
+    expect(await riskRegisterRepository.submitAcceptance('risk', 'owner', input)).toMatchObject({ kind: 'submitted' });
+    expect(db.risk_acceptances.create).toHaveBeenCalledTimes(1);
+  });
+  it('blocks a newly opened review even after an older completed cycle', async () => {
+    db.audit_logs.findMany.mockResolvedValue([
+      { action: 'RISK_REVIEW_OPENED', occurred_at: now, after_data: {} },
+      { action: 'RISK_REVIEW_COMPLETED', occurred_at: old, after_data: {} },
+    ]);
+    expect(await riskRegisterRepository.submitAcceptance('risk', 'owner', input)).toEqual({ kind: 'review_in_progress' });
+    expect(db.risk_acceptances.create).not.toHaveBeenCalled();
+  });
   it('blocks legacy Accept plans without costs before creating a request', async () => {
     db.risks.findUnique.mockResolvedValue({ ...risk, risk_treatment_plans: [{ ...risk.risk_treatment_plans[0], strategy: 'ACCEPT', acceptance_cost_basis: null }] });
     expect(await riskRegisterRepository.submitAcceptance('risk', 'owner', input)).toEqual({ kind: 'acceptance_cost_required' });
@@ -288,6 +311,31 @@ describe('opening review', () => {
     reason: 'Acceptance expired; review current remaining risk.',
     expectedUpdatedAt: old.toISOString(),
   };
+  it.each(['OPEN', 'UNDER_TREATMENT'])('starts review on %s retaining its status and old deadline', async (status) => {
+    const deadline = new Date('2026-10-16T00:00:00Z');
+    db.audit_logs.findMany.mockResolvedValueOnce([]);
+    db.users.findUnique.mockResolvedValueOnce({ status: 'ACTIVE', full_name: 'Owner snapshot' });
+    db.risks.findUnique.mockResolvedValueOnce({ ...risk, status, review_date: deadline });
+    await expect(riskRegisterRepository.openAcceptanceReview('risk', 'owner', review)).resolves.toMatchObject({ kind: 'opened' });
+    expect(db.risks.update).toHaveBeenCalledWith(expect.objectContaining({ data: { status, updated_at: now } }));
+    expect(db.audit_logs.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ after_data: {
+      status, reason: review.reason, openedBy: 'owner', openedByName: 'Owner snapshot', previousReviewDate: deadline.toISOString(),
+    } }) }));
+  });
+  it('blocks another review under the same Risk lock', async () => {
+    db.audit_logs.findMany.mockResolvedValueOnce([{ action: 'RISK_REVIEW_OPENED', occurred_at: old, after_data: { reason: 'Earlier review' } }]);
+    expect(await riskRegisterRepository.openAcceptanceReview('risk', 'owner', review)).toEqual({ kind: 'review_already_open' });
+    expect(db.audit_logs.create).not.toHaveBeenCalled();
+    expect(db.risks.update).not.toHaveBeenCalled();
+  });
+  it.each(['CLOSED', 'ARCHIVED'])('does not review %s risks', async (status) => {
+    db.risks.findUnique.mockResolvedValueOnce({ ...risk, status });
+    expect(await riskRegisterRepository.openAcceptanceReview('risk', 'owner', review)).toEqual({ kind: 'context_locked' });
+  });
+  it('blocks review while acceptance is pending', async () => {
+    db.risks.findUnique.mockResolvedValueOnce({ ...risk, risk_acceptances: [{ id: 'pending' }] });
+    expect(await riskRegisterRepository.openAcceptanceReview('risk', 'owner', review)).toEqual({ kind: 'context_locked' });
+  });
   it('reopens the same accepted Risk preserving acceptance records', async () => {
     db.risks.findUnique.mockResolvedValue({ ...risk, status: 'ACCEPTED' });
     expect(

@@ -4,6 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('../src/modules/risk-assessment/risk-register.repository.js', () => ({
   riskRegisterRepository: {
     findActor: vi.fn(),
+    findReviewEvents: vi.fn().mockResolvedValue([]),
     findAssetContextChange: vi.fn().mockResolvedValue(null),
     list: vi.fn(),
     findById: vi.fn(),
@@ -77,6 +78,16 @@ const record = {
 
 describe('view risk register service', () => {
   beforeEach(() => vi.clearAllMocks());
+  it('exposes the open-review block to the assigned Owner', async () => {
+    const owner = record.users_risks_owner_user_idTousers;
+    vi.mocked(riskRegisterRepository.findActor).mockResolvedValue({ id: owner.id, role: user_role.EMPLOYEE, status: user_status.ACTIVE });
+    vi.mocked(riskRegisterRepository.findById).mockResolvedValue({ ...record, users_risks_created_byTousers: owner,
+      risk_threats: [], risk_vulnerabilities: [], control_risk_links: [], risk_treatment_plans: [], incident_risks: [], risk_acceptances: [] });
+    vi.mocked(riskRegisterRepository.findAcceptanceAudits).mockResolvedValueOnce([{ action: 'RISK_REVIEW_OPENED', occurred_at: now, after_data: { reason: 'Periodic review' } }]);
+    expect((await riskRegisterService.get(owner.id, record.id)).acceptanceWorkflow).toMatchObject({
+      canSubmit: false, blockedReason: 'Complete Risk Review before submitting a new acceptance request.',
+    });
+  });
   it.each([true, false])('reports linked asset context changes from the audit lookup (%s)', async (changed) => {
     vi.mocked(riskRegisterRepository.findActor).mockResolvedValue({ id: 'u', role: user_role.SECURITY_OFFICER, status: user_status.ACTIVE });
     vi.mocked(riskRegisterRepository.findAcceptanceAudits).mockResolvedValue([]);
