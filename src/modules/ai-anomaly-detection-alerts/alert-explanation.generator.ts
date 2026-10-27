@@ -49,7 +49,7 @@ export async function generateStoredAlertExplanation(
         error: error instanceof Error ? error.message : 'Unknown Ollama error',
         eventId: input.eventId,
       },
-      'Ollama alert explanation failed during alert creation; storing deterministic fallback',
+      'Ollama alert explanation generation failed; storing deterministic fallback',
     );
     return fallbackExplanation(input);
   }
