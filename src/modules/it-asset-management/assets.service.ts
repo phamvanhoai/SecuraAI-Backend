@@ -8,7 +8,9 @@ import type { UpdateAssetInput } from './dto/update-asset.dto.js';
 import type { AssignAssetOwnerInput } from './dto/assign-asset-owner.dto.js';
 import type { ArchiveAssetInput } from './dto/archive-asset.dto.js';
 import type { ClassifyAssetInput } from './dto/classify-asset.dto.js';
+import { assetClassificationSnapshotSchema } from './dto/classify-asset.dto.js';
 import type { LinkAssetContextInput } from './dto/link-asset-context.dto.js';
+import { assetContextSnapshotSchema, type AssetContextHistoryQuery } from './dto/link-asset-context.dto.js';
 async function activeActor(userId: string) {
   const actor = await assetsRepository.findActor(userId);
   if (!actor || actor.status !== 'ACTIVE')
@@ -19,6 +21,30 @@ const person = (item: { id: string; full_name: string; status: string } | null) 
   item ? { id: item.id, fullName: item.full_name, inactive: item.status !== 'ACTIVE' } : null;
 const generateAssetCode = () => `AST-${randomUUID().replaceAll('-', '').slice(0, 8).toUpperCase()}`;
 export const assetsService = {
+  async classificationHistory(userId: string, assetId: string, query: AssetContextHistoryQuery) {
+    const { total, items } = await assetsRepository.classificationHistory(assetId, userId, query);
+    return {
+      items: items.map((item) => ({
+        id: item.id, occurredAt: item.occurred_at,
+        actor: item.users ? { id: item.users.id, fullName: item.users.full_name } : null,
+        before: assetClassificationSnapshotSchema.safeParse(item.before_data).data ?? null,
+        after: assetClassificationSnapshotSchema.safeParse(item.after_data).data ?? null,
+      })),
+      pagination: { page: query.page, limit: query.limit, total, totalPages: Math.ceil(total / query.limit) },
+    };
+  },
+  async contextHistory(userId: string, assetId: string, query: AssetContextHistoryQuery) {
+    const { total, items } = await assetsRepository.contextHistory(assetId, userId, query);
+    return {
+      items: items.map((item) => ({
+        id: item.id, occurredAt: item.occurred_at,
+        actor: item.users ? { id: item.users.id, fullName: item.users.full_name } : null,
+        before: assetContextSnapshotSchema.safeParse(item.before_data).data ?? null,
+        after: assetContextSnapshotSchema.safeParse(item.after_data).data ?? null,
+      })),
+      pagination: { page: query.page, limit: query.limit, total, totalPages: Math.ceil(total / query.limit) },
+    };
+  },
   async linkContext(userId: string, assetId: string, input: LinkAssetContextInput) {
     const actor = await activeActor(userId);
     if (actor.role !== 'SECURITY_OFFICER')
