@@ -10,6 +10,7 @@ vi.mock('../src/modules/event-ingestion/event-import.repository.js', () => ({
   eventImportRepository: {
     createIngestionBatch: vi.fn(),
     saveBatchResults: vi.fn(),
+    markBatchFailed: vi.fn(),
   },
 }));
 
@@ -115,6 +116,33 @@ describe('eventImportService.importNormalizedEvents', () => {
         userId,
       ),
     ).rejects.toThrow(/Event source not found/);
+  });
+
+  it('marks the tracking batch failed when persistence cannot start', async () => {
+    vi.mocked(eventSourcesRepository.findById).mockResolvedValue(mockEventSource);
+    const now = new Date();
+    vi.mocked(eventImportRepository.createIngestionBatch).mockResolvedValue({
+      id: 'batch-failed',
+      event_source_id: sourceId,
+      file_name: 'events.json',
+      file_format: 'JSON',
+      total_records: 1,
+      status: 'PROCESSING',
+      started_at: now,
+      created_at: now,
+    });
+    vi.mocked(eventImportRepository.saveBatchResults).mockRejectedValue(
+      new Error('Unable to start a transaction in the given time'),
+    );
+    vi.mocked(eventImportRepository.markBatchFailed).mockResolvedValue({ id: 'batch-failed' });
+
+    await expect(
+      eventImportService.importNormalizedEvents(sourceId, {
+        fileFormat: 'JSON',
+        events: [{ eventType: 'USER_LOGIN', occurredAt: '2026-09-30T10:00:00.000Z' }],
+      }),
+    ).rejects.toThrow(/Unable to start a transaction/);
+    expect(eventImportRepository.markBatchFailed).toHaveBeenCalledWith('batch-failed');
   });
 
   it('rejects import if event source is INACTIVE', async () => {
