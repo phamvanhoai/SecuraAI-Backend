@@ -19,6 +19,7 @@ import {
   setAlertThresholdBodySchema,
 } from './dto/alert-threshold.dto.js';
 import { configureDetectionThresholdSchema } from './dto/detection-threshold.dto.js';
+import { regenerateAlertExplanationSchema } from './dto/regenerate-alert-explanation.dto.js';
 
 export const getDetectionThreshold: RequestHandler = async (_req, res) => {
   const userId: unknown = res.locals.authenticatedUserId;
@@ -117,6 +118,20 @@ export const getAiAlertExplanation: RequestHandler = async (req, res) => {
     throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
   const { alertId } = aiAlertIdParamsSchema.parse(req.params);
   const data = await aiAlertsService.getExplanation(userId, alertId);
+  res.status(200).json({ success: true, data });
+};
+
+export const regenerateAiAlertExplanation: RequestHandler = async (req, res) => {
+  const userId: unknown = res.locals.authenticatedUserId;
+  if (typeof userId !== 'string')
+    throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+  const { alertId } = aiAlertIdParamsSchema.parse(req.params);
+  const data = await aiAlertsService.regenerateExplanation(
+    userId,
+    alertId,
+    regenerateAlertExplanationSchema.parse(req.body),
+    extractClientContext(req),
+  );
   res.status(200).json({ success: true, data });
 };
 

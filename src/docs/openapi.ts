@@ -3792,6 +3792,44 @@ export const openApiSpec = {
         },
       },
     },
+    '/ai-alerts/{alertId}/explanation/regenerate': {
+      post: {
+        tags: ['AI Anomaly Detection & Alerts'],
+        summary: 'Regenerate the stored AI alert explanation',
+        description:
+          'Security Officers can regenerate an explanation from the original stored detection evidence. The latest explanation replaces the displayed value while the previous and new values, reason, actor, model version and time are recorded in the audit log.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            in: 'path',
+            name: 'alertId',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['reason'],
+                properties: { reason: { type: 'string', minLength: 10, maxLength: 500 } },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'Regenerated and stored AI explanation' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer role required' },
+          '404': { description: 'AI alert not found' },
+          '409': { description: 'Explanation changed concurrently' },
+          '422': { description: 'Validation failed' },
+        },
+      },
+    },
     '/ai-alerts/metrics': {
       get: {
         tags: ['AI Anomaly Detection & Alerts'],

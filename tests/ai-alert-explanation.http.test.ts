@@ -4,7 +4,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../src/database/prisma.js', () => ({ prisma: { $queryRaw: vi.fn() } }));
 vi.mock('../src/modules/ai-anomaly-detection-alerts/ai-alerts.service.js', () => ({
-  aiAlertsService: { list: vi.fn(), getExplanation: vi.fn() },
+  aiAlertsService: { list: vi.fn(), getExplanation: vi.fn(), regenerateExplanation: vi.fn() },
 }));
 
 import { createApp } from '../src/app.js';
@@ -20,6 +20,48 @@ const token = jwt.sign({ type: 'access' }, env.JWT_ACCESS_SECRET, {
   audience: 'securaai-client',
   subject: userId,
   expiresIn: '15m',
+});
+
+describe('POST /api/v1/ai-alerts/:alertId/explanation/regenerate', () => {
+  beforeEach(() => vi.clearAllMocks());
+
+  it('validates the reason before invoking regeneration', async () => {
+    const response = await request(app)
+      .post(`/api/v1/ai-alerts/${alertId}/explanation/regenerate`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ reason: 'short' });
+    expect(response.status).toBe(422);
+    expect(aiAlertsService.regenerateExplanation).not.toHaveBeenCalled();
+  });
+
+  it('regenerates a stored explanation', async () => {
+    vi.mocked(aiAlertsService.regenerateExplanation).mockResolvedValue({
+      id: userId,
+      alertId,
+      explanationText: 'Updated explanation.',
+      featureContributions: [],
+      baselineData: {
+        anomalyScore: 0.82,
+        threshold: 0.7,
+        scoreAboveThreshold: 0.12,
+        suggestedRiskLevel: 'high',
+        detectedAt: new Date('2026-10-27T11:00:00Z'),
+      },
+      createdAt: new Date('2026-10-27T12:00:00Z'),
+    });
+    const response = await request(app)
+      .post(`/api/v1/ai-alerts/${alertId}/explanation/regenerate`)
+      .set('Authorization', `Bearer ${token}`)
+      .send({ reason: 'Review explanation accuracy' });
+    expect(response.status).toBe(200);
+    expect(response.body.data.explanationText).toBe('Updated explanation.');
+    expect(aiAlertsService.regenerateExplanation).toHaveBeenCalledWith(
+      userId,
+      alertId,
+      { reason: 'Review explanation accuracy' },
+      expect.any(Object),
+    );
+  });
 });
 
 describe('GET /api/v1/ai-alerts/:alertId/explanation', () => {

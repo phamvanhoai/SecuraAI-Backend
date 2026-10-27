@@ -8,6 +8,7 @@ import {
   listAiAlertFeedback,
   listAiAlerts,
   getAiAlertExplanation,
+  regenerateAiAlertExplanation,
   getAiAlertMetrics,
   markAiAlertFalsePositive,
   markAiAlertFurtherInvestigation,
@@ -36,6 +37,7 @@ import {
 } from './dto/alert-threshold.dto.js';
 import { listModelVersionsQuerySchema } from './dto/list-model-versions.dto.js';
 import { configureDetectionThresholdSchema } from './dto/detection-threshold.dto.js';
+import { regenerateAlertExplanationSchema } from './dto/regenerate-alert-explanation.dto.js';
 
 export const aiAlertsRouter = Router();
 aiAlertsRouter.get(
@@ -43,6 +45,12 @@ aiAlertsRouter.get(
   authenticate,
   validate({ query: listModelVersionsQuerySchema }),
   asyncHandler(listModelVersions),
+);
+aiAlertsRouter.post(
+  '/:alertId/explanation/regenerate',
+  authenticate,
+  validate({ params: aiAlertIdParamsSchema, body: regenerateAlertExplanationSchema }),
+  asyncHandler(regenerateAiAlertExplanation),
 );
 aiAlertsRouter.get('/metrics', authenticate, asyncHandler(getAiAlertMetrics));
 aiAlertsRouter.get('/thresholds', authenticate, asyncHandler(getDetectionThreshold));
