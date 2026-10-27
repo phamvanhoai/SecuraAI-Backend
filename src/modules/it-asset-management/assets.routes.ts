@@ -1,4 +1,6 @@
 import { Router } from 'express';
+import { getAssetOwnerOptions } from './assets.controller.js';
+import { assetOwnerOptionsQuerySchema } from './dto/asset-owner-options.dto.js';
 import { authenticate } from '../../common/middleware/authenticate.js';
 import { validate } from '../../common/middleware/validate.js';
 import { asyncHandler } from '../../common/utils/async-handler.js';
@@ -14,6 +16,7 @@ import { getAssetContextHistory, getAssetClassificationHistory } from './assets.
 import { assetClassificationHistoryQuerySchema } from './dto/classify-asset.dto.js';
 import { assetContextHistoryQuerySchema } from './dto/link-asset-context.dto.js';
 export const assetsRouter = Router();
+assetsRouter.get('/owner-options', authenticate, validate({ query: assetOwnerOptionsQuerySchema }), asyncHandler(getAssetOwnerOptions));
 assetsRouter.get('/create-options', authenticate, asyncHandler(getAssetCreateOptions));
 assetsRouter.get(
   '/',

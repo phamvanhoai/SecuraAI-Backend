@@ -621,7 +621,7 @@ export const openApiSpec = {
         description:
           'Returns explicit original scope and recorded assets, assessments, controls, plans and acceptance. Historical scope is null; never inferred from current service membership. vulnerabilityWorkflow exposes canIdentify (actor-scoped), blockedReason and assessmentReviewRequired; vulnerabilities include createdAt. Existing ratings remain historical when review is required.',
         responses: {
-          '200': { description: 'Risk detail including scope' },
+          '200': { description: 'Risk detail including scope, assetClassificationReviewRequired and assetContextReviewRequired (booleans). Classification uses linked asset classified_at; context uses successful ASSET_CONTEXT_UPDATED audit events on linked assets. Only changes strictly after the latest standalone inherent assessment trigger advisories. Missing evidence or no identifiable inherent assessment yield false. Residual and target updates do not clear advisories. Stored ratings and workflow permissions are unchanged.' },
           '401': { description: 'Authentication required' },
           '403': { description: 'Risk access denied' },
           '404': { description: 'Risk not found' },
@@ -1009,6 +1009,24 @@ export const openApiSpec = {
         },
       },
     },
+    '/assets/owner-options': {
+      get: {
+        tags: ['Assets'], security: [{ bearerAuth: [] }],
+        summary: 'Search eligible Asset Owners',
+        description: 'Active Security Officer only. Searches all active users by name or email, case-insensitive. Returns up to 10 matches ordered by name and ID. Assignment still revalidates eligibility.',
+        parameters: [{ name: 'q', in: 'query', schema: { type: 'string', maxLength: 100 } }],
+        responses: {
+          '200': { description: 'Owner search results', content: { 'application/json': { schema: {
+            type: 'object', properties: { success: { type: 'boolean' }, data: { type: 'object', properties: {
+              items: { type: 'array', maxItems: 10, items: { type: 'object', required: ['id', 'fullName', 'email'], properties: {
+                id: { type: 'string', format: 'uuid' }, fullName: { type: 'string' }, email: { type: 'string', format: 'email' },
+              } } },
+            } } },
+          } } } },
+          '401': { description: 'Authentication required' }, '403': { description: 'Security Officer required' }, '422': { description: 'Invalid search' },
+        },
+      },
+    },
     '/assets/{assetId}/context/history': {
       get: {
         tags: ['IT Asset Management'], summary: 'Read asset context change history',
@@ -1046,7 +1064,7 @@ export const openApiSpec = {
         tags: ['IT Asset Management'],
         summary: 'Link asset business context',
         description:
-          'Updates the desired asset context atomically with an ASSET_CONTEXT_UPDATED before/after audit snapshot when links actually change. Order-only or unchanged submissions produce no audit or write. Preserves retained link metadata, permits retaining existing inactive links, requires active records for new links, and rejects circular dependencies. Requires an active Security Officer.',
+          'Updates the desired asset context atomically with an ASSET_CONTEXT_UPDATED before/after audit snapshot when links actually change. Order-only or unchanged submissions produce no audit or write. Preserves retained link metadata, permits retaining existing inactive links, requires active records for new links, and rejects circular dependencies with HTTP 422 ASSET_DEPENDENCY_CYCLE. error.details.path is an ordered array of asset code/name labels including the starting asset at both ends. One detected cycle is returned; saving again revalidates remaining links. Requires an active Security Officer.',
         security: [{ bearerAuth: [] }],
         parameters: [
           {

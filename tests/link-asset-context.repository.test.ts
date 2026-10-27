@@ -36,8 +36,9 @@ describe('atomic asset context update', () => {
     expect(mocks.transaction).toHaveBeenCalledWith(expect.any(Function), { isolationLevel: 'Serializable', maxWait: 5000, timeout: 15000 });
   });
   it('rejects a multi-hop cycle before writing', async () => {
-    mocks.tx.$queryRaw.mockResolvedValue([{ has_cycle: true }]);
-    expect(await assetsRepository.linkContext('A', input, 'officer')).toEqual({ kind: 'cycle' });
+    const path = ['AST-A — Portal', 'AST-B — Database', 'AST-A — Portal'];
+    mocks.tx.$queryRaw.mockResolvedValue([{ has_cycle: true, path }]);
+    expect(await assetsRepository.linkContext('A', input, 'officer')).toEqual({ kind: 'cycle', path });
     expect(mocks.tx.assets.update).not.toHaveBeenCalled();
   });
   it('rejects newly linked inactive dependencies', async () => {
