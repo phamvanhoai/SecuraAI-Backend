@@ -1,6 +1,4 @@
 import { AppError } from '../../common/errors/app-error.js';
-import { env } from '../../config/env.js';
-import { timingSafeEqual } from 'node:crypto';
 import type {
   WazuhEventIngestInput,
   WazuhIngestResponseDto,
@@ -8,35 +6,37 @@ import type {
 import { wazuhIngestionRepository } from './wazuh-ingestion.repository.js';
 import { requestAutomatedDetection } from '../ai-anomaly-detection-alerts/automated-detection.worker.js';
 
-function verifyIngestToken(token?: string): void {
-  const configuredToken = env.WAZUH_INGEST_TOKEN;
-  if (!configuredToken) {
-    throw new AppError(503, 'WAZUH_INGESTION_NOT_CONFIGURED', 'Wazuh ingestion is not configured');
-  }
-  if (!token) {
-    throw new AppError(401, 'UNAUTHORIZED', 'Missing SecuraAI ingestion token');
+type ResolvedSource = { id: string; status: string };
+
+async function resolveTargetSource(apiKeyEventSourceId: string | null): Promise<ResolvedSource> {
+  if (apiKeyEventSourceId) {
+    // The API key is bound to a specific source: events can only be written to that source.
+    const bound = await wazuhIngestionRepository.findSourceById(apiKeyEventSourceId);
+    if (!bound) {
+      throw new AppError(403, 'FORBIDDEN', 'Event source linked to this API key no longer exists');
+    }
+    if (bound.source_type !== 'WAZUH') {
+      throw new AppError(403, 'FORBIDDEN', 'API key is linked to a non-Wazuh event source');
+    }
+    return bound;
   }
 
-  const cleanToken = token.startsWith('Bearer ') ? token.slice(7).trim() : token.trim();
-  const supplied = Buffer.from(cleanToken);
-  const expected = Buffer.from(configuredToken);
-  if (supplied.length !== expected.length || !timingSafeEqual(supplied, expected)) {
-    throw new AppError(403, 'FORBIDDEN', 'Invalid SecuraAI ingestion token');
-  }
+  // Static system token or an unbound key: fall back to the default Wazuh source.
+  return wazuhIngestionRepository.ensureDefaultWazuhSource();
 }
 
 export const wazuhIngestionService = {
   async ingestNormalizedEvent(
-    token: string | undefined,
+    apiKeyEventSourceId: string | null,
     input: WazuhEventIngestInput,
   ): Promise<WazuhIngestResponseDto> {
-    // 1. Verify Ingest Token
-    verifyIngestToken(token);
+    // Caller has already been authenticated and scope-checked by authenticateApiKey middleware.
+    const source = await resolveTargetSource(apiKeyEventSourceId);
 
-    // 2. Find or Provision Event Source Record
-    const source = await wazuhIngestionRepository.ensureDefaultWazuhSource();
+    if (source.status !== 'ACTIVE') {
+      throw new AppError(403, 'FORBIDDEN', 'Event source is inactive or disabled');
+    }
 
-    // 3. Save Normalized Event
     const saved = await wazuhIngestionRepository.saveNormalizedEvent(source.id, input);
     requestAutomatedDetection();
 

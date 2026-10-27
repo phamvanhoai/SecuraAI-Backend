@@ -186,4 +186,23 @@ describe('Edit API Key Scope & Expiration Service', () => {
       }),
     ).rejects.toThrow('Integration API key not found');
   });
+
+  it('rejects adding events:ingest scope to an API key not bound to an event source', async () => {
+    vi.spyOn(integrationApiKeysRepository, 'findUserById').mockResolvedValue(mockAdminUser);
+    vi.spyOn(integrationApiKeysRepository, 'findById').mockResolvedValue({
+      ...mockExistingRecord,
+      event_source_id: null,
+      event_sources: null,
+    });
+
+    await expect(
+      integrationApiKeysService.updateApiKey(mockAdminUser.id, sampleKeyId, {
+        scopes: ['events:ingest', 'events:read'],
+      }),
+    ).rejects.toMatchObject({
+      statusCode: 400,
+      message: expect.stringContaining('events:ingest'),
+    });
+  });
 });
+
