@@ -1,11 +1,57 @@
 import { Prisma } from '@prisma/client';
 import { createHash, randomUUID } from 'node:crypto';
 import { prisma } from '../../database/prisma.js';
+import { AppError } from '../../common/errors/app-error.js';
 import type { ListAssetsQuery } from './dto/list-assets.dto.js';
 import type { CreateAssetInput } from './dto/create-asset.dto.js';
 import type { UpdateAssetInput } from './dto/update-asset.dto.js';
 import type { ClassifyAssetInput } from './dto/classify-asset.dto.js';
 import type { LinkAssetContextInput } from './dto/link-asset-context.dto.js';
+import type { AssetContextHistoryQuery } from './dto/link-asset-context.dto.js';
+const contextSelect = {
+  id: true, status: true, updated_at: true, owner_user_id: true, business_service_id: true,
+  business_services: { select: { id: true, name: true } },
+  asset_dependencies_asset_dependencies_asset_idToassets: { select: {
+    depends_on_asset_id: true,
+    assets_asset_dependencies_depends_on_asset_idToassets: { select: { id: true, asset_code: true, name: true } },
+  } },
+  asset_event_sources: { select: { event_source_id: true, event_sources: { select: { id: true, name: true } } } },
+} as const;
+type ContextRecord = Prisma.assetsGetPayload<{ select: typeof contextSelect }>;
+function contextSnapshot(record: ContextRecord) {
+  return {
+    businessService: record.business_services,
+    dependencies: record.asset_dependencies_asset_dependencies_asset_idToassets.map((link) => ({
+      id: link.depends_on_asset_id,
+      assetCode: link.assets_asset_dependencies_depends_on_asset_idToassets.asset_code,
+      name: link.assets_asset_dependencies_depends_on_asset_idToassets.name,
+    })).sort((a, b) => a.id.localeCompare(b.id)),
+    eventSources: record.asset_event_sources.map((link) => link.event_sources).sort((a, b) => a.id.localeCompare(b.id)),
+  };
+}
+function sameIds(left: string[], right: string[]) {
+  return left.length === right.length && left.every((id) => right.includes(id));
+}
+const classificationSelect = {
+  id: true, status: true, criticality: true, data_classification: true,
+  classification_confidentiality_impact: true, classification_integrity_impact: true,
+  classification_availability_impact: true, classification_business_impact: true,
+  classification_rationale: true, data_classification_basis: true,
+  classification_method_version: true, data_classification_method_version: true,
+  classified_at: true, classified_by: true,
+} as const;
+function classificationValues(record: Prisma.assetsGetPayload<{ select: typeof classificationSelect }>) {
+  return {
+    confidentialityImpact: record.classification_confidentiality_impact,
+    integrityImpact: record.classification_integrity_impact,
+    availabilityImpact: record.classification_availability_impact,
+    businessImpact: record.classification_business_impact,
+    criticality: record.criticality, dataClassification: record.data_classification,
+    rationale: record.classification_rationale, dataClassificationBasis: record.data_classification_basis,
+    methodVersion: record.classification_method_version,
+    dataClassificationMethodVersion: record.data_classification_method_version,
+  };
+}
 const select = {
   id: true,
   asset_code: true,
@@ -63,6 +109,16 @@ function orderBy(query: ListAssetsQuery): Prisma.assetsOrderByWithRelationInput[
 export const assetsRepository = {
   findActor(userId: string) {
     return prisma.users.findUnique({ where: { id: userId }, select: { role: true, status: true } });
+  },
+  ownerOptions(q: string) {
+    return prisma.users.findMany({
+      where: { status: 'ACTIVE', ...(q ? { OR: [
+        { full_name: { contains: q, mode: 'insensitive' } },
+        { email: { contains: q, mode: 'insensitive' } },
+      ] } : {}) },
+      select: { id: true, full_name: true, email: true },
+      orderBy: [{ full_name: 'asc' }, { id: 'asc' }], take: 10,
+    });
   },
   list(query: ListAssetsQuery) {
     const filters = where(query);
@@ -259,9 +315,23 @@ export const assetsRepository = {
     return prisma.$transaction(async (tx) => {
       const actor = await tx.users.findUnique({ where: { id: userId }, select: { role: true, status: true } });
       if (!actor || actor.status !== 'ACTIVE' || actor.role !== 'SECURITY_OFFICER') return { kind: 'forbidden' } as const;
-      const current = await tx.assets.findUnique({ where: { id: assetId }, select: { status: true, criticality: true, data_classification: true } });
+      const current = await tx.assets.findUnique({ where: { id: assetId }, select: classificationSelect });
       if (!current) return { kind: 'not_found' } as const;
       if (current.status !== 'ACTIVE') return { kind: 'archived' } as const;
+      const previous = { status: current.status, criticality: current.criticality, data_classification: current.data_classification };
+      const next = {
+        confidentialityImpact: input.confidentialityImpact, integrityImpact: input.integrityImpact,
+        availabilityImpact: input.availabilityImpact, businessImpact: input.businessImpact,
+        criticality, dataClassification: input.dataClassification, rationale: input.rationale,
+        dataClassificationBasis: input.dataClassificationBasis, methodVersion,
+        dataClassificationMethodVersion: 'SECURAAI-DATA-CLASSIFICATION-v1',
+      };
+      if (current.classified_at && JSON.stringify(classificationValues(current)) === JSON.stringify(next)) {
+        return { kind: 'updated', previous, asset: {
+          id: current.id, criticality: current.criticality, data_classification: current.data_classification, classified_at: current.classified_at,
+        } } as const;
+      }
+      const at = new Date();
       const asset = await tx.assets.update({
         where: { id: assetId },
         data: { criticality, data_classification: input.dataClassification,
@@ -272,18 +342,28 @@ export const assetsRepository = {
           classification_rationale: input.rationale, classification_method_version: methodVersion,
           data_classification_basis: input.dataClassificationBasis,
           data_classification_method_version: 'SECURAAI-DATA-CLASSIFICATION-v1',
-          classified_by: userId, classified_at: new Date(), updated_at: new Date(),
+          classified_by: userId, classified_at: at, updated_at: at,
         },
         select: { id: true, criticality: true, data_classification: true, classified_at: true },
       });
-      return { kind: 'updated', asset, previous: current } as const;
+      const before = current.classified_at === null && current.criticality === null && current.data_classification === null
+        ? null : { ...classificationValues(current), assessedBy: current.classified_by, assessedAt: current.classified_at?.toISOString() ?? null };
+      const after = { ...next, assessedBy: userId, assessedAt: at.toISOString() };
+      const id = randomUUID();
+      await tx.audit_logs.create({ data: {
+        id, actor_type: 'USER', actor_user_id: userId, action: 'ASSET_CLASSIFICATION_UPDATED',
+        resource_type: 'ASSET', resource_id: assetId, source: 'API', occurred_at: at,
+        before_data: before ?? Prisma.JsonNull, after_data: after,
+        record_hash: createHash('sha256').update(JSON.stringify({ id, userId, assetId, at: at.toISOString(), before, after })).digest('hex'),
+      } });
+      return { kind: 'updated', asset, previous } as const;
     }, { isolationLevel: 'Serializable', maxWait: 5000, timeout: 15000 });
   },
   linkContext(assetId: string, input: LinkAssetContextInput, userId: string) {
     return prisma.$transaction(async (tx) => {
       const actor = await tx.users.findUnique({ where: { id: userId }, select: { role: true, status: true } });
       if (!actor || actor.status !== 'ACTIVE' || actor.role !== 'SECURITY_OFFICER') return { kind: 'forbidden' } as const;
-      const current = await tx.assets.findUnique({ where: { id: assetId }, select: { status: true, business_service_id: true, asset_dependencies_asset_dependencies_asset_idToassets: { select: { depends_on_asset_id: true } }, asset_event_sources: { select: { event_source_id: true } } } });
+      const current = await tx.assets.findUnique({ where: { id: assetId }, select: contextSelect });
       if (!current) return { kind: 'not_found' } as const;
       if (current.status !== 'ACTIVE') return { kind: 'archived' } as const;
       const oldDependencies = current.asset_dependencies_asset_dependencies_asset_idToassets.map((link) => link.depends_on_asset_id);
@@ -293,20 +373,35 @@ export const assetsRepository = {
       if (input.businessServiceId && input.businessServiceId !== current.business_service_id && !await tx.business_services.findFirst({ where: { id: input.businessServiceId, status: 'ACTIVE' }, select: { id: true } })) return { kind: 'invalid_service' } as const;
       if (addedDependencies.length && await tx.assets.count({ where: { id: { in: addedDependencies }, status: 'ACTIVE' } }) !== addedDependencies.length) return { kind: 'invalid_dependency' } as const;
       if (addedSources.length && await tx.event_sources.count({ where: { id: { in: addedSources }, status: 'ACTIVE' } }) !== addedSources.length) return { kind: 'invalid_source' } as const;
-      // UNION deduplicates visited nodes, so pre-existing cycles cannot recurse forever.
+      // Track visited nodes per path so pre-existing cycles terminate safely.
       if (input.dependencyIds.length) {
-        const [cycle] = await tx.$queryRaw<Array<{ has_cycle: boolean }>>(Prisma.sql`
-          WITH RECURSIVE reachable(id) AS (
-            SELECT unnest(ARRAY[${Prisma.join(input.dependencyIds)}]::uuid[])
-            UNION
-            SELECT dependency.depends_on_asset_id
+        const [cycle] = await tx.$queryRaw<Array<{ has_cycle: boolean; path: string[] }>>(Prisma.sql`
+          WITH RECURSIVE reachable(id, visited) AS (
+            SELECT id, ARRAY[id] FROM unnest(ARRAY[${Prisma.join(input.dependencyIds)}]::uuid[]) AS start(id)
+            UNION ALL
+            SELECT dependency.depends_on_asset_id, reachable.visited || dependency.depends_on_asset_id
             FROM public.asset_dependencies AS dependency
             JOIN reachable ON dependency.asset_id = reachable.id
+            WHERE reachable.id <> ${assetId}::uuid
+              AND NOT dependency.depends_on_asset_id = ANY(reachable.visited)
+          ), found AS (
+            SELECT ARRAY[${assetId}::uuid] || visited AS ids
+            FROM reachable WHERE id = ${assetId}::uuid LIMIT 1
           )
-          SELECT EXISTS(SELECT 1 FROM reachable WHERE id = ${assetId}::uuid) AS has_cycle
+          SELECT true AS has_cycle, ARRAY(
+            SELECT asset.asset_code || ' — ' || asset.name
+            FROM unnest(found.ids) WITH ORDINALITY AS step(id, position)
+            JOIN public.assets AS asset ON asset.id = step.id
+            ORDER BY step.position
+          ) AS path FROM found
         `);
-        if (cycle?.has_cycle) return { kind: 'cycle' } as const;
+        if (cycle?.has_cycle) return { kind: 'cycle', path: cycle.path ?? [] } as const;
       }
+      if (current.business_service_id === input.businessServiceId &&
+          sameIds(oldDependencies, input.dependencyIds) && sameIds(oldSources, input.eventSourceIds)) {
+        return { kind: 'updated', asset: { id: current.id, updated_at: current.updated_at } } as const;
+      }
+      const before = contextSnapshot(current);
       const asset = await tx.assets.update({
       where: { id: assetId },
       data: {
@@ -322,9 +417,46 @@ export const assetsRepository = {
           create: addedSources.map((id) => ({ event_source_id: id })),
         },
       },
-      select: { id: true, updated_at: true },
+      select: contextSelect,
       });
-      return { kind: 'updated', asset } as const;
+      const after = contextSnapshot(asset);
+      const id = randomUUID();
+      const at = new Date();
+      await tx.audit_logs.create({ data: {
+        id, actor_type: 'USER', actor_user_id: userId, action: 'ASSET_CONTEXT_UPDATED',
+        resource_type: 'ASSET', resource_id: assetId, source: 'API', occurred_at: at,
+        before_data: before, after_data: after,
+        record_hash: createHash('sha256').update(JSON.stringify({ id, userId, assetId, at: at.toISOString(), before, after })).digest('hex'),
+      } });
+      return { kind: 'updated', asset: { id: asset.id, updated_at: asset.updated_at } } as const;
     }, { isolationLevel: 'Serializable', maxWait: 5000, timeout: 15000 });
   },
+  contextHistory(assetId: string, actorId: string, query: AssetContextHistoryQuery) {
+    return readAssetHistory(assetId, actorId, query, 'ASSET_CONTEXT_UPDATED');
+  },
+  classificationHistory(assetId: string, actorId: string, query: AssetContextHistoryQuery) {
+    return readAssetHistory(assetId, actorId, query, 'ASSET_CLASSIFICATION_UPDATED');
+  },
 };
+
+function readAssetHistory(assetId: string, actorId: string, query: AssetContextHistoryQuery,
+  action: 'ASSET_CONTEXT_UPDATED' | 'ASSET_CLASSIFICATION_UPDATED') {
+    return prisma.$transaction(async (tx) => {
+      const actor = await tx.users.findUnique({ where: { id: actorId }, select: { role: true, status: true } });
+      if (!actor || actor.status !== 'ACTIVE') throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+      const asset = await tx.assets.findUnique({ where: { id: assetId }, select: { owner_user_id: true } });
+      if (!asset) throw new AppError(404, 'ASSET_NOT_FOUND', 'Asset not found');
+      if (actor.role !== 'SECURITY_OFFICER' && asset.owner_user_id !== actorId)
+        throw new AppError(403, 'FORBIDDEN', 'Asset Owner access required');
+      const where = { resource_type: 'ASSET', resource_id: assetId, action };
+      const [total, items] = await Promise.all([
+        tx.audit_logs.count({ where }),
+        tx.audit_logs.findMany({ where, orderBy: [{ occurred_at: 'desc' }, { id: 'desc' }],
+          skip: (query.page - 1) * query.limit, take: query.limit,
+          select: { id: true, occurred_at: true, before_data: true, after_data: true,
+            users: { select: { id: true, full_name: true } } },
+        }),
+      ]);
+      return { total, items };
+    }, { isolationLevel: 'RepeatableRead' });
+}

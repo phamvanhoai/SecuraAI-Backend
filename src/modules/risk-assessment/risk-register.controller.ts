@@ -1,4 +1,5 @@
 import type { RequestHandler } from 'express';
+import { completeRiskReviewSchema } from './dto/complete-risk-review.dto.js';
 import { AppError } from '../../common/errors/app-error.js';
 import { listRiskRegisterQuerySchema, riskIdParamsSchema } from './dto/view-risk-register.dto.js';
 import { riskRegisterService } from './risk-register.service.js';
@@ -151,3 +152,8 @@ export const updateTreatmentPlan: RequestHandler = async (req, res) => {
 export const submitRiskAcceptance: RequestHandler = async (req, res) => { const { riskId } = submitRiskAcceptanceParamsSchema.parse(req.params); const data = await riskRegisterService.submitAcceptance(userId(res.locals.authenticatedUserId), riskId, submitRiskAcceptanceBodySchema.parse(req.body)); res.status(201).json({ success: true, data }); };
 export const decideRiskAcceptance: RequestHandler = async (req, res) => { const { acceptanceId } = decideRiskAcceptanceParamsSchema.parse(req.params); const data = await riskRegisterService.decideAcceptance(userId(res.locals.authenticatedUserId), acceptanceId, decideRiskAcceptanceBodySchema.parse(req.body)); res.status(200).json({ success: true, data }); };
 export const openRiskAcceptanceReview: RequestHandler = async (req, res) => { const { riskId } = submitRiskAcceptanceParamsSchema.parse(req.params); const data = await riskRegisterService.openAcceptanceReview(userId(res.locals.authenticatedUserId), riskId, openRiskReviewBodySchema.parse(req.body)); res.status(200).json({ success: true, data }); };
+export const completeRiskReview: RequestHandler = async (req, res) => {
+  const { riskId } = submitRiskAcceptanceParamsSchema.parse(req.params);
+  const data = await riskRegisterService.completeReview(userId(res.locals.authenticatedUserId), riskId, completeRiskReviewSchema.parse(req.body));
+  res.status(200).json({ success: true, data });
+};

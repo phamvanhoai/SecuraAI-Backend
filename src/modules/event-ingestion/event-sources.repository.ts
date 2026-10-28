@@ -116,7 +116,12 @@ export const eventSourcesRepository = {
 
   findByName(name: string) {
     return prisma.event_sources.findFirst({
-      where: { name },
+      where: {
+        name: {
+          equals: name.trim(),
+          mode: 'insensitive',
+        },
+      },
       select: { id: true, name: true },
     });
   },

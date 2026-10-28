@@ -15,6 +15,7 @@ const eventSelect = {
   },
 } as const;
 export type DetectionEvent = Prisma.normalized_eventsGetPayload<{ select: typeof eventSelect }>;
+export type PendingEventScope = 'ALL' | 'WAZUH_REALTIME';
 
 export const anomalyDetectionRepository = {
   findActor(userId: string) {
@@ -30,11 +31,25 @@ export const anomalyDetectionRepository = {
       select: { id: true, model_name: true, version: true, parameters: true },
     });
   },
-  async findPendingEvents(modelVersionId: string, since: Date, take: number) {
+  async findPendingEvents(
+    modelVersionId: string,
+    since: Date | null,
+    take: number,
+    scope: PendingEventScope,
+  ) {
+    const timeWindow = since ? { occurred_at: { gte: since } } : {};
+    const sourceScope: Prisma.normalized_eventsWhereInput =
+      scope === 'WAZUH_REALTIME'
+        ? {
+            ingestion_batch_id: null,
+            event_sources: { source_type: 'WAZUH', ingestion_method: 'API' },
+          }
+        : {};
     const [events, frequencies] = await Promise.all([
       prisma.normalized_events.findMany({
         where: {
-          occurred_at: { gte: since },
+          ...timeWindow,
+          ...sourceScope,
           anomaly_detections: { none: { model_version_id: modelVersionId } },
         },
         select: eventSelect,
@@ -43,7 +58,7 @@ export const anomalyDetectionRepository = {
       }),
       prisma.normalized_events.groupBy({
         by: ['event_type'],
-        where: { occurred_at: { gte: since } },
+        where: { ...timeWindow, ...sourceScope },
         orderBy: { event_type: 'asc' },
         _count: { _all: true },
       }),
@@ -53,6 +68,15 @@ export const anomalyDetectionRepository = {
       frequencies: new Map(frequencies.map((item) => [item.event_type, item._count._all])),
       populationSize: frequencies.reduce((total, item) => total + item._count._all, 0),
     };
+  },
+  async hasPendingEvents(modelVersionId: string) {
+    const pending = await prisma.normalized_events.findFirst({
+      where: {
+        anomaly_detections: { none: { model_version_id: modelVersionId } },
+      },
+      select: { id: true },
+    });
+    return pending !== null;
   },
   persistRun(input: {
     actor: { type: 'USER'; userId: string } | { type: 'SYSTEM' };

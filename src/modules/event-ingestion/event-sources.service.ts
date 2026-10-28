@@ -52,6 +52,11 @@ export const eventSourcesService = {
   ): Promise<EventSourceResponseDto> {
     await requireAuthorizedActor(userId);
 
+    const duplicate = await eventSourcesRepository.findByName(input.name);
+    if (duplicate) {
+      throw new AppError(409, 'CONFLICT', 'An event source with this name already exists');
+    }
+
     const created = await eventSourcesRepository.create({
       name: input.name,
       sourceType: input.sourceType,

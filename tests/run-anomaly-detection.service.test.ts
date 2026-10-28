@@ -6,6 +6,7 @@ vi.mock('../src/modules/ai-anomaly-detection-alerts/anomaly-detection.repository
     findActor: vi.fn(),
     findDeployedModel: vi.fn(),
     findPendingEvents: vi.fn(),
+    hasPendingEvents: vi.fn(),
     persistRun: vi.fn(),
   },
 }));
@@ -20,6 +21,7 @@ import { anomalyDetectionService } from '../src/modules/ai-anomaly-detection-ale
 describe('run anomaly detection service', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(anomalyDetectionRepository.hasPendingEvents).mockResolvedValue(false);
     vi.mocked(generateStoredAlertExplanation).mockResolvedValue(
       'The anomaly score exceeded the model threshold.',
     );
@@ -51,19 +53,19 @@ describe('run anomaly detection service', () => {
         assetThresholds: { 'asset-1': { threshold: 0.6, enabled: true } },
       },
     });
-    vi.mocked(anomalyDetectionRepository.findPendingEvents).mockResolvedValue({
-      events: [
-        {
-          id: 'event',
-          event_type: 'login_failure',
-          severity: 'CRITICAL',
-          occurred_at: new Date('2026-09-25T02:00:00Z'),
-          event_entity_mappings: [{ asset_id: 'asset-1' }],
-        },
-      ],
-      frequencies: new Map([['login_failure', 1]]),
-      populationSize: 10,
-    });
+    vi.mocked(anomalyDetectionRepository.findPendingEvents).mockResolvedValueOnce({
+        events: [
+          {
+            id: 'event',
+            event_type: 'login_failure',
+            severity: 'CRITICAL',
+            occurred_at: new Date('2026-09-25T02:00:00Z'),
+            event_entity_mappings: [{ asset_id: 'asset-1' }],
+          },
+        ],
+        frequencies: new Map([['login_failure', 1]]),
+        populationSize: 10,
+      });
     vi.mocked(anomalyDetectionRepository.persistRun).mockResolvedValue({
       detectionsCreated: 1,
       alertsCreated: 1,
@@ -81,7 +83,16 @@ describe('run anomaly detection service', () => {
       detectionsCreated: 1,
       alertsCreated: 1,
       threshold: 0.7,
+      scope: 'ALL_PENDING',
+      hasMore: false,
     });
+    expect(anomalyDetectionRepository.findPendingEvents).toHaveBeenNthCalledWith(
+      1,
+      'model',
+      null,
+      100,
+      'ALL',
+    );
     expect(anomalyDetectionRepository.persistRun).toHaveBeenCalledWith(
       expect.objectContaining({
         actor: { type: 'USER', userId: 'u' },
@@ -125,16 +136,77 @@ describe('run anomaly detection service', () => {
     });
 
     const result = await anomalyDetectionService.runAutomated({
-      lookbackHours: 24,
       maxEvents: 100,
     });
 
-    expect(result).toMatchObject({ eventsEvaluated: 1, alertsCreated: 1 });
+    expect(result).toMatchObject({
+      eventsEvaluated: 1,
+      alertsCreated: 1,
+      scope: 'WAZUH_REALTIME',
+    });
+    expect(anomalyDetectionRepository.findPendingEvents).toHaveBeenCalledWith(
+      'model',
+      null,
+      100,
+      'WAZUH_REALTIME',
+    );
     expect(anomalyDetectionRepository.persistRun).toHaveBeenCalledWith(
       expect.objectContaining({
         actor: { type: 'SYSTEM' },
         detections: [expect.objectContaining({ eventId: 'wazuh-event', isAnomaly: true })],
       }),
+    );
+  });
+
+  it('processes one bounded manual batch and reports that more events may remain', async () => {
+    vi.mocked(anomalyDetectionRepository.findActor).mockResolvedValue({
+      id: 'u',
+      role: user_role.SECURITY_OFFICER,
+      status: user_status.ACTIVE,
+    });
+    vi.mocked(anomalyDetectionRepository.findDeployedModel).mockResolvedValue({
+      id: 'model',
+      model_name: 'detector',
+      version: '2',
+      parameters: { threshold: 0.8 },
+    });
+    const makeEvent = (id: string) => ({
+      id,
+      event_type: 'login_failure',
+      severity: 'LOW',
+      occurred_at: new Date('2026-09-25T12:00:00Z'),
+      event_entity_mappings: [],
+    });
+    vi.mocked(anomalyDetectionRepository.findPendingEvents).mockResolvedValueOnce({
+      events: Array.from({ length: 100 }, (_, index) => makeEvent(`event-${index}`)),
+      frequencies: new Map([['login_failure', 100]]),
+      populationSize: 100,
+    });
+    vi.mocked(anomalyDetectionRepository.persistRun).mockResolvedValueOnce({
+      detectionsCreated: 100,
+      alertsCreated: 0,
+    });
+    vi.mocked(anomalyDetectionRepository.hasPendingEvents).mockResolvedValueOnce(true);
+
+    const result = await anomalyDetectionService.run('u', {
+      lookbackHours: 24,
+      maxEvents: 100,
+    });
+
+    expect(result).toMatchObject({
+      eventsEvaluated: 100,
+      detectionsCreated: 100,
+      alertsCreated: 0,
+      scope: 'ALL_PENDING',
+      hasMore: true,
+    });
+    expect(anomalyDetectionRepository.findPendingEvents).toHaveBeenCalledTimes(1);
+    expect(anomalyDetectionRepository.findPendingEvents).toHaveBeenNthCalledWith(
+      1,
+      'model',
+      null,
+      100,
+      'ALL',
     );
   });
 
@@ -152,7 +224,6 @@ describe('run anomaly detection service', () => {
     });
 
     const result = await anomalyDetectionService.runAutomated({
-      lookbackHours: 24,
       maxEvents: 100,
     });
 

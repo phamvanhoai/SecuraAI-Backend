@@ -85,6 +85,12 @@ function extractKeyPrefix(token: string): string | null {
   return null;
 }
 
+function safeEqual(a: string, b: string): boolean {
+  const left = createHash('sha256').update(a).digest();
+  const right = createHash('sha256').update(b).digest();
+  return timingSafeEqual(left, right);
+}
+
 async function verifySecretHash(storedHash: string, suppliedSecret: string): Promise<boolean> {
   // 1. Support Argon2id hash verification
   if (storedHash.startsWith('$argon2')) {
@@ -125,7 +131,7 @@ export const authenticateApiKey: RequestHandler = async (req, res, next) => {
   if (
     configuredEnvToken &&
     configuredEnvToken !== 'YOUR_SECURA_AI_INGEST_TOKEN' &&
-    token === configuredEnvToken
+    safeEqual(token, configuredEnvToken)
   ) {
     res.locals.apiKey = {
       id: 'static-env-token',
