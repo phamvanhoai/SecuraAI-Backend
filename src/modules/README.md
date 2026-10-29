@@ -66,3 +66,7 @@ Implemented routes are `/api/v1/health/live`, `/api/v1/health/ready`, `/api/v1/a
 Use route → controller → service → repository → Prisma for each new use case. Update `src/routes/index.ts` and `src/docs/openapi.ts` only when the corresponding endpoint is real and tested.
 
 Employee responsibility selection is exclusive: at most one of Risk Owner, Control Owner, Asset Owner or Authorized Approver per Employee. An Employee may have no inherited responsibility; click the selected checkbox again to clear it. Transfer conflicting owned records before changing responsibility; legacy multiple ownership is preserved until explicitly resolved.
+
+Assess Control can update implementation progress without unlocking catalog configuration. The existing assessment POST accepts optional implementationStatus + expectedImplementationStatus; a change requires implementationChangeReason. An active Security Officer or assigned Employee Control Owner can save this atomically with a new assessment and audit (CONTROL_IMPLEMENTATION_ASSESSED, or CONTROL_EFFECTIVENESS_ASSESSED without a status change). Existing assessments remain unchanged. No database migration is required.
+
+New Control assessments enforce an internal result scoring policy: [0,50) Ineffective; [50,80) Partially effective; [80,100] Effective. The API rejects an inconsistent result/effectiveness pair. Existing historical assessments are not rewritten.

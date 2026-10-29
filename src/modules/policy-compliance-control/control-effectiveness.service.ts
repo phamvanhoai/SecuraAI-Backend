@@ -76,7 +76,10 @@ export const controlEffectivenessService = {
     const user = await actor(userId);
     const control = await controlEffectivenessRepository.find(controlId);
     if (!control) throw new AppError(404, 'CONTROL_NOT_FOUND', 'Security control not found');
-    if (user.role !== 'SECURITY_OFFICER' && control.owner_user_id !== userId)
+    if (
+      user.role !== 'SECURITY_OFFICER' &&
+      !(user.role === 'EMPLOYEE' && control.owner_user_id === userId)
+    )
       throw new AppError(403, 'FORBIDDEN', 'Security Officer or assigned Control Owner required');
     if (
       !control.control_evidence_links.some((link) =>
