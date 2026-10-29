@@ -1,4 +1,9 @@
 import { Router } from 'express';
+import { createPolicyVersion } from './policy-compliance.controller.js';
+import {
+  createPolicyVersionBodySchema,
+  createPolicyVersionParamsSchema,
+} from './dto/create-policy-version.dto.js';
 import {
   listControlEvidence,
   addControlEvidence,
@@ -97,6 +102,12 @@ import {
 } from './dto/define-policy-applicability.dto.js';
 
 export const policyComplianceRouter = Router();
+policyComplianceRouter.post(
+  '/policies/:policyId/versions',
+  authenticate,
+  validate({ params: createPolicyVersionParamsSchema, body: createPolicyVersionBodySchema }),
+  asyncHandler(createPolicyVersion),
+);
 policyComplianceRouter.get(
   '/controls/:controlId/evidence',
   authenticate,
@@ -112,7 +123,10 @@ policyComplianceRouter.post(
 policyComplianceRouter.delete(
   '/controls/:controlId/evidence-links/:evidenceId',
   authenticate,
-  validate({ params: controlParamsSchema.merge(evidenceParamsSchema), body: unlinkControlEvidenceSchema }),
+  validate({
+    params: controlParamsSchema.merge(evidenceParamsSchema),
+    body: unlinkControlEvidenceSchema,
+  }),
   asyncHandler(unlinkControlEvidence),
 );
 policyComplianceRouter.post(

@@ -2437,6 +2437,88 @@ export const openApiSpec = {
         },
       },
     },
+    '/compliance/policies/{policyId}/versions': {
+      post: {
+        tags: ['Policies'],
+        summary: 'Create the next policy draft version',
+        description:
+          'Active Security Officer who owns an active published policy only. Requires a unique version number and no DRAFT, IN_REVIEW, WAITING_APPROVAL or APPROVED version. Serializes competing creations. Updates shared policy metadata, but retains the existing publication and acknowledgements. Define applicability for the new draft before submission. The draft follows the normal review, approval and publication workflow.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'policyId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['versionNumber', 'content', 'changeSummary'],
+                properties: {
+                  title: { type: 'string', minLength: 3, maxLength: 255 },
+                  description: { type: 'string', nullable: true, maxLength: 2000 },
+                  versionNumber: { type: 'string', minLength: 1, maxLength: 30 },
+                  content: { type: 'string', minLength: 1, maxLength: 500000 },
+                  changeSummary: { type: 'string', minLength: 1, maxLength: 5000 },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '201': {
+            description: 'New draft created; policy remains active',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', enum: [true] },
+                    data: {
+                      type: 'object',
+                      properties: {
+                        policyId: { type: 'string', format: 'uuid' },
+                        policyCode: { type: 'string' },
+                        title: { type: 'string' },
+                        description: { type: 'string', nullable: true },
+                        ownerUserId: { type: 'string', format: 'uuid', nullable: true },
+                        policyStatus: { type: 'string', enum: ['active'] },
+                        updatedAt: { type: 'string', format: 'date-time' },
+                        version: {
+                          type: 'object',
+                          properties: {
+                            id: { type: 'string', format: 'uuid' },
+                            versionNumber: { type: 'string' },
+                            content: { type: 'string' },
+                            changeSummary: { type: 'string', nullable: true },
+                            status: { type: 'string', enum: ['draft'] },
+                            createdByUserId: { type: 'string', format: 'uuid' },
+                            createdAt: { type: 'string', format: 'date-time' },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          '401': { description: 'Authentication required or inactive account' },
+          '403': { description: 'Security Officer ownership required' },
+          '404': { description: 'Policy not found' },
+          '409': {
+            description: 'Not published, duplicate number or a version is already in progress',
+          },
+          '422': { description: 'Invalid input' },
+        },
+      },
+    },
     '/compliance/policies/{policyId}/versions/{versionId}/history': {
       get: {
         tags: ['Policy Management'],

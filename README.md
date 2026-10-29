@@ -1,5 +1,7 @@
 # SecuraAI Backend
 
+Create new policy version is V2-backed at `POST /api/v1/compliance/policies/:policyId/versions`: active owning Security Officer only, unique version number, one in-progress version per policy. The existing publication remains available while the next draft goes through applicability, review, approval and publication. No database migration is needed; 56 legacy routes remain pending.
+
 REST API SecuraAI cho quản lý rủi ro an toàn thông tin, tài sản, controls, chính sách, sự cố, security events và anomaly alerts.
 
 Incident creation authorization: POST /api/v1/incidents requires an active SECURITY_OFFICER for both manual and confirmed-source creation. Service checks reject ADMIN/EXECUTIVE/EMPLOYEE before writes; the creation transaction rechecks the actor. Executive list/detail reads and historical report access remain unchanged. This endpoint is not a general employee reporting workflow. No schema migration, deletion or modification of existing incidents.
