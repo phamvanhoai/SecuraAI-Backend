@@ -12,14 +12,14 @@ Run from SecuraAI-Backend:
 
 | Case | Scenario | Expected with defaults, isolated new account |
 |---|---|---|
-| AuthBurst | 6 failed Windows logins | 1 alert, 1 grouped match |
-| AuthSuccess | 6 failures then successful Windows login | 2 alerts, 1 grouped match |
-| AppDenial | 11 denied accesses to one application | 1 alert, 1 grouped match |
-| AppSuccess | 11 denials then application login | 2 alerts, 1 grouped match |
-| VpnBurst | 6 failed VPN logins | 1 alert, 1 grouped match |
-| VpnNewContext | 20 successful SSO baseline events then success from a new IP outside local working hours | 1 alert |
+| AuthBurst | 6 failed Windows logins | Rule candidate; alert only if score reaches threshold |
+| AuthSuccess | 6 failures then successful Windows login | Rule candidates; alerts only if scores reach threshold |
+| AppDenial | 11 denied accesses to one application | Rule candidate; alert only if score reaches threshold |
+| AppSuccess | 11 denials then application login | Rule candidates; alerts only if scores reach threshold |
+| VpnBurst | 6 failed VPN logins | Rule candidate; alert only if score reaches threshold |
+| VpnNewContext | 20 successful SSO baseline events then success from a new IP outside local working hours | Rule candidate; alert only if score reaches threshold |
 | Normal | One ordinary successful event in each family | No alerts |
-| All | Shared complete 49-event fixture | 6 alerts, 3 grouped matches |
+| All | Shared complete 49-event fixture | Alert/group counts depend on score and threshold |
 
 All reuses the same authentication/application chains for both burst and subsequent-success rules, so it is not the sum of the independent case counts. Each execution adds unique accounts/external IDs and uses past event timestamps (newest at yesterday 18:00 UTC, 01:00 in the default Vietnam timezone). Inspect Security Events using the printed run ID. Events deliberately appear in yesterday's time range; select a suitable range in Security Events. Alerts are generated at detection time, so new alerts appear under the current detection time.
 

@@ -31,61 +31,79 @@ describe('run anomaly detection service', () => {
       'The anomaly score exceeded the model threshold.',
     );
   });
-  it('creates a rule alert below the behavioral threshold using historical events', async () => {
-    vi.mocked(anomalyDetectionRepository.findDeployedModel).mockResolvedValue({
-      id: 'model',
-      model_name: 'detector',
-      version: '3',
-      parameters: { threshold: 1 },
-    });
-    const event = {
-      id: 'target',
-      event_source_id: 'source',
-      event_family: 'AUTHENTICATION' as const,
-      event_type: 'LOGIN_FAILURE',
-      severity: 'LOW',
-      occurred_at: new Date('2026-10-29T12:00:00Z'),
-      account_identifier: 'alice',
-      source_ip: '192.0.2.1',
-      device_identifier: null,
-      normalized_payload: {},
-      event_entity_mappings: [],
-    };
-    vi.mocked(anomalyDetectionRepository.findPendingEvents).mockResolvedValue({ events: [event] });
-    vi.mocked(anomalyDetectionRepository.findEventContext).mockResolvedValue({
-      events: Array.from({ length: 4 }, (_, i) => ({
-        ...event,
-        id: `old-${i}`,
-        occurred_at: new Date(event.occurred_at.getTime() - 60_000 - i * 1000),
-      })),
-      truncated: false,
-    });
-    vi.mocked(anomalyDetectionRepository.persistRun).mockResolvedValue({
-      detectionsCreated: 1,
-      alertsCreated: 1,
-      alertsGrouped: 0,
-    });
-    const result = await anomalyDetectionService.runAutomated({ maxEvents: 100 });
-    expect(result).toMatchObject({ anomaliesDetected: 1, alertsCreated: 1 });
-    expect(anomalyDetectionRepository.persistRun).toHaveBeenCalledWith(
-      expect.objectContaining({
-        detections: [
-          expect.objectContaining({
-            score: 0.649,
-            thresholdSource: 'RULE_MATCH',
-            threshold: 1,
-            isAnomaly: true,
-            features: expect.arrayContaining([
-              expect.objectContaining({
-                featureName: 'matched_rules',
-                featureValue: '["AUTH_FAILURE_BURST"]',
-              }),
-            ]),
-          }),
-        ],
-      }),
-    );
-  });
+  it.each([
+    [1, false],
+    [0.649, false],
+    [0.6, false],
+    [0.7, true],
+    [0.649, true],
+    [0.6, true],
+  ] as const)(
+    'requires matched-rule score to reach threshold %s (asset override: %s)',
+    async (threshold, override) => {
+      vi.mocked(anomalyDetectionRepository.findDeployedModel).mockResolvedValue({
+        id: 'model',
+        model_name: 'detector',
+        version: '3',
+        parameters: override
+          ? { threshold: 0.5, assetThresholds: { 'asset-1': { threshold, enabled: true } } }
+          : { threshold },
+      });
+      const event = {
+        id: 'target',
+        event_source_id: 'source',
+        event_family: 'AUTHENTICATION' as const,
+        event_type: 'LOGIN_FAILURE',
+        severity: 'LOW',
+        occurred_at: new Date('2026-10-29T12:00:00Z'),
+        account_identifier: 'alice',
+        source_ip: '192.0.2.1',
+        device_identifier: null,
+        normalized_payload: {},
+        event_entity_mappings: override ? [{ asset_id: 'asset-1' }] : [],
+      };
+      vi.mocked(anomalyDetectionRepository.findPendingEvents).mockResolvedValue({
+        events: [event],
+      });
+      vi.mocked(anomalyDetectionRepository.findEventContext).mockResolvedValue({
+        events: Array.from({ length: 4 }, (_, i) => ({
+          ...event,
+          id: `old-${i}`,
+          occurred_at: new Date(event.occurred_at.getTime() - 60_000 - i * 1000),
+        })),
+        truncated: false,
+      });
+      vi.mocked(anomalyDetectionRepository.persistRun).mockResolvedValue({
+        detectionsCreated: 1,
+        alertsCreated: threshold <= 0.649 ? 1 : 0,
+        alertsGrouped: 0,
+      });
+      const result = await anomalyDetectionService.runAutomated({ maxEvents: 100 });
+      expect(result).toMatchObject({
+        anomaliesDetected: threshold <= 0.649 ? 1 : 0,
+        alertsCreated: threshold <= 0.649 ? 1 : 0,
+      });
+      if (threshold > 0.649) expect(generateStoredAlertExplanation).not.toHaveBeenCalled();
+      expect(anomalyDetectionRepository.persistRun).toHaveBeenCalledWith(
+        expect.objectContaining({
+          detections: [
+            expect.objectContaining({
+              score: 0.649,
+              thresholdSource: override ? 'ASSET_OVERRIDE' : 'MODEL_DEFAULT',
+              threshold,
+              isAnomaly: threshold <= 0.649,
+              features: expect.arrayContaining([
+                expect.objectContaining({
+                  featureName: 'matched_rules',
+                  featureValue: '["AUTH_FAILURE_BURST"]',
+                }),
+              ]),
+            }),
+          ],
+        }),
+      );
+    },
+  );
 
   it('allows only an active Security Officer', async () => {
     vi.mocked(anomalyDetectionRepository.findActor).mockResolvedValue({

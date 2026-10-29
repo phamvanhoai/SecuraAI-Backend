@@ -3,10 +3,15 @@ param(
     [ValidateSet('All', 'AuthBurst', 'AuthSuccess', 'AppDenial', 'AppSuccess', 'VpnBurst', 'VpnNewContext', 'Normal')]
     [string]$Case = 'All',
     [string]$Container = 'single-node-wazuh.manager-1',
+    [ValidateRange(2, 1000)]
+    [int]$BurstCount,
     [switch]$Send
 )
 
 $ErrorActionPreference = 'Stop'
+if ($PSBoundParameters.ContainsKey('BurstCount') -and $Case -notin @('AuthBurst', 'AppDenial', 'VpnBurst')) {
+    throw '-BurstCount is supported only for AuthBurst, AppDenial and VpnBurst.'
+}
 $demoPath = Join-Path $PSScriptRoot '../../docs/contextual-detection-demo.json'
 $records = Get-Content -LiteralPath $demoPath -Raw | ConvertFrom-Json
 $runId = 'wazuh-demo-' + [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() + '-' + [guid]::NewGuid().ToString('N').Substring(0, 6)
@@ -20,13 +25,13 @@ $anchor = [DateTime]::UtcNow.Date.AddDays(-1).AddHours(18)
 $reference = [DateTimeOffset]::Parse('2026-10-29T18:00:00Z').UtcDateTime
 $shift = $anchor - $reference
 $expected = @{
-    All = '49 events; 9 rule matches; 6 alerts; 3 grouped matches'
-    AuthBurst = '6 events; AUTH_FAILURE_BURST; 1 alert + 1 grouped match'
+    All = '49 events; 9 rule matches; alerts depend on configured threshold'
+    AuthBurst = '6 events; AUTH_FAILURE_BURST; alerts depend on configured threshold'
     AuthSuccess = '7 events; AUTH_FAILURE_BURST + AUTH_SUCCESS_AFTER_FAILURE; 2 alerts + 1 grouped match'
-    AppDenial = '11 events; APP_DENIAL_BURST; 1 alert + 1 grouped match'
+    AppDenial = '11 events; APP_DENIAL_BURST; alerts depend on configured threshold'
     AppSuccess = '12 events; APP_DENIAL_BURST + APP_SUCCESS_AFTER_DENIAL; 2 alerts + 1 grouped match'
-    VpnBurst = '6 events; VPN_SSO_FAILURE_BURST; 1 alert + 1 grouped match'
-    VpnNewContext = '21 events; VPN_SSO_NEW_CONTEXT_OFF_HOURS; 1 alert (after 20 baseline events)'
+    VpnBurst = '6 events; VPN_SSO_FAILURE_BURST; alerts depend on configured threshold'
+    VpnNewContext = '21 events; VPN_SSO_NEW_CONTEXT_OFF_HOURS; alerts depend on configured threshold after 20 baseline events'
     Normal = '3 events; no alerts with default thresholds'
 }
 $selected = @($records | Where-Object {
@@ -42,6 +47,18 @@ $selected = @($records | Where-Object {
         'Normal' { $item.accountIdentifier -like 'demo-normal-*' }
     }
 } | Sort-Object occurredAt, externalEventId)
+
+if ($PSBoundParameters.ContainsKey('BurstCount')) {
+    $template = $selected[0]
+    $start = [DateTimeOffset]::Parse($template.occurredAt).UtcDateTime
+    # Same 50-second observation span for a fair comparison of different counts.
+    $selected = @(for ($burstIndex = 0; $burstIndex -lt $BurstCount; $burstIndex++) {
+        $copy = $template | ConvertTo-Json -Depth 20 | ConvertFrom-Json
+        $copy.occurredAt = $start.AddSeconds(50.0 * $burstIndex / ($BurstCount - 1)).ToString("yyyy-MM-ddTHH:mm:ss.fff'Z'")
+        $copy
+    })
+    $expected[$Case] = "$BurstCount failures over 50 seconds for one account/IP; alerts require the applicable threshold."
+}
 
 $index = 0
 foreach ($record in $selected) {
@@ -84,7 +101,7 @@ foreach ($record in $selected) {
 Write-Host "Case: $Case | Run: $runId"
 Write-Host "Files: $outputDirectory"
 Write-Host "Generated: $index events"
-Write-Host "Expected (new engine/default configuration): $($expected[$Case])"
+Write-Host "Scenario (rule matches are scoring evidence, not guaranteed alerts): $($expected[$Case])"
 if (-not $Send) {
     Write-Host 'Files generated only. Add -Send to dispatch through the Wazuh integration.'
     return

@@ -102,12 +102,11 @@ function fallbackExplanation(input: StoredAlertExplanationInput): string {
       (input.suggestedRiskLevel ? ' (' + input.suggestedRiskLevel + ').' : '.') +
       ' This is a signal-strength score, not attack probability.',
   );
-  if (rules.length)
-    sections.push(
-      'The alert was created because a detection rule matched; the behavioral threshold of ' +
-        threshold +
-        ' is not required for this rule.',
-    );
+  sections.push(
+    input.anomalyScore >= input.threshold
+      ? `The detection score ${score} met the configured threshold ${threshold}. Rules provide scoring evidence; they do not bypass this threshold.`
+      : `This historical alert has a score of ${score}, below its recorded threshold ${threshold}. It predates the current threshold-only policy; new events below threshold do not create alerts.`,
+  );
   sections.push(
     'Review the related activity and confirm whether the access was expected before taking action.',
   );
