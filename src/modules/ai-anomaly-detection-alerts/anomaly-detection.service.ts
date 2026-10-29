@@ -4,7 +4,11 @@ import { z } from 'zod';
 import { AppError } from '../../common/errors/app-error.js';
 import type { RunAnomalyDetectionBody } from './dto/run-anomaly-detection.dto.js';
 import { anomalyDetectionRepository } from './anomaly-detection.repository.js';
-import { detectionPolicySchema, evaluateContext } from './contextual-detection.js';
+import {
+  detectionPolicySchema,
+  evaluateContext,
+  detectionSeverity,
+} from './contextual-detection.js';
 import { generateStoredAlertExplanation } from './alert-explanation.generator.js';
 
 const parametersSchema = z
@@ -127,6 +131,9 @@ async function runDetection(
   );
   const detectedAt = new Date();
   const explanations = new Map<string, Promise<string>>();
+  // One shared deadline for optional prose across the entire batch, not a
+  // separate 60-second wait for every alert. Explicit regeneration is unchanged.
+  const explanationDeadline = Date.now() + 5_000;
   const detections = [];
   // Bound DB/LLM concurrency; every event uses its own event-time history including previously evaluated events.
   for (let offset = 0; offset < batch.events.length; offset += 4) {
@@ -144,23 +151,37 @@ async function runDetection(
           const score = decision.score;
           const assetId = event.event_entity_mappings[0]?.asset_id;
           const customThreshold = assetId ? parameters.assetThresholds[assetId] : undefined;
-          const thresholdSource = customThreshold?.enabled ? 'ASSET_OVERRIDE' : 'MODEL_DEFAULT';
+          const configuredThresholdSource = customThreshold?.enabled
+            ? 'ASSET_OVERRIDE'
+            : 'MODEL_DEFAULT';
+          const thresholdSource = decision.matchedRules.length
+            ? 'RULE_MATCH'
+            : configuredThresholdSource;
           const threshold = customThreshold?.enabled
             ? customThreshold.threshold
             : parameters.threshold;
           const isAnomaly = decision.matchedRules.length > 0 || score >= threshold;
+          decision.features.push({
+            featureName: 'configured_threshold',
+            featureValue: JSON.stringify({ threshold, source: configuredThresholdSource }),
+            contributionScore: 0,
+            rank: decision.features.length + 1,
+          });
           const explanationKey = `${decision.groupKey}:${Math.floor(event.occurred_at.getTime() / (15 * 60_000))}`;
           if (isAnomaly && !explanations.has(explanationKey))
             explanations.set(
               explanationKey,
-              generateStoredAlertExplanation({
-                anomalyScore: score,
-                threshold,
-                suggestedRiskLevel: 'high',
-                detectedAt,
-                featureContributions: decision.features,
-                eventId: event.id,
-              }),
+              generateStoredAlertExplanation(
+                {
+                  anomalyScore: score,
+                  threshold,
+                  suggestedRiskLevel: detectionSeverity(score).toLowerCase(),
+                  detectedAt,
+                  featureContributions: decision.features,
+                  eventId: event.id,
+                },
+                { timeoutMs: Math.max(0, explanationDeadline - Date.now()) },
+              ),
             );
           const explanationText = isAnomaly ? await explanations.get(explanationKey) : undefined;
           return {

@@ -17,7 +17,7 @@ Application rules require an explicit application identity in normalizedPayload.
 
 ## Scoring and thresholds
 
-A rule match has signal score 0.9 and triggers independently of model/asset behavioral thresholds. Scores are not calibrated attack probabilities. Otherwise, severity, contextual behavior and off-hours use deployed weights normalized by their sum. The existing weights.rarity key is retained for compatibility but now weights contextual failure/new-context evidence, not global type rarity. With defaults the weights remain 0.45/0.35/0.2. Missing severity contributes zero. All-zero weights produce zero behavioral score but do not disable rule detections.
+A rule match uses the evidence-weighted score described below and triggers independently of model/asset behavioral thresholds. Scores are not calibrated attack probabilities. Otherwise, severity, contextual behavior and off-hours use deployed weights normalized by their sum. The existing weights.rarity key is retained for compatibility but now weights contextual failure/new-context evidence, not global type rarity. With defaults the weights remain 0.45/0.35/0.2. Missing severity contributes zero. All-zero weights produce zero behavioral score but do not disable rule detections.
 
 Asset overrides continue to affect the behavioral threshold only. They cannot suppress explicit security rules. Store policy/weight/threshold snapshots for every evaluated event, including nonalerts. Rule matches, evidence IDs, time zone and baseline readiness are stored as feature contributions.
 
@@ -57,3 +57,29 @@ Ollama generates prose only. Deterministic explanations are stored on failure/di
 Import docs/contextual-detection-demo.json as JSON into an active source accepting all three families. Run manual detection on a clean source/model with default thresholds. Expected for this file alone: 49 evaluations, 9 rule matches, 6 alerts, 3 grouped matches. Three normal events and baseline events stay below the default threshold. Prior source history, old pending events, custom thresholds or existing open alerts can change totals. External IDs are fixed for safe duplicate-import checks; use a fresh source or intentional new IDs for another independent demo.
 
 For App Access realtime, the Wazuh integration preserves data.application_id/application_name (or camelCase equivalents) as metadata. The updated script must be deployed to Wazuh separately; the repository change alone does not replace a running container's script.
+## Evidence-weighted rule scores (v2)
+
+Rule matches no longer all receive 0.90 or HIGH. This is a transparent prioritization heuristic, not a calibrated attack probability or trained-model result:
+
+- Start at 0.55 when a rule matches.
+- Add 0.10 per additional threshold-sized failure batch, proportionally, capped at 0.20.
+- Add normalized source severity times 0.10; outside working hours adds 0.05.
+- With sufficient non-truncated successful history, a new IP adds 0.05 and a new device adds 0.05.
+- Successful access after the required failures/denials adds 0.10.
+- Total is capped at 0.99. Severity: below 0.50 LOW; 0.50-0.7499 MEDIUM; 0.75-0.8999 HIGH; 0.90+ CRITICAL.
+
+These initial engineering weights require evaluation against labeled organization data before making accuracy claims. Behavioral-only scoring and rule triggering conditions are unchanged. Scores may legitimately match when evidence is equivalent. Store the complete rule_score_breakdown (revision evidence-weighted-v2) in existing contributions. No schema migration is needed.
+
+Existing detections and alerts are not rescored. New grouping keys include the scoring revision to avoid appending new-version matches to old 90% alerts. Event/model/engine processing identity stays unchanged so the worker does not replay historical events. Grouped alerts retain the first detection's score; subsequent scores are available in correlated evidence.
+
+### Rule decisions and database compatibility
+
+Apply migration `20261030033000_allow_rule_match_decisions` before running evidence-weighted scores. The former check required every anomaly to exceed the behavioral threshold; it rejected valid low-score rule matches and rolled back whole batches. The revised check permits `threshold_source = RULE_MATCH` only with `is_anomaly = true`. MODEL_DEFAULT and ASSET_OVERRIDE retain the exact score-threshold invariant. The configured threshold value remains stored, with its original source in configured_threshold feature evidence. No table or column is added and no existing result is rescored.
+
+Automatic explanation generation has a shared 5-second deadline per batch. After it expires, the existing deterministic evidence-based fallback is stored. Explicit explanation regeneration retains its configured Ollama timeout. Database work still contributes to total batch latency; this is not a five-second end-to-end guarantee.
+
+## Live priority updates (evidence-weighted-v3)
+
+In addition to v2 signals, matched rules gain up to 10 priority points for temporal concentration: `10 * max(0, 1 - observedFailureSpan / configuredWindow)`, using the earliest related failure and current event time. The result is capped at 99 points. This is an engineering heuristic requiring labeled-data evaluation, not a probability model. Do not invent privileged-account or asset-criticality inputs when those facts are unavailable.
+
+Open alerts retain a monotonic peak score across the fixed 15-minute same-rule/account/source/IP group. Each stronger match appends alert_score_update evidence containing previous/new scores, event/detection references, actor, reason, timestamp and scoring snapshot; alert severity updates atomically. The detection-run audit includes these changes. Original detection scores, features and explanation text are not overwritten. List/detail/explanation projections use the peak snapshot; explicit regeneration uses its evidence. Lower-scored later events do not reduce investigation priority. Terminal alerts cannot be updated. Rule chains remain separate groups so a successful access after failures gets a distinct decision. Existing alerts are not backfilled; send fresh events. No schema addition is required beyond the rule-decision migration above.

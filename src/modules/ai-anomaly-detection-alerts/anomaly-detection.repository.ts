@@ -2,6 +2,8 @@ import { createHash } from 'node:crypto';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '../../database/prisma.js';
 import type { DetectionFeature } from './contextual-detection.js';
+import { detectionSeverity } from './contextual-detection.js';
+import { peakSnapshot } from './alert-score-snapshot.js';
 const engineVersion = 'contextual-rules-v1';
 
 const eventSelect = {
@@ -76,7 +78,9 @@ export const anomalyDetectionRepository = {
       where: {
         ...timeWindow,
         ...sourceScope,
-        anomaly_detections: { none: { model_version_id: modelVersionId, engine_version: engineVersion } },
+        anomaly_detections: {
+          none: { model_version_id: modelVersionId, engine_version: engineVersion },
+        },
       },
       select: eventSelect,
       orderBy: [{ occurred_at: 'asc' }, { id: 'asc' }],
@@ -87,7 +91,9 @@ export const anomalyDetectionRepository = {
   async hasPendingEvents(modelVersionId: string) {
     const pending = await prisma.normalized_events.findFirst({
       where: {
-        anomaly_detections: { none: { model_version_id: modelVersionId, engine_version: engineVersion } },
+        anomaly_detections: {
+          none: { model_version_id: modelVersionId, engine_version: engineVersion },
+        },
       },
       select: { id: true },
     });
@@ -182,7 +188,7 @@ export const anomalyDetectionRepository = {
                     status: { in: ['NEW', 'IN_TRIAGE', 'NEED_INVESTIGATION'] },
                     anomaly_detections: {
                       model_version_id: input.modelVersionId,
-                  engine_version: engineVersion,
+                      engine_version: engineVersion,
                       normalized_events: {
                         occurred_at: {
                           gte: new Date(detection.occurredAt.getTime() - 15 * 60_000),
@@ -212,6 +218,69 @@ export const anomalyDetectionRepository = {
             else lockedAlerts.add(existing.detection_id);
           }
           if (existing) {
+            const original = await transaction.anomaly_detections.findUniqueOrThrow({
+              where: { id: existing.detection_id },
+              select: {
+                anomaly_score: true,
+                anomaly_feature_contributions: {
+                  where: { feature_name: 'alert_score_update' },
+                  select: { feature_name: true, feature_value: true },
+                },
+              },
+            });
+            const previousScore = Math.max(
+              original.anomaly_score.toNumber(),
+              peakSnapshot(
+                original.anomaly_feature_contributions,
+                original.anomaly_score.toNumber(),
+              )?.score ?? 0,
+              ...groupedEvidence
+                .filter(
+                  (item) =>
+                    item.detection_id === existing.detection_id &&
+                    item.feature_name === 'alert_score_update',
+                )
+                .map((item) => {
+                  try {
+                    const value: unknown = JSON.parse(item.feature_value ?? 'null');
+                    return typeof value === 'object' &&
+                      value !== null &&
+                      'score' in value &&
+                      typeof value.score === 'number'
+                      ? value.score
+                      : 0;
+                  } catch {
+                    return 0;
+                  }
+                }),
+            );
+            if (detection.score > previousScore) {
+              const updatedAt = new Date();
+              groupedEvidence.push({
+                detection_id: existing.detection_id,
+                feature_name: 'alert_score_update',
+                rank: 101,
+                feature_value: JSON.stringify({
+                  previousScore,
+                  score: detection.score,
+                  threshold: detection.threshold,
+                  detectionId: id,
+                  eventId: detection.eventId,
+                  occurredAt: detection.occurredAt.toISOString(),
+                  updatedAt: updatedAt.toISOString(),
+                  actor: 'SYSTEM',
+                  reason: 'Stronger correlated event evidence',
+                  features: detection.features,
+                }),
+              });
+              await transaction.anomaly_alerts.updateMany({
+                where: {
+                  detection_id: existing.detection_id,
+                  status: { in: ['NEW', 'IN_TRIAGE', 'NEED_INVESTIGATION'] },
+                },
+                data: { severity: detectionSeverity(detection.score), updated_at: updatedAt },
+              });
+            }
             groupedEvidence.push({
               detection_id: existing.detection_id,
               feature_name: 'correlated_detection',
@@ -234,7 +303,7 @@ export const anomalyDetectionRepository = {
           await transaction.anomaly_alerts.create({
             data: {
               detection_id: id,
-              severity: 'HIGH',
+              severity: detectionSeverity(detection.score),
               explanation_text: detection.explanationText,
               explanation_generated_at: detection.explanationGeneratedAt,
             },
@@ -249,13 +318,15 @@ export const anomalyDetectionRepository = {
           orderBy: [{ occurred_at: 'desc' }, { id: 'desc' }],
           select: { record_hash: true },
         });
+        const scoreUpdates = groupedEvidence.filter((item) => item.feature_name === 'alert_score_update').map((item) => ({ originalDetectionId: item.detection_id, evidence: item.feature_value ?? '' }));
+        const auditSummary: Prisma.InputJsonValue = scoreUpdates.length ? { run: input.summary, scoreUpdates } : input.summary;
         const recordHash = createHash('sha256')
           .update(
             JSON.stringify({
               previousHash: previous?.record_hash ?? null,
               actor: input.actor,
               correlationId: input.correlationId,
-              summary: input.summary,
+              summary: auditSummary,
             }),
           )
           .digest('hex');
@@ -269,7 +340,7 @@ export const anomalyDetectionRepository = {
             source: input.actor.type === 'USER' ? 'API' : 'SYSTEM',
             source_ip: input.sourceIp ?? null,
             user_agent: input.userAgent ?? null,
-            after_data: input.summary,
+            after_data: auditSummary,
             ...(previous ? { previous_hash: previous.record_hash } : {}),
             record_hash: recordHash,
           },

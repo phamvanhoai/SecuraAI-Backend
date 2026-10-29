@@ -71,7 +71,8 @@ describe('run anomaly detection service', () => {
       expect.objectContaining({
         detections: [
           expect.objectContaining({
-            score: 0.9,
+            score: 0.649,
+            thresholdSource: 'RULE_MATCH',
             threshold: 1,
             isAnomaly: true,
             features: expect.arrayContaining([

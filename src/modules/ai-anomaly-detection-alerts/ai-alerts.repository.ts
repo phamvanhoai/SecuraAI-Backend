@@ -14,6 +14,10 @@ const alertSelect = {
   anomaly_detections: {
     select: {
       anomaly_score: true,
+      anomaly_feature_contributions: {
+        where: { feature_name: 'alert_score_update' },
+        select: { feature_name: true, feature_value: true },
+      },
       detected_at: true,
       ai_model_versions: {
         select: { id: true, model_name: true, model_type: true, version: true },
