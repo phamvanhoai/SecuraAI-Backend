@@ -41,6 +41,7 @@ function buildPrompt(input: AlertExplanationInput): string {
   return [
     'Explain this security anomaly to a SOC analyst using only the supplied evidence.',
     'Do not invent users, IP addresses, locations, prior events, or attack techniques.',
+    'A non-empty matched_rules feature triggers an alert independently of the behavioral threshold. Signal scores are not attack probabilities. Do not claim a score exceeded its threshold when it did not.',
     'Keep the summary concise. Observations must be evidence-based. Recommended actions must be investigative, not automatic enforcement.',
     `Evidence: ${JSON.stringify({
       anomalyScore: input.anomalyScore,

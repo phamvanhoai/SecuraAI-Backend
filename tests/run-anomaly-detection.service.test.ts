@@ -6,6 +6,7 @@ vi.mock('../src/modules/ai-anomaly-detection-alerts/anomaly-detection.repository
     findActor: vi.fn(),
     findDeployedModel: vi.fn(),
     findPendingEvents: vi.fn(),
+    findEventContext: vi.fn(),
     hasPendingEvents: vi.fn(),
     persistRun: vi.fn(),
   },
@@ -21,9 +22,67 @@ import { anomalyDetectionService } from '../src/modules/ai-anomaly-detection-ale
 describe('run anomaly detection service', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.mocked(anomalyDetectionRepository.findEventContext).mockResolvedValue({
+      events: [],
+      truncated: false,
+    });
     vi.mocked(anomalyDetectionRepository.hasPendingEvents).mockResolvedValue(false);
     vi.mocked(generateStoredAlertExplanation).mockResolvedValue(
       'The anomaly score exceeded the model threshold.',
+    );
+  });
+  it('creates a rule alert below the behavioral threshold using historical events', async () => {
+    vi.mocked(anomalyDetectionRepository.findDeployedModel).mockResolvedValue({
+      id: 'model',
+      model_name: 'detector',
+      version: '3',
+      parameters: { threshold: 1 },
+    });
+    const event = {
+      id: 'target',
+      event_source_id: 'source',
+      event_family: 'AUTHENTICATION' as const,
+      event_type: 'LOGIN_FAILURE',
+      severity: 'LOW',
+      occurred_at: new Date('2026-10-29T12:00:00Z'),
+      account_identifier: 'alice',
+      source_ip: '192.0.2.1',
+      device_identifier: null,
+      normalized_payload: {},
+      event_entity_mappings: [],
+    };
+    vi.mocked(anomalyDetectionRepository.findPendingEvents).mockResolvedValue({ events: [event] });
+    vi.mocked(anomalyDetectionRepository.findEventContext).mockResolvedValue({
+      events: Array.from({ length: 4 }, (_, i) => ({
+        ...event,
+        id: `old-${i}`,
+        occurred_at: new Date(event.occurred_at.getTime() - 60_000 - i * 1000),
+      })),
+      truncated: false,
+    });
+    vi.mocked(anomalyDetectionRepository.persistRun).mockResolvedValue({
+      detectionsCreated: 1,
+      alertsCreated: 1,
+      alertsGrouped: 0,
+    });
+    const result = await anomalyDetectionService.runAutomated({ maxEvents: 100 });
+    expect(result).toMatchObject({ anomaliesDetected: 1, alertsCreated: 1 });
+    expect(anomalyDetectionRepository.persistRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        detections: [
+          expect.objectContaining({
+            score: 0.9,
+            threshold: 1,
+            isAnomaly: true,
+            features: expect.arrayContaining([
+              expect.objectContaining({
+                featureName: 'matched_rules',
+                featureValue: '["AUTH_FAILURE_BURST"]',
+              }),
+            ]),
+          }),
+        ],
+      }),
     );
   });
 
@@ -49,24 +108,29 @@ describe('run anomaly detection service', () => {
       model_name: 'detector',
       version: '2',
       parameters: {
-        threshold: 0.7,
-        assetThresholds: { 'asset-1': { threshold: 0.6, enabled: true } },
+        threshold: 0.5,
+        assetThresholds: { 'asset-1': { threshold: 0.5, enabled: true } },
       },
     });
     vi.mocked(anomalyDetectionRepository.findPendingEvents).mockResolvedValueOnce({
-        events: [
-          {
-            id: 'event',
-            event_type: 'login_failure',
-            severity: 'CRITICAL',
-            occurred_at: new Date('2026-09-25T02:00:00Z'),
-            event_entity_mappings: [{ asset_id: 'asset-1' }],
-          },
-        ],
-        frequencies: new Map([['login_failure', 1]]),
-        populationSize: 10,
-      });
+      events: [
+        {
+          id: 'event',
+          event_source_id: 'source',
+          event_family: 'AUTHENTICATION' as const,
+          account_identifier: 'user',
+          source_ip: '192.0.2.1',
+          device_identifier: null,
+          normalized_payload: {},
+          event_type: 'login_failure',
+          severity: 'CRITICAL',
+          occurred_at: new Date('2026-09-25T18:00:00Z'),
+          event_entity_mappings: [{ asset_id: 'asset-1' }],
+        },
+      ],
+    });
     vi.mocked(anomalyDetectionRepository.persistRun).mockResolvedValue({
+      alertsGrouped: 0,
       detectionsCreated: 1,
       alertsCreated: 1,
     });
@@ -80,9 +144,10 @@ describe('run anomaly detection service', () => {
     expect(result).toMatchObject({
       eventsEvaluated: 1,
       anomaliesDetected: 1,
+      alertsGrouped: 0,
       detectionsCreated: 1,
       alertsCreated: 1,
-      threshold: 0.7,
+      threshold: 0.5,
       scope: 'ALL_PENDING',
       hasMore: false,
     });
@@ -121,16 +186,21 @@ describe('run anomaly detection service', () => {
       events: [
         {
           id: 'wazuh-event',
+          event_source_id: 'source',
+          event_family: 'APPLICATION_ACCESS' as const,
+          account_identifier: 'user',
+          source_ip: '192.0.2.1',
+          device_identifier: null,
+          normalized_payload: {},
           event_type: 'privilege_use',
           severity: '13',
-          occurred_at: new Date('2026-09-25T02:00:00Z'),
+          occurred_at: new Date('2026-09-25T18:00:00Z'),
           event_entity_mappings: [],
         },
       ],
-      frequencies: new Map([['privilege_use', 1]]),
-      populationSize: 100,
     });
     vi.mocked(anomalyDetectionRepository.persistRun).mockResolvedValue({
+      alertsGrouped: 0,
       detectionsCreated: 1,
       alertsCreated: 1,
     });
@@ -172,6 +242,12 @@ describe('run anomaly detection service', () => {
     });
     const makeEvent = (id: string) => ({
       id,
+      event_source_id: 'source',
+      event_family: 'AUTHENTICATION' as const,
+      account_identifier: 'user',
+      source_ip: '192.0.2.1',
+      device_identifier: null,
+      normalized_payload: {},
       event_type: 'login_failure',
       severity: 'LOW',
       occurred_at: new Date('2026-09-25T12:00:00Z'),
@@ -179,10 +255,9 @@ describe('run anomaly detection service', () => {
     });
     vi.mocked(anomalyDetectionRepository.findPendingEvents).mockResolvedValueOnce({
       events: Array.from({ length: 100 }, (_, index) => makeEvent(`event-${index}`)),
-      frequencies: new Map([['login_failure', 100]]),
-      populationSize: 100,
     });
     vi.mocked(anomalyDetectionRepository.persistRun).mockResolvedValueOnce({
+      alertsGrouped: 0,
       detectionsCreated: 100,
       alertsCreated: 0,
     });
@@ -195,6 +270,7 @@ describe('run anomaly detection service', () => {
 
     expect(result).toMatchObject({
       eventsEvaluated: 100,
+      alertsGrouped: 0,
       detectionsCreated: 100,
       alertsCreated: 0,
       scope: 'ALL_PENDING',
@@ -219,8 +295,6 @@ describe('run anomaly detection service', () => {
     });
     vi.mocked(anomalyDetectionRepository.findPendingEvents).mockResolvedValue({
       events: [],
-      frequencies: new Map(),
-      populationSize: 0,
     });
 
     const result = await anomalyDetectionService.runAutomated({

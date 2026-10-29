@@ -230,6 +230,8 @@ def normalize_wazuh_alert(alert: dict) -> dict:
             "description": rule.get("description", ""),
         },
         "metadata": {
+            "applicationId": data.get("application_id") or data.get("applicationId"),
+            "applicationName": data.get("application_name") or data.get("applicationName"),
             "platform": platform,
             "eventId": event_id,
             "logonType": win_eventdata.get("logonType"),

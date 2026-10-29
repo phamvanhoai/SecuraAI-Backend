@@ -162,3 +162,5 @@ docker restart <wazuh-manager-container>
 ```bash
 docker exec -it <wazuh-manager-container> tail -f /var/ossec/logs/integrations.log
 ```
+
+Contextual detection demo scenarios (PowerShell, raw alert simulation): [docs/wazuh-contextual-demo.md](../../docs/wazuh-contextual-demo.md).

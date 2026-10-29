@@ -138,3 +138,5 @@ Employee business responsibilities: existing user_access_scopes now stores perma
 Employee responsibility selection is exclusive: at most one of Risk Owner, Control Owner, Asset Owner or Authorized Approver per Employee. An Employee may have no inherited responsibility; click the selected checkbox again to clear it. Transfer conflicting owned records before changing responsibility; legacy multiple ownership is preserved until explicitly resolved.
 
 Contextual actor workflow audit and current access boundaries: [docs/contextual-actor-workflows.md](docs/contextual-actor-workflows.md).
+
+Contextual anomaly detection rules, configuration and demo: [docs/contextual-detection.md](docs/contextual-detection.md).

@@ -111,6 +111,7 @@ model anomaly_detections {
   id                            String                          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   event_id                      String                          @db.Uuid
   model_version_id              String                          @db.Uuid
+  engine_version                String                          @default("LEGACY") @db.VarChar(100)
   anomaly_score                 Decimal                         @db.Decimal(10, 8)
   threshold                     Decimal                         @db.Decimal(10, 8)
   threshold_source              String                          @default("MODEL_DEFAULT") @db.VarChar(30)
@@ -122,7 +123,7 @@ model anomaly_detections {
   ai_model_versions             ai_model_versions               @relation(fields: [model_version_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_detection_model")
   anomaly_feature_contributions anomaly_feature_contributions[]
 
-  @@unique([event_id, model_version_id], map: "uq_anomaly_detection_event_model")
+  @@unique([event_id, model_version_id, engine_version], map: "uq_anomaly_detection_event_model_engine")
   @@index([event_id], map: "idx_anomaly_detections_event")
   @@index([model_version_id], map: "idx_anomaly_detections_model")
   @@index([detected_at(sort: Desc)], map: "idx_anomaly_detections_time")
