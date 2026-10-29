@@ -52,15 +52,15 @@ describe('incidentsService.createFromSource', () => {
     });
   });
 
-  it('allows an active Employee to create a manual incident report', async () => {
+  it('allows an active Security Officer to create an incident manually', async () => {
     vi.mocked(incidentsRepository.findActor).mockResolvedValue({
       id: userId,
-      role: 'EMPLOYEE',
+      role: 'SECURITY_OFFICER',
       status: 'ACTIVE',
     });
     const manualInput = {
       sourceType: 'manual' as const,
-      title: 'Suspicious email reported by employee',
+      title: 'Suspicious email recorded by Security Officer',
       description: 'The employee received an unexpected attachment requesting credentials.',
       severity: 'medium' as const,
     };
@@ -68,7 +68,7 @@ describe('incidentsService.createFromSource', () => {
       outcome: 'created',
       incident: {
         id: sourceId,
-        incident_code: 'INC-EMPLOYEE-001',
+        incident_code: 'INC-MANUAL-001',
         title: manualInput.title,
         description: manualInput.description,
         severity: 'MEDIUM',
@@ -82,8 +82,8 @@ describe('incidentsService.createFromSource', () => {
         incident_analysis: null,
         users_incidents_created_byTousers: {
           id: userId,
-          full_name: 'Employee Reporter',
-          email: 'employee@example.com',
+          full_name: 'Security Officer',
+          email: 'officer@example.test',
         },
         users_incidents_handler_user_idTousers: null,
         security_findings: null,
@@ -98,7 +98,7 @@ describe('incidentsService.createFromSource', () => {
     });
 
     await expect(incidentsService.createFromSource(userId, manualInput)).resolves.toMatchObject({
-      incidentCode: 'INC-EMPLOYEE-001',
+      incidentCode: 'INC-MANUAL-001',
       status: 'open',
     });
   });

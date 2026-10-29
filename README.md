@@ -2,6 +2,8 @@
 
 REST API SecuraAI cho quản lý rủi ro an toàn thông tin, tài sản, controls, chính sách, sự cố, security events và anomaly alerts.
 
+Incident creation authorization: POST /api/v1/incidents requires an active SECURITY_OFFICER for both manual and confirmed-source creation. Service checks reject ADMIN/EXECUTIVE/EMPLOYEE before writes; the creation transaction rechecks the actor. Executive list/detail reads and historical report access remain unchanged. This endpoint is not a general employee reporting workflow. No schema migration, deletion or modification of existing incidents.
+
 ## Công nghệ và kiến trúc
 
 Node.js 22, Express 5, TypeScript strict, PostgreSQL, Prisma 6, Zod, Argon2id, JWT access token và rotating refresh token. OpenAPI/Swagger mô tả API; Vitest kiểm thử service/HTTP.

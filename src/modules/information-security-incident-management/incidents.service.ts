@@ -622,10 +622,7 @@ export const incidentsService = {
   },
 
   async createFromSource(userId: string, input: CreateIncidentFromSource) {
-    const actor = await requireActiveReporter(userId);
-    if (input.sourceType !== 'manual' && actor.role !== 'SECURITY_OFFICER') {
-      throw new AppError(403, 'FORBIDDEN', 'Security Officer role required for source incidents');
-    }
+    await requireSecurityOfficer(userId);
     const result = await incidentsRepository.createFromSource(userId, input);
     if (result.outcome === 'not_found') {
       throw new AppError(404, 'INCIDENT_SOURCE_NOT_FOUND', 'Confirmed alert or finding not found');
