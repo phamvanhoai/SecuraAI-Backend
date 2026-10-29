@@ -92,7 +92,19 @@ export const authService = {
     } catch {
       validPassword = false;
     }
-    if (!user || !validPassword || user.status !== 'ACTIVE') {
+    if (!user) {
+      throw new AppError(401, 'ACCOUNT_NOT_FOUND', 'Account does not exist');
+    }
+    if (!validPassword) {
+      throw new AppError(401, 'INVALID_CREDENTIALS', 'Email or password is incorrect');
+    }
+    if (user.status === 'LOCKED') {
+      throw new AppError(401, 'ACCOUNT_LOCKED', 'Account is LOCKED');
+    }
+    if (user.status === 'INACTIVE') {
+      throw new AppError(401, 'ACCOUNT_INACTIVE', 'Account is INACTIVE');
+    }
+    if (user.status !== 'ACTIVE') {
       throw new AppError(401, 'INVALID_CREDENTIALS', 'Email or password is incorrect');
     }
 
