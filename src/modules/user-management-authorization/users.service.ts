@@ -8,6 +8,7 @@ import { usersEmailService } from './users.email.service.js';
 import { usersRepository } from './users.repository.js';
 import { capabilitiesForRole } from './role-capabilities.js';
 import { userAccessScopeCatalog } from './user-access-scope-catalog.js';
+import { isRiskAcceptanceApprover } from './business-responsibilities.js';
 import type { UpdateUserBody } from './dto/update-user.dto.js';
 import type { AssignUserAccessBody } from './dto/assign-user-access.dto.js';
 import { createUserBodySchema } from './dto/create-user.dto.js';
@@ -356,6 +357,9 @@ export const usersService = {
       throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
     }
     const permissions = [...capabilitiesForRole(user.role)];
+    if (user.role === 'EMPLOYEE' && await usersRepository.hasOwnedAssets(userId)) {
+      permissions.push('assets.read');
+    }
     if (
       user.role === 'EMPLOYEE' &&
       user._count.security_controls_security_controls_owner_user_idTousers > 0
@@ -364,6 +368,9 @@ export const usersService = {
     }
     if (user.role === 'EMPLOYEE' && user._count.risks_risks_owner_user_idTousers > 0) {
       permissions.push('risks.read', 'risks.review-reassessment', 'risks.update-treatment-plan');
+    }
+    if (user.role === 'EMPLOYEE' && isRiskAcceptanceApprover(user) && await usersRepository.hasPendingApprovalWork(userId)) {
+      if (!permissions.includes('risks.read')) permissions.push('risks.read');
     }
     return {
       id: user.id,

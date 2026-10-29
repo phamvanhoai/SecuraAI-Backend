@@ -13,7 +13,7 @@ it('searches active users by name/email and returns only minimal identifying dat
   mocks.findUnique.mockResolvedValue({ role: 'SECURITY_OFFICER', status: 'ACTIVE' });
   mocks.findMany.mockResolvedValue([{ id: 'user', full_name: 'Same Name', email: 'second@example.test' }]);
   expect(await assetsService.ownerOptions('officer', 'second@')).toEqual({ items: [{ id: 'user', fullName: 'Same Name', email: 'second@example.test' }] });
-  expect(mocks.findMany).toHaveBeenCalledWith({ where: { AND: [responsibilityWhere('ASSET_OWNER')], OR: [
+  expect(mocks.findMany).toHaveBeenCalledWith({ where: { AND: [responsibilityWhere('ASSET_OWNER', false)], OR: [
     { full_name: { contains: 'second@', mode: 'insensitive' } }, { email: { contains: 'second@', mode: 'insensitive' } },
   ] }, select: { id: true, full_name: true, email: true }, orderBy: [{ full_name: 'asc' }, { id: 'asc' }], take: 10 });
 });

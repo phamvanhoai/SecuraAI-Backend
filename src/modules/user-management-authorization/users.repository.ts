@@ -4,6 +4,7 @@ import type { ListUsersQuery } from './dto/list-users-query.dto.js';
 import type { UpdateUserBody } from './dto/update-user.dto.js';
 import type { AssignUserAccessBody } from './dto/assign-user-access.dto.js';
 import { userAccessScopeCatalog } from './user-access-scope-catalog.js';
+import { approverGrantSelect } from './business-responsibilities.js';
 
 const supplementalScopeCodes = userAccessScopeCatalog.map(({ code }) => code);
 const managedScopeCodes = [...supplementalScopeCodes, 'AUDIT_VIEW', 'POLICY_APPROVE'];
@@ -403,6 +404,12 @@ export const usersRepository = {
     ]);
     return { kind: 'found', items, total, statusCounts } as const;
   },
+  hasPendingApprovalWork(userId: string) {
+    return prisma.risk_acceptances.count({ where: { decision: 'PENDING', requested_by: { not: userId } } });
+  },
+  hasOwnedAssets(userId: string) {
+    return prisma.assets.count({ where: { owner_user_id: userId } });
+  },
   findCurrentUser(userId: string) {
     return prisma.users.findUnique({
       where: { id: userId },
@@ -410,6 +417,7 @@ export const usersRepository = {
         id: true,
         email: true,
         full_name: true,
+        ...approverGrantSelect,
         role: true,
         status: true,
         _count: {

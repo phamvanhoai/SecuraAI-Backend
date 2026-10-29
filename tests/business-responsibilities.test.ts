@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { assignUserAccessBodySchema } from '../src/modules/user-management-authorization/dto/assign-user-access.dto.js';
 import { responsibilityWhere } from '../src/modules/user-management-authorization/business-responsibilities.js';
+import { isRiskAcceptanceApprover } from '../src/modules/user-management-authorization/business-responsibilities.js';
 
 describe('Employee business responsibilities', () => {
   const grant = { scopeCode: 'RISK_OWNER', targetType: 'GLOBAL' };
@@ -32,5 +33,23 @@ describe('Employee business responsibilities', () => {
     const where = responsibilityWhere('AUTHORIZED_APPROVER');
     expect(JSON.stringify(where)).not.toContain('assets_assets_owner');
     expect(JSON.stringify(where)).toContain('AUTHORIZED_APPROVER');
+  });
+  it('requires an explicit grant when selecting a new Risk Owner', () => {
+    const where = responsibilityWhere('RISK_OWNER', false);
+    expect(JSON.stringify(where)).not.toContain('risks_risks_owner');
+    expect(JSON.stringify(where)).toContain('RISK_OWNER');
+    expect(JSON.stringify(where)).toContain('ALLOW');
+  });
+  it.each(['RISK_OWNER', 'CONTROL_OWNER', 'ASSET_OWNER'] as const)('requires explicit Employee eligibility for new %s assignments', (code) => {
+    const where = responsibilityWhere(code, false);
+    expect(where.OR).toHaveLength(1);
+    expect(where.OR?.[0]).toMatchObject({ role: 'EMPLOYEE' });
+    expect(JSON.stringify(where)).toContain(code);
+    expect(JSON.stringify(where)).not.toContain('owner_user_idTousers');
+  });
+  it('does not give ordinary or inactive Employees approval access', () => {
+    expect(isRiskAcceptanceApprover({ role: 'EMPLOYEE', status: 'ACTIVE' })).toBe(false);
+    expect(isRiskAcceptanceApprover({ role: 'EMPLOYEE', status: 'LOCKED', user_access_scopes_user_access_scopes_user_idTousers: [{ id: 'grant' }] })).toBe(false);
+    expect(isRiskAcceptanceApprover({ role: 'EMPLOYEE', status: 'ACTIVE', user_access_scopes_user_access_scopes_user_idTousers: [{ id: 'grant' }] })).toBe(true);
   });
 });

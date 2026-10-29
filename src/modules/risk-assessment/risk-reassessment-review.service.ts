@@ -7,6 +7,7 @@ import { riskReassessmentReviewRepository } from './risk-reassessment-review.rep
 const mapRequest = (
   request: Awaited<ReturnType<typeof riskReassessmentReviewRepository.findById>> & {},
   userId: string,
+  role: string,
 ) => ({
   id: request.id,
   reason: request.reason,
@@ -14,7 +15,9 @@ const mapRequest = (
   requestedAt: request.requested_at,
   reviewedAt: request.reviewed_at,
   reviewComment: request.review_comment,
-  canReject: request.risks.owner_user_id === userId,
+  canReject: role === 'EMPLOYEE' && request.risks.owner_user_id === userId && ['PENDING', 'UNDER_REVIEW'].includes(request.status),
+  canReview: role === 'EMPLOYEE' && request.risks.owner_user_id === userId && request.status === 'PENDING',
+  canReassess: request.status === 'UNDER_REVIEW' && (role === 'SECURITY_OFFICER' || (role === 'EMPLOYEE' && request.risks.owner_user_id === userId)),
   risk: {
     id: request.risks.id,
     riskCode: request.risks.risk_code,
@@ -76,7 +79,7 @@ export const riskReassessmentReviewService = {
       query,
     );
     return {
-      items: requests.map((request) => mapRequest(request, userId)),
+      items: requests.map((request) => mapRequest(request, userId, actor.role)),
       pagination: {
         page: query.page,
         limit: query.limit,
@@ -111,7 +114,7 @@ export const riskReassessmentReviewService = {
         'REASSESSMENT_REQUEST_CHANGED',
         'The request status changed; refresh and try again',
       );
-    return mapRequest(updated, userId);
+    return mapRequest(updated, userId, actor.role);
   },
   async reject(userId: string, requestId: string, input: RejectRiskReassessmentRequestInput) {
     const actor = await riskReassessmentReviewRepository.findActor(userId);
