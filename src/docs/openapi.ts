@@ -1563,7 +1563,7 @@ export const openApiSpec = {
         tags: ['Incident Management'],
         summary: 'Create an incident manually or from a confirmed source',
         description:
-          'Creates a V2 incident manually or from an eligible confirmed alert/security finding. Any active signed-in user can submit a manual incident report. Only an active Security Officer can create a source-backed incident, which retains a unique finding link.',
+          'Only an active Security Officer can create a V2 incident, either manually when no suitable alert/finding is available, or from an eligible confirmed alert/security finding. Source-backed incidents retain a unique finding link. Executive/Admin/Employee accounts cannot create incidents. This is not a general incident-report intake endpoint.',
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
