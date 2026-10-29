@@ -1,0 +1,567 @@
+[
+  {
+    "externalEventId": "contextual-v1-demo-1",
+    "eventFamily": "AUTHENTICATION",
+    "eventType": "LOGIN_FAILURE",
+    "occurredAt": "2026-10-29T01:00:00.000Z",
+    "accountIdentifier": "demo-auth",
+    "sourceIp": "192.0.2.10",
+    "deviceIdentifier": "demo-device",
+    "severity": "LOW",
+    "normalizedPayload": {}
+  },
+  {
+    "externalEventId": "contextual-v1-demo-2",
+    "eventFamily": "AUTHENTICATION",
+    "eventType": "LOGIN_FAILURE",
+    "occurredAt": "2026-10-29T01:00:10.000Z",
+    "accountIdentifier": "demo-auth",
+    "sourceIp": "192.0.2.10",
+    "deviceIdentifier": "demo-device",
+    "severity": "LOW",
+    "normalizedPayload": {}
+  },
+  {
+    "externalEventId": "contextual-v1-demo-3",
+    "eventFamily": "AUTHENTICATION",
+    "eventType": "LOGIN_FAILURE",
+    "occurredAt": "2026-10-29T01:00:20.000Z",
+    "accountIdentifier": "demo-auth",
+    "sourceIp": "192.0.2.10",
+    "deviceIdentifier": "demo-device",
+    "severity": "LOW",
+    "normalizedPayload": {}
+  },
+  {
+    "externalEventId": "contextual-v1-demo-4",
+    "eventFamily": "AUTHENTICATION",
+    "eventType": "LOGIN_FAILURE",
+    "occurredAt": "2026-10-29T01:00:30.000Z",
+    "accountIdentifier": "demo-auth",
+    "sourceIp": "192.0.2.10",
+    "deviceIdentifier": "demo-device",
+    "severity": "LOW",
+    "normalizedPayload": {}
+  },
+  {
+    "externalEventId": "contextual-v1-demo-5",
+    "eventFamily": "AUTHENTICATION",
+    "eventType": "LOGIN_FAILURE",
+    "occurredAt": "2026-10-29T01:00:40.000Z",
+    "accountIdentifier": "demo-auth",
+    "sourceIp": "192.0.2.10",
+    "deviceIdentifier": "demo-device",
+    "severity": "LOW",
+    "normalizedPayload": {}
+  },
+  {
+    "externalEventId": "contextual-v1-demo-6",
+    "eventFamily": "AUTHENTICATION",
+    "eventType": "LOGIN_FAILURE",
+    "occurredAt": "2026-10-29T01:00:50.000Z",
+    "accountIdentifier": "demo-auth",
+    "sourceIp": "192.0.2.10",
+    "deviceIdentifier": "demo-device",
+    "severity": "LOW",
+    "normalizedPayload": {}
+  },
+  {
+    "externalEventId": "contextual-v1-demo-7",
+    "eventFamily": "AUTHENTICATION",
+    "eventType": "LOGIN_SUCCESS",
+    "occurredAt": "2026-10-29T01:01:10.000Z",
+    "accountIdentifier": "demo-auth",
+    "sourceIp": "192.0.2.10",
+    "deviceIdentifier": "demo-device",
+    "severity": "LOW",
+    "normalizedPayload": {}
+  },
+  {
+    "externalEventId": "contextual-v1-demo-8",
+    "eventFamily": "APPLICATION_ACCESS",
+    "eventType": "ACCESS_DENIED",
+    "occurredAt": "2026-10-29T01:00:00.000Z",
+    "accountIdentifier": "demo-app",
+    "sourceIp": "192.0.2.11",
+    "deviceIdentifier": "demo-device",
+    "severity": "LOW",
+    "normalizedPayload": {
+      "applicationId": "customer-portal"
+    }
+  },
+  {
+    "externalEventId": "contextual-v1-demo-9",
+    "eventFamily": "APPLICATION_ACCESS",
+    "eventType": "ACCESS_DENIED",
+    "occurredAt": "2026-10-29T01:00:10.000Z",
+    "accountIdentifier": "demo-app",
+    "sourceIp": "192.0.2.11",
+    "deviceIdentifier": "demo-device",
+    "severity": "LOW",
+    "normalizedPayload": {
+      "applicationId": "customer-portal"
+    }
+  },
+  {
+    "externalEventId": "contextual-v1-demo-10",
+    "eventFamily": "APPLICATION_ACCESS",
+    "eventType": "ACCESS_DENIED",
+    "occurredAt": "2026-10-29T01:00:20.000Z",
+    "accountIdentifier": "demo-app",
+    "sourceIp": "192.0.2.11",
+    "deviceIdentifier": "demo-device",
+    "severity": "LOW",
+    "normalizedPayload": {
+      "applicationId": "customer-portal"
+    }
+  },
+  {
+    "externalEventId": "contextual-v1-demo-11",
+    "eventFamily": "APPLICATION_ACCESS",
+    "eventType": "ACCESS_DENIED",
+    "occurredAt": "2026-10-29T01:00:30.000Z",
+    "accountIdentifier": "demo-app",
+    "sourceIp": "192.0.2.11",
+    "deviceIdentifier": "demo-device",
+    "severity": "LOW",
+    "normalizedPayload": {
+      "applicationId": "customer-portal"
+    }
+  },
+  {
+    "externalEventId": "contextual-v1-demo-12",
+    "eventFamily": "APPLICATION_ACCESS",
+    "eventType": "ACCESS_DENIED",
+    "occurredAt": "2026-10-29T01:00:40.000Z",
+    "accountIdentifier": "demo-app",
+    "sourceIp": "192.0.2.11",
+    "deviceIdentifier": "demo-device",
+    "severity": "LOW",
+    "normalizedPayload": {
+      "applicationId": "customer-portal"
+    }
+  },
+  {
+    "externalEventId": "contextual-v1-demo-13",
+    "eventFamily": "APPLICATION_ACCESS",
+    "eventType": "ACCESS_DENIED",
+    "occurredAt": "2026-10-29T01:00:50.000Z",
+    "accountIdentifier": "demo-app",
+    "sourceIp": "192.0.2.11",
+    "deviceIdentifier": "demo-device",
+    "severity": "LOW",
+    "normalizedPayload": {
+      "applicationId": "customer-portal"
+    }
+  },
+  {
+    "externalEventId": "contextual-v1-demo-14",
+    "eventFamily": "APPLICATION_ACCESS",
+    "eventType": "ACCESS_DENIED",
+    "occurredAt": "2026-10-29T01:01:00.000Z",
+    "accountIdentifier": "demo-app",
+    "sourceIp": "192.0.2.11",
+    "deviceIdentifier": "demo-device",
+    "severity": "LOW",
+    "normalizedPayload": {
+      "applicationId": "customer-portal"
+    }
+  },
+  {
+    "externalEventId": "contextual-v1-demo-15",
+    "eventFamily": "APPLICATION_ACCESS",
+    "eventType": "ACCESS_DENIED",
+    "occurredAt": "2026-10-29T01:01:10.000Z",
+    "accountIdentifier": "demo-app",
+    "sourceIp": "192.0.2.11",
+    "deviceIdentifier": "demo-device",
+    "severity": "LOW",
+    "normalizedPayload": {
+      "applicationId": "customer-portal"
+    }
+  },
+  {
+    "externalEventId": "contextual-v1-demo-16",
+    "eventFamily": "APPLICATION_ACCESS",
+    "eventType": "ACCESS_DENIED",
+    "occurredAt": "2026-10-29T01:01:20.000Z",
+    "accountIdentifier": "demo-app",
+    "sourceIp": "192.0.2.11",
+    "deviceIdentifier": "demo-device",
+    "severity": "LOW",
+    "normalizedPayload": {
+      "applicationId": "customer-portal"
+    }
+  },
+  {
+    "externalEventId": "contextual-v1-demo-17",
+    "eventFamily": "APPLICATION_ACCESS",
+    "eventType": "ACCESS_DENIED",
+    "occurredAt": "2026-10-29T01:01:30.000Z",
+    "accountIdentifier": "demo-app",
+    "sourceIp": "192.0.2.11",
+    "deviceIdentifier": "demo-device",
+    "severity": "LOW",
+    "normalizedPayload": {
+      "applicationId": "customer-portal"
+    }
+  },
+  {
+    "externalEventId": "contextual-v1-demo-18",
+    "eventFamily": "APPLICATION_ACCESS",
+    "eventType": "ACCESS_DENIED",
+    "occurredAt": "2026-10-29T01:01:40.000Z",
+    "accountIdentifier": "demo-app",
+    "sourceIp": "192.0.2.11",
+    "deviceIdentifier": "demo-device",
+    "severity": "LOW",
+    "normalizedPayload": {
+      "applicationId": "customer-portal"
+    }
+  },
+  {
+    "externalEventId": "contextual-v1-demo-19",
+    "eventFamily": "APPLICATION_ACCESS",
+    "eventType": "APPLICATION_LOGIN",
+    "occurredAt": "2026-10-29T01:02:00.000Z",
+    "accountIdentifier": "demo-app",
+    "sourceIp": "192.0.2.11",
+    "deviceIdentifier": "demo-device",
+    "severity": "LOW",
+    "normalizedPayload": {
+      "applicationId": "customer-portal"
+    }
+  },
+  {
+    "externalEventId": "contextual-v1-demo-20",
+    "eventFamily": "VPN_SSO",
+    "eventType": "VPN_LOGIN_FAILURE",
+    "occurredAt": "2026-10-29T01:00:00.000Z",
+    "accountIdentifier": "demo-vpn-burst",
+    "sourceIp": "192.0.2.12",
+    "deviceIdentifier": "demo-device",
+    "severity": "LOW",
+    "normalizedPayload": {}
+  },
+  {
+    "externalEventId": "contextual-v1-demo-21",
+    "eventFamily": "VPN_SSO",
+    "eventType": "VPN_LOGIN_FAILURE",
+    "occurredAt": "2026-10-29T01:00:10.000Z",
+    "accountIdentifier": "demo-vpn-burst",
+    "sourceIp": "192.0.2.12",
+    "deviceIdentifier": "demo-device",
+    "severity": "LOW",
+    "normalizedPayload": {}
+  },
+  {
+    "externalEventId": "contextual-v1-demo-22",
+    "eventFamily": "VPN_SSO",
+    "eventType": "VPN_LOGIN_FAILURE",
+    "occurredAt": "2026-10-29T01:00:20.000Z",
+    "accountIdentifier": "demo-vpn-burst",
+    "sourceIp": "192.0.2.12",
+    "deviceIdentifier": "demo-device",
+    "severity": "LOW",
+    "normalizedPayload": {}
+  },
+  {
+    "externalEventId": "contextual-v1-demo-23",
+    "eventFamily": "VPN_SSO",
+    "eventType": "VPN_LOGIN_FAILURE",
+    "occurredAt": "2026-10-29T01:00:30.000Z",
+    "accountIdentifier": "demo-vpn-burst",
+    "sourceIp": "192.0.2.12",
+    "deviceIdentifier": "demo-device",
+    "severity": "LOW",
+    "normalizedPayload": {}
+  },
+  {
+    "externalEventId": "contextual-v1-demo-24",
+    "eventFamily": "VPN_SSO",
+    "eventType": "VPN_LOGIN_FAILURE",
+    "occurredAt": "2026-10-29T01:00:40.000Z",
+    "accountIdentifier": "demo-vpn-burst",
+    "sourceIp": "192.0.2.12",
+    "deviceIdentifier": "demo-device",
+    "severity": "LOW",
+    "normalizedPayload": {}
+  },
+  {
+    "externalEventId": "contextual-v1-demo-25",
+    "eventFamily": "VPN_SSO",
+    "eventType": "VPN_LOGIN_FAILURE",
+    "occurredAt": "2026-10-29T01:00:50.000Z",
+    "accountIdentifier": "demo-vpn-burst",
+    "sourceIp": "192.0.2.12",
+    "deviceIdentifier": "demo-device",
+    "severity": "LOW",
+    "normalizedPayload": {}
+  },
+  {
+    "externalEventId": "contextual-v1-demo-26",
+    "eventFamily": "VPN_SSO",
+    "eventType": "SSO_LOGIN_SUCCESS",
+    "occurredAt": "2026-10-28T23:00:00.000Z",
+    "accountIdentifier": "demo-sso-new-context",
+    "sourceIp": "192.0.2.20",
+    "deviceIdentifier": "demo-device",
+    "severity": "LOW",
+    "normalizedPayload": {}
+  },
+  {
+    "externalEventId": "contextual-v1-demo-27",
+    "eventFamily": "VPN_SSO",
+    "eventType": "SSO_LOGIN_SUCCESS",
+    "occurredAt": "2026-10-28T23:01:00.000Z",
+    "accountIdentifier": "demo-sso-new-context",
+    "sourceIp": "192.0.2.20",
+    "deviceIdentifier": "demo-device",
+    "severity": "LOW",
+    "normalizedPayload": {}
+  },
+  {
+    "externalEventId": "contextual-v1-demo-28",
+    "eventFamily": "VPN_SSO",
+    "eventType": "SSO_LOGIN_SUCCESS",
+    "occurredAt": "2026-10-28T23:02:00.000Z",
+    "accountIdentifier": "demo-sso-new-context",
+    "sourceIp": "192.0.2.20",
+    "deviceIdentifier": "demo-device",
+    "severity": "LOW",
+    "normalizedPayload": {}
+  },
+  {
+    "externalEventId": "contextual-v1-demo-29",
+    "eventFamily": "VPN_SSO",
+    "eventType": "SSO_LOGIN_SUCCESS",
+    "occurredAt": "2026-10-28T23:03:00.000Z",
+    "accountIdentifier": "demo-sso-new-context",
+    "sourceIp": "192.0.2.20",
+    "deviceIdentifier": "demo-device",
+    "severity": "LOW",
+    "normalizedPayload": {}
+  },
+  {
+    "externalEventId": "contextual-v1-demo-30",
+    "eventFamily": "VPN_SSO",
+    "eventType": "SSO_LOGIN_SUCCESS",
+    "occurredAt": "2026-10-28T23:04:00.000Z",
+    "accountIdentifier": "demo-sso-new-context",
+    "sourceIp": "192.0.2.20",
+    "deviceIdentifier": "demo-device",
+    "severity": "LOW",
+    "normalizedPayload": {}
+  },
+  {
+    "externalEventId": "contextual-v1-demo-31",
+    "eventFamily": "VPN_SSO",
+    "eventType": "SSO_LOGIN_SUCCESS",
+    "occurredAt": "2026-10-28T23:05:00.000Z",
+    "accountIdentifier": "demo-sso-new-context",
+    "sourceIp": "192.0.2.20",
+    "deviceIdentifier": "demo-device",
+    "severity": "LOW",
+    "normalizedPayload": {}
+  },
+  {
+    "externalEventId": "contextual-v1-demo-32",
+    "eventFamily": "VPN_SSO",
+    "eventType": "SSO_LOGIN_SUCCESS",
+    "occurredAt": "2026-10-28T23:06:00.000Z",
+    "accountIdentifier": "demo-sso-new-context",
+    "sourceIp": "192.0.2.20",
+    "deviceIdentifier": "demo-device",
+    "severity": "LOW",
+    "normalizedPayload": {}
+  },
+  {
+    "externalEventId": "contextual-v1-demo-33",
+    "eventFamily": "VPN_SSO",
+    "eventType": "SSO_LOGIN_SUCCESS",
+    "occurredAt": "2026-10-28T23:07:00.000Z",
+    "accountIdentifier": "demo-sso-new-context",
+    "sourceIp": "192.0.2.20",
+    "deviceIdentifier": "demo-device",
+    "severity": "LOW",
+    "normalizedPayload": {}
+  },
+  {
+    "externalEventId": "contextual-v1-demo-34",
+    "eventFamily": "VPN_SSO",
+    "eventType": "SSO_LOGIN_SUCCESS",
+    "occurredAt": "2026-10-28T23:08:00.000Z",
+    "accountIdentifier": "demo-sso-new-context",
+    "sourceIp": "192.0.2.20",
+    "deviceIdentifier": "demo-device",
+    "severity": "LOW",
+    "normalizedPayload": {}
+  },
+  {
+    "externalEventId": "contextual-v1-demo-35",
+    "eventFamily": "VPN_SSO",
+    "eventType": "SSO_LOGIN_SUCCESS",
+    "occurredAt": "2026-10-28T23:09:00.000Z",
+    "accountIdentifier": "demo-sso-new-context",
+    "sourceIp": "192.0.2.20",
+    "deviceIdentifier": "demo-device",
+    "severity": "LOW",
+    "normalizedPayload": {}
+  },
+  {
+    "externalEventId": "contextual-v1-demo-36",
+    "eventFamily": "VPN_SSO",
+    "eventType": "SSO_LOGIN_SUCCESS",
+    "occurredAt": "2026-10-28T23:10:00.000Z",
+    "accountIdentifier": "demo-sso-new-context",
+    "sourceIp": "192.0.2.20",
+    "deviceIdentifier": "demo-device",
+    "severity": "LOW",
+    "normalizedPayload": {}
+  },
+  {
+    "externalEventId": "contextual-v1-demo-37",
+    "eventFamily": "VPN_SSO",
+    "eventType": "SSO_LOGIN_SUCCESS",
+    "occurredAt": "2026-10-28T23:11:00.000Z",
+    "accountIdentifier": "demo-sso-new-context",
+    "sourceIp": "192.0.2.20",
+    "deviceIdentifier": "demo-device",
+    "severity": "LOW",
+    "normalizedPayload": {}
+  },
+  {
+    "externalEventId": "contextual-v1-demo-38",
+    "eventFamily": "VPN_SSO",
+    "eventType": "SSO_LOGIN_SUCCESS",
+    "occurredAt": "2026-10-28T23:12:00.000Z",
+    "accountIdentifier": "demo-sso-new-context",
+    "sourceIp": "192.0.2.20",
+    "deviceIdentifier": "demo-device",
+    "severity": "LOW",
+    "normalizedPayload": {}
+  },
+  {
+    "externalEventId": "contextual-v1-demo-39",
+    "eventFamily": "VPN_SSO",
+    "eventType": "SSO_LOGIN_SUCCESS",
+    "occurredAt": "2026-10-28T23:13:00.000Z",
+    "accountIdentifier": "demo-sso-new-context",
+    "sourceIp": "192.0.2.20",
+    "deviceIdentifier": "demo-device",
+    "severity": "LOW",
+    "normalizedPayload": {}
+  },
+  {
+    "externalEventId": "contextual-v1-demo-40",
+    "eventFamily": "VPN_SSO",
+    "eventType": "SSO_LOGIN_SUCCESS",
+    "occurredAt": "2026-10-28T23:14:00.000Z",
+    "accountIdentifier": "demo-sso-new-context",
+    "sourceIp": "192.0.2.20",
+    "deviceIdentifier": "demo-device",
+    "severity": "LOW",
+    "normalizedPayload": {}
+  },
+  {
+    "externalEventId": "contextual-v1-demo-41",
+    "eventFamily": "VPN_SSO",
+    "eventType": "SSO_LOGIN_SUCCESS",
+    "occurredAt": "2026-10-28T23:15:00.000Z",
+    "accountIdentifier": "demo-sso-new-context",
+    "sourceIp": "192.0.2.20",
+    "deviceIdentifier": "demo-device",
+    "severity": "LOW",
+    "normalizedPayload": {}
+  },
+  {
+    "externalEventId": "contextual-v1-demo-42",
+    "eventFamily": "VPN_SSO",
+    "eventType": "SSO_LOGIN_SUCCESS",
+    "occurredAt": "2026-10-28T23:16:00.000Z",
+    "accountIdentifier": "demo-sso-new-context",
+    "sourceIp": "192.0.2.20",
+    "deviceIdentifier": "demo-device",
+    "severity": "LOW",
+    "normalizedPayload": {}
+  },
+  {
+    "externalEventId": "contextual-v1-demo-43",
+    "eventFamily": "VPN_SSO",
+    "eventType": "SSO_LOGIN_SUCCESS",
+    "occurredAt": "2026-10-28T23:17:00.000Z",
+    "accountIdentifier": "demo-sso-new-context",
+    "sourceIp": "192.0.2.20",
+    "deviceIdentifier": "demo-device",
+    "severity": "LOW",
+    "normalizedPayload": {}
+  },
+  {
+    "externalEventId": "contextual-v1-demo-44",
+    "eventFamily": "VPN_SSO",
+    "eventType": "SSO_LOGIN_SUCCESS",
+    "occurredAt": "2026-10-28T23:18:00.000Z",
+    "accountIdentifier": "demo-sso-new-context",
+    "sourceIp": "192.0.2.20",
+    "deviceIdentifier": "demo-device",
+    "severity": "LOW",
+    "normalizedPayload": {}
+  },
+  {
+    "externalEventId": "contextual-v1-demo-45",
+    "eventFamily": "VPN_SSO",
+    "eventType": "SSO_LOGIN_SUCCESS",
+    "occurredAt": "2026-10-28T23:19:00.000Z",
+    "accountIdentifier": "demo-sso-new-context",
+    "sourceIp": "192.0.2.20",
+    "deviceIdentifier": "demo-device",
+    "severity": "LOW",
+    "normalizedPayload": {}
+  },
+  {
+    "externalEventId": "contextual-v1-demo-46",
+    "eventFamily": "VPN_SSO",
+    "eventType": "SSO_LOGIN_SUCCESS",
+    "occurredAt": "2026-10-29T18:00:00.000Z",
+    "accountIdentifier": "demo-sso-new-context",
+    "sourceIp": "192.0.2.99",
+    "deviceIdentifier": "demo-device",
+    "severity": "LOW",
+    "normalizedPayload": {}
+  },
+  {
+    "externalEventId": "contextual-v1-demo-47",
+    "eventFamily": "AUTHENTICATION",
+    "eventType": "LOGIN_SUCCESS",
+    "occurredAt": "2026-10-29T01:03:00.000Z",
+    "accountIdentifier": "demo-normal-auth",
+    "sourceIp": "192.0.2.10",
+    "deviceIdentifier": "demo-device",
+    "severity": "LOW",
+    "normalizedPayload": {}
+  },
+  {
+    "externalEventId": "contextual-v1-demo-48",
+    "eventFamily": "APPLICATION_ACCESS",
+    "eventType": "APPLICATION_LOGIN",
+    "occurredAt": "2026-10-29T01:03:00.000Z",
+    "accountIdentifier": "demo-normal-app",
+    "sourceIp": "192.0.2.30",
+    "deviceIdentifier": "demo-device",
+    "severity": "LOW",
+    "normalizedPayload": {
+      "applicationId": "regular-app"
+    }
+  },
+  {
+    "externalEventId": "contextual-v1-demo-49",
+    "eventFamily": "VPN_SSO",
+    "eventType": "VPN_LOGIN_SUCCESS",
+    "occurredAt": "2026-10-29T01:03:00.000Z",
+    "accountIdentifier": "demo-normal-vpn",
+    "sourceIp": "192.0.2.31",
+    "deviceIdentifier": "demo-device",
+    "severity": "LOW",
+    "normalizedPayload": {}
+  }
+]

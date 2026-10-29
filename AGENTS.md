@@ -288,3 +288,7 @@ New Risk/Control/Asset Owner assignments require explicit permanent GLOBAL ALLOW
 /users/me exposes Risk Owner discovery capabilities for an active Employee with an explicit permanent GLOBAL ALLOW RISK_OWNER grant even with zero owned risks. Existing ownership also remains discoverable. Risk list/detail authorization remains ownership-scoped.
 
 Workspace discovery is based on explicit responsibility eligibility even when empty: CONTROL_OWNER -> compliance.assess-controls, ASSET_OWNER -> assets.read, RISK_OWNER -> owned risk discovery, AUTHORIZED_APPROVER -> risks.read + risks.approve-acceptance. Existing ownership remains compatible. Discovery does not widen data access. Risk Acceptance approvers need no pending work to see their empty workspace.
+
+Detection engine v1 uses event-time entity context and six family rules. Rule matches bypass behavioral thresholds; Ollama is explanation-only. Preserve model/event idempotency, bounded history and immutable prior detections. See docs/contextual-detection.md for limitations and demo. No model configuration or live schema is changed automatically.
+
+Detection identity includes engine_version in addition to event/model. Keep legacy results (default LEGACY) distinct from contextual-rules-v1 so workers running different deployed code cannot consume each other's pending events. Migration 20261030020000_version_detection_engine adds one column and replaces the unique constraint; no new table.

@@ -22,6 +22,23 @@ const input = {
 
 describe('stored AI alert explanation generator', () => {
   beforeEach(() => vi.clearAllMocks());
+  it('explains a rule match without claiming it exceeded the threshold', async () => {
+    vi.mocked(ollamaClient.generateAlertExplanation).mockResolvedValue(null);
+    const result = await generateStoredAlertExplanation({
+      ...input,
+      threshold: 1,
+      featureContributions: [
+        {
+          featureName: 'matched_rules',
+          featureValue: '["AUTH_FAILURE_BURST"]',
+          contributionScore: 0.9,
+          rank: 1,
+        },
+      ],
+    });
+    expect(result).toContain('AUTH_FAILURE_BURST');
+    expect(result).not.toContain('exceeded');
+  });
 
   it('formats a successful Ollama response for storage', async () => {
     vi.mocked(ollamaClient.generateAlertExplanation).mockResolvedValue({
@@ -39,7 +56,7 @@ describe('stored AI alert explanation generator', () => {
     vi.mocked(ollamaClient.generateAlertExplanation).mockRejectedValue(new Error('offline'));
 
     await expect(generateStoredAlertExplanation(input)).resolves.toContain(
-      'The anomaly score 0.9200 exceeded the model threshold 0.8000.',
+      'The anomaly score 0.9200 met the model threshold 0.8000.',
     );
     expect(logger.warn).toHaveBeenCalledOnce();
   });

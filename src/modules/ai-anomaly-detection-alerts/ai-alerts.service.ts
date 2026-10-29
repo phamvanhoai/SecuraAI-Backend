@@ -60,7 +60,7 @@ function toResponse(alert: AiAlertRecord) {
     riskScore: null,
     riskLevel: alert.severity,
     title: eventTitle,
-    description: `${eventTitle} exceeded the deployed anomaly model threshold.`,
+    description: `${eventTitle} was flagged by the deployed detection configuration. Review the stored evidence for the decision basis.`,
     status: responseStatus(alert.status),
     detectedAt: detection.detected_at,
     asset: asset ? { id: asset.id, assetCode: asset.asset_code, name: asset.name } : null,
@@ -290,6 +290,8 @@ export const aiAlertsService = {
       explanationText: alert.explanation_text,
       featureContributions: contributions,
       baselineData: {
+        correlatedEventCount:
+          1 + contributions.filter((item) => item.featureName === 'correlated_detection').length,
         anomalyScore: score,
         threshold,
         scoreAboveThreshold: Number((score - threshold).toFixed(8)),
@@ -348,6 +350,8 @@ export const aiAlertsService = {
       explanationText,
       featureContributions: contributions,
       baselineData: {
+        correlatedEventCount:
+          1 + contributions.filter((item) => item.featureName === 'correlated_detection').length,
         anomalyScore: detection.anomaly_score.toNumber(),
         threshold: detection.threshold.toNumber(),
         scoreAboveThreshold: Number(
