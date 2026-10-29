@@ -1,5 +1,7 @@
 # SecuraAI Backend
 
+Create new policy version is V2-backed at `POST /api/v1/compliance/policies/:policyId/versions`: active owning Security Officer only, unique version number, one in-progress version per policy. The existing publication remains available while the next draft goes through applicability, review, approval and publication. No database migration is needed; 56 legacy routes remain pending.
+
 REST API SecuraAI cho quản lý rủi ro an toàn thông tin, tài sản, controls, chính sách, sự cố, security events và anomaly alerts.
 
 ## Công nghệ và kiến trúc

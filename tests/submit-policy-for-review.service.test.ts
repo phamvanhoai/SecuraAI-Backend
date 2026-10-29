@@ -63,6 +63,15 @@ describe('submit policy for review service', () => {
     });
   });
 
+  it('submits a new draft without deactivating the existing policy', async () => {
+    const next = draft();
+    vi.mocked(policyComplianceRepository.findDraftForSubmission).mockResolvedValue({
+      ...next, policies_policy_versions_policy_idTopolicies: { ...next.policies_policy_versions_policy_idTopolicies, status: 'ACTIVE' },
+    });
+    await expect(policyComplianceService.submitForReview(userId, policyId, versionId)).resolves.toMatchObject({ policyId });
+    expect(policyComplianceRepository.submitDraft).toHaveBeenCalledOnce();
+  });
+
   it('rejects users who are not Security Officers', async () => {
     vi.mocked(policyComplianceRepository.findActor).mockResolvedValue({
       id: userId,
