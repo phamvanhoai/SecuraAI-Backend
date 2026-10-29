@@ -6,6 +6,7 @@ import type { AssignUserAccessBody } from './dto/assign-user-access.dto.js';
 import { userAccessScopeCatalog } from './user-access-scope-catalog.js';
 
 const supplementalScopeCodes = userAccessScopeCatalog.map(({ code }) => code);
+const managedScopeCodes = [...supplementalScopeCodes, 'AUDIT_VIEW', 'POLICY_APPROVE'];
 
 const userDetailSelect = {
   id: true,
@@ -90,6 +91,8 @@ export const usersRepository = {
         where: {
           user_id: userId,
           scope_code: { in: supplementalScopeCodes },
+          effect: 'ALLOW', role: null, asset_id: null, business_service_id: null,
+          OR: [{ expires_at: null }, { expires_at: { gt: new Date() } }],
         },
         select: {
           id: true,
@@ -129,6 +132,8 @@ export const usersRepository = {
   assignUserAccess(actorUserId: string, userId: string, input: AssignUserAccessBody) {
     return prisma.$transaction(
       async (transaction) => {
+        // Serialize responsibility changes against owner assignment checks.
+        await transaction.$queryRaw`SELECT id FROM users WHERE id = ${userId}::uuid FOR UPDATE`;
         const actor = await transaction.users.findUnique({
           where: { id: actorUserId },
           select: { id: true, role: true, status: true },
@@ -140,6 +145,16 @@ export const usersRepository = {
           select: { id: true, role: true, status: true },
         });
         if (!user) return { kind: 'not_found' } as const;
+        const owned = await Promise.all([
+          transaction.risks.count({ where: { owner_user_id: userId } }),
+          transaction.security_controls.count({ where: { owner_user_id: userId } }),
+          transaction.assets.count({ where: { owner_user_id: userId } }),
+        ]);
+        const responsibilities = ['RISK_OWNER', 'CONTROL_OWNER', 'ASSET_OWNER'];
+        if (user.role === 'EMPLOYEE' && owned.some((count, index) => count > 0 &&
+          (input.role !== 'EMPLOYEE' || !input.scopes.some((scope) => scope.scopeCode === responsibilities[index])))) {
+          return { kind: 'ownership_transfer_required' } as const;
+        }
         if (actorUserId === userId && input.role !== user.role)
           return { kind: 'self_role_change' } as const;
         if (user.role === 'ADMIN' && input.role !== 'ADMIN') {
@@ -173,14 +188,14 @@ export const usersRepository = {
         const beforeScopes = await transaction.user_access_scopes.findMany({
           where: {
             user_id: userId,
-            scope_code: { in: supplementalScopeCodes },
+            scope_code: { in: managedScopeCodes },
           },
           select: { scope_code: true, business_service_id: true, asset_id: true, expires_at: true },
         });
         await transaction.user_access_scopes.deleteMany({
           where: {
             user_id: userId,
-            scope_code: { in: supplementalScopeCodes },
+            scope_code: { in: managedScopeCodes },
           },
         });
         if (input.scopes.length > 0) {

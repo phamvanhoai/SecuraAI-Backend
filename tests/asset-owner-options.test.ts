@@ -3,7 +3,8 @@ const mocks = vi.hoisted(() => ({ findUnique: vi.fn(), findMany: vi.fn() }));
 vi.mock('../src/database/prisma.js', () => ({ prisma: { users: mocks } }));
 import { assetsService } from '../src/modules/it-asset-management/assets.service.js';
 import { assetOwnerOptionsQuerySchema } from '../src/modules/it-asset-management/dto/asset-owner-options.dto.js';
-beforeEach(() => vi.resetAllMocks());
+import { responsibilityWhere } from '../src/modules/user-management-authorization/business-responsibilities.js';
+beforeEach(() => { vi.resetAllMocks(); vi.setSystemTime(new Date('2026-10-29T00:00:00Z')); });
 it('bounds search and rejects forged query fields', () => {
   expect(assetOwnerOptionsQuerySchema.safeParse({ q: 'x'.repeat(101) }).success).toBe(false);
   expect(assetOwnerOptionsQuerySchema.safeParse({ role: 'ADMIN' }).success).toBe(false);
@@ -12,7 +13,7 @@ it('searches active users by name/email and returns only minimal identifying dat
   mocks.findUnique.mockResolvedValue({ role: 'SECURITY_OFFICER', status: 'ACTIVE' });
   mocks.findMany.mockResolvedValue([{ id: 'user', full_name: 'Same Name', email: 'second@example.test' }]);
   expect(await assetsService.ownerOptions('officer', 'second@')).toEqual({ items: [{ id: 'user', fullName: 'Same Name', email: 'second@example.test' }] });
-  expect(mocks.findMany).toHaveBeenCalledWith({ where: { status: 'ACTIVE', OR: [
+  expect(mocks.findMany).toHaveBeenCalledWith({ where: { AND: [responsibilityWhere('ASSET_OWNER')], OR: [
     { full_name: { contains: 'second@', mode: 'insensitive' } }, { email: { contains: 'second@', mode: 'insensitive' } },
   ] }, select: { id: true, full_name: true, email: true }, orderBy: [{ full_name: 'asc' }, { id: 'asc' }], take: 10 });
 });

@@ -646,9 +646,8 @@ export const openApiSpec = {
     '/users/access-assignment-options': {
       get: {
         tags: ['Users'],
-        summary: 'List role and access-scope assignment options',
-        description:
-          'Returns the four V2 roles, allow-listed supplemental permission codes, and active business services and assets that may target a scope. Active Admin account required.',
+        summary: 'List system roles and Employee business responsibilities',
+        description: 'scopeCodes contains RISK_OWNER, CONTROL_OWNER, ASSET_OWNER and AUTHORIZED_APPROVER. These are eligibility labels stored in existing user_access_scopes, not fixed roles. At most one permanent GLOBAL grant for EMPLOYEE is accepted; individual resource ownership remains separate. Legacy AUDIT_VIEW/POLICY_APPROVE are not supported.',
         security: [{ bearerAuth: [] }],
         responses: {
           '200': { description: 'Assignment options' },
@@ -660,7 +659,8 @@ export const openApiSpec = {
     '/users/{userId}/access-assignment': {
       get: {
         tags: ['Users'],
-        summary: 'View a user role, scopes, and ownership summary',
+        summary: 'View a user role, business responsibilities, and ownership summary',
+        description: 'Existing Employee ownership supplies implicit responsibility eligibility without backfill; assignedAt is null for inferred entries. Transfer all owned records before removing the corresponding responsibility or changing that Employee role (409 OWNERSHIP_TRANSFER_REQUIRED). Grants alone do not expose resource lists without ownership.',
         security: [{ bearerAuth: [] }],
         parameters: [
           {

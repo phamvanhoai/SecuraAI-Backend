@@ -1,4 +1,5 @@
 import { Prisma } from '@prisma/client';
+import { responsibilityWhere } from '../user-management-authorization/index.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { prisma } from '../../database/prisma.js';
 import { AppError } from '../../common/errors/app-error.js';
@@ -112,7 +113,7 @@ export const assetsRepository = {
   },
   ownerOptions(q: string) {
     return prisma.users.findMany({
-      where: { status: 'ACTIVE', ...(q ? { OR: [
+      where: { AND: [responsibilityWhere('ASSET_OWNER')], ...(q ? { OR: [
         { full_name: { contains: q, mode: 'insensitive' } },
         { email: { contains: q, mode: 'insensitive' } },
       ] } : {}) },
@@ -190,7 +191,7 @@ export const assetsRepository = {
   findCreateOptions() {
     return Promise.all([
       prisma.users.findMany({
-        where: { status: 'ACTIVE' },
+        where: responsibilityWhere('ASSET_OWNER'),
         select: { id: true, full_name: true, role: true },
         orderBy: { full_name: 'asc' },
         take: 200,
@@ -224,7 +225,7 @@ export const assetsRepository = {
     const [owner, service, dependencies, sources] = await Promise.all([
       input.ownerUserId
         ? prisma.users.findFirst({
-            where: { id: input.ownerUserId, status: 'ACTIVE' },
+            where: { id: input.ownerUserId, AND: [responsibilityWhere('ASSET_OWNER')] },
             select: { id: true },
           })
         : null,
@@ -245,7 +246,13 @@ export const assetsRepository = {
     };
   },
   create(actorUserId: string, assetCode: string, input: CreateAssetInput) {
-    return prisma.assets.create({
+    return prisma.$transaction(async (tx) => {
+      if (input.ownerUserId) {
+        await tx.$queryRaw`SELECT id FROM users WHERE id = ${input.ownerUserId}::uuid FOR SHARE`;
+        const eligible = await tx.users.findFirst({ where: { id: input.ownerUserId, AND: [responsibilityWhere('ASSET_OWNER')] }, select: { id: true } });
+        if (!eligible) throw new AppError(422, 'INVALID_ASSET_OWNER', 'Grant Asset Owner responsibility before assigning this Employee');
+      }
+      return tx.assets.create({
       data: {
         asset_code: assetCode,
         name: input.name,
@@ -270,6 +277,7 @@ export const assetsRepository = {
         },
       },
       select,
+    });
     });
   },
   update(assetId: string, input: UpdateAssetInput) {
@@ -310,7 +318,16 @@ export const assetsRepository = {
       return { kind: 'updated' } as const;
     }, { isolationLevel: 'Serializable', maxWait: 5000, timeout: 15000 });
   },
-  assignOwner(assetId: string, ownerUserId: string | null) { return prisma.assets.update({ where: { id: assetId }, data: { owner_user_id: ownerUserId }, select: { id: true, updated_at: true, users_assets_owner_user_idTousers: { select: { id: true, full_name: true, status: true } } } }); },
+  assignOwner(assetId: string, ownerUserId: string | null) {
+    return prisma.$transaction(async (tx) => {
+      if (ownerUserId) {
+        await tx.$queryRaw`SELECT id FROM users WHERE id = ${ownerUserId}::uuid FOR SHARE`;
+        const eligible = await tx.users.findFirst({ where: { id: ownerUserId, AND: [responsibilityWhere('ASSET_OWNER')] }, select: { id: true } });
+        if (!eligible) throw new AppError(422, 'INVALID_ASSET_OWNER', 'Grant Asset Owner responsibility before assigning this Employee');
+      }
+      return tx.assets.update({ where: { id: assetId }, data: { owner_user_id: ownerUserId }, select: { id: true, updated_at: true, users_assets_owner_user_idTousers: { select: { id: true, full_name: true, status: true } } } });
+    });
+  },
   classify(assetId: string, criticality: string, input: ClassifyAssetInput, userId: string, methodVersion: string) {
     return prisma.$transaction(async (tx) => {
       const actor = await tx.users.findUnique({ where: { id: userId }, select: { role: true, status: true } });
