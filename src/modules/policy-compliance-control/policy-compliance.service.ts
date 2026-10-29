@@ -83,7 +83,16 @@ function toSubmittedDraft(version: PolicyDraftForSubmission) {
 
 function mapOwnedPolicyDraft(draft: OwnedPolicyDraftRecord) {
   const policy = draft.policies_policy_versions_policy_idTopolicies;
+  const revision = draft.policy_decisions[0];
   return {
+    revisionRequest: revision
+      ? {
+          id: revision.id,
+          reason: revision.comment,
+          requestedAt: revision.decided_at,
+          requestedBy: { id: revision.actor_user_id, name: revision.users.full_name },
+        }
+      : null,
     policyId: draft.policy_id,
     policyCode: policy.policy_code,
     title: policy.title,
@@ -561,6 +570,17 @@ export const policyComplianceService = {
         decidedAt: result.decision.decided_at,
       },
     };
+  },
+
+  async getOwnDraft(userId: string, policyId: string, versionId: string) {
+    const actor = await policyComplianceRepository.findActor(userId);
+    if (!actor || actor.status !== 'ACTIVE')
+      throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+    if (actor.role !== 'SECURITY_OFFICER')
+      throw new AppError(403, 'FORBIDDEN', 'Security Officer role required');
+    const draft = await policyComplianceRepository.findOwnDraftDetail(userId, policyId, versionId);
+    if (!draft) throw new AppError(404, 'POLICY_DRAFT_NOT_FOUND', 'Policy draft not found');
+    return mapOwnedPolicyDraft(draft);
   },
 
   async editOwnDraft(

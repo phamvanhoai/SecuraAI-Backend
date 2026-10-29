@@ -2,7 +2,14 @@ import jwt from 'jsonwebtoken';
 import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('../src/database/prisma.js', () => ({ prisma: { $queryRaw: vi.fn() } }));
+vi.mock('../src/database/prisma.js', () => ({
+  prisma: {
+    $queryRaw: vi.fn(),
+    users: {
+      findUnique: vi.fn(),
+    },
+  },
+}));
 vi.mock('../src/modules/audit-security-reporting/audit-logs.service.js', () => ({
   auditLogsService: {
     listAuditLogs: vi.fn(),
@@ -13,6 +20,7 @@ vi.mock('../src/modules/audit-security-reporting/audit-logs.service.js', () => (
 
 import { createApp } from '../src/app.js';
 import { env } from '../src/config/env.js';
+import { prisma } from '../src/database/prisma.js';
 import { AppError } from '../src/common/errors/app-error.js';
 import { auditLogsService } from '../src/modules/audit-security-reporting/audit-logs.service.js';
 
@@ -28,7 +36,13 @@ const token = jwt.sign({ type: 'access' }, env.JWT_ACCESS_SECRET, {
 });
 
 describe('Audit Logs HTTP endpoints', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(prisma.users.findUnique).mockResolvedValue({
+      role: 'ADMIN',
+      status: 'ACTIVE',
+    } as any);
+  });
 
   describe('GET /api/v1/audit-logs', () => {
     it('requires authentication', async () => {
@@ -61,6 +75,36 @@ describe('Audit Logs HTTP endpoints', () => {
           limit: 20,
         }),
       );
+    });
+
+    it('allows SECURITY_OFFICER role to view audit logs', async () => {
+      vi.mocked(prisma.users.findUnique).mockResolvedValue({
+        role: 'SECURITY_OFFICER',
+        status: 'ACTIVE',
+      } as any);
+      vi.mocked(auditLogsService.listAuditLogs).mockResolvedValue({
+        items: [],
+        pagination: { page: 1, limit: 20, totalItems: 0, totalPages: 1 },
+      });
+
+      const res = await request(app)
+        .get('/api/v1/audit-logs')
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(200);
+    });
+
+    it('forbids EMPLOYEE role from viewing audit logs', async () => {
+      vi.mocked(prisma.users.findUnique).mockResolvedValue({
+        role: 'EMPLOYEE',
+        status: 'ACTIVE',
+      } as any);
+
+      const res = await request(app)
+        .get('/api/v1/audit-logs')
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(res.status).toBe(403);
     });
 
     it('passes search, actor, action, resourceType and date range parameters to service', async () => {

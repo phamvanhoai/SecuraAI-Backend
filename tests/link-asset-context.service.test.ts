@@ -25,8 +25,9 @@ describe('assetsService.linkContext', () => {
   it('rejects a circular dependency without updating', async () => {
     vi.mocked(assetsRepository.findActor).mockResolvedValue({ role: 'SECURITY_OFFICER', status: 'ACTIVE' });
     vi.mocked(assetsRepository.findById).mockResolvedValue({ status: 'ACTIVE' } as never);
-    vi.mocked(assetsRepository.linkContext).mockResolvedValue({ kind: 'cycle' });
-    await expect(assetsService.linkContext(userId, assetId, input)).rejects.toMatchObject({ statusCode: 422, code: 'ASSET_DEPENDENCY_CYCLE' });
+    const path = ['AST-A — Portal', 'AST-B — Database', 'AST-A — Portal'];
+    vi.mocked(assetsRepository.linkContext).mockResolvedValue({ kind: 'cycle', path });
+    await expect(assetsService.linkContext(userId, assetId, input)).rejects.toMatchObject({ statusCode: 422, code: 'ASSET_DEPENDENCY_CYCLE', details: { path } });
   });
   it('reports concurrent context writes as a retryable conflict', async () => {
     vi.mocked(assetsRepository.findActor).mockResolvedValue({ role: 'SECURITY_OFFICER', status: 'ACTIVE' });

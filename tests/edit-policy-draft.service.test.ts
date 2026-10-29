@@ -19,6 +19,7 @@ const updatedAt = new Date('2026-09-26T01:00:00Z');
 
 function draft(status: 'DRAFT' | 'IN_REVIEW' = 'DRAFT', ownerUserId = userId) {
   return {
+    policy_decisions: [],
     id: versionId,
     policy_id: policyId,
     version_number: '1.0',

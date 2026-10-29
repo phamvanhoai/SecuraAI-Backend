@@ -2,7 +2,14 @@ import jwt from 'jsonwebtoken';
 import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('../src/database/prisma.js', () => ({ prisma: { $queryRaw: vi.fn() } }));
+vi.mock('../src/database/prisma.js', () => ({
+  prisma: {
+    $queryRaw: vi.fn(),
+    users: {
+      findUnique: vi.fn(),
+    },
+  },
+}));
 vi.mock('../src/modules/audit-security-reporting/integration-api-keys.service.js', () => ({
   integrationApiKeysService: {
     listApiKeys: vi.fn(),
@@ -12,6 +19,7 @@ vi.mock('../src/modules/audit-security-reporting/integration-api-keys.service.js
 
 import { createApp } from '../src/app.js';
 import { env } from '../src/config/env.js';
+import { prisma } from '../src/database/prisma.js';
 import { AppError } from '../src/common/errors/app-error.js';
 import { integrationApiKeysService } from '../src/modules/audit-security-reporting/integration-api-keys.service.js';
 
@@ -59,7 +67,13 @@ const sampleApiKeyItem = {
 };
 
 describe('Integration API Keys HTTP endpoints', () => {
-  beforeEach(() => vi.clearAllMocks());
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.mocked(prisma.users.findUnique).mockResolvedValue({
+      role: 'ADMIN',
+      status: 'ACTIVE',
+    } as any);
+  });
 
   describe('GET /api/v1/integrations/:id/api-keys', () => {
     it('requires authentication', async () => {
@@ -68,9 +82,10 @@ describe('Integration API Keys HTTP endpoints', () => {
     });
 
     it('returns 403 when user is not authorized', async () => {
-      vi.mocked(integrationApiKeysService.listApiKeysForIntegration).mockRejectedValue(
-        new AppError(403, 'FORBIDDEN', 'Only administrators can view integration API keys'),
-      );
+      vi.mocked(prisma.users.findUnique).mockResolvedValue({
+        role: 'EMPLOYEE',
+        status: 'ACTIVE',
+      } as any);
 
       const res = await request(app)
         .get(`/api/v1/integrations/${mockIntegrationId}/api-keys`)

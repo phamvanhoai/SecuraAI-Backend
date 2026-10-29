@@ -29,7 +29,7 @@ describe('V2 authentication HTTP routes', () => {
     expect(authService.login).toHaveBeenCalledWith({
       email: 'admin@example.test',
       password: 'CorrectPassword!',
-    });
+    }, expect.objectContaining({ ipAddress: expect.any(String) }));
   });
 
   it('returns the locked-account error in the standard error envelope', async () => {

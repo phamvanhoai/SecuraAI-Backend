@@ -6,7 +6,10 @@ if (env.NODE_ENV === 'development' && !databaseUrl.searchParams.has('connection_
   databaseUrl.searchParams.set('connection_limit', '5');
 }
 if (env.NODE_ENV === 'development' && !databaseUrl.searchParams.has('pool_timeout')) {
-  databaseUrl.searchParams.set('pool_timeout', '10');
+  databaseUrl.searchParams.set('pool_timeout', '30');
+}
+if (env.NODE_ENV === 'development' && !databaseUrl.searchParams.has('connect_timeout')) {
+  databaseUrl.searchParams.set('connect_timeout', '30');
 }
 
 export const prisma = new PrismaClient({

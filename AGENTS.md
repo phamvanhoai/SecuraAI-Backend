@@ -132,7 +132,7 @@ Most domain folders contain only explicit unimplemented markers so team members 
 - Refresh tokens are opaque random values. Store only their SHA-256 hashes and rotate them on use.
 - Passwords must use Argon2id. Never log, return or store plaintext passwords.
 - Protected routes must use `authenticate` before `authorize`.
-- Authorization is permission-based. Do not rely only on UI checks or role names in business logic.
+- Authorization uses the four fixed roles plus resource scope and contextual ownership. Do not add configurable role grants or per-user permission overrides. Frontend capability names are navigation hints only; business services must enforce role, ownership, status and allowed transitions.
 - Use generic login/reset errors to reduce account enumeration risk.
 - Security-sensitive actions must produce audit records when audit infrastructure for the affected use case exists.
 

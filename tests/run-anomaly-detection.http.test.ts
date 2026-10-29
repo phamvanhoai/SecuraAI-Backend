@@ -35,6 +35,8 @@ describe('POST /api/v1/anomaly-detections/runs', () => {
       modelName: 'detector',
       modelVersion: '2',
       lookbackHours: 24,
+      scope: 'ALL_PENDING',
+      hasMore: false,
       eventsEvaluated: 1,
       anomaliesDetected: 1,
       customThresholdsApplied: 0,

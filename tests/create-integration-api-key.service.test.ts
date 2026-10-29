@@ -120,7 +120,21 @@ describe('Create Integration API Key Service', () => {
     ).rejects.toMatchObject({ statusCode: 404 });
   });
 
-  it('allows creating general integration key without eventSourceId', async () => {
+  it('rejects creating API key with scope "events:ingest" without eventSourceId with 400 Bad Request', async () => {
+    vi.spyOn(integrationApiKeysRepository, 'findUserById').mockResolvedValue(mockAdminUser);
+
+    await expect(
+      integrationApiKeysService.createApiKey(mockAdminUser.id, {
+        name: 'Unbound Ingest Key',
+        scopes: ['events:ingest'],
+      }),
+    ).rejects.toMatchObject({
+      statusCode: 400,
+      message: expect.stringContaining('events:ingest'),
+    });
+  });
+
+  it('allows creating general integration key without eventSourceId for non-ingest scopes', async () => {
     vi.spyOn(integrationApiKeysRepository, 'findUserById').mockResolvedValue(mockAdminUser);
     vi.spyOn(integrationApiKeysRepository, 'createApiKey').mockResolvedValue({
       ...mockCreatedKeyRecord,
@@ -129,8 +143,8 @@ describe('Create Integration API Key Service', () => {
     });
 
     const result = await integrationApiKeysService.createApiKey(mockAdminUser.id, {
-      name: 'Global SIEM Ingest Key',
-      scopes: ['events:ingest'],
+      name: 'Global Read-Only Key',
+      scopes: ['events:read', 'alerts:read'],
     });
 
     expect(result.id).toBe(mockCreatedKeyRecord.id);
@@ -138,3 +152,4 @@ describe('Create Integration API Key Service', () => {
     expect(result.secret).toMatch(/^sec_live_/);
   });
 });
+

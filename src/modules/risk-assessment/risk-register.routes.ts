@@ -1,4 +1,6 @@
 import { Router } from 'express';
+import { completeRiskReview } from './risk-register.controller.js';
+import { completeRiskReviewSchema } from './dto/complete-risk-review.dto.js';
 import { authenticate } from '../../common/middleware/authenticate.js';
 import { validate } from '../../common/middleware/validate.js';
 import { asyncHandler } from '../../common/utils/async-handler.js';
@@ -57,6 +59,7 @@ import { updateTreatmentPlanBodySchema, updateTreatmentPlanParamsSchema } from '
 import { decideRiskAcceptanceBodySchema, decideRiskAcceptanceParamsSchema, submitRiskAcceptanceBodySchema, submitRiskAcceptanceParamsSchema, openRiskReviewBodySchema } from './dto/risk-acceptance.dto.js';
 
 export const riskRegisterRouter = Router();
+riskRegisterRouter.post('/:riskId/review/complete', authenticate, validate({ params: riskIdParamsSchema, body: completeRiskReviewSchema }), asyncHandler(completeRiskReview));
 riskRegisterRouter.get(
   '/',
   authenticate,

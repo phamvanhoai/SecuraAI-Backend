@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { authenticate } from '../../common/middleware/authenticate.js';
+import { authorizeRoles } from '../../common/middleware/authorize-roles.js';
 import { validate } from '../../common/middleware/validate.js';
 import { asyncHandler } from '../../common/utils/async-handler.js';
 import {
@@ -31,9 +32,10 @@ import {
 
 export const integrationApiKeysRouter = Router();
 
+integrationApiKeysRouter.use(authenticate, authorizeRoles('ADMIN'));
+
 integrationApiKeysRouter.get(
   '/',
-  authenticate,
   validate({ query: listIntegrationApiKeysQuerySchema }),
   asyncHandler(listIntegrationApiKeys),
 );
@@ -83,6 +85,8 @@ integrationApiKeysRouter.post(
 );
 
 export const integrationSourceApiKeysRouter = Router({ mergeParams: true });
+
+integrationSourceApiKeysRouter.use(authenticate, authorizeRoles('ADMIN'));
 
 integrationSourceApiKeysRouter.get(
   '/:id/api-keys',

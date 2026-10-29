@@ -1,6 +1,8 @@
+import { randomUUID } from 'node:crypto';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '../../database/prisma.js';
 import type { WazuhEventIngestInput } from './dto/wazuh-event-ingest.dto.js';
+import { eventAutoMappingService } from './event-auto-mapping.service.js';
 
 export const wazuhIngestionRepository = {
   async findWazuhEventSource() {
@@ -17,9 +19,27 @@ export const wazuhIngestionRepository = {
     });
   },
 
+  findSourceById(id: string) {
+    return prisma.event_sources.findUnique({
+      where: { id },
+      select: { id: true, name: true, status: true, source_type: true },
+    });
+  },
+
   async ensureDefaultWazuhSource(adminUserId?: string) {
+    const active = await prisma.event_sources.findFirst({
+      where: { source_type: 'WAZUH', status: 'ACTIVE' },
+      orderBy: { created_at: 'asc' },
+      select: { id: true, name: true, status: true },
+    });
+    if (active) {
+      return active;
+    }
+
+    // Wazuh sources exist but none is active: return one so the caller can reject (paused source).
     const existing = await prisma.event_sources.findFirst({
       where: { source_type: 'WAZUH' },
+      orderBy: { created_at: 'asc' },
       select: { id: true, name: true, status: true },
     });
     if (existing) {
@@ -110,27 +130,51 @@ export const wazuhIngestionRepository = {
       }
     }
 
-    return prisma.normalized_events.create({
-      data: {
-        event_source_id: eventSourceId,
-        external_event_id: event.rawEventId ?? null,
-        event_family: event.eventFamily,
-        event_type: event.eventType,
-        occurred_at: occurredAt,
-        account_identifier: event.actor.username,
-        source_ip: event.sourceIp ?? null,
-        device_identifier: event.agent.name,
-        severity: event.rule.level ? String(event.rule.level) : null,
-        mapping_status: 'UNMAPPED',
-        normalized_payload: payloadJson,
+    const eventId = randomUUID();
+
+    const autoMappingResult = await eventAutoMappingService.resolveAutoMappings([
+      {
+        id: eventId,
+        accountIdentifier: event.actor.username,
+        deviceIdentifier: event.agent.name,
+        sourceIp: event.sourceIp ?? null,
       },
-      select: {
-        id: true,
-        external_event_id: true,
-        event_family: true,
-        event_type: true,
-        ingested_at: true,
-      },
+    ]);
+
+    const mappingStatus = autoMappingResult.mappingStatusMap.get(eventId) ?? 'UNMAPPED';
+
+    return prisma.$transaction(async (tx) => {
+      const created = await tx.normalized_events.create({
+        data: {
+          id: eventId,
+          event_source_id: eventSourceId,
+          external_event_id: event.rawEventId ?? null,
+          event_family: event.eventFamily,
+          event_type: event.eventType,
+          occurred_at: occurredAt,
+          account_identifier: event.actor.username,
+          source_ip: event.sourceIp ?? null,
+          device_identifier: event.agent.name,
+          severity: event.rule.level ? String(event.rule.level) : null,
+          mapping_status: mappingStatus,
+          normalized_payload: payloadJson,
+        },
+        select: {
+          id: true,
+          external_event_id: true,
+          event_family: true,
+          event_type: true,
+          ingested_at: true,
+        },
+      });
+
+      if (autoMappingResult.mappingsToCreate.length > 0) {
+        await tx.event_entity_mappings.createMany({
+          data: autoMappingResult.mappingsToCreate,
+        });
+      }
+
+      return created;
     });
   },
 };

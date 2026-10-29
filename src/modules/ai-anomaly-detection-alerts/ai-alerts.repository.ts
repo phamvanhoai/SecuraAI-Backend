@@ -315,6 +315,10 @@ export const aiAlertsRepository = {
         } satisfies Prisma.InputJsonObject;
         const parameters = readParameters(model.parameters);
         const thresholds = readThresholdMap(model.parameters);
+        const existing = thresholds[assetId];
+        if (input.mode === 'create' && existing?.enabled === true) {
+          return { outcome: 'active_override_exists' as const };
+        }
         await transaction.ai_model_versions.update({
           where: { id: model.id },
           data: {
@@ -386,6 +390,8 @@ export const aiAlertsRepository = {
         id: true,
         severity: true,
         created_at: true,
+        explanation_text: true,
+        explanation_generated_at: true,
         anomaly_detections: {
           select: {
             id: true,
@@ -404,6 +410,87 @@ export const aiAlertsRepository = {
           },
         },
       },
+    });
+  },
+  findExplanationForRegeneration(alertId: string) {
+    return prisma.anomaly_alerts.findUnique({
+      where: { id: alertId },
+      select: {
+        id: true,
+        severity: true,
+        explanation_text: true,
+        explanation_generated_at: true,
+        anomaly_detections: {
+          select: {
+            id: true,
+            anomaly_score: true,
+            threshold: true,
+            detected_at: true,
+            model_version_id: true,
+            normalized_events: { select: { id: true } },
+            anomaly_feature_contributions: {
+              orderBy: [{ rank: 'asc' }, { contribution_score: 'desc' }],
+              select: {
+                feature_name: true,
+                feature_value: true,
+                contribution_score: true,
+                rank: true,
+              },
+            },
+          },
+        },
+      },
+    });
+  },
+  replaceExplanation(input: {
+    alertId: string;
+    actorUserId: string;
+    reason: string;
+    explanationText: string;
+    generatedAt: Date;
+    modelVersionId: string;
+    previousText: string;
+    previousGeneratedAt: Date;
+    sourceIp?: string | undefined;
+    userAgent?: string | undefined;
+  }) {
+    return prisma.$transaction(async (transaction) => {
+      const updated = await transaction.anomaly_alerts.updateMany({
+        where: {
+          id: input.alertId,
+          explanation_generated_at: input.previousGeneratedAt,
+        },
+        data: {
+          explanation_text: input.explanationText,
+          explanation_generated_at: input.generatedAt,
+          updated_at: input.generatedAt,
+        },
+      });
+      if (updated.count !== 1) return false;
+      await transaction.audit_logs.create({
+        data: {
+          actor_user_id: input.actorUserId,
+          actor_type: 'USER',
+          action: 'REGENERATE_AI_ALERT_EXPLANATION',
+          resource_type: 'AI_ALERT',
+          resource_id: input.alertId,
+          source: 'API',
+          source_ip: input.sourceIp ?? null,
+          user_agent: input.userAgent ?? null,
+          before_data: {
+            explanationText: input.previousText,
+            generatedAt: input.previousGeneratedAt.toISOString(),
+          },
+          after_data: {
+            explanationText: input.explanationText,
+            generatedAt: input.generatedAt.toISOString(),
+            modelVersionId: input.modelVersionId,
+            reason: input.reason,
+          },
+          record_hash: `${input.alertId}:REGENERATE_EXPLANATION:${input.actorUserId}:${input.generatedAt.toISOString()}`,
+        },
+      });
+      return true;
     });
   },
   findForFeedback(alertId: string) {

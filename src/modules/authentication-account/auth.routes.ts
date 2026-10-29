@@ -11,52 +11,79 @@ import {
   logout,
   refresh,
   requestPasswordReset,
+  verifyPasswordResetCode,
 } from './auth.controller.js';
 import { googleLoginBodySchema, loginBodySchema, refreshBodySchema } from './dto/auth.dto.js';
 import {
   changePasswordBodySchema,
   confirmPasswordResetBodySchema,
   requestPasswordResetBodySchema,
+  verifyPasswordResetBodySchema,
 } from './dto/password.dto.js';
 
 export const authRouter = Router();
-const authLimiter = rateLimit({
+const rateLimitMessage = {
+  success: false,
+  error: { code: 'RATE_LIMITED', message: 'Too many attempts. Please try again later.' },
+} as const;
+const credentialLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 10,
   standardHeaders: 'draft-8',
   legacyHeaders: false,
-  message: { success: false, error: { code: 'RATE_LIMITED', message: 'Too many attempts' } },
+  skipSuccessfulRequests: true,
+  message: rateLimitMessage,
+});
+const sessionLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 120,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  message: rateLimitMessage,
+});
+const passwordWorkflowLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 10,
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  message: rateLimitMessage,
 });
 
-authRouter.post('/login', authLimiter, validate({ body: loginBodySchema }), asyncHandler(login));
+authRouter.post('/login', credentialLimiter, validate({ body: loginBodySchema }), asyncHandler(login));
 authRouter.post(
   '/google',
-  authLimiter,
+  credentialLimiter,
   validate({ body: googleLoginBodySchema }),
   asyncHandler(loginWithGoogle),
 );
 authRouter.post(
   '/refresh',
-  authLimiter,
+  sessionLimiter,
   validate({ body: refreshBodySchema }),
   asyncHandler(refresh),
 );
 authRouter.post('/logout', validate({ body: refreshBodySchema }), asyncHandler(logout));
 authRouter.post(
   '/password-reset/request',
-  authLimiter,
+  passwordWorkflowLimiter,
   validate({ body: requestPasswordResetBodySchema }),
   asyncHandler(requestPasswordReset),
 );
 authRouter.post(
+  '/password-reset/verify',
+  passwordWorkflowLimiter,
+  validate({ body: verifyPasswordResetBodySchema }),
+  asyncHandler(verifyPasswordResetCode),
+);
+authRouter.post(
   '/password-reset/confirm',
-  authLimiter,
+  passwordWorkflowLimiter,
   validate({ body: confirmPasswordResetBodySchema }),
   asyncHandler(confirmPasswordReset),
 );
 authRouter.post(
   '/change-password',
-  authLimiter,
+  passwordWorkflowLimiter,
   authenticate,
   validate({ body: changePasswordBodySchema }),
   asyncHandler(changePassword),

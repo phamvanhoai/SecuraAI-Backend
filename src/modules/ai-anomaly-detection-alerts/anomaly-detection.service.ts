@@ -4,6 +4,7 @@ import { z } from 'zod';
 import { AppError } from '../../common/errors/app-error.js';
 import type { RunAnomalyDetectionBody } from './dto/run-anomaly-detection.dto.js';
 import { anomalyDetectionRepository, type DetectionEvent } from './anomaly-detection.repository.js';
+import { generateStoredAlertExplanation } from './alert-explanation.generator.js';
 
 const parametersSchema = z
   .object({
@@ -29,6 +30,21 @@ const severityScore: Readonly<Record<string, number>> = {
   medium: 0.55,
   low: 0.2,
 };
+let detectionQueue: Promise<void> = Promise.resolve();
+
+async function withDetectionLock<T>(operation: () => Promise<T>): Promise<T> {
+  const previous = detectionQueue;
+  let release = (): void => undefined;
+  detectionQueue = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await previous;
+  try {
+    return await operation();
+  } finally {
+    release();
+  }
+}
 
 function normalizedSeverity(value: string | null): number {
   const named = severityScore[value?.toLowerCase() ?? ''];
@@ -79,23 +95,47 @@ export const anomalyDetectionService = {
         'NO_DEPLOYED_MODEL',
         'Deploy an anomaly detection model before running detection',
       );
-    return runDetection(model, input, {
-      actor: { type: 'USER', userId },
-      correlationId,
-      sourceIp: context?.sourceIp,
-      userAgent: context?.userAgent,
+    const audit = {
+      actor: { type: 'USER' as const, userId },
+      ...(correlationId ? { correlationId } : {}),
+      ...(context?.sourceIp ? { sourceIp: context.sourceIp } : {}),
+      ...(context?.userAgent ? { userAgent: context.userAgent } : {}),
+    };
+    return withDetectionLock(async () => {
+      const result = await runDetection(
+        model,
+        { lookbackHours: null, maxEvents: input.maxEvents, eventScope: 'ALL' },
+        audit,
+      );
+      const hasMore = await anomalyDetectionRepository.hasPendingEvents(model.id);
+      return {
+        ...result,
+        lookbackHours: input.lookbackHours,
+        scope: 'ALL_PENDING' as const,
+        hasMore,
+      };
     });
   },
-  async runAutomated(input: RunAnomalyDetectionBody) {
+  async runAutomated(input: Pick<RunAnomalyDetectionBody, 'maxEvents'>) {
     const model = await anomalyDetectionRepository.findDeployedModel();
     if (!model) return null;
-    return runDetection(model, input, { actor: { type: 'SYSTEM' } });
+    return withDetectionLock(() =>
+      runDetection(
+        model,
+        { lookbackHours: null, maxEvents: input.maxEvents, eventScope: 'WAZUH_REALTIME' },
+        { actor: { type: 'SYSTEM' } },
+      ),
+    );
   },
 };
 
 async function runDetection(
   model: Awaited<ReturnType<typeof anomalyDetectionRepository.findDeployedModel>> & {},
-  input: RunAnomalyDetectionBody,
+  input: {
+    lookbackHours: number | null;
+    maxEvents: number;
+    eventScope: 'ALL' | 'WAZUH_REALTIME';
+  },
   audit: {
     actor: { type: 'USER'; userId: string } | { type: 'SYSTEM' };
     correlationId?: string | undefined;
@@ -103,15 +143,21 @@ async function runDetection(
     userAgent?: string | undefined;
   },
 ) {
-    const parsed = parametersSchema.safeParse(model.parameters ?? {});
-    const parameters = parsed.success ? parsed.data : parametersSchema.parse({});
-    const since = new Date(Date.now() - input.lookbackHours * 3_600_000);
-    const batch = await anomalyDetectionRepository.findPendingEvents(
-      model.id,
-      since,
-      input.maxEvents,
-    );
-    const detections = batch.events.map((event) => {
+  const parsed = parametersSchema.safeParse(model.parameters ?? {});
+  const parameters = parsed.success ? parsed.data : parametersSchema.parse({});
+  const since =
+    input.lookbackHours === null
+      ? null
+      : new Date(Date.now() - input.lookbackHours * 3_600_000);
+  const batch = await anomalyDetectionRepository.findPendingEvents(
+    model.id,
+    since,
+    input.maxEvents,
+    input.eventScope,
+  );
+  const detectedAt = new Date();
+  const detections = await Promise.all(
+    batch.events.map(async (event) => {
       const score = scoreEvent(
         event,
         batch.frequencies.get(event.event_type) ?? 0,
@@ -120,47 +166,68 @@ async function runDetection(
       );
       const assetId = event.event_entity_mappings[0]?.asset_id;
       const customThreshold = assetId ? parameters.assetThresholds[assetId] : undefined;
+      const thresholdSource = customThreshold?.enabled ? 'ASSET_OVERRIDE' : 'MODEL_DEFAULT';
       const threshold = customThreshold?.enabled ? customThreshold.threshold : parameters.threshold;
+      const isAnomaly = score >= threshold;
+      const explanationText = isAnomaly
+        ? await generateStoredAlertExplanation({
+            anomalyScore: score,
+            threshold,
+            suggestedRiskLevel: 'high',
+            detectedAt,
+            featureContributions: [],
+            eventId: event.id,
+          })
+        : undefined;
       return {
         id: randomUUID(),
         eventId: event.id,
         score,
         threshold,
-        isAnomaly: score >= threshold,
+        thresholdSource,
+        isAnomaly,
+        ...(explanationText ? { explanationText, explanationGeneratedAt: detectedAt } : {}),
       };
-    });
-    const summary = {
-      modelVersionId: model.id,
-      modelName: model.model_name,
-      modelVersion: model.version,
-      lookbackHours: input.lookbackHours,
-      eventsEvaluated: detections.length,
-      anomaliesDetected: detections.filter((item) => item.isAnomaly).length,
-      customThresholdsApplied: detections.filter((item) => item.threshold !== parameters.threshold)
-        .length,
-    } satisfies Prisma.InputJsonObject;
-    if (detections.length === 0) {
-      return {
-        ...summary,
-        detectionsCreated: 0,
-        alertsCreated: 0,
-        threshold: parameters.threshold,
-        completedAt: new Date().toISOString(),
-      };
-    }
-    const persisted = await anomalyDetectionRepository.persistRun({
-      actor: audit.actor,
-      modelVersionId: model.id,
-      ...(audit.correlationId ? { correlationId: audit.correlationId } : {}),
-      detections,
-      summary,
-      sourceIp: audit.sourceIp,
-      userAgent: audit.userAgent,
-    });
+    }),
+  );
+  const summary = {
+    modelVersionId: model.id,
+    modelName: model.model_name,
+    modelVersion: model.version,
+    lookbackHours: input.lookbackHours,
+    scope:
+      input.eventScope === 'WAZUH_REALTIME'
+        ? 'WAZUH_REALTIME'
+        : input.lookbackHours === null
+          ? 'ALL_PENDING'
+          : 'LOOKBACK_WINDOW',
+    eventsEvaluated: detections.length,
+    anomaliesDetected: detections.filter((item) => item.isAnomaly).length,
+    customThresholdsApplied: detections.filter((item) => item.threshold !== parameters.threshold)
+      .length,
+  } satisfies Prisma.InputJsonObject;
+  if (detections.length === 0) {
     return {
       ...summary,
-      ...persisted,
+      detectionsCreated: 0,
+      alertsCreated: 0,
       threshold: parameters.threshold,
       completedAt: new Date().toISOString(),
     };
+  }
+  const persisted = await anomalyDetectionRepository.persistRun({
+    actor: audit.actor,
+    modelVersionId: model.id,
+    ...(audit.correlationId ? { correlationId: audit.correlationId } : {}),
+    detections,
+    summary,
+    sourceIp: audit.sourceIp,
+    userAgent: audit.userAgent,
+  });
+  return {
+    ...summary,
+    ...persisted,
+    threshold: parameters.threshold,
+    completedAt: new Date().toISOString(),
+  };
 }

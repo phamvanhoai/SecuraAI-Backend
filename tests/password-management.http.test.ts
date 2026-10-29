@@ -9,6 +9,7 @@ vi.mock('../src/modules/authentication-account/auth.service.js', () => ({
     refresh: vi.fn(),
     logout: vi.fn(),
     requestPasswordReset: vi.fn(),
+    verifyPasswordResetCode: vi.fn(),
     confirmPasswordReset: vi.fn(),
     changePassword: vi.fn(),
   },
@@ -60,6 +61,20 @@ describe('V2 password management HTTP API', () => {
       confirmPassword: 'different',
     });
     expect(invalid.status).toBe(422);
+  });
+
+  it('verifies a reset code before showing the new-password form', async () => {
+    const valid = await request(app)
+      .post('/api/v1/auth/password-reset/verify')
+      .send({ token: '123456' });
+
+    expect(valid.status).toBe(200);
+    expect(authService.verifyPasswordResetCode).toHaveBeenCalledWith({ token: '123456' });
+
+    const malformed = await request(app)
+      .post('/api/v1/auth/password-reset/verify')
+      .send({ token: '12345' });
+    expect(malformed.status).toBe(422);
   });
 
   it('requires authentication and forwards the authenticated user for password changes', async () => {

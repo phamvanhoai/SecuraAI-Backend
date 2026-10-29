@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 vi.mock('../src/modules/event-ingestion/event-sources.repository.js', () => ({
   eventSourcesRepository: {
     findActor: vi.fn(),
+    findByName: vi.fn(),
     create: vi.fn(),
   },
 }));
@@ -157,5 +158,34 @@ describe('eventSourcesService.registerEventSource', () => {
       statusCode: 401,
       code: 'UNAUTHORIZED',
     });
+  });
+
+  it('rejects duplicate event source name with 409 CONFLICT', async () => {
+    vi.mocked(eventSourcesRepository.findActor).mockResolvedValue({
+      id: adminId,
+      role: 'ADMIN',
+      status: 'ACTIVE',
+    });
+    vi.mocked(eventSourcesRepository.findByName).mockResolvedValue({
+      id: 'existing-source-id',
+      name: 'Existing Source Name',
+    });
+
+    await expect(
+      eventSourcesService.registerEventSource(adminId, {
+        name: 'Existing Source Name',
+        sourceType: 'WAZUH',
+        endpoint: 'https://wazuh.local',
+        ingestionMethod: 'API',
+        status: 'ACTIVE',
+        eventFamilies: ['AUTHENTICATION'],
+      }),
+    ).rejects.toMatchObject({
+      statusCode: 409,
+      code: 'CONFLICT',
+      message: 'An event source with this name already exists',
+    });
+
+    expect(eventSourcesRepository.create).not.toHaveBeenCalled();
   });
 });

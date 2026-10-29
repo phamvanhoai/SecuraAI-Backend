@@ -11,6 +11,9 @@ vi.mock('../src/modules/authentication-account/auth.repository.js', () => ({
     revokeSession: vi.fn(),
   },
 }));
+vi.mock('../src/modules/audit-security-reporting/login-history.repository.js', () => ({
+  loginHistoryRepository: { record: vi.fn() },
+}));
 
 import { env } from '../src/config/env.js';
 import { authRepository } from '../src/modules/authentication-account/auth.repository.js';

@@ -24,3 +24,8 @@ export * from './report-exports.service.js';
 export * from './report-exports.controller.js';
 export * from './report-exports.routes.js';
 export { auditRouter } from './audit.routes.js';
+export * from './login-history.routes.js';
+export * from './login-history.controller.js';
+export * from './login-history.service.js';
+export * from './login-history.repository.js';
+export * from './dto/list-login-history.dto.js';

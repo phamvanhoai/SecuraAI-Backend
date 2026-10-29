@@ -34,7 +34,7 @@ function toEventSourceResponse(record: EventSourceRecord): EventSourceResponseDt
   };
 }
 
-async function requireAuthorizedActor(userId: string): Promise<void> {
+async function requireAuthorizedActor(userId: string): Promise<{ id: string; role: string; status: string }> {
   const actor = await eventSourcesRepository.findActor(userId);
   if (!actor || actor.status !== 'ACTIVE') {
     throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
@@ -42,6 +42,7 @@ async function requireAuthorizedActor(userId: string): Promise<void> {
   if (actor.role !== 'ADMIN' && actor.role !== 'SECURITY_OFFICER') {
     throw new AppError(403, 'FORBIDDEN', 'Insufficient permissions to access event sources');
   }
+  return actor;
 }
 
 export const eventSourcesService = {
@@ -50,6 +51,11 @@ export const eventSourcesService = {
     input: CreateEventSourceInput,
   ): Promise<EventSourceResponseDto> {
     await requireAuthorizedActor(userId);
+
+    const duplicate = await eventSourcesRepository.findByName(input.name);
+    if (duplicate) {
+      throw new AppError(409, 'CONFLICT', 'An event source with this name already exists');
+    }
 
     const created = await eventSourcesRepository.create({
       name: input.name,
@@ -152,11 +158,15 @@ export const eventSourcesService = {
     id: string,
     input: UpdateEventSourceInput,
   ): Promise<EventSourceResponseDto> {
-    await requireAuthorizedActor(userId);
+    const actor = await requireAuthorizedActor(userId);
 
     const existing = await eventSourcesRepository.findById(id);
     if (!existing) {
       throw new AppError(404, 'NOT_FOUND', 'Event source not found');
+    }
+
+    if (input.status !== undefined && input.status !== existing.status && actor.role !== 'ADMIN') {
+      throw new AppError(403, 'FORBIDDEN', 'Only administrators can enable or disable event sources');
     }
 
     if (input.name !== undefined && input.name !== existing.name) {

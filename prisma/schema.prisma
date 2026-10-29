@@ -88,18 +88,20 @@ model alert_triage_records {
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model anomaly_alerts {
-  id                   String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  detection_id         String                 @unique @db.Uuid
-  severity             String?                @db.VarChar(50)
-  status               alert_status           @default(NEW)
-  assigned_to          String?                @db.Uuid
-  generated_at         DateTime               @default(now()) @db.Timestamptz(6)
-  created_at           DateTime               @default(now()) @db.Timestamptz(6)
-  updated_at           DateTime               @default(now()) @db.Timestamptz(6)
-  alert_triage_records alert_triage_records[]
-  users                users?                 @relation(fields: [assigned_to], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_alert_assigned_to")
-  anomaly_detections   anomaly_detections     @relation(fields: [detection_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_alert_detection")
-  security_findings    security_findings?
+  id                       String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  detection_id             String                 @unique @db.Uuid
+  severity                 String?                @db.VarChar(50)
+  status                   alert_status           @default(NEW)
+  assigned_to              String?                @db.Uuid
+  generated_at             DateTime               @default(now()) @db.Timestamptz(6)
+  explanation_text         String
+  explanation_generated_at DateTime               @default(now()) @db.Timestamptz(6)
+  created_at               DateTime               @default(now()) @db.Timestamptz(6)
+  updated_at               DateTime               @default(now()) @db.Timestamptz(6)
+  alert_triage_records     alert_triage_records[]
+  users                    users?                 @relation(fields: [assigned_to], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_alert_assigned_to")
+  anomaly_detections       anomaly_detections     @relation(fields: [detection_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_alert_detection")
+  security_findings        security_findings?
 
   @@index([status, generated_at(sort: Desc)], map: "idx_anomaly_alerts_status")
 }
@@ -111,6 +113,7 @@ model anomaly_detections {
   model_version_id              String                          @db.Uuid
   anomaly_score                 Decimal                         @db.Decimal(10, 8)
   threshold                     Decimal                         @db.Decimal(10, 8)
+  threshold_source              String                          @default("MODEL_DEFAULT") @db.VarChar(30)
   is_anomaly                    Boolean
   detected_at                   DateTime                        @default(now()) @db.Timestamptz(6)
   created_at                    DateTime                        @default(now()) @db.Timestamptz(6)
@@ -272,6 +275,22 @@ model auth_sessions {
   users              users     @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_auth_sessions_user")
 
   @@index([user_id], map: "idx_auth_sessions_user")
+}
+
+model authentication_history {
+  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id         String?   @db.Uuid
+  email_attempted String    @db.VarChar(255)
+  status          String    @db.VarChar(16)
+  failure_reason  String?   @db.VarChar(100)
+  ip_address      String?   @db.VarChar(45)
+  user_agent      String?
+  occurred_at     DateTime  @default(now()) @db.Timestamptz(6)
+  users           users?    @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@index([occurred_at(sort: Desc), id(sort: Desc)], map: "idx_authentication_history_occurred")
+  @@index([user_id, occurred_at(sort: Desc)], map: "idx_authentication_history_user")
+  @@index([email_attempted, occurred_at(sort: Desc)], map: "idx_authentication_history_email")
 }
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
@@ -985,6 +1004,7 @@ model risk_treatment_actions {
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model risk_treatment_plans {
+  acceptance_cost_basis                           Json?                          @db.JsonB
   id                                              String                         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   risk_id                                         String                         @db.Uuid
   source_assessment_id                            String?                        @db.Uuid
@@ -1236,6 +1256,7 @@ model users {
   assets_assets_owner_user_idTousers                                              assets[]                         @relation("assets_owner_user_idTousers")
   audit_logs                                                                      audit_logs[]
   auth_sessions                                                                   auth_sessions[]
+  authentication_history                                                         authentication_history[]
   business_services                                                               business_services[]
   control_assessments                                                             control_assessments[]
   control_evidence_links                                                          control_evidence_links[]

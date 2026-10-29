@@ -150,6 +150,36 @@ function mapIncidentDetail(incident: IncidentDetailRecord) {
       linkedAt: link.linked_at,
       linkedBy: mapActor(link.users),
     })),
+    linkedControls: (incident.incident_controls ?? []).map((link) => ({
+      id: link.security_controls.id,
+      controlCode: link.security_controls.control_code,
+      name: link.security_controls.name,
+      linkedAt: link.linked_at,
+    })),
+    linkedRisks: (incident.incident_risks ?? []).map((link) => ({
+      id: link.risks.id,
+      riskCode: link.risks.risk_code,
+      title: link.risks.title,
+      status: link.risks.status,
+      linkedAt: link.linked_at,
+    })),
+    controlWeaknesses: (incident.control_findings ?? []).map((finding) => ({
+      id: finding.id,
+      severity: finding.severity,
+      description: finding.description,
+      status: finding.status,
+      identifiedAt: finding.identified_at,
+      control: finding.security_controls,
+    })),
+    riskReassessmentRequests: (incident.risk_reassessment_requests ?? []).map((request) => ({
+      id: request.id,
+      reason: request.reason,
+      status: request.status,
+      requestedAt: request.requested_at,
+      reviewedAt: request.reviewed_at,
+      reviewComment: request.review_comment,
+      risk: request.risks,
+    })),
     responseActions,
     handlingHistory,
   };
@@ -173,6 +203,14 @@ async function requireSecurityOfficer(userId: string): Promise<void> {
   if (actor.role !== 'SECURITY_OFFICER') {
     throw new AppError(403, 'FORBIDDEN', 'Security Officer role required');
   }
+}
+
+async function requireActiveReporter(userId: string) {
+  const actor = await incidentsRepository.findActor(userId);
+  if (!actor || actor.status !== 'ACTIVE') {
+    throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+  }
+  return actor;
 }
 
 export const incidentsService = {
@@ -508,10 +546,32 @@ export const incidentsService = {
     };
   },
 
+  async listMine(userId: string, query: ViewIncidentsQuery) {
+    await requireActiveReporter(userId);
+    const [total, incidents] = await incidentsRepository.listCreatedBy(userId, query);
+    const metadata = await classificationMetadata(incidents.map((incident) => incident.id));
+    return {
+      items: incidents.map((incident) => ({
+        ...mapIncident(incident),
+        ...metadata.get(incident.id),
+      })),
+      pagination: {
+        page: query.page,
+        limit: query.limit,
+        total,
+        totalPages: Math.ceil(total / query.limit),
+      },
+    };
+  },
+
   async detail(userId: string, incidentId: string) {
-    await requireViewer(userId);
+    const actor = await requireActiveReporter(userId);
     const incident = await incidentsRepository.findById(incidentId);
     if (!incident) throw new AppError(404, 'INCIDENT_NOT_FOUND', 'Incident not found');
+    const canViewAll = actor.role === 'SECURITY_OFFICER' || actor.role === 'EXECUTIVE';
+    if (!canViewAll && incident.users_incidents_created_byTousers.id !== userId) {
+      throw new AppError(403, 'FORBIDDEN', 'You can only view incidents you reported');
+    }
     const metadata = await classificationMetadata([incidentId]);
     return { ...mapIncidentDetail(incident), ...metadata.get(incidentId) };
   },
@@ -562,7 +622,10 @@ export const incidentsService = {
   },
 
   async createFromSource(userId: string, input: CreateIncidentFromSource) {
-    await requireSecurityOfficer(userId);
+    const actor = await requireActiveReporter(userId);
+    if (input.sourceType !== 'manual' && actor.role !== 'SECURITY_OFFICER') {
+      throw new AppError(403, 'FORBIDDEN', 'Security Officer role required for source incidents');
+    }
     const result = await incidentsRepository.createFromSource(userId, input);
     if (result.outcome === 'not_found') {
       throw new AppError(404, 'INCIDENT_SOURCE_NOT_FOUND', 'Confirmed alert or finding not found');

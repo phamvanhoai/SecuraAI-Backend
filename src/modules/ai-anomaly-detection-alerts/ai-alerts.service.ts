@@ -14,8 +14,8 @@ import type { MarkAiAlertFurtherInvestigation } from './dto/mark-ai-alert-furthe
 import type { ListAlertThresholdsQuery, SetAlertThresholdBody } from './dto/alert-threshold.dto.js';
 import type { ListModelVersionsQuery } from './dto/list-model-versions.dto.js';
 import type { ConfigureDetectionThreshold } from './dto/detection-threshold.dto.js';
-import { logger } from '../../config/logger.js';
-import { ollamaClient, type GeneratedAlertExplanation } from './ollama.client.js';
+import type { RegenerateAlertExplanation } from './dto/regenerate-alert-explanation.dto.js';
+import { generateStoredAlertExplanation } from './alert-explanation.generator.js';
 
 const storedThresholdSchema = z.object({
   threshold: z.number().min(0.01).max(1),
@@ -24,30 +24,6 @@ const storedThresholdSchema = z.object({
   updatedByUserId: z.uuid(),
   updatedAt: z.iso.datetime({ offset: true }),
 });
-
-function fallbackExplanation(
-  score: number,
-  threshold: number,
-  riskLevel: string | null,
-  strongestFactor: string | null,
-): string {
-  const levelText = riskLevel ? ` The suggested risk level is ${riskLevel}.` : '';
-  const factorText = strongestFactor
-    ? ` The strongest recorded factor is ${strongestFactor}.`
-    : ' No individual feature contributions were recorded.';
-  return `The anomaly score ${score.toFixed(4)} exceeded the model threshold ${threshold.toFixed(4)}.${levelText}${factorText}`;
-}
-
-function formatGeneratedExplanation(explanation: GeneratedAlertExplanation): string {
-  const sections = [explanation.summary];
-  if (explanation.observations.length > 0) {
-    sections.push(`Observations: ${explanation.observations.join('; ')}`);
-  }
-  if (explanation.recommendedActions.length > 0) {
-    sections.push(`Recommended actions: ${explanation.recommendedActions.join('; ')}`);
-  }
-  return sections.join('\n');
-}
 
 function thresholdResponse(record: {
   asset: { id: string; asset_code: string; name: string };
@@ -252,6 +228,12 @@ export const aiAlertsService = {
         'NO_DEPLOYED_MODEL',
         'Deploy an anomaly detection model before setting thresholds',
       );
+    if (result.outcome === 'active_override_exists')
+      throw new AppError(
+        409,
+        'ACTIVE_OVERRIDE_EXISTS',
+        'This asset already has an active threshold override. Edit or disable the existing override.',
+      );
     return thresholdResponse(result);
   },
   async metrics(userId: string) {
@@ -302,32 +284,10 @@ export const aiAlertsService = {
       rank: feature.rank,
     }));
     const riskLevel = alert.severity?.toLowerCase() ?? null;
-    const deterministicExplanation = fallbackExplanation(
-      score,
-      threshold,
-      riskLevel,
-      contributions[0]?.featureName ?? null,
-    );
-    let explanationText = deterministicExplanation;
-    try {
-      const generated = await ollamaClient.generateAlertExplanation({
-        anomalyScore: score,
-        threshold,
-        suggestedRiskLevel: riskLevel,
-        detectedAt: detection.detected_at,
-        featureContributions: contributions,
-      });
-      if (generated) explanationText = formatGeneratedExplanation(generated);
-    } catch (error: unknown) {
-      logger.warn(
-        { error: error instanceof Error ? error.message : 'Unknown Ollama error', alertId },
-        'Ollama alert explanation failed; using deterministic fallback',
-      );
-    }
     return {
       id: detection.id,
       alertId: alert.id,
-      explanationText,
+      explanationText: alert.explanation_text,
       featureContributions: contributions,
       baselineData: {
         anomalyScore: score,
@@ -336,7 +296,67 @@ export const aiAlertsService = {
         suggestedRiskLevel: riskLevel,
         detectedAt: detection.detected_at,
       },
-      createdAt: alert.created_at,
+      createdAt: alert.explanation_generated_at,
+    };
+  },
+  async regenerateExplanation(
+    userId: string,
+    alertId: string,
+    input: RegenerateAlertExplanation,
+    context?: { sourceIp?: string | undefined; userAgent?: string | undefined },
+  ) {
+    await requireSecurityOfficer(userId);
+    const alert = await aiAlertsRepository.findExplanationForRegeneration(alertId);
+    if (!alert) throw new AppError(404, 'AI_ALERT_NOT_FOUND', 'AI alert not found');
+    const detection = alert.anomaly_detections;
+    const contributions = detection.anomaly_feature_contributions.map((feature) => ({
+      featureName: feature.feature_name,
+      featureValue: feature.feature_value,
+      contributionScore: feature.contribution_score?.toNumber() ?? null,
+      rank: feature.rank,
+    }));
+    const generatedAt = new Date();
+    const explanationText = await generateStoredAlertExplanation({
+      anomalyScore: detection.anomaly_score.toNumber(),
+      threshold: detection.threshold.toNumber(),
+      suggestedRiskLevel: alert.severity?.toLowerCase() ?? null,
+      detectedAt: detection.detected_at,
+      featureContributions: contributions,
+      eventId: detection.normalized_events.id,
+    });
+    const replaced = await aiAlertsRepository.replaceExplanation({
+      alertId,
+      actorUserId: userId,
+      reason: input.reason,
+      explanationText,
+      generatedAt,
+      modelVersionId: detection.model_version_id,
+      previousText: alert.explanation_text,
+      previousGeneratedAt: alert.explanation_generated_at,
+      sourceIp: context?.sourceIp,
+      userAgent: context?.userAgent,
+    });
+    if (!replaced)
+      throw new AppError(
+        409,
+        'EXPLANATION_CHANGED',
+        'The explanation changed while regeneration was in progress. Refresh and try again.',
+      );
+    return {
+      id: detection.id,
+      alertId: alert.id,
+      explanationText,
+      featureContributions: contributions,
+      baselineData: {
+        anomalyScore: detection.anomaly_score.toNumber(),
+        threshold: detection.threshold.toNumber(),
+        scoreAboveThreshold: Number(
+          (detection.anomaly_score.toNumber() - detection.threshold.toNumber()).toFixed(8),
+        ),
+        suggestedRiskLevel: alert.severity?.toLowerCase() ?? null,
+        detectedAt: detection.detected_at,
+      },
+      createdAt: generatedAt,
     };
   },
   async createFeedback(userId: string, alertId: string, input: CreateAiAlertFeedback) {

@@ -35,6 +35,7 @@ export const incidentControlsService = {
       query,
     );
     if (!incident) throw new AppError(404, 'INCIDENT_NOT_FOUND', 'Incident not found');
+    if (incident.status === 'CLOSED') throw new AppError(409, 'INCIDENT_CLOSED', 'Closed incidents are read-only');
     return {
       incident: {
         id: incident.id,
@@ -61,6 +62,7 @@ export const incidentControlsService = {
       incidentControlsRepository.findControl(input.controlId),
     ]);
     if (!incident) throw new AppError(404, 'INCIDENT_NOT_FOUND', 'Incident not found');
+    if (incident.status === 'CLOSED') throw new AppError(409, 'INCIDENT_CLOSED', 'Closed incidents are read-only');
     if (!control) throw new AppError(404, 'CONTROL_NOT_FOUND', 'Security control not found');
     try {
       const link = await incidentControlsRepository.link(incidentId, input.controlId, userId);

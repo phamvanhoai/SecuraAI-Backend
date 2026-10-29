@@ -79,15 +79,40 @@ export const incidentDetailSelect = {
       users: { select: { id: true, full_name: true, email: true } },
     },
   },
+  incident_controls: {
+    orderBy: [{ linked_at: 'asc' as const }, { control_id: 'asc' as const }],
+    select: { linked_at: true, security_controls: { select: { id: true, control_code: true, name: true } } },
+  },
+  incident_risks: {
+    orderBy: [{ linked_at: 'asc' as const }, { risk_id: 'asc' as const }],
+    select: { linked_at: true, risks: { select: { id: true, risk_code: true, title: true, status: true } } },
+  },
+  control_findings: {
+    where: { finding_type: 'CONTROL_WEAKNESS' },
+    orderBy: [{ identified_at: 'asc' as const }, { id: 'asc' as const }],
+    select: { id: true, severity: true, description: true, status: true, identified_at: true, security_controls: { select: { id: true, control_code: true, name: true } } },
+  },
+  risk_reassessment_requests: {
+    orderBy: [{ requested_at: 'asc' as const }, { id: 'asc' as const }],
+    select: { id: true, reason: true, status: true, requested_at: true, reviewed_at: true, review_comment: true, risks: { select: { id: true, risk_code: true, title: true } } },
+  },
 } satisfies Prisma.incidentsSelect;
 
 export type IncidentViewRecord = Prisma.incidentsGetPayload<{
   select: typeof incidentViewSelect;
 }> & { assignment_at?: Date | null };
 
-export type IncidentDetailRecord = Prisma.incidentsGetPayload<{
-  select: typeof incidentDetailSelect;
-}> & { assignment_at?: Date | null };
+type IncidentDetailPayload = Prisma.incidentsGetPayload<{ select: typeof incidentDetailSelect }>;
+export type IncidentDetailRecord = Omit<
+  IncidentDetailPayload,
+  'control_findings' | 'incident_controls' | 'incident_risks' | 'risk_reassessment_requests'
+> & {
+  control_findings?: IncidentDetailPayload['control_findings'];
+  incident_controls?: IncidentDetailPayload['incident_controls'];
+  incident_risks?: IncidentDetailPayload['incident_risks'];
+  risk_reassessment_requests?: IncidentDetailPayload['risk_reassessment_requests'];
+  assignment_at?: Date | null;
+};
 
 async function withAssignmentTimes<T extends { id: string; handler_user_id: string | null }>(
   records: T[],
@@ -644,7 +669,22 @@ export const incidentsRepository = {
     return [total, await withAssignmentTimes(records)] as const;
   },
 
-  async findById(incidentId: string) {
+  async listCreatedBy(userId: string, query: ViewIncidentsQuery) {
+    const where: Prisma.incidentsWhereInput = { created_by: userId };
+    const [total, records] = await prisma.$transaction([
+      prisma.incidents.count({ where }),
+      prisma.incidents.findMany({
+        where,
+        select: incidentViewSelect,
+        orderBy: [{ created_at: 'desc' }, { id: 'asc' }],
+        skip: (query.page - 1) * query.limit,
+        take: query.limit,
+      }),
+    ]);
+    return [total, await withAssignmentTimes(records)] as const;
+  },
+
+  async findById(incidentId: string): Promise<IncidentDetailRecord | null> {
     const record = await prisma.incidents.findUnique({
       where: { id: incidentId },
       select: incidentDetailSelect,

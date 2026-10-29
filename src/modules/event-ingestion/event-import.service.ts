@@ -111,12 +111,18 @@ export const eventImportService = {
     });
 
     // Save events & invalid records in transaction
-    const completedBatch = await eventImportRepository.saveBatchResults(
-      batch.id,
-      eventSourceId,
-      validRecords,
-      invalidRecords,
-    );
+    let completedBatch;
+    try {
+      completedBatch = await eventImportRepository.saveBatchResults(
+        batch.id,
+        eventSourceId,
+        validRecords,
+        invalidRecords,
+      );
+    } catch (error: unknown) {
+      await eventImportRepository.markBatchFailed(batch.id).catch(() => undefined);
+      throw error;
+    }
 
     return {
       batchId: completedBatch.id,

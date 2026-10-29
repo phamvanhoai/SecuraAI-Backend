@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createUserBodySchema } from '../src/modules/user-management-authorization/dto/create-user.dto.js';
 import { updateUserBodySchema } from '../src/modules/user-management-authorization/dto/update-user.dto.js';
+import { USER_FULL_NAME_MAX_LENGTH } from '../src/modules/user-management-authorization/dto/user-profile.constants.js';
 
 describe('V2 user profile validation', () => {
   it('rejects invalid phone and employee-code characters when creating', () => {
@@ -49,4 +50,21 @@ describe('V2 user profile validation', () => {
       }).success,
     ).toBe(false);
   });
+
+  it.each([createUserBodySchema, updateUserBodySchema])(
+    'rejects full names longer than 80 characters',
+    (schema) => {
+      expect(
+        schema.safeParse({
+          email: 'user@example.com',
+          fullName: 'A'.repeat(USER_FULL_NAME_MAX_LENGTH + 1),
+          phone: null,
+          employeeCode: null,
+          departmentId: null,
+          role: 'EMPLOYEE',
+          status: 'ACTIVE',
+        }).success,
+      ).toBe(false);
+    },
+  );
 });

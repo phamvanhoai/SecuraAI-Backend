@@ -158,4 +158,21 @@ describe('eventSourcesService.updateEventSource', () => {
       eventSourcesService.updateEventSource(userId, sourceId, { name: 'Existing Other Name' }),
     ).rejects.toThrow(AppError);
   });
+
+  it('rejects SECURITY_OFFICER with 403 when attempting to enable/disable (change status)', async () => {
+    vi.mocked(eventSourcesRepository.findActor).mockResolvedValue({
+      id: userId,
+      role: 'SECURITY_OFFICER',
+      status: 'ACTIVE',
+    });
+    vi.mocked(eventSourcesRepository.findById).mockResolvedValue(mockExistingRecord);
+
+    await expect(
+      eventSourcesService.updateEventSource(userId, sourceId, { status: 'INACTIVE' }),
+    ).rejects.toMatchObject({
+      statusCode: 403,
+      message: 'Only administrators can enable or disable event sources',
+    });
+  });
 });
+
