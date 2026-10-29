@@ -39,7 +39,7 @@ const input = (detections: ReturnType<typeof detection>[]) => ({
 });
 beforeEach(() => {
   vi.resetAllMocks();
-  db.$queryRaw.mockResolvedValue([{ id: 'locked-alert' }]);
+  db.$queryRaw.mockResolvedValue([{ id: 'locked-alert', updated_at: time, time }]);
   db.anomaly_alerts.findFirst.mockResolvedValue(null);
   db.anomaly_detections.findUniqueOrThrow.mockResolvedValue({
     anomaly_score: { toNumber: () => 0.9 },
@@ -60,9 +60,13 @@ describe('contextual detection persistence', () => {
       anomaly_detections: { normalized_events: { occurred_at: time } },
     });
     await anomalyDetectionRepository.persistRun(input([detection('b', 2)]));
-    expect(db.anomaly_alerts.updateMany).toHaveBeenCalledWith(
-      expect.objectContaining({ data: expect.objectContaining({ severity: 'CRITICAL' }) }),
+    const updateCall = db.$queryRaw.mock.calls.find((call) =>
+      (call[0] as readonly string[]).join('?').includes('UPDATE anomaly_alerts'),
     );
+    expect((updateCall?.[0] as readonly string[]).join('?')).toContain(
+      'GREATEST(clock_timestamp(), created_at, updated_at)',
+    );
+    expect(updateCall).toContain('CRITICAL');
     expect(db.anomaly_feature_contributions.createMany).toHaveBeenLastCalledWith({
       data: expect.arrayContaining([
         expect.objectContaining({
@@ -92,7 +96,6 @@ describe('contextual detection persistence', () => {
       input([detection('a'), detection('b', 1)]),
     );
     expect(result).toEqual({ detectionsCreated: 2, alertsCreated: 1, alertsGrouped: 1 });
-    expect(db.$queryRaw).toHaveBeenCalledOnce();
     const sqlParts = db.$queryRaw.mock.calls[0]?.[0] as readonly string[];
     expect(sqlParts.join('?')).toContain(
       'pg_advisory_xact_lock(hashtextextended(?, 0))::text AS locked',

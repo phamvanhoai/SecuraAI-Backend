@@ -154,13 +154,11 @@ async function runDetection(
           const configuredThresholdSource = customThreshold?.enabled
             ? 'ASSET_OVERRIDE'
             : 'MODEL_DEFAULT';
-          const thresholdSource = decision.matchedRules.length
-            ? 'RULE_MATCH'
-            : configuredThresholdSource;
+          const thresholdSource = configuredThresholdSource;
           const threshold = customThreshold?.enabled
             ? customThreshold.threshold
             : parameters.threshold;
-          const isAnomaly = decision.matchedRules.length > 0 || score >= threshold;
+          const isAnomaly = score >= threshold;
           decision.features.push({
             featureName: 'configured_threshold',
             featureValue: JSON.stringify({ threshold, source: configuredThresholdSource }),

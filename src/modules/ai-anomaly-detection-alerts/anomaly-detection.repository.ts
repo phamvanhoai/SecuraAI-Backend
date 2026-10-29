@@ -255,7 +255,15 @@ export const anomalyDetectionRepository = {
                 }),
             );
             if (detection.score > previousScore) {
-              const updatedAt = new Date();
+              const updated = await transaction.$queryRaw<{ updated_at: Date }[]>`
+                UPDATE anomaly_alerts
+                SET severity = ${detectionSeverity(detection.score)},
+                    updated_at = GREATEST(clock_timestamp(), created_at, updated_at)
+                WHERE detection_id = ${existing.detection_id}::uuid
+                  AND status IN ('NEW', 'IN_TRIAGE', 'NEED_INVESTIGATION')
+                RETURNING updated_at`;
+              const updatedAt = updated[0]?.updated_at;
+              if (!updatedAt) throw new Error('Open alert changed during priority update');
               groupedEvidence.push({
                 detection_id: existing.detection_id,
                 feature_name: 'alert_score_update',
@@ -272,13 +280,6 @@ export const anomalyDetectionRepository = {
                   reason: 'Stronger correlated event evidence',
                   features: detection.features,
                 }),
-              });
-              await transaction.anomaly_alerts.updateMany({
-                where: {
-                  detection_id: existing.detection_id,
-                  status: { in: ['NEW', 'IN_TRIAGE', 'NEED_INVESTIGATION'] },
-                },
-                data: { severity: detectionSeverity(detection.score), updated_at: updatedAt },
               });
             }
             groupedEvidence.push({
@@ -303,6 +304,15 @@ export const anomalyDetectionRepository = {
           await transaction.anomaly_alerts.create({
             data: {
               detection_id: id,
+              // The UPDATE trigger uses transaction now(), while Prisma's
+              // @updatedAt defaults use application time. Use the same clock
+              // for creation so a later update in this transaction is valid.
+              created_at:
+                (await transaction.$queryRaw<{ time: Date }[]>`SELECT CURRENT_TIMESTAMP AS time`)[0]
+                  ?.time ??
+                (() => {
+                  throw new Error('Database timestamp unavailable');
+                })(),
               severity: detectionSeverity(detection.score),
               explanation_text: detection.explanationText,
               explanation_generated_at: detection.explanationGeneratedAt,
@@ -318,8 +328,15 @@ export const anomalyDetectionRepository = {
           orderBy: [{ occurred_at: 'desc' }, { id: 'desc' }],
           select: { record_hash: true },
         });
-        const scoreUpdates = groupedEvidence.filter((item) => item.feature_name === 'alert_score_update').map((item) => ({ originalDetectionId: item.detection_id, evidence: item.feature_value ?? '' }));
-        const auditSummary: Prisma.InputJsonValue = scoreUpdates.length ? { run: input.summary, scoreUpdates } : input.summary;
+        const scoreUpdates = groupedEvidence
+          .filter((item) => item.feature_name === 'alert_score_update')
+          .map((item) => ({
+            originalDetectionId: item.detection_id,
+            evidence: item.feature_value ?? '',
+          }));
+        const auditSummary: Prisma.InputJsonValue = scoreUpdates.length
+          ? { run: input.summary, scoreUpdates }
+          : input.summary;
         const recordHash = createHash('sha256')
           .update(
             JSON.stringify({
