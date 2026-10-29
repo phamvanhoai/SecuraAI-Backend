@@ -3,6 +3,7 @@ import { currentRiskReview } from './current-risk-review.js';
 import { reviewDeadline, vietnamDate } from './review-schedule.js';
 import type { CompleteRiskReview } from './dto/complete-risk-review.dto.js';
 import { createHash, randomUUID } from 'node:crypto';
+import { responsibilityWhere } from '../user-management-authorization/index.js';
 import { Prisma, type risk_status, type treatment_status } from '@prisma/client';
 import { assessmentRequiresReview, vulnerabilityBlockedReason } from './vulnerability-workflow.js';
 import { residualControlLinks, residualControlBasis, sameResidualControlBasis, validateResidualControls } from './residual-control-basis.js';
@@ -344,6 +345,7 @@ export const riskRegisterRepository = {
     const userWhere: Prisma.usersWhereInput = {
       status: 'ACTIVE',
       role: 'EMPLOYEE',
+      AND: [responsibilityWhere('RISK_OWNER')],
       ...(query.q ? { full_name: { contains: query.q, mode: 'insensitive' } } : {}),
     };
     const assetWhere: Prisma.assetsWhereInput = {
@@ -391,12 +393,13 @@ export const riskRegisterRepository = {
     return prisma
       .$transaction(
         async (database) => {
+          await database.$queryRaw`SELECT id FROM users WHERE id = ${input.ownerUserId}::uuid FOR SHARE`;
           const owner = await database.users.findFirst({
-            where: { id: input.ownerUserId, role: 'EMPLOYEE', status: 'ACTIVE' },
+            where: { id: input.ownerUserId, role: 'EMPLOYEE', AND: [responsibilityWhere('RISK_OWNER')] },
             select: { id: true },
           });
           if (!owner)
-            throw new AppError(422, 'INVALID_RISK_OWNER', 'Risk owner must be an active Employee');
+            throw new AppError(422, 'INVALID_RISK_OWNER', 'Select an active Employee with Risk Owner responsibility');
           if (input.scope.type === 'business_service') {
             const service = await database.business_services.findFirst({
               where: { id: input.scope.businessServiceId, status: 'ACTIVE' },
@@ -455,7 +458,7 @@ export const riskRegisterRepository = {
   },
   findOwner(userId: string) {
     return prisma.users.findFirst({
-      where: { id: userId, status: 'ACTIVE', role: 'EMPLOYEE' },
+      where: { id: userId, role: 'EMPLOYEE', AND: [responsibilityWhere('RISK_OWNER')] },
       select: { id: true },
     });
   },

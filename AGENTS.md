@@ -273,3 +273,10 @@ A code task is complete only when:
 - The handoff states what changed, how it was verified and any remaining limitation.
 
 When requirements are ambiguous, inspect the project references and existing patterns first. Ask the user only when a choice would materially change business behavior, security, data design or public API compatibility.
+
+
+## Employee responsibility eligibility
+
+Admin's Assign role, scope & ownership form uses the existing user_access_scopes storage for permanent user-level GLOBAL ALLOW eligibility codes RISK_OWNER, CONTROL_OWNER, ASSET_OWNER and AUTHORIZED_APPROVER, only for EMPLOYEE. These codes are business responsibility labels, never users.role enum values or organization-wide resource permissions. Assign individual records through the owning modules; retain backend ownership/status checks. Existing Employee ownership implies eligibility without fabricated assignment dates or a data backfill. Transfer owned records before withdrawing the matching responsibility or changing the Employee role. AUDIT_VIEW/POLICY_APPROVE are obsolete in this form. AUTHORIZED_APPROVER is Employee eligibility for workflow-specific approval assignment; it never grants organization-wide approval access. Existing approval routes retain their workflow-specific checks. No schema migration is needed.
+
+Employee responsibility selection is exclusive: at most one of Risk Owner, Control Owner, Asset Owner or Authorized Approver per Employee. An Employee may have no inherited responsibility; click the selected checkbox again to clear it. Transfer conflicting owned records before changing responsibility; legacy multiple ownership is preserved until explicitly resolved.

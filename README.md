@@ -130,3 +130,9 @@ npm start chạy dist/server.js sau build. Tests không được phụ thuộc p
 [AGENTS.md](AGENTS.md) quy định architecture/security/Git; [src/modules/README.md](src/modules/README.md) mô tả nghiệp vụ; [project-docs/new](project-docs/new/) chứa database và Project Tracking hiện hành.
 
 Nhánh công việc từ develop mới nhất → PR develop → PR main. Giữ tác giả/commit contributor; chỉ tạo integration branch khi conflict. Không push trực tiếp/force-push hoặc xóa develop/main. Không commit .env, credentials, dist, coverage, logs hoặc uploads.
+
+## Employee business responsibilities
+
+Employee business responsibilities: existing user_access_scopes now stores permanent GLOBAL ALLOW codes RISK_OWNER, CONTROL_OWNER, ASSET_OWNER, AUTHORIZED_APPROVER (Employee only). The assignment options no longer offer AUDIT_VIEW/POLICY_APPROVE; saving removes those old unused entries for the target user. Existing ownership is inferred without backfill (assignedAt null), and removing a responsibility/changing an owning Employee role requires transfer first (409 OWNERSHIP_TRANSFER_REQUIRED). Owner options and assignment validation require a grant or existing ownership for Employees; existing elevated-role assignment rules remain. Grants never bypass resource ownership checks or independently expose privileged navigation. Asset/Risk/Control assignment and responsibility revocation coordinate through user row locks. Authorized Approver eligibility requires a workflow-specific assignment and never grants global approval access. No schema migration or live data changes.
+
+Employee responsibility selection is exclusive: at most one of Risk Owner, Control Owner, Asset Owner or Authorized Approver per Employee. An Employee may have no inherited responsibility; click the selected checkbox again to clear it. Transfer conflicting owned records before changing responsibility; legacy multiple ownership is preserved until explicitly resolved.

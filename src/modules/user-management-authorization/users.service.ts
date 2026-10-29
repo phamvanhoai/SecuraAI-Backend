@@ -160,7 +160,7 @@ export const usersService = {
     return {
       roles: Object.entries(roleNames).map(([code, name]) => ({ code, name })),
       scopeCodes: userAccessScopeCatalog,
-      targetTypes: ['GLOBAL', 'BUSINESS_SERVICE', 'ASSET'] as const,
+      targetTypes: ['GLOBAL'] as const,
       businessServices: result.businessServices,
       assets: result.assets,
     };
@@ -176,7 +176,8 @@ export const usersService = {
         status: result.user.status,
       },
       role: result.user.role,
-      scopes: result.scopes.map((scope) => ({
+      scopes: [
+        ...result.scopes.map((scope) => ({
         id: scope.id,
         scopeCode: scope.scope_code,
         targetType: scope.business_service_id
@@ -187,13 +188,22 @@ export const usersService = {
         targetId: scope.business_service_id ?? scope.asset_id,
         assignedAt: scope.assigned_at,
         expiresAt: scope.expires_at,
-      })),
+        })),
+        ...(result.user.role === 'EMPLOYEE' ? userAccessScopeCatalog.filter(({ code }) => {
+          const count = code === 'RISK_OWNER' ? result.ownershipSummary.risks : code === 'CONTROL_OWNER' ? result.ownershipSummary.securityControls : code === 'ASSET_OWNER' ? result.ownershipSummary.assets : 0;
+          return count > 0 && !result.scopes.some((scope) => scope.scope_code === code);
+        }).map(({ code }) => ({ id: result.user.id, scopeCode: code, targetType: 'GLOBAL' as const, targetId: null,
+          assignedAt: null, expiresAt: null })) : []),
+      ],
       ownershipSummary: result.ownershipSummary,
     };
   },
   async assignUserAccess(actorUserId: string, userId: string, input: AssignUserAccessBody) {
     const result = await usersRepository.assignUserAccess(actorUserId, userId, input);
     if (result.kind !== 'updated') {
+      if (result.kind === 'ownership_transfer_required') {
+        throw new AppError(409, 'OWNERSHIP_TRANSFER_REQUIRED', 'Transfer owned Risk, Control or Asset records before removing their business responsibility or changing the Employee role');
+      }
       if (result.kind === 'invalid_scope_target') {
         throw new AppError(422, 'INVALID_SCOPE_TARGET', 'One or more scope targets are invalid');
       }
