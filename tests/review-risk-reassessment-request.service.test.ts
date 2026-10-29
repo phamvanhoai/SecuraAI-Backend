@@ -80,7 +80,17 @@ describe('riskReassessmentReviewService.startReview', () => {
     });
     const result = await riskReassessmentReviewService.startReview(ownerId, requestId);
     expect(result.status).toBe('under_review');
+    expect(result).toMatchObject({ canReview: false, canReassess: true, canReject: true });
     expect(riskReassessmentReviewRepository.startReview).toHaveBeenCalledWith(requestId, ownerId);
+  });
+});
+
+describe('reassessment action capabilities', () => {
+  it('does not offer Start review to a Security Officer viewing a pending request', async () => {
+    vi.mocked(riskReassessmentReviewRepository.findActor).mockResolvedValue({ id: 'officer', role: 'SECURITY_OFFICER', status: 'ACTIVE' });
+    vi.mocked(riskReassessmentReviewRepository.listOwned).mockResolvedValue([1, [request]]);
+    const result = await riskReassessmentReviewService.listOwned('officer', { page: 1, limit: 20, status: 'all' });
+    expect(result.items[0]).toMatchObject({ canReview: false, canReassess: false, canReject: false });
   });
 });
 

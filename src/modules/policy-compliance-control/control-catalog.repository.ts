@@ -53,14 +53,14 @@ async function validateOwner(tx: Prisma.TransactionClient, ownerId: string | nul
   if (!ownerId) return;
   await tx.$queryRaw`SELECT id FROM public.users WHERE id = ${ownerId}::uuid FOR SHARE`;
   const owner = await tx.users.findUnique({
-    where: { id: ownerId, AND: [responsibilityWhere('CONTROL_OWNER')] },
+    where: { id: ownerId, AND: [responsibilityWhere('CONTROL_OWNER', false)] },
     select: { status: true, role: true },
   });
   if (!owner || owner.status !== 'ACTIVE' || !['EMPLOYEE', 'SECURITY_OFFICER'].includes(owner.role))
     throw new AppError(
       422,
       'INVALID_CONTROL_OWNER',
-      'Select an active Employee with Control Owner responsibility or an active Security Officer',
+      'Select an active Employee explicitly granted Control Owner responsibility',
     );
 }
 function values(input: CreateControlInput | EditControlInput) {
@@ -136,7 +136,7 @@ export const controlCatalogRepository = {
       where: {
         status: 'ACTIVE',
         role: { in: ['EMPLOYEE', 'SECURITY_OFFICER'] },
-        AND: [responsibilityWhere('CONTROL_OWNER')],
+        AND: [responsibilityWhere('CONTROL_OWNER', false)],
         ...(q
           ? {
               OR: [

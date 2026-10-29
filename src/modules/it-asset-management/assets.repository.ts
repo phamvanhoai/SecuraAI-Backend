@@ -113,7 +113,7 @@ export const assetsRepository = {
   },
   ownerOptions(q: string) {
     return prisma.users.findMany({
-      where: { AND: [responsibilityWhere('ASSET_OWNER')], ...(q ? { OR: [
+      where: { AND: [responsibilityWhere('ASSET_OWNER', false)], ...(q ? { OR: [
         { full_name: { contains: q, mode: 'insensitive' } },
         { email: { contains: q, mode: 'insensitive' } },
       ] } : {}) },
@@ -191,7 +191,7 @@ export const assetsRepository = {
   findCreateOptions() {
     return Promise.all([
       prisma.users.findMany({
-        where: responsibilityWhere('ASSET_OWNER'),
+        where: responsibilityWhere('ASSET_OWNER', false),
         select: { id: true, full_name: true, role: true },
         orderBy: { full_name: 'asc' },
         take: 200,
@@ -225,7 +225,7 @@ export const assetsRepository = {
     const [owner, service, dependencies, sources] = await Promise.all([
       input.ownerUserId
         ? prisma.users.findFirst({
-            where: { id: input.ownerUserId, AND: [responsibilityWhere('ASSET_OWNER')] },
+            where: { id: input.ownerUserId, AND: [responsibilityWhere('ASSET_OWNER', false)] },
             select: { id: true },
           })
         : null,
@@ -249,7 +249,7 @@ export const assetsRepository = {
     return prisma.$transaction(async (tx) => {
       if (input.ownerUserId) {
         await tx.$queryRaw`SELECT id FROM users WHERE id = ${input.ownerUserId}::uuid FOR SHARE`;
-        const eligible = await tx.users.findFirst({ where: { id: input.ownerUserId, AND: [responsibilityWhere('ASSET_OWNER')] }, select: { id: true } });
+        const eligible = await tx.users.findFirst({ where: { id: input.ownerUserId, AND: [responsibilityWhere('ASSET_OWNER', false)] }, select: { id: true } });
         if (!eligible) throw new AppError(422, 'INVALID_ASSET_OWNER', 'Grant Asset Owner responsibility before assigning this Employee');
       }
       return tx.assets.create({
@@ -322,7 +322,7 @@ export const assetsRepository = {
     return prisma.$transaction(async (tx) => {
       if (ownerUserId) {
         await tx.$queryRaw`SELECT id FROM users WHERE id = ${ownerUserId}::uuid FOR SHARE`;
-        const eligible = await tx.users.findFirst({ where: { id: ownerUserId, AND: [responsibilityWhere('ASSET_OWNER')] }, select: { id: true } });
+        const eligible = await tx.users.findFirst({ where: { id: ownerUserId, AND: [responsibilityWhere('ASSET_OWNER', false)] }, select: { id: true } });
         if (!eligible) throw new AppError(422, 'INVALID_ASSET_OWNER', 'Grant Asset Owner responsibility before assigning this Employee');
       }
       return tx.assets.update({ where: { id: assetId }, data: { owner_user_id: ownerUserId }, select: { id: true, updated_at: true, users_assets_owner_user_idTousers: { select: { id: true, full_name: true, status: true } } } });

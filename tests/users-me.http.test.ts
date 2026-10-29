@@ -5,7 +5,7 @@ import { user_role, user_status } from '@prisma/client';
 
 vi.mock('../src/database/prisma.js', () => ({ prisma: { $queryRaw: vi.fn() } }));
 vi.mock('../src/modules/user-management-authorization/users.repository.js', () => ({
-  usersRepository: { findCurrentUser: vi.fn() },
+  usersRepository: { findCurrentUser: vi.fn(), hasPendingApprovalWork: vi.fn(), hasOwnedAssets: vi.fn().mockResolvedValue(0) },
 }));
 
 import { createApp } from '../src/app.js';
@@ -33,8 +33,23 @@ function accessToken(
 
 describe('GET /api/v1/users/me', () => {
   beforeEach(() => vi.clearAllMocks());
+  it('exposes the Risk Register to a granted approver only when approval work exists', async () => {
+    vi.mocked(usersRepository.findCurrentUser).mockResolvedValue({ id: userId, email: 'approver@example.test', full_name: 'Approver', role: user_role.EMPLOYEE, status: user_status.ACTIVE,
+      user_access_scopes_user_access_scopes_user_idTousers: [{ id: 'grant' }],
+      _count: { risks_risks_owner_user_idTousers: 0, security_controls_security_controls_owner_user_idTousers: 0 } });
+    vi.mocked(usersRepository.hasPendingApprovalWork).mockResolvedValue(1);
+    const response = await request(app).get('/api/v1/users/me').set('Authorization', `Bearer ${accessToken()}`);
+    expect(response.body.data.permissions).toContain('risks.read');
+    expect(response.body.data.permissions).not.toContain('risks.review-reassessment');
+    vi.mocked(usersRepository.hasPendingApprovalWork).mockResolvedValue(0);
+    const empty = await request(app).get('/api/v1/users/me').set('Authorization', `Bearer ${accessToken()}`);
+    expect(empty.body.data.permissions).not.toContain('risks.read');
+    vi.mocked(usersRepository.hasOwnedAssets).mockResolvedValueOnce(1);
+    const assetOwner = await request(app).get('/api/v1/users/me').set('Authorization', `Bearer ${accessToken()}`);
+    expect(assetOwner.body.data.permissions).toContain('assets.read');
+  });
   it('exposes assessment only for an Employee with assigned Controls, not catalog editing', async () => {
-    vi.mocked(usersRepository.findCurrentUser).mockResolvedValue({
+    vi.mocked(usersRepository.findCurrentUser).mockResolvedValue({ user_access_scopes_user_access_scopes_user_idTousers: [],
       id: userId,
       email: 'owner@example.test',
       full_name: 'Control Owner',
@@ -51,7 +66,7 @@ describe('GET /api/v1/users/me', () => {
     expect(response.body.data.permissions).toContain('compliance.assess-controls');
     expect(response.body.data.permissions).not.toContain('controls.create');
     expect(response.body.data.permissions).not.toContain('controls.update');
-    vi.mocked(usersRepository.findCurrentUser).mockResolvedValue({
+    vi.mocked(usersRepository.findCurrentUser).mockResolvedValue({ user_access_scopes_user_access_scopes_user_idTousers: [],
       id: userId,
       email: 'owner@example.test',
       full_name: 'Control Owner',
@@ -69,7 +84,7 @@ describe('GET /api/v1/users/me', () => {
   });
 
   it('returns WBS-derived Admin capabilities without exposing password data', async () => {
-    vi.mocked(usersRepository.findCurrentUser).mockResolvedValue({
+    vi.mocked(usersRepository.findCurrentUser).mockResolvedValue({ user_access_scopes_user_access_scopes_user_idTousers: [],
       id: userId,
       email: 'admin@example.test',
       full_name: 'System Administrator',
@@ -96,7 +111,7 @@ describe('GET /api/v1/users/me', () => {
         roles: [{ code: 'ADMIN', name: 'ADMIN' }],
         permissions: [
           'assets.read',
-          'users.read',
+              'users.read',
           'users.create',
           'users.update',
           'users.assign-role',
@@ -137,7 +152,7 @@ describe('GET /api/v1/users/me', () => {
   });
 
   it('rejects an account that is no longer active', async () => {
-    vi.mocked(usersRepository.findCurrentUser).mockResolvedValue({
+    vi.mocked(usersRepository.findCurrentUser).mockResolvedValue({ user_access_scopes_user_access_scopes_user_idTousers: [],
       id: userId,
       email: 'admin@example.test',
       full_name: 'System Administrator',
@@ -156,7 +171,7 @@ describe('GET /api/v1/users/me', () => {
   });
 
   it('adds contextual risk capabilities for an Employee who owns a risk', async () => {
-    vi.mocked(usersRepository.findCurrentUser).mockResolvedValue({
+    vi.mocked(usersRepository.findCurrentUser).mockResolvedValue({ user_access_scopes_user_access_scopes_user_idTousers: [],
       id: userId,
       email: 'risk-owner@example.test',
       full_name: 'Risk Owner',
@@ -174,9 +189,9 @@ describe('GET /api/v1/users/me', () => {
 
     expect(response.status).toBe(200);
     expect(response.body.data.permissions).toEqual([
-      'assets.read',
       'policies.acknowledge',
       'notifications.preferences',
+      'login-history.read',
       'risks.read',
       'risks.review-reassessment',
       'risks.update-treatment-plan',
@@ -184,7 +199,7 @@ describe('GET /api/v1/users/me', () => {
   });
 
   it('does not add risk capabilities for an Employee without owned risks', async () => {
-    vi.mocked(usersRepository.findCurrentUser).mockResolvedValue({
+    vi.mocked(usersRepository.findCurrentUser).mockResolvedValue({ user_access_scopes_user_access_scopes_user_idTousers: [],
       id: userId,
       email: 'employee@example.test',
       full_name: 'Employee',
@@ -202,9 +217,9 @@ describe('GET /api/v1/users/me', () => {
 
     expect(response.status).toBe(200);
     expect(response.body.data.permissions).toEqual([
-      'assets.read',
       'policies.acknowledge',
       'notifications.preferences',
+      'login-history.read',
     ]);
   });
 });

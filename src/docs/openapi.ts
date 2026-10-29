@@ -370,7 +370,7 @@ export const openApiSpec = {
         summary: 'Decide risk acceptance',
         security: [{ bearerAuth: [] }],
         description:
-          'Active Security Officer or Executive (existing approver group), never requester. Pending only. Approval checks expiry, owner reassignment, Threat/Vulnerability changes, current Control/Evidence basis and exact submitted assessment/plan basis. Legacy requests without verifiable audit basis must be rejected/resubmitted. Rejection remains available for expired/stale requests. Owner justification is preserved; decision reason is audited separately. Only approval sets ACCEPTED. Detail exposes expired/canDecide and actor-scoped acceptanceWorkflow. No named-approver assignment or automatic email.',
+          'Active Security Officer, Executive, or Employee explicitly granted AUTHORIZED_APPROVER for the Risk Acceptance workflow; never the requester or current Risk Owner. Employee approvers can read only owned risks or risks with pending acceptance submitted by another user, not the full register. Pending only. Approval checks expiry, owner reassignment, Threat/Vulnerability changes, current Control/Evidence basis and exact submitted assessment/plan basis. Legacy requests without verifiable audit basis must be rejected/resubmitted. Rejection remains available for expired/stale requests. Owner justification is preserved; decision reason is audited separately. Only approval sets ACCEPTED. Detail exposes expired/canDecide and actor-scoped acceptanceWorkflow. No named-approver assignment or automatic email.',
         parameters: [
           {
             name: 'acceptanceId',
