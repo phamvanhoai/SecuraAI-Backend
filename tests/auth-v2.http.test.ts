@@ -10,6 +10,7 @@ vi.mock('../src/modules/authentication-account/auth.service.js', () => ({
 
 import { createApp } from '../src/app.js';
 import { authService } from '../src/modules/authentication-account/auth.service.js';
+import { AppError } from '../src/common/errors/app-error.js';
 
 describe('V2 authentication HTTP routes', () => {
   const app = createApp();
@@ -28,7 +29,54 @@ describe('V2 authentication HTTP routes', () => {
     expect(authService.login).toHaveBeenCalledWith({
       email: 'admin@example.test',
       password: 'CorrectPassword!',
+    }, expect.objectContaining({ ipAddress: expect.any(String) }));
+  });
+
+  it('returns the locked-account error in the standard error envelope', async () => {
+    vi.mocked(authService.login).mockRejectedValueOnce(
+      new AppError(401, 'ACCOUNT_LOCKED', 'Account is LOCKED'),
+    );
+
+    const response = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ email: 'locked@example.test', password: 'CorrectPassword!' });
+
+    expect(response.status).toBe(401);
+    expect(response.body).toMatchObject({
+      success: false,
+      error: { code: 'ACCOUNT_LOCKED', message: 'Account is LOCKED' },
     });
+    expect(response.body).not.toHaveProperty('data');
+  });
+
+  it('returns the unknown-account error in the standard envelope', async () => {
+    vi.mocked(authService.login).mockRejectedValueOnce(
+      new AppError(401, 'ACCOUNT_NOT_FOUND', 'Account does not exist'),
+    );
+    const response = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ email: 'missing@example.test', password: 'CorrectPassword!' });
+    expect(response.status).toBe(401);
+    expect(response.body).toMatchObject({
+      success: false,
+      error: { code: 'ACCOUNT_NOT_FOUND', message: 'Account does not exist' },
+    });
+    expect(response.body).not.toHaveProperty('data');
+  });
+
+  it('returns the inactive-account error in the standard envelope', async () => {
+    vi.mocked(authService.login).mockRejectedValueOnce(
+      new AppError(401, 'ACCOUNT_INACTIVE', 'Account is INACTIVE'),
+    );
+    const response = await request(app)
+      .post('/api/v1/auth/login')
+      .send({ email: 'inactive@example.test', password: 'CorrectPassword!' });
+    expect(response.status).toBe(401);
+    expect(response.body).toMatchObject({
+      success: false,
+      error: { code: 'ACCOUNT_INACTIVE', message: 'Account is INACTIVE' },
+    });
+    expect(response.body).not.toHaveProperty('data');
   });
 
   it('rejects invalid input before the service runs', async () => {

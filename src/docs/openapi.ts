@@ -4049,6 +4049,8 @@ export const openApiSpec = {
       post: {
         tags: ['Authentication'],
         summary: 'Authenticate a V2 account and create a refresh session',
+        description:
+          'Locked accounts with a correct password receive HTTP 401 ACCOUNT_LOCKED with message "Account is LOCKED". Unknown accounts receive HTTP 401 ACCOUNT_NOT_FOUND with message "Account does not exist". Inactive accounts with a correct password receive HTTP 401 ACCOUNT_INACTIVE with message "Account is INACTIVE". Incorrect passwords receive generic INVALID_CREDENTIALS. No session is created for locked accounts.',
         security: [],
         requestBody: {
           required: true,
@@ -4068,7 +4070,7 @@ export const openApiSpec = {
         },
         responses: {
           '200': { description: 'Access and refresh token pair' },
-          '401': { description: 'Invalid credentials or inactive account' },
+          '401': { description: 'Invalid credentials, ACCOUNT_NOT_FOUND, or ACCOUNT_LOCKED / ACCOUNT_INACTIVE after a correct password' },
           '422': { description: 'Invalid request body' },
           '429': { description: 'Too many attempts' },
         },
