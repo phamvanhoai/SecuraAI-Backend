@@ -284,3 +284,7 @@ Employee responsibility selection is exclusive: at most one of Risk Owner, Contr
 Create Risk owner options and new Risk owner validation require an explicit active RISK_OWNER grant for an active Employee; existing ownership alone is not enough for new assignments. Existing owned Risk access remains unchanged.
 
 New Risk/Control/Asset Owner assignments require explicit permanent GLOBAL ALLOW eligibility on an active Employee, not inferred ownership or elevated roles. Existing owned-record access is preserved. AUTHORIZED_APPROVER is supported specifically for Risk Acceptance: Employee approvers see only risks awaiting another user's acceptance decision, never the whole Risk Register; requester/current Risk Owner cannot approve. Other approval workflows are unchanged. Reassessment responses include canReview/canReassess/canReject; clients must use these flags.
+
+/users/me exposes Risk Owner discovery capabilities for an active Employee with an explicit permanent GLOBAL ALLOW RISK_OWNER grant even with zero owned risks. Existing ownership also remains discoverable. Risk list/detail authorization remains ownership-scoped.
+
+Workspace discovery is based on explicit responsibility eligibility even when empty: CONTROL_OWNER -> compliance.assess-controls, ASSET_OWNER -> assets.read, RISK_OWNER -> owned risk discovery, AUTHORIZED_APPROVER -> risks.read + risks.approve-acceptance. Existing ownership remains compatible. Discovery does not widen data access. Risk Acceptance approvers need no pending work to see their empty workspace.

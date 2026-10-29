@@ -5,7 +5,7 @@ import { user_role, user_status } from '@prisma/client';
 
 vi.mock('../src/database/prisma.js', () => ({ prisma: { $queryRaw: vi.fn() } }));
 vi.mock('../src/modules/user-management-authorization/users.repository.js', () => ({
-  usersRepository: { findCurrentUser: vi.fn(), hasPendingApprovalWork: vi.fn(), hasOwnedAssets: vi.fn().mockResolvedValue(0) },
+  usersRepository: { findCurrentUser: vi.fn(), hasPendingApprovalWork: vi.fn(), hasOwnedAssets: vi.fn().mockResolvedValue(0), findEmployeeResponsibilities: vi.fn().mockResolvedValue([]) },
 }));
 
 import { createApp } from '../src/app.js';
@@ -33,7 +33,16 @@ function accessToken(
 
 describe('GET /api/v1/users/me', () => {
   beforeEach(() => vi.clearAllMocks());
-  it('exposes the Risk Register to a granted approver only when approval work exists', async () => {
+  it('shows My Risks for a granted Risk Owner with no assigned risks', async () => {
+    vi.mocked(usersRepository.findCurrentUser).mockResolvedValue({ id: userId, email: 'riskowner@example.test', full_name: 'Risk Owner', role: user_role.EMPLOYEE, status: user_status.ACTIVE,
+      user_access_scopes_user_access_scopes_user_idTousers: [], _count: { risks_risks_owner_user_idTousers: 0, security_controls_security_controls_owner_user_idTousers: 0 } });
+    vi.mocked(usersRepository.findEmployeeResponsibilities).mockResolvedValueOnce([{ scope_code: "RISK_OWNER" }]);
+    const response = await request(app).get('/api/v1/users/me').set('Authorization', `Bearer ${accessToken()}`);
+    expect(response.status).toBe(200);
+    expect(response.body.data.permissions).toEqual(expect.arrayContaining(['risks.read', 'risks.review-reassessment']));
+    expect(response.body.data.permissions).not.toContain('risks.create');
+  });
+  it('keeps the approval workspace visible even when no approval work exists', async () => {
     vi.mocked(usersRepository.findCurrentUser).mockResolvedValue({ id: userId, email: 'approver@example.test', full_name: 'Approver', role: user_role.EMPLOYEE, status: user_status.ACTIVE,
       user_access_scopes_user_access_scopes_user_idTousers: [{ id: 'grant' }],
       _count: { risks_risks_owner_user_idTousers: 0, security_controls_security_controls_owner_user_idTousers: 0 } });
@@ -43,10 +52,22 @@ describe('GET /api/v1/users/me', () => {
     expect(response.body.data.permissions).not.toContain('risks.review-reassessment');
     vi.mocked(usersRepository.hasPendingApprovalWork).mockResolvedValue(0);
     const empty = await request(app).get('/api/v1/users/me').set('Authorization', `Bearer ${accessToken()}`);
-    expect(empty.body.data.permissions).not.toContain('risks.read');
+    expect(empty.body.data.permissions).toContain('risks.read');
+    expect(empty.body.data.permissions).toContain('risks.approve-acceptance');
     vi.mocked(usersRepository.hasOwnedAssets).mockResolvedValueOnce(1);
     const assetOwner = await request(app).get('/api/v1/users/me').set('Authorization', `Bearer ${accessToken()}`);
     expect(assetOwner.body.data.permissions).toContain('assets.read');
+  });
+  it.each([
+    ['CONTROL_OWNER', 'compliance.assess-controls'], ['ASSET_OWNER', 'assets.read'],
+  ])('shows the empty workspace for an Employee granted %s', async (scopeCode, capability) => {
+    vi.mocked(usersRepository.findCurrentUser).mockResolvedValue({ id: userId, email: 'owner@example.test', full_name: 'Owner', role: user_role.EMPLOYEE, status: user_status.ACTIVE,
+      user_access_scopes_user_access_scopes_user_idTousers: [], _count: { risks_risks_owner_user_idTousers: 0, security_controls_security_controls_owner_user_idTousers: 0 } });
+    vi.mocked(usersRepository.findEmployeeResponsibilities).mockResolvedValueOnce([{ scope_code: scopeCode ?? '' }]);
+    const response = await request(app).get('/api/v1/users/me').set('Authorization', `Bearer ${accessToken()}`);
+    expect(response.status).toBe(200);
+    expect(response.body.data.permissions).toContain(capability);
+    expect(response.body.data.permissions).not.toContain('risks.create');
   });
   it('exposes assessment only for an Employee with assigned Controls, not catalog editing', async () => {
     vi.mocked(usersRepository.findCurrentUser).mockResolvedValue({ user_access_scopes_user_access_scopes_user_idTousers: [],

@@ -410,6 +410,11 @@ export const usersRepository = {
   hasOwnedAssets(userId: string) {
     return prisma.assets.count({ where: { owner_user_id: userId } });
   },
+  findEmployeeResponsibilities(userId: string) {
+    return prisma.user_access_scopes.findMany({ where: { user_id: userId, role: null,
+      scope_code: { in: supplementalScopeCodes }, effect: 'ALLOW', business_service_id: null, asset_id: null, expires_at: null },
+      select: { scope_code: true } });
+  },
   findCurrentUser(userId: string) {
     return prisma.users.findUnique({
       where: { id: userId },
