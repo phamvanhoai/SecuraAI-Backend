@@ -64,22 +64,26 @@ describe('V2 authentication service', () => {
     ).toMatchObject({ sub: userId, type: 'access', role: 'ADMIN' });
   });
 
-  it('uses the same generic error for unknown, invalid, and inactive accounts', async () => {
+  it('reports an unknown account without creating a session', async () => {
     vi.mocked(authRepository.findByEmail).mockResolvedValueOnce(null);
     await expect(
       authService.login({ email: 'unknown@example.test', password }),
     ).rejects.toMatchObject({
       statusCode: 401,
-      code: 'INVALID_CREDENTIALS',
+      code: 'ACCOUNT_NOT_FOUND',
+      message: 'Account does not exist',
     });
+    expect(authRepository.createSession).not.toHaveBeenCalled();
+  });
 
+  it('reports an inactive account only after verifying the password', async () => {
     const passwordHash = await argon2.hash(password);
     vi.mocked(authRepository.findByEmail).mockResolvedValue({
       id: userId,
       email: 'admin@example.test',
       password_hash: passwordHash,
       role: user_role.ADMIN,
-      status: user_status.LOCKED,
+      status: user_status.INACTIVE,
     });
     await expect(
       authService.login({ email: 'admin@example.test', password: 'wrong-password' }),
@@ -88,9 +92,53 @@ describe('V2 authentication service', () => {
       authService.login({ email: 'admin@example.test', password }),
     ).rejects.toMatchObject({
       statusCode: 401,
-      code: 'INVALID_CREDENTIALS',
+      code: 'ACCOUNT_INACTIVE',
+      message: 'Account is INACTIVE',
     });
     expect(authRepository.createSession).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    { inputPassword: password, code: 'ACCOUNT_LOCKED', message: 'Account is LOCKED' },
+    {
+      inputPassword: 'wrong-password',
+      code: 'INVALID_CREDENTIALS',
+      message: 'Email or password is incorrect',
+    },
+  ])(
+    'returns $code for a locked account without creating a session',
+    async ({ inputPassword, code, message }) => {
+      vi.mocked(authRepository.findByEmail).mockResolvedValue({
+        id: userId,
+        email: 'admin@example.test',
+        password_hash: await argon2.hash(password),
+        role: user_role.ADMIN,
+        status: user_status.LOCKED,
+      });
+
+      await expect(
+        authService.login({ email: 'admin@example.test', password: inputPassword }),
+      ).rejects.toMatchObject({ statusCode: 401, code, message });
+      expect(authRepository.createSession).not.toHaveBeenCalled();
+    },
+  );
+
+  it('rejects an account that changes before session creation', async () => {
+    vi.mocked(authRepository.findByEmail).mockResolvedValue({
+      id: userId,
+      email: 'admin@example.test',
+      password_hash: await argon2.hash(password),
+      role: user_role.ADMIN,
+      status: user_status.ACTIVE,
+    });
+    vi.mocked(authRepository.createSession).mockResolvedValueOnce(null);
+
+    await expect(
+      authService.login({ email: 'admin@example.test', password }),
+    ).rejects.toMatchObject({
+      statusCode: 401,
+      code: 'INVALID_CREDENTIALS',
+    });
   });
 
   it('rotates refresh tokens and rejects a session that cannot be claimed', async () => {
