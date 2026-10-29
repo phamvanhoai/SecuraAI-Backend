@@ -57,6 +57,7 @@ function buildPrompt(input: AlertExplanationInput): string {
 export const ollamaClient = {
   async generateAlertExplanation(
     input: AlertExplanationInput,
+    options?: { timeoutMs: number },
   ): Promise<GeneratedAlertExplanation | null> {
     if (!env.OLLAMA_ENABLED) return null;
 
@@ -64,7 +65,9 @@ export const ollamaClient = {
     const response = await fetch(endpoint, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      signal: AbortSignal.timeout(env.OLLAMA_TIMEOUT_MS),
+      signal: AbortSignal.timeout(
+        Math.max(1, Math.min(env.OLLAMA_TIMEOUT_MS, options?.timeoutMs ?? env.OLLAMA_TIMEOUT_MS)),
+      ),
       body: JSON.stringify({
         model: env.OLLAMA_MODEL,
         stream: false,

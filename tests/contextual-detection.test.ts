@@ -4,6 +4,7 @@ import { importEventsBodySchema } from '../src/modules/event-ingestion/dto/impor
 import {
   detectionPolicySchema,
   evaluateContext,
+  detectionSeverity,
   type ContextEvent,
 } from '../src/modules/ai-anomaly-detection-alerts/contextual-detection.js';
 
@@ -31,10 +32,64 @@ function event(
 const failures = (family = 'AUTHENTICATION', type = 'LOGIN_FAILURE', count = 4) =>
   Array.from({ length: count }, (_, i) => event(`previous-${i}`, family, type, 1 + i * 0.1));
 describe('contextual detection rules v1', () => {
+  it('scores a rapid burst higher than the same number of attempts spread across the window', () => {
+    const target = event('target');
+    const slow = failures().map((item, i) => ({ ...item, occurred_at: new Date(now.getTime() - (4.9 - i) * 60_000) }));
+    const fast = failures().map((item, i) => ({ ...item, occurred_at: new Date(now.getTime() - (4 - i) * 1000) }));
+    expect(evaluateContext(target, fast, false, policy).score).toBeGreaterThan(evaluateContext(target, slow, false, policy).score);
+  });
+  it('prioritizes evidence instead of assigning every rule match the same score', () => {
+    const target = event('target');
+    const minimum = evaluateContext(target, failures(), false, policy);
+    const doubled = evaluateContext(
+      target,
+      failures('AUTHENTICATION', 'LOGIN_FAILURE', 9),
+      false,
+      policy,
+    );
+    const severe = evaluateContext({ ...target, severity: 'CRITICAL' }, failures(), false, policy);
+    const afterSuccess = evaluateContext(
+      event('success', 'AUTHENTICATION', 'LOGIN_SUCCESS'),
+      failures('AUTHENTICATION', 'LOGIN_FAILURE', 5),
+      false,
+      policy,
+    );
+    expect(minimum.score).toBeGreaterThan(0.62);
+    expect(doubled.score).toBeGreaterThan(minimum.score);
+    expect(severe.score).toBeGreaterThan(minimum.score);
+    expect(afterSuccess.score).toBeGreaterThan(minimum.score);
+    expect(evaluateContext(target, failures(), false, policy)).toEqual(minimum);
+    expect(minimum.features.find((f) => f.featureName === 'matched_rules')?.contributionScore).toBe(
+      minimum.score,
+    );
+    expect(detectionSeverity(minimum.score)).toBe('MEDIUM');
+    expect(detectionSeverity(0.75)).toBe('HIGH');
+    expect(detectionSeverity(0.9)).toBe('CRITICAL');
+  });
+  it('caps extreme failure bursts without exceeding the score range', () => {
+    const result = evaluateContext(
+      { ...event('target'), severity: 'CRITICAL' },
+      failures('AUTHENTICATION', 'LOGIN_FAILURE', 35),
+      false,
+      policy,
+    );
+    expect(result.score).toBeGreaterThanOrEqual(0.9);
+    expect(result.score).toBeLessThanOrEqual(0.99);
+  });
   it('recognizes imported LOGIN_FAILED as the same failure outcome as Wazuh LOGIN_FAILURE', () => {
     const target = event('target', 'AUTHENTICATION', 'LOGIN_FAILED');
-    expect(evaluateContext(target, failures('AUTHENTICATION', 'LOGIN_FAILED'), false, policy).matchedRules).toContain('AUTH_FAILURE_BURST');
-    expect(evaluateContext(event('success', 'AUTHENTICATION', 'LOGIN_SUCCESS'), failures('AUTHENTICATION', 'LOGIN_FAILED', 5), false, policy).matchedRules).toContain('AUTH_SUCCESS_AFTER_FAILURE');
+    expect(
+      evaluateContext(target, failures('AUTHENTICATION', 'LOGIN_FAILED'), false, policy)
+        .matchedRules,
+    ).toContain('AUTH_FAILURE_BURST');
+    expect(
+      evaluateContext(
+        event('success', 'AUTHENTICATION', 'LOGIN_SUCCESS'),
+        failures('AUTHENTICATION', 'LOGIN_FAILED', 5),
+        false,
+        policy,
+      ).matchedRules,
+    ).toContain('AUTH_SUCCESS_AFTER_FAILURE');
   });
   it('validates the import demo and exercises all six rules while keeping normal events below threshold', async () => {
     const raw: unknown = JSON.parse(await readFile('docs/contextual-detection-demo.json', 'utf8'));
@@ -78,7 +133,8 @@ describe('contextual detection rules v1', () => {
       policy,
     );
     expect(result.matchedRules).toContain(rule);
-    expect(result.score).toBe(0.9);
+    expect(result.score).toBeGreaterThanOrEqual(0.55);
+    expect(result.score).toBeLessThan(0.9);
     expect(
       result.features.find((item) => item.featureName === 'evidence_event_ids')?.featureValue,
     ).toContain('target');

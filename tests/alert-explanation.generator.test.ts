@@ -21,7 +21,32 @@ const input = {
 };
 
 describe('stored AI alert explanation generator', () => {
+  it('explains SSO evidence in prose without JSON or irrelevant zero failures', async () => {
+    const features = {
+      matched_rules: ['VPN_SSO_NEW_CONTEXT_OFF_HOURS'],
+      baseline_context: { ready: true, newIp: true, successfulEvents: 20 },
+      failure_count_in_window: { count: 0, windowMinutes: 5 },
+      working_hours: { offHours: true, localHour: 1, timeZone: 'Asia/Ho_Chi_Minh' },
+    };
+    const result = await generateStoredAlertExplanation({ ...input, anomalyScore: 0.67, threshold: 0.7, suggestedRiskLevel: 'medium', featureContributions: Object.entries(features).map(([featureName, value]) => ({ featureName, featureValue: JSON.stringify(value), contributionScore: 0, rank: 1 })) }, { timeoutMs: 0 });
+    expect(result).toContain('20 previous successful events');
+    expect(result).toContain('67% (medium)');
+    expect(result).toContain('01:00');
+    expect(result).not.toContain('0 failed attempts');
+    expect(result).not.toContain('VPN_SSO_NEW_CONTEXT_OFF_HOURS');
+    expect(result).not.toContain('{');
+  });
   beforeEach(() => vi.clearAllMocks());
+  it('stores fallback immediately when the batch prose budget is exhausted', async () => {
+    const result = await generateStoredAlertExplanation(input, { timeoutMs: 0 });
+    expect(result).toContain('92%');
+    expect(ollamaClient.generateAlertExplanation).not.toHaveBeenCalled();
+  });
+  it('passes the remaining batch budget to the model request', async () => {
+    vi.mocked(ollamaClient.generateAlertExplanation).mockResolvedValue(null);
+    await generateStoredAlertExplanation(input, { timeoutMs: 250 });
+    expect(ollamaClient.generateAlertExplanation).toHaveBeenCalledWith(input, { timeoutMs: 250 });
+  });
   it('explains a rule match without claiming it exceeded the threshold', async () => {
     vi.mocked(ollamaClient.generateAlertExplanation).mockResolvedValue(null);
     const result = await generateStoredAlertExplanation({
@@ -36,7 +61,7 @@ describe('stored AI alert explanation generator', () => {
         },
       ],
     });
-    expect(result).toContain('AUTH_FAILURE_BURST');
+    expect(result).toContain('Repeated failed sign-ins');
     expect(result).not.toContain('exceeded');
   });
 
@@ -56,7 +81,7 @@ describe('stored AI alert explanation generator', () => {
     vi.mocked(ollamaClient.generateAlertExplanation).mockRejectedValue(new Error('offline'));
 
     await expect(generateStoredAlertExplanation(input)).resolves.toContain(
-      'The anomaly score 0.9200 met the model threshold 0.8000.',
+      'The detection score met the configured threshold.',
     );
     expect(logger.warn).toHaveBeenCalledOnce();
   });

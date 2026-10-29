@@ -192,12 +192,45 @@ export function evaluateContext(
     behavior: totalWeight ? (behavior * weights.rarity) / totalWeight : 0,
     offHours: totalWeight && offHours ? weights.offHours / totalWeight : 0,
   };
+  // A matched rule supplies a minimum signal, not a probability. Additional
+  // evidence raises it within a bounded, reproducible prioritization scale.
+  const ruleTerms = {
+    base: 0.55,
+    excessFailures: Math.min(0.2, Math.max(0, count / failureThreshold - 1) * 0.1),
+    rapidSequence:
+      count >= failureThreshold && failures.length > 0
+        ? Math.min(
+            0.1,
+            Math.max(
+              0,
+              1 -
+                (time - Math.min(...failures.map((item) => item.occurred_at.getTime()))) /
+                  (policy.windowMinutes * 60_000),
+            ) * 0.1,
+          )
+        : 0,
+    sourceSeverity: severity(event.severity) * 0.1,
+    offHours: offHours ? 0.05 : 0,
+    newIp: newIp ? 0.05 : 0,
+    newDevice: newDevice ? 0.05 : 0,
+    successAfterFailures: rules.some(
+      (rule) => rule.endsWith('SUCCESS_AFTER_FAILURE') || rule.endsWith('SUCCESS_AFTER_DENIAL'),
+    )
+      ? 0.1
+      : 0,
+  };
   const score = rules.length
-    ? 0.9
+    ? Number(
+        Math.min(
+          0.99,
+          Object.values(ruleTerms).reduce((sum, term) => sum + term, 0),
+        ).toFixed(8),
+      )
     : Number(Math.min(1, terms.severity + terms.behavior + terms.offHours).toFixed(8));
   const key = createHash('sha256')
     .update(
       JSON.stringify([
+        'evidence-weighted-v3',
         event.event_source_id,
         event.event_family,
         event.account_identifier ?? event.source_ip ?? event.id,
@@ -209,7 +242,8 @@ export function evaluateContext(
     )
     .digest('hex');
   const values: Array<[string, unknown, number]> = [
-    ['matched_rules', rules, rules.length ? 0.9 : 0],
+    ['matched_rules', rules, rules.length ? score : 0],
+    ['rule_score_breakdown', { revision: 'evidence-weighted-v3', ...ruleTerms, cap: 0.99 }, 0],
     [
       'failure_count_in_window',
       {
@@ -272,11 +306,20 @@ export function evaluateContext(
     score,
     matchedRules: rules,
     groupKey: key,
-    features: values.sort((a, b) => b[2] - a[2]).map(([featureName, value, contributionScore], i) => ({
-      featureName,
-      featureValue: JSON.stringify(value),
-      contributionScore,
-      rank: i + 1,
-    })),
+    features: values
+      .sort((a, b) => b[2] - a[2])
+      .map(([featureName, value, contributionScore], i) => ({
+        featureName,
+        featureValue: JSON.stringify(value),
+        contributionScore,
+        rank: i + 1,
+      })),
   };
+}
+
+export function detectionSeverity(score: number): 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL' {
+  if (score >= 0.9) return 'CRITICAL';
+  if (score >= 0.75) return 'HIGH';
+  if (score >= 0.5) return 'MEDIUM';
+  return 'LOW';
 }

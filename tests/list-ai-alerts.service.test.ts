@@ -42,6 +42,7 @@ describe('list AI alerts service', () => {
           generated_at: new Date('2026-09-25T01:00:00Z'),
           created_at: new Date('2026-09-25T01:00:00Z'),
           anomaly_detections: {
+            anomaly_feature_contributions: [],
             anomaly_score: new Prisma.Decimal('0.91'),
             detected_at: new Date('2026-09-25T01:00:00Z'),
             ai_model_versions: {
