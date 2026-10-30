@@ -31,8 +31,8 @@ function refreshExpiresAt(): Date {
   return new Date(Date.now() + env.REFRESH_TOKEN_TTL_DAYS * 86_400_000);
 }
 
-function tokenPair(user: { id: string; role: user_role }, refreshToken: string) {
-  const accessToken = jwt.sign({ type: 'access', role: user.role }, env.JWT_ACCESS_SECRET, {
+function tokenPair(user: { id: string; role: user_role; passwordChangedAt: number }, refreshToken: string) {
+  const accessToken = jwt.sign({ type: 'access', role: user.role, passwordVersion: user.passwordChangedAt }, env.JWT_ACCESS_SECRET, {
     algorithm: 'HS256',
     issuer: 'securaai-api',
     audience: 'securaai-client',

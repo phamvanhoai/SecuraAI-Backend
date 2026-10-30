@@ -1,3 +1,4 @@
+import { storedNotificationImages, notificationImageFields, persistNotificationImages, readNotificationImage } from './notification-images.js';
 import { AppError } from '../../common/errors/app-error.js';
 import { logger } from '../../config/logger.js';
 import type { SendInSystemNotificationInput } from './dto/send-in-system-notification.dto.js';
@@ -54,8 +55,28 @@ function classifySmtpFailure(error: unknown): SmtpFailure {
 }
 
 export const notificationsService = {
-  async history(userId: string, query: NotificationHistoryQuery) { const actor = await notificationsRepository.findActor(userId); if (!actor || actor.status !== 'ACTIVE') throw new AppError(401, 'UNAUTHORIZED', 'Authentication required'); if (actor.role !== 'ADMIN') throw new AppError(403, 'FORBIDDEN', 'Administrator access required'); const result = await notificationsRepository.history(query); return { items: result.items.map((item) => { const deliveries = item.notification_recipients.flatMap((recipient) => recipient.notification_deliveries); return { id: item.id, title: item.title, message: item.message, priority: item.priority, channel: [...new Set(deliveries.map((delivery) => delivery.channel))], createdAt: item.created_at.toISOString(), sender: item.sender.full_name ?? item.sender.email, recipientCount: item.notification_recipients.length, sentCount: deliveries.filter((delivery) => delivery.status === 'SENT' || delivery.status === 'DELIVERED').length, failedCount: deliveries.filter((delivery) => delivery.status === 'FAILED').length, recipients: item.notification_recipients.map((recipient) => ({ name: recipient.user.full_name, email: recipient.user.email, deliveries: recipient.notification_deliveries })) }; }), pagination: { page: query.page, limit: query.limit, total: result.total, pageCount: Math.max(1, Math.ceil(result.total / query.limit)) } }; },
-  async inbox(userId: string, query: NotificationInboxQuery) { const actor = await notificationsRepository.findActor(userId); if (!actor || actor.status !== 'ACTIVE') throw new AppError(401, 'UNAUTHORIZED', 'Authentication required'); const result = await notificationsRepository.inbox(userId, query); return { ...result, items: result.items.map((item) => ({ id: item.id, notificationId: item.notification.id, title: item.notification.title, message: item.notification.message, priority: item.notification.priority, sender: item.notification.sender.full_name ?? item.notification.sender.email, senderEmail: item.notification.sender.email, createdAt: item.notification.created_at.toISOString(), readAt: item.read_at?.toISOString() ?? null })) }; },
+  async detail(userId: string, id: string) {
+    const actor = await notificationsRepository.findActor(userId);
+    if (!actor || actor.status !== 'ACTIVE') throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+    const item = await notificationsRepository.findInboxItem(userId, id);
+    if (!item) throw new AppError(404, 'NOTIFICATION_NOT_FOUND', 'Notification not found');
+    return {
+      id: item.id, notificationId: item.notification.id, title: item.notification.title,
+      message: item.notification.message, images: notificationImageFields(item.notification.image_references),
+      priority: item.notification.priority, sender: item.notification.sender.full_name ?? item.notification.sender.email,
+      createdAt: item.notification.created_at.toISOString(), readAt: item.read_at?.toISOString() ?? null,
+    };
+  },
+  async image(userId: string, notificationId: string, index: number) {
+    const actor = await notificationsRepository.findActor(userId);
+    if (!actor || actor.status !== 'ACTIVE') throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+    const record = await notificationsRepository.findReadableImageMessage(userId, notificationId, actor.role === 'ADMIN');
+    const image = record ? storedNotificationImages(record.image_references)[index] : undefined;
+    if (!image) throw new AppError(404, 'NOTIFICATION_IMAGE_NOT_FOUND', 'The image is unavailable');
+    return { name: image.name, buffer: await readNotificationImage(image) };
+  },
+  async history(userId: string, query: NotificationHistoryQuery) { const actor = await notificationsRepository.findActor(userId); if (!actor || actor.status !== 'ACTIVE') throw new AppError(401, 'UNAUTHORIZED', 'Authentication required'); if (actor.role !== 'ADMIN') throw new AppError(403, 'FORBIDDEN', 'Administrator access required'); const result = await notificationsRepository.history(query); return { items: result.items.map((item) => { const deliveries = item.notification_recipients.flatMap((recipient) => recipient.notification_deliveries); return { id: item.id, title: item.title, message: item.message, images: notificationImageFields(item.image_references), priority: item.priority, channel: [...new Set(deliveries.map((delivery) => delivery.channel))], createdAt: item.created_at.toISOString(), sender: item.sender.full_name ?? item.sender.email, recipientCount: item.notification_recipients.length, sentCount: deliveries.filter((delivery) => delivery.status === 'SENT' || delivery.status === 'DELIVERED').length, failedCount: deliveries.filter((delivery) => delivery.status === 'FAILED').length, recipients: item.notification_recipients.map((recipient) => ({ name: recipient.user.full_name, email: recipient.user.email, deliveries: recipient.notification_deliveries })) }; }), pagination: { page: query.page, limit: query.limit, total: result.total, pageCount: Math.max(1, Math.ceil(result.total / query.limit)) } }; },
+  async inbox(userId: string, query: NotificationInboxQuery) { const actor = await notificationsRepository.findActor(userId); if (!actor || actor.status !== 'ACTIVE') throw new AppError(401, 'UNAUTHORIZED', 'Authentication required'); const result = await notificationsRepository.inbox(userId, query); return { ...result, items: result.items.map((item) => ({ id: item.id, notificationId: item.notification.id, title: item.notification.title, message: item.notification.message, images: notificationImageFields(item.notification.image_references), priority: item.notification.priority, sender: item.notification.sender.full_name ?? item.notification.sender.email, senderEmail: item.notification.sender.email, createdAt: item.notification.created_at.toISOString(), readAt: item.read_at?.toISOString() ?? null })) }; },
   async markRead(userId: string, id: string) { await notificationsRepository.markRead(userId, id); return { id, read: true }; },
   async markAllRead(userId: string) { const result = await notificationsRepository.markAllRead(userId); return { updatedCount: result.count }; },
   async getPreferences(userId: string) {
@@ -110,11 +131,8 @@ export const notificationsService = {
     if (recipients.length === 0)
       throw new AppError(422, 'NO_NOTIFICATION_RECIPIENTS', 'No active recipients matched.');
 
-    const result = await notificationsRepository.create(
-      actorUserId,
-      input,
-      recipients.map(({ id }) => id),
-    );
+    const result = await persistNotificationImages(input.images,
+      (images) => images.length ? notificationsRepository.create(actorUserId, input, recipients.map(({ id }) => id), images) : notificationsRepository.create(actorUserId, input, recipients.map(({ id }) => id)), 'created');
     if (result.kind === 'unauthorized')
       throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
     if (result.kind === 'forbidden')
@@ -147,7 +165,8 @@ export const notificationsService = {
         'INVALID_EMAIL_RECIPIENTS',
         'Every selected recipient must be an active user.',
       );
-    const result = await notificationsRepository.prepareEmail(actorUserId, input);
+    const result = await persistNotificationImages(input.images,
+      (images) => images.length ? notificationsRepository.prepareEmail(actorUserId, input, images) : notificationsRepository.prepareEmail(actorUserId, input), 'prepared');
     if (result.kind === 'unauthorized')
       throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
     if (result.kind === 'forbidden')
@@ -171,23 +190,18 @@ export const notificationsService = {
         failedCount += 1;
         continue;
       }
+      const send = () => input.images?.length
+        ? notificationEmailService.send(delivery.destination ?? '', input.subject, input.message, input.images)
+        : notificationEmailService.send(delivery.destination ?? '', input.subject, input.message);
       try {
-        const providerMessageId = await notificationEmailService.send(
-          delivery.destination,
-          input.subject,
-          input.message,
-        );
+        const providerMessageId = await send();
         await notificationsRepository.markEmailSent(delivery.id, providerMessageId);
         sentCount += 1;
       } catch (firstError) {
         let failure = classifySmtpFailure(firstError);
         if (failure.retryable) {
           try {
-            const providerMessageId = await notificationEmailService.send(
-              delivery.destination,
-              input.subject,
-              input.message,
-            );
+            const providerMessageId = await send();
             await notificationsRepository.markEmailSent(delivery.id, providerMessageId);
             sentCount += 1;
             continue;

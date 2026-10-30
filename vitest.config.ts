@@ -5,6 +5,7 @@ export default defineConfig({
   resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
   test: {
     environment: 'node',
+    setupFiles: ['tests/auth-boundary.setup.ts'],
     exclude: [...configDefaults.exclude, 'reference/legacy-v3/**'],
     testTimeout: 30_000,
     env: {

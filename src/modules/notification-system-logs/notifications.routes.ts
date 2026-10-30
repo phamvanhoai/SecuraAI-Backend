@@ -13,10 +13,14 @@ import {
   updateNotificationPreferences,
   getNotificationInbox, markNotificationRead, markAllNotificationsRead,
   getNotificationHistory,
+  getNotificationImage,
+  getNotificationDetail,
 } from './notifications.controller.js';
 
 export const notificationsRouter = Router();
+notificationsRouter.get('/:id/images/:index', authenticate, asyncHandler(getNotificationImage));
 notificationsRouter.get('/inbox', authenticate, asyncHandler(getNotificationInbox));
+notificationsRouter.get('/inbox/:id', authenticate, asyncHandler(getNotificationDetail));
 notificationsRouter.patch('/inbox/read-all', authenticate, asyncHandler(markAllNotificationsRead));
 notificationsRouter.patch('/inbox/:id/read', authenticate, asyncHandler(markNotificationRead));
 notificationsRouter.get('/history', authenticate, asyncHandler(getNotificationHistory));

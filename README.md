@@ -141,6 +141,9 @@ Employee business responsibilities: existing user_access_scopes now stores perma
 
 Employee responsibility selection is exclusive: at most one of Risk Owner, Control Owner, Asset Owner or Authorized Approver per Employee. An Employee may have no inherited responsibility; click the selected checkbox again to clear it. Transfer conflicting owned records before changing responsibility; legacy multiple ownership is preserved until explicitly resolved.
 
+Password changes update the credential and revoke all refresh sessions in one transaction. Access JWTs carry the password-change version captured when the session is issued; authentication checks it against the current active account on every protected request. Existing tokens without this claim are checked against their issue time. Refresh rotation locks the account row to serialize with password changes. No schema migration is required.
+
+Notification images: sending forms accept up to three PNG/JPEG/WebP source images (5 MiB each), normalize them to bounded PNG payloads, and show removable previews. Backend fully decodes and re-encodes PNGs (192 KiB, 1600px per side), stores private files under uploads/notification-images, and records generated IDs/names/SHA-256 hashes in notifications.image_references. Recipients and active Admins read them through authenticated non-cacheable routes. Email uses CID inline attachments; no remote image URL fetching. Deploy migration 20261030010000_notification_image_references before running this version, and retain the uploads directory on persistent/shared storage in deployed environments.
 Contextual actor workflow audit and current access boundaries: [docs/contextual-actor-workflows.md](docs/contextual-actor-workflows.md).
 
 Contextual anomaly detection rules, configuration and demo: [docs/contextual-detection.md](docs/contextual-detection.md).
