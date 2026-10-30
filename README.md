@@ -149,3 +149,7 @@ Contextual anomaly detection rules, configuration and demo: [docs/contextual-det
 Current detection scoring: empirical-history-v1 compares recorded event-time history by principal/source/family/application/protocol. No 55-point base or weighted severity/off-hours bonuses. Alert requires a READY baseline and score >= model/asset threshold. Insufficient/truncated/missing context records null score in statistical_baseline evidence (zero in the required legacy numeric column is a storage sentinel, not a normality judgment). Manual results expose insufficientBaseline. Existing records are never automatically rescored. See docs/history-baseline-scoring.md.
 
 Durable detection setup and deployment: [docs/durable-detection-pipeline.md](docs/durable-detection-pipeline.md).
+
+Docker local demo: see [docs/docker-local-demo.md](docs/docker-local-demo.md).
+
+Local development: npm run dev starts both API and detection/explanation processing when DETECTION_PIPELINE_ENABLED=true. No extra worker terminal is needed. Docker/production retain separate worker processes.
