@@ -3316,7 +3316,7 @@ export const openApiSpec = {
         tags: ['Event Ingestion'],
         summary: 'View centralized list of normalized security events',
         description:
-          'Returns a paginated list of ingested security events with associated source, event family, account/user, asset/device, and mapping status.',
+          'Returns a paginated list of ingested security events with associated source, event family, account/user, asset/device, and mapping status. When the durable pipeline is enabled, each item also includes detection { status, score, alertId }. Status is PENDING, PROCESSING, INSUFFICIENT_BASELINE, BELOW_THRESHOLD, LINKED_TO_ALERT, FAILED or PREVIOUSLY_EVALUATED. score is null when no historical comparison is available. Linked events may share an alert through correlation.',
         security: [{ bearerAuth: [] }],
         parameters: [
           { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
@@ -3462,7 +3462,7 @@ export const openApiSpec = {
         tags: ['AI Anomaly Detection & Alerts'],
         summary: 'Run anomaly detection over unprocessed normalized events',
         description:
-          'Requires an active Security Officer account and a deployed model version. Each request processes one bounded batch of pending normalized events, including file-imported events and events older than 24 hours. Run it again to process the next batch. Direct Wazuh API events are also eligible if an automated run has not processed them yet. Each event is evaluated once per model version using event-time context and six family rules. All decisions require score >= the configured model threshold or enabled asset override; matched rules contribute to scoring but do not bypass this gate. Open repeated alerts group within 15 minutes; alertsGrouped reports grouped matches. Policy timezone defaults to Asia/Ho_Chi_Minh. Scores are signal strengths, not probabilities. Stored feature evidence preserves policy/weights and matched rules. Existing evaluated events are not rescored.',
+          'Requires an active Security Officer account and a deployed model version. Each request processes one bounded batch of pending normalized events, including file-imported events and events older than 24 hours. Run it again to process the next batch. Direct Wazuh API events are also eligible if an automated run has not processed them yet. Each event is evaluated once per model/engine identity. Current scoring compares event-time history using empirical-history-v1; six family rules are evidence labels, not fixed score bonuses. insufficientBaseline counts unscored events; no alert is created without sufficient reference history. All decisions require score >= the configured model threshold or enabled asset override; matched rules contribute to scoring but do not bypass this gate. Open repeated alerts group within 15 minutes; alertsGrouped reports grouped matches. Policy timezone defaults to Asia/Ho_Chi_Minh. Scores are adjusted empirical historical rarity, not attack probabilities. Stored feature evidence preserves policy/weights and matched rules. Existing evaluated events are not rescored.',
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
@@ -3967,7 +3967,7 @@ export const openApiSpec = {
           },
         ],
         responses: {
-          '200': { description: 'Model versions and their latest evaluation metrics' },
+          '200': { description: 'Detection registry and optional historical evaluation metrics, plus explanationModel { provider: Ollama, model: configured runtime model name, enabled: boolean, purpose: EXPLANATION_ONLY, connectionStatus: NOT_CHECKED }. Enabled is configuration only, not a connectivity guarantee.' },
           '401': { description: 'Authentication required' },
           '403': { description: 'Security Officer role required' },
           '422': { description: 'Invalid query parameters' },
@@ -4529,7 +4529,7 @@ export const openApiSpec = {
           { name: 'sortOrder', in: 'query', schema: { type: 'string', enum: ['asc', 'desc'] } },
         ],
         responses: {
-          '200': { description: 'Paginated login history' },
+          '200': { description: 'Paginated login history with summary { successful, failed, accounts } over all matching records, independent of pagination. Accounts counts distinct non-null user IDs; unrecognized login identities are excluded. All query filters and viewer ownership scope apply to totals.' },
           '401': { description: 'Authentication required' },
           '403': { description: 'A supported login-history role is required' },
           '422': { description: 'Invalid query parameters' },

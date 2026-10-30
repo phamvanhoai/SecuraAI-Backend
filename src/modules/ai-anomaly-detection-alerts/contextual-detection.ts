@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
+import { compareHistory } from './history-baseline.js';
 
 export const detectionPolicySchema = z
   .object({
@@ -44,6 +45,7 @@ export interface DetectionFeature {
   rank: number;
 }
 export interface ContextualDecision {
+  baselineReady: boolean;
   score: number;
   matchedRules: string[];
   features: DetectionFeature[];
@@ -68,14 +70,6 @@ function application(event: ContextEvent): string | null {
     metadata.applicationName ??
     metadata.application;
   return typeof value === 'string' && value.trim() ? value.trim().slice(0, 255) : null;
-}
-function severity(value: string | null): number {
-  const names: Record<string, number> = { critical: 1, high: 0.85, medium: 0.55, low: 0.2 };
-  if (value === null || value.trim() === '') return 0;
-  return (
-    names[value.toLowerCase()] ??
-    (Number.isFinite(Number(value)) ? Math.min(1, Math.max(0, Number(value) / 15)) : 0)
-  );
 }
 const failure = (event: ContextEvent): boolean =>
   (event.event_family === 'AUTHENTICATION'
@@ -109,6 +103,7 @@ export function evaluateContext(
   truncated: boolean,
   policy: DetectionPolicy,
   weights = { severity: 0.45, rarity: 0.35, offHours: 0.2 },
+  peer = false,
 ): ContextualDecision {
   const time = event.occurred_at.getTime();
   const baseline = history.filter(
@@ -181,56 +176,62 @@ export function evaluateContext(
       : event.event_family === 'VPN_SSO'
         ? policy.vpnFailures
         : policy.authenticationFailures;
-  const behavior = Math.max(
-    principalPresent ? Math.min(1, count / failureThreshold) : 0,
-    newIp || newDevice ? 0.8 : 0,
+  const hourOf = (date: Date) =>
+    Number(
+      new Intl.DateTimeFormat('en-GB', {
+        timeZone: policy.timeZone,
+        hour: '2-digit',
+        hourCycle: 'h23',
+      }).format(date),
+    );
+  const observation = (item: ContextEvent) => ({
+    id: item.id,
+    principal: item.account_identifier ?? item.source_ip,
+    time: item.occurred_at.getTime(),
+    failed: failure(item),
+    successful: success(item),
+    ip: item.source_ip,
+    device: item.device_identifier,
+    hour: hourOf(item.occurred_at),
+  });
+  const cohort = baseline.filter(
+    (item) =>
+      (peer || samePrincipal(item)) &&
+      protocol(item) === protocol(event) &&
+      item.event_family === event.event_family &&
+      (failure(item) || success(item)) &&
+      (event.event_family !== 'APPLICATION_ACCESS' || sameApplication(item)),
   );
-  // The legacy rarity weight now weights entity-context evidence, not global event frequency.
-  const totalWeight = weights.severity + weights.rarity + weights.offHours;
-  const terms = {
-    severity: totalWeight ? (severity(event.severity) * weights.severity) / totalWeight : 0,
-    behavior: totalWeight ? (behavior * weights.rarity) / totalWeight : 0,
-    offHours: totalWeight && offHours ? weights.offHours / totalWeight : 0,
-  };
-  // A matched rule supplies a minimum signal, not a probability. Additional
-  // evidence raises it within a bounded, reproducible prioritization scale.
-  const ruleTerms = {
-    base: 0.55,
-    excessFailures: Math.min(0.2, Math.max(0, count / failureThreshold - 1) * 0.1),
-    rapidSequence:
-      count >= failureThreshold && failures.length > 0
-        ? Math.min(
-            0.1,
-            Math.max(
-              0,
-              1 -
-                (time - Math.min(...failures.map((item) => item.occurred_at.getTime()))) /
-                  (policy.windowMinutes * 60_000),
-            ) * 0.1,
-          )
-        : 0,
-    sourceSeverity: severity(event.severity) * 0.1,
-    offHours: offHours ? 0.05 : 0,
-    newIp: newIp ? 0.05 : 0,
-    newDevice: newDevice ? 0.05 : 0,
-    successAfterFailures: rules.some(
-      (rule) => rule.endsWith('SUCCESS_AFTER_FAILURE') || rule.endsWith('SUCCESS_AFTER_DENIAL'),
-    )
-      ? 0.1
-      : 0,
-  };
-  const score = rules.length
-    ? Number(
-        Math.min(
-          0.99,
-          Object.values(ruleTerms).reduce((sum, term) => sum + term, 0),
-        ).toFixed(8),
-      )
-    : Number(Math.min(1, terms.severity + terms.behavior + terms.offHours).toFixed(8));
+  const statistical = compareHistory(
+    observation(event),
+    cohort.map(observation),
+    policy.windowMinutes * 60_000,
+    policy.minimumBaselineEvents,
+    truncated,
+  );
+  if (!principalPresent || (event.event_family === 'APPLICATION_ACCESS' && !app)) {
+    statistical.status = 'INSUFFICIENT_BASELINE';
+    statistical.reason = !principalPresent ? 'MISSING_PRINCIPAL' : 'MISSING_APPLICATION';
+    statistical.score = null;
+    statistical.comparisons = [];
+  }
+  const referencePrincipals = new Set(
+    cohort
+      .filter((item) => item.occurred_at.getTime() < time - policy.windowMinutes * 60_000)
+      .map((item) => item.account_identifier ?? item.source_ip)
+      .filter(Boolean),
+  ).size;
+  if (peer && referencePrincipals < 5) {
+    statistical.status = 'INSUFFICIENT_BASELINE';
+    statistical.reason = 'TOO_FEW_PEERS';
+    statistical.score = null;
+    statistical.comparisons = [];
+  }
+  const score = statistical.score ?? 0;
   const key = createHash('sha256')
     .update(
       JSON.stringify([
-        'evidence-weighted-v3',
+        'empirical-history-v1',
         event.event_source_id,
         event.event_family,
         event.account_identifier ?? event.source_ip ?? event.id,
@@ -242,12 +243,20 @@ export function evaluateContext(
     )
     .digest('hex');
   const values: Array<[string, unknown, number]> = [
-    ['matched_rules', rules, rules.length ? score : 0],
-    ['rule_score_breakdown', { revision: 'evidence-weighted-v3', ...ruleTerms, cap: 0.99 }, 0],
+    ['matched_rules', rules, 0],
+    [
+      'statistical_baseline',
+      {
+        ...statistical,
+        scope: peer ? 'SOURCE_FAMILY_APPLICATION_PEERS' : 'PERSONAL',
+        referencePrincipals,
+      },
+      score,
+    ],
     [
       'failure_count_in_window',
       {
-        count,
+        count: statistical.currentFailures,
         windowMinutes: policy.windowMinutes,
         account: event.account_identifier,
         sourceIp: event.source_ip,
@@ -264,13 +273,14 @@ export function evaluateContext(
         localHour: hour,
         offHours,
       },
-      rules.length ? 0 : terms.offHours,
+      0,
     ],
     [
       'baseline_context',
       {
         successfulEvents: actorHistory.length,
-        ready: baselineReady,
+        ready: statistical.status === 'READY',
+        successfulContextReady: baselineReady,
         truncated,
         newIp,
         newDevice,
@@ -278,12 +288,8 @@ export function evaluateContext(
       },
       0,
     ],
-    ['source_severity', event.severity, rules.length ? 0 : terms.severity],
-    [
-      'contextual_behavior',
-      { strength: behavior, failureThreshold },
-      rules.length ? 0 : terms.behavior,
-    ],
+    ['source_severity', event.severity, 0],
+    ['contextual_behavior', { failureThreshold }, 0],
     [
       'evidence_event_ids',
       [
@@ -300,10 +306,11 @@ export function evaluateContext(
     ['detection_group', key, 0],
     ['engine_version', 'contextual-rules-v1', 0],
     ['policy_snapshot', policy, 0],
-    ['weight_snapshot', weights, 0],
+    ['legacy_weights_ignored', weights, 0],
   ];
   return {
     score,
+    baselineReady: statistical.status === 'READY',
     matchedRules: rules,
     groupKey: key,
     features: values

@@ -5,6 +5,7 @@ param(
     [string]$Container = 'single-node-wazuh.manager-1',
     [ValidateRange(2, 1000)]
     [int]$BurstCount,
+    [switch]$WithBaseline,
     [switch]$Send
 )
 
@@ -61,6 +62,19 @@ if ($PSBoundParameters.ContainsKey('BurstCount')) {
 }
 
 $index = 0
+if ($WithBaseline) {
+    if ($Case -notin @('AuthBurst','AppDenial','VpnBurst')) { throw '-WithBaseline supports AuthBurst, AppDenial and VpnBurst only.' }
+    $template = $selected[0]
+    $start = [DateTimeOffset]::Parse($template.occurredAt).UtcDateTime
+    $baselineRecords = @(for ($baselineIndex = 0; $baselineIndex -lt 40; $baselineIndex++) {
+        $copy = $template | ConvertTo-Json -Depth 20 | ConvertFrom-Json
+        $copy.occurredAt = $start.AddMinutes(-12 - 6 * $baselineIndex).ToString("yyyy-MM-ddTHH:mm:ss.fff'Z'")
+        $copy.eventType = switch ($copy.eventFamily) { 'AUTHENTICATION' { 'LOGIN_SUCCESS' }; 'APPLICATION_ACCESS' { 'ACCESS_GRANTED' }; 'VPN_SSO' { 'VPN_LOGIN_SUCCESS' } }
+        $copy
+    })
+    $selected = @($baselineRecords | Sort-Object occurredAt) + $selected
+    Write-Host 'SYNTHETIC BASELINE: 40 successful active windows precede this same demo account burst. This validates the pipeline, not real-world detection accuracy.'
+}
 foreach ($record in $selected) {
     $index++
     $timestamp = ([DateTimeOffset]::Parse($record.occurredAt).UtcDateTime + $shift).ToString("yyyy-MM-ddTHH:mm:ss.fff'Z'")

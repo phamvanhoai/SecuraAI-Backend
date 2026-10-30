@@ -292,3 +292,8 @@ Workspace discovery is based on explicit responsibility eligibility even when em
 Detection engine v1 uses event-time entity context and six family rules. All alert decisions require score >= the applicable threshold; Ollama is explanation-only. Preserve model/event idempotency, bounded history and immutable prior detections. See docs/contextual-detection.md for limitations and demo. No model configuration or live schema is changed automatically.
 
 Detection identity includes engine_version in addition to event/model. Keep legacy results (default LEGACY) distinct from contextual-rules-v1 so workers running different deployed code cannot consume each other's pending events. Migration 20261030020000_version_detection_engine adds one column and replaces the unique constraint; no new table.
+
+
+Current detection scoring: empirical-history-v1 compares recorded event-time history by principal/source/family/application/protocol. No 55-point base or weighted severity/off-hours bonuses. Alert requires a READY baseline and score >= model/asset threshold. Insufficient/truncated/missing context records null score in statistical_baseline evidence (zero in the required legacy numeric column is a storage sentinel, not a normality judgment). Manual results expose insufficientBaseline. Existing records are never automatically rescored. See docs/history-baseline-scoring.md.
+
+Durable pipeline: after approved migration 20261030140000_durable_detection_jobs, DETECTION_PIPELINE_ENABLED separates API and worker processes. See docs/durable-detection-pipeline.md. Current additive schema verification expects 67 tables, 144 foreign keys and 194 checks; older inventory totals above describe earlier snapshots.

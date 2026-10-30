@@ -22,10 +22,16 @@ import { anomalyDetectionService } from '../src/modules/ai-anomaly-detection-ale
 describe('run anomaly detection service', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(anomalyDetectionRepository.findEventContext).mockResolvedValue({
-      events: [],
+    vi.mocked(anomalyDetectionRepository.findEventContext).mockImplementation(async (event) => ({
+      events: Array.from({ length: 20 }, (_, i) => ({
+        ...event,
+        id: `baseline-${i}`,
+        event_type:
+          event.event_family === 'APPLICATION_ACCESS' ? 'ACCESS_GRANTED' : 'LOGIN_SUCCESS',
+        occurred_at: new Date(event.occurred_at.getTime() - (i + 3) * 300_000),
+      })),
       truncated: false,
-    });
+    }));
     vi.mocked(anomalyDetectionRepository.hasPendingEvents).mockResolvedValue(false);
     vi.mocked(generateStoredAlertExplanation).mockResolvedValue(
       'The anomaly score exceeded the model threshold.',
@@ -33,10 +39,10 @@ describe('run anomaly detection service', () => {
   });
   it.each([
     [1, false],
-    [0.649, false],
+    [0.95238095, false],
     [0.6, false],
     [0.7, true],
-    [0.649, true],
+    [0.95238095, true],
     [0.6, true],
   ] as const)(
     'requires matched-rule score to reach threshold %s (asset override: %s)',
@@ -66,32 +72,40 @@ describe('run anomaly detection service', () => {
         events: [event],
       });
       vi.mocked(anomalyDetectionRepository.findEventContext).mockResolvedValue({
-        events: Array.from({ length: 4 }, (_, i) => ({
-          ...event,
-          id: `old-${i}`,
-          occurred_at: new Date(event.occurred_at.getTime() - 60_000 - i * 1000),
-        })),
+        events: [
+          ...Array.from({ length: 4 }, (_, i) => ({
+            ...event,
+            id: `old-${i}`,
+            occurred_at: new Date(event.occurred_at.getTime() - 60_000 - i * 1000),
+          })),
+          ...Array.from({ length: 20 }, (_, i) => ({
+            ...event,
+            id: `baseline-${i}`,
+            event_type: 'LOGIN_SUCCESS',
+            occurred_at: new Date(event.occurred_at.getTime() - (i + 3) * 300_000),
+          })),
+        ],
         truncated: false,
       });
       vi.mocked(anomalyDetectionRepository.persistRun).mockResolvedValue({
         detectionsCreated: 1,
-        alertsCreated: threshold <= 0.649 ? 1 : 0,
+        alertsCreated: threshold <= 0.95238095 ? 1 : 0,
         alertsGrouped: 0,
       });
       const result = await anomalyDetectionService.runAutomated({ maxEvents: 100 });
       expect(result).toMatchObject({
-        anomaliesDetected: threshold <= 0.649 ? 1 : 0,
-        alertsCreated: threshold <= 0.649 ? 1 : 0,
+        anomaliesDetected: threshold <= 0.95238095 ? 1 : 0,
+        alertsCreated: threshold <= 0.95238095 ? 1 : 0,
       });
-      if (threshold > 0.649) expect(generateStoredAlertExplanation).not.toHaveBeenCalled();
+      if (threshold > 0.95238095) expect(generateStoredAlertExplanation).not.toHaveBeenCalled();
       expect(anomalyDetectionRepository.persistRun).toHaveBeenCalledWith(
         expect.objectContaining({
           detections: [
             expect.objectContaining({
-              score: 0.649,
+              score: 0.95238095,
               thresholdSource: override ? 'ASSET_OVERRIDE' : 'MODEL_DEFAULT',
               threshold,
-              isAnomaly: threshold <= 0.649,
+              isAnomaly: threshold <= 0.95238095,
               features: expect.arrayContaining([
                 expect.objectContaining({
                   featureName: 'matched_rules',
@@ -211,7 +225,7 @@ describe('run anomaly detection service', () => {
           source_ip: '192.0.2.1',
           device_identifier: null,
           normalized_payload: {},
-          event_type: 'privilege_use',
+          event_type: 'ACCESS_DENIED',
           severity: '13',
           occurred_at: new Date('2026-09-25T18:00:00Z'),
           event_entity_mappings: [],
@@ -242,7 +256,14 @@ describe('run anomaly detection service', () => {
     expect(anomalyDetectionRepository.persistRun).toHaveBeenCalledWith(
       expect.objectContaining({
         actor: { type: 'SYSTEM' },
-        detections: [expect.objectContaining({ eventId: 'wazuh-event', isAnomaly: true })],
+        detections: [
+          expect.objectContaining({
+            eventId: 'wazuh-event',
+            isAnomaly: false,
+            baselineReady: false,
+          }),
+        ],
+        summary: expect.objectContaining({ insufficientBaseline: 1 }),
       }),
     );
   });

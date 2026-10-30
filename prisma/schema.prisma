@@ -48,6 +48,7 @@ model ai_model_evaluations {
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model ai_model_versions {
+  detection_jobs       detection_jobs[]
   id                   String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   model_name           String                 @db.VarChar(255)
   model_type           String                 @db.VarChar(100)
@@ -88,6 +89,7 @@ model alert_triage_records {
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model anomaly_alerts {
+  detection_jobs           detection_jobs[]
   id                       String                 @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   detection_id             String                 @unique @db.Uuid
   severity                 String?                @db.VarChar(50)
@@ -279,15 +281,15 @@ model auth_sessions {
 }
 
 model authentication_history {
-  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  user_id         String?   @db.Uuid
-  email_attempted String    @db.VarChar(255)
-  status          String    @db.VarChar(16)
-  failure_reason  String?   @db.VarChar(100)
-  ip_address      String?   @db.VarChar(45)
+  id              String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  user_id         String?  @db.Uuid
+  email_attempted String   @db.VarChar(255)
+  status          String   @db.VarChar(16)
+  failure_reason  String?  @db.VarChar(100)
+  ip_address      String?  @db.VarChar(45)
   user_agent      String?
-  occurred_at     DateTime  @default(now()) @db.Timestamptz(6)
-  users           users?    @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+  occurred_at     DateTime @default(now()) @db.Timestamptz(6)
+  users           users?   @relation(fields: [user_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
 
   @@index([occurred_at(sort: Desc), id(sort: Desc)], map: "idx_authentication_history_occurred")
   @@index([user_id, occurred_at(sort: Desc)], map: "idx_authentication_history_user")
@@ -718,6 +720,7 @@ model monitored_accounts {
 
 /// This table contains check constraints and requires additional setup for migrations. Visit https://pris.ly/d/check-constraints for more info.
 model normalized_events {
+  detection_jobs          detection_jobs[]
   id                      String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   event_source_id         String                   @db.Uuid
   ingestion_batch_id      String?                  @db.Uuid
@@ -902,7 +905,7 @@ model risk_assessments {
   assessed_by                String                      @db.Uuid
   assessed_at                DateTime                    @default(now()) @db.Timestamptz(6)
   review_date                DateTime?                   @db.Date
-  methodology_version        String                     @default("SECURAAI-RISK-MATRIX-v1") @db.VarChar(100)
+  methodology_version        String                      @default("SECURAAI-RISK-MATRIX-v1") @db.VarChar(100)
   reassessment_request_id    String?                     @unique @db.Uuid
   created_at                 DateTime                    @default(now()) @db.Timestamptz(6)
   users                      users                       @relation(fields: [assessed_by], references: [id], onDelete: NoAction, onUpdate: NoAction, map: "fk_risk_assessment_assessed_by")
@@ -1257,7 +1260,7 @@ model users {
   assets_assets_owner_user_idTousers                                              assets[]                         @relation("assets_owner_user_idTousers")
   audit_logs                                                                      audit_logs[]
   auth_sessions                                                                   auth_sessions[]
-  authentication_history                                                         authentication_history[]
+  authentication_history                                                          authentication_history[]
   business_services                                                               business_services[]
   control_assessments                                                             control_assessments[]
   control_evidence_links                                                          control_evidence_links[]
@@ -1301,7 +1304,7 @@ model users {
   risk_treatment_plans_risk_treatment_plans_owner_user_idTousers                  risk_treatment_plans[]           @relation("risk_treatment_plans_owner_user_idTousers")
   risk_treatment_plan_controls_risk_treatment_plan_controls_linked_byTousers      risk_treatment_plan_controls[]   @relation("risk_treatment_plan_controls_linked_byTousers")
   risk_vulnerabilities_risk_vulnerabilities_updated_byTousers                     risk_vulnerabilities[]           @relation("risk_vulnerabilities_updated_byTousers")
-  risk_threats_risk_threats_updated_byTousers                                     risk_threats[]                    @relation("risk_threats_updated_byTousers")
+  risk_threats_risk_threats_updated_byTousers                                     risk_threats[]                   @relation("risk_threats_updated_byTousers")
   risks_risks_created_byTousers                                                   risks[]                          @relation("risks_created_byTousers")
   risks_risks_owner_user_idTousers                                                risks[]                          @relation("risks_owner_user_idTousers")
   security_controls_security_controls_created_byTousers                           security_controls[]              @relation("security_controls_created_byTousers")
@@ -1589,4 +1592,31 @@ enum report_export_format {
   JSON
   XLSX
   PDF
+}
+
+model detection_jobs {
+  id                String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  kind              String             @db.VarChar(20)
+  event_id          String?            @db.Uuid
+  alert_id          String?            @db.Uuid
+  model_version_id  String             @db.Uuid
+  engine_version    String             @db.VarChar(100)
+  status            String             @default("PENDING") @db.VarChar(30)
+  attempts          Int                @default(0)
+  lease_token       String?            @db.Uuid
+  lease_until       DateTime?          @db.Timestamptz(6)
+  available_at      DateTime           @default(now()) @db.Timestamptz(6)
+  error_code        String?            @db.VarChar(100)
+  result            Json?
+  created_at        DateTime           @default(now()) @db.Timestamptz(6)
+  updated_at        DateTime           @default(now()) @db.Timestamptz(6)
+  normalized_events normalized_events? @relation(fields: [event_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  anomaly_alerts    anomaly_alerts?    @relation(fields: [alert_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  ai_model_versions ai_model_versions  @relation(fields: [model_version_id], references: [id], onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([kind, event_id, model_version_id, engine_version], map: "uq_detection_job_event")
+  @@unique([kind, alert_id, model_version_id, engine_version], map: "uq_detection_job_alert")
+  @@index([kind, status, available_at, lease_until], map: "idx_detection_jobs_claim")
+  @@index([event_id], map: "idx_detection_jobs_event")
+  @@index([alert_id], map: "idx_detection_jobs_alert")
 }

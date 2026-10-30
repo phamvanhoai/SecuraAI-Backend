@@ -1,3 +1,5 @@
+> Current scoring is empirical-history-v1, replacing the fixed-point formulas documented below. See [Historical anomaly scoring](history-baseline-scoring.md) for the authoritative current algorithm, readiness guard and limitations. Earlier formulas are historical only.
+
 # Contextual detection v1
 
 The shared realtime/manual engine evaluates pending events once per deployed model version AND engine revision. It uses deterministic rules and contextual signals, not an LLM classifier. Existing detections and explanations are preserved; legacy engine results are retained while contextual-rules-v1 records its own separate result.
