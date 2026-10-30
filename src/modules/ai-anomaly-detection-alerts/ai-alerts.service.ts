@@ -17,6 +17,7 @@ import type { ConfigureDetectionThreshold } from './dto/detection-threshold.dto.
 import type { RegenerateAlertExplanation } from './dto/regenerate-alert-explanation.dto.js';
 import { generateStoredAlertExplanation } from './alert-explanation.generator.js';
 import { peakSnapshot } from './alert-score-snapshot.js';
+import { env } from '../../config/env.js';
 
 const storedThresholdSchema = z.object({
   threshold: z.number().min(0.01).max(1),
@@ -165,6 +166,13 @@ export const aiAlertsService = {
     await requireSecurityOfficer(userId);
     const [total, models] = await aiAlertsRepository.listModelVersions(query);
     return {
+      explanationModel: {
+        provider: 'Ollama',
+        model: env.OLLAMA_MODEL,
+        enabled: env.OLLAMA_ENABLED,
+        purpose: 'EXPLANATION_ONLY',
+        connectionStatus: 'NOT_CHECKED',
+      },
       items: models.map((model) => {
         const evaluation = model.ai_model_evaluations[0];
         return {

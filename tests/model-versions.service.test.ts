@@ -62,6 +62,8 @@ describe('model version service', () => {
       ],
     ]);
     const result = await aiAlertsService.listModelVersions(userId, { page: 1, limit: 20 });
+    expect(result.explanationModel).toMatchObject({ provider: 'Ollama', purpose: 'EXPLANATION_ONLY', connectionStatus: 'NOT_CHECKED' });
+    expect(result.explanationModel.model.length).toBeGreaterThan(0);
     expect(result.items[0]).toMatchObject({
       modelName: 'Detector',
       status: 'deployed',
