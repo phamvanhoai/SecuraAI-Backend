@@ -41,6 +41,7 @@ describe('POST /api/v1/ai-alerts/:alertId/explanation/regenerate', () => {
       explanationText: 'Updated explanation.',
       featureContributions: [],
       baselineData: {
+        correlatedEventCount: 1,
         anomalyScore: 0.82,
         threshold: 0.7,
         scoreAboveThreshold: 0.12,
@@ -78,6 +79,7 @@ describe('GET /api/v1/ai-alerts/:alertId/explanation', () => {
       explanationText: 'Suggested risk level is high.',
       featureContributions: [],
       baselineData: {
+        correlatedEventCount: 1,
         anomalyScore: 0.825,
         threshold: 0.7,
         scoreAboveThreshold: 0.125,

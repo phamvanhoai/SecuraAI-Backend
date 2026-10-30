@@ -16,6 +16,8 @@ import type { ListModelVersionsQuery } from './dto/list-model-versions.dto.js';
 import type { ConfigureDetectionThreshold } from './dto/detection-threshold.dto.js';
 import type { RegenerateAlertExplanation } from './dto/regenerate-alert-explanation.dto.js';
 import { generateStoredAlertExplanation } from './alert-explanation.generator.js';
+import { peakSnapshot } from './alert-score-snapshot.js';
+import { env } from '../../config/env.js';
 
 const storedThresholdSchema = z.object({
   threshold: z.number().min(0.01).max(1),
@@ -56,11 +58,15 @@ function toResponse(alert: AiAlertRecord) {
   return {
     id: alert.id,
     alertCode: `ALT-${alert.id.slice(0, 8).toUpperCase()}`,
-    anomalyScore: detection.anomaly_score.toNumber(),
+    anomalyScore:
+      peakSnapshot(
+        detection.anomaly_feature_contributions ?? [],
+        detection.anomaly_score.toNumber(),
+      )?.score ?? detection.anomaly_score.toNumber(),
     riskScore: null,
     riskLevel: alert.severity,
     title: eventTitle,
-    description: `${eventTitle} exceeded the deployed anomaly model threshold.`,
+    description: `${eventTitle} was flagged by the deployed detection configuration. Review the stored evidence for the decision basis.`,
     status: responseStatus(alert.status),
     detectedAt: detection.detected_at,
     asset: asset ? { id: asset.id, assetCode: asset.asset_code, name: asset.name } : null,
@@ -160,6 +166,13 @@ export const aiAlertsService = {
     await requireSecurityOfficer(userId);
     const [total, models] = await aiAlertsRepository.listModelVersions(query);
     return {
+      explanationModel: {
+        provider: 'Ollama',
+        model: env.OLLAMA_MODEL,
+        enabled: env.OLLAMA_ENABLED,
+        purpose: 'EXPLANATION_ONLY',
+        connectionStatus: 'NOT_CHECKED',
+      },
       items: models.map((model) => {
         const evaluation = model.ai_model_evaluations[0];
         return {
@@ -275,21 +288,40 @@ export const aiAlertsService = {
     const alert = await aiAlertsRepository.findExplanation(alertId);
     if (!alert) throw new AppError(404, 'AI_ALERT_NOT_FOUND', 'AI alert not found');
     const detection = alert.anomaly_detections;
-    const score = detection.anomaly_score.toNumber();
-    const threshold = detection.threshold.toNumber();
-    const contributions = detection.anomaly_feature_contributions.map((feature) => ({
+    const peak = peakSnapshot(
+      detection.anomaly_feature_contributions,
+      detection.anomaly_score.toNumber(),
+    );
+    const score = peak?.score ?? detection.anomaly_score.toNumber();
+    const threshold = peak?.threshold ?? detection.threshold.toNumber();
+    const originalContributions = detection.anomaly_feature_contributions.map((feature) => ({
       featureName: feature.feature_name,
       featureValue: feature.feature_value,
       contributionScore: feature.contribution_score?.toNumber() ?? null,
       rank: feature.rank,
     }));
+    const contributions = peak
+      ? [
+          ...peak.features,
+          ...originalContributions.filter((item) =>
+            ['correlated_detection', 'alert_score_update'].includes(item.featureName),
+          ),
+        ]
+      : originalContributions;
     const riskLevel = alert.severity?.toLowerCase() ?? null;
     return {
       id: detection.id,
       alertId: alert.id,
-      explanationText: alert.explanation_text,
+      explanationText:
+        peak &&
+        (!peak.updatedAt ||
+          alert.explanation_generated_at.getTime() < new Date(peak.updatedAt).getTime())
+          ? `This alert reached a priority score of ${Math.round(score * 100)}% after stronger correlated activity. The original detection score was ${Math.round(detection.anomaly_score.toNumber() * 100)}%. Review the current evidence and recorded score history below. The original explanation remains stored. Scores indicate investigation priority, not attack probability.`
+          : alert.explanation_text,
       featureContributions: contributions,
       baselineData: {
+        correlatedEventCount:
+          1 + contributions.filter((item) => item.featureName === 'correlated_detection').length,
         anomalyScore: score,
         threshold,
         scoreAboveThreshold: Number((score - threshold).toFixed(8)),
@@ -309,16 +341,30 @@ export const aiAlertsService = {
     const alert = await aiAlertsRepository.findExplanationForRegeneration(alertId);
     if (!alert) throw new AppError(404, 'AI_ALERT_NOT_FOUND', 'AI alert not found');
     const detection = alert.anomaly_detections;
-    const contributions = detection.anomaly_feature_contributions.map((feature) => ({
+    const peak = peakSnapshot(
+      detection.anomaly_feature_contributions,
+      detection.anomaly_score.toNumber(),
+    );
+    const currentScore = peak?.score ?? detection.anomaly_score.toNumber();
+    const currentThreshold = peak?.threshold ?? detection.threshold.toNumber();
+    const originalContributions = detection.anomaly_feature_contributions.map((feature) => ({
       featureName: feature.feature_name,
       featureValue: feature.feature_value,
       contributionScore: feature.contribution_score?.toNumber() ?? null,
       rank: feature.rank,
     }));
+    const contributions = peak
+      ? [
+          ...peak.features,
+          ...originalContributions.filter((item) =>
+            ['correlated_detection', 'alert_score_update'].includes(item.featureName),
+          ),
+        ]
+      : originalContributions;
     const generatedAt = new Date();
     const explanationText = await generateStoredAlertExplanation({
-      anomalyScore: detection.anomaly_score.toNumber(),
-      threshold: detection.threshold.toNumber(),
+      anomalyScore: currentScore,
+      threshold: currentThreshold,
       suggestedRiskLevel: alert.severity?.toLowerCase() ?? null,
       detectedAt: detection.detected_at,
       featureContributions: contributions,
@@ -348,11 +394,11 @@ export const aiAlertsService = {
       explanationText,
       featureContributions: contributions,
       baselineData: {
-        anomalyScore: detection.anomaly_score.toNumber(),
-        threshold: detection.threshold.toNumber(),
-        scoreAboveThreshold: Number(
-          (detection.anomaly_score.toNumber() - detection.threshold.toNumber()).toFixed(8),
-        ),
+        correlatedEventCount:
+          1 + contributions.filter((item) => item.featureName === 'correlated_detection').length,
+        anomalyScore: currentScore,
+        threshold: currentThreshold,
+        scoreAboveThreshold: Number((currentScore - currentThreshold).toFixed(8)),
         suggestedRiskLevel: alert.severity?.toLowerCase() ?? null,
         detectedAt: detection.detected_at,
       },

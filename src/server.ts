@@ -13,7 +13,7 @@ const server = createServer(createApp());
 const startServer = async (): Promise<void> => {
   try {
     await prisma.$connect();
-    startAutomatedDetectionWorker();
+    if (!env.DETECTION_PIPELINE_ENABLED) startAutomatedDetectionWorker();
     logger.info({ database: 'postgresql' }, 'Database connection established');
 
     server.listen(env.PORT, () =>

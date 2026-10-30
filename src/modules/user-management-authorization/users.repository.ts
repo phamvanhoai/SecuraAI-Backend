@@ -4,6 +4,7 @@ import type { ListUsersQuery } from './dto/list-users-query.dto.js';
 import type { UpdateUserBody } from './dto/update-user.dto.js';
 import type { AssignUserAccessBody } from './dto/assign-user-access.dto.js';
 import { userAccessScopeCatalog } from './user-access-scope-catalog.js';
+import { approverGrantSelect } from './business-responsibilities.js';
 
 const supplementalScopeCodes = userAccessScopeCatalog.map(({ code }) => code);
 const managedScopeCodes = [...supplementalScopeCodes, 'AUDIT_VIEW', 'POLICY_APPROVE'];
@@ -403,6 +404,17 @@ export const usersRepository = {
     ]);
     return { kind: 'found', items, total, statusCounts } as const;
   },
+  hasPendingApprovalWork(userId: string) {
+    return prisma.risk_acceptances.count({ where: { decision: 'PENDING', requested_by: { not: userId } } });
+  },
+  hasOwnedAssets(userId: string) {
+    return prisma.assets.count({ where: { owner_user_id: userId } });
+  },
+  findEmployeeResponsibilities(userId: string) {
+    return prisma.user_access_scopes.findMany({ where: { user_id: userId, role: null,
+      scope_code: { in: supplementalScopeCodes }, effect: 'ALLOW', business_service_id: null, asset_id: null, expires_at: null },
+      select: { scope_code: true } });
+  },
   findCurrentUser(userId: string) {
     return prisma.users.findUnique({
       where: { id: userId },
@@ -410,6 +422,7 @@ export const usersRepository = {
         id: true,
         email: true,
         full_name: true,
+        ...approverGrantSelect,
         role: true,
         status: true,
         _count: {

@@ -1,6 +1,10 @@
 # SecuraAI Backend
 
+Create new policy version is V2-backed at `POST /api/v1/compliance/policies/:policyId/versions`: active owning Security Officer only, unique version number, one in-progress version per policy. The existing publication remains available while the next draft goes through applicability, review, approval and publication. No database migration is needed; 56 legacy routes remain pending.
+
 REST API SecuraAI cho quản lý rủi ro an toàn thông tin, tài sản, controls, chính sách, sự cố, security events và anomaly alerts.
+
+Incident creation authorization: POST /api/v1/incidents requires an active SECURITY_OFFICER for both manual and confirmed-source creation. Service checks reject ADMIN/EXECUTIVE/EMPLOYEE before writes; the creation transaction rechecks the actor. Executive list/detail reads and historical report access remain unchanged. This endpoint is not a general employee reporting workflow. No schema migration, deletion or modification of existing incidents.
 
 ## Công nghệ và kiến trúc
 
@@ -140,3 +144,15 @@ Employee responsibility selection is exclusive: at most one of Risk Owner, Contr
 Password changes update the credential and revoke all refresh sessions in one transaction. Access JWTs carry the password-change version captured when the session is issued; authentication checks it against the current active account on every protected request. Existing tokens without this claim are checked against their issue time. Refresh rotation locks the account row to serialize with password changes. No schema migration is required.
 
 Notification images: sending forms accept up to three PNG/JPEG/WebP source images (5 MiB each), normalize them to bounded PNG payloads, and show removable previews. Backend fully decodes and re-encodes PNGs (192 KiB, 1600px per side), stores private files under uploads/notification-images, and records generated IDs/names/SHA-256 hashes in notifications.image_references. Recipients and active Admins read them through authenticated non-cacheable routes. Email uses CID inline attachments; no remote image URL fetching. Deploy migration 20261030010000_notification_image_references before running this version, and retain the uploads directory on persistent/shared storage in deployed environments.
+Contextual actor workflow audit and current access boundaries: [docs/contextual-actor-workflows.md](docs/contextual-actor-workflows.md).
+
+Contextual anomaly detection rules, configuration and demo: [docs/contextual-detection.md](docs/contextual-detection.md).
+
+
+Current detection scoring: empirical-history-v1 compares recorded event-time history by principal/source/family/application/protocol. No 55-point base or weighted severity/off-hours bonuses. Alert requires a READY baseline and score >= model/asset threshold. Insufficient/truncated/missing context records null score in statistical_baseline evidence (zero in the required legacy numeric column is a storage sentinel, not a normality judgment). Manual results expose insufficientBaseline. Existing records are never automatically rescored. See docs/history-baseline-scoring.md.
+
+Durable detection setup and deployment: [docs/durable-detection-pipeline.md](docs/durable-detection-pipeline.md).
+
+Docker local demo: see [docs/docker-local-demo.md](docs/docker-local-demo.md).
+
+Local development: npm run dev starts both API and detection/explanation processing when DETECTION_PIPELINE_ENABLED=true. No extra worker terminal is needed. Docker/production retain separate worker processes.

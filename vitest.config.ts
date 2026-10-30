@@ -10,6 +10,7 @@ export default defineConfig({
     testTimeout: 30_000,
     env: {
       NODE_ENV: 'test',
+      DETECTION_PIPELINE_ENABLED: 'false',
       DATABASE_URL: 'postgresql://test:test@localhost:5432/test',
       JWT_ACCESS_SECRET: 'test-secret-with-at-least-thirty-two-characters',
       LOG_LEVEL: 'silent',

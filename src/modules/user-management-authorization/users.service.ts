@@ -8,6 +8,7 @@ import { usersEmailService } from './users.email.service.js';
 import { usersRepository } from './users.repository.js';
 import { capabilitiesForRole } from './role-capabilities.js';
 import { userAccessScopeCatalog } from './user-access-scope-catalog.js';
+import { isRiskAcceptanceApprover } from './business-responsibilities.js';
 import type { UpdateUserBody } from './dto/update-user.dto.js';
 import type { AssignUserAccessBody } from './dto/assign-user-access.dto.js';
 import { createUserBodySchema } from './dto/create-user.dto.js';
@@ -356,14 +357,24 @@ export const usersService = {
       throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
     }
     const permissions = [...capabilitiesForRole(user.role)];
+    const responsibilities = user.role === 'EMPLOYEE'
+      ? new Set((await usersRepository.findEmployeeResponsibilities(userId)).map((item) => item.scope_code))
+      : new Set<string>();
+    if (user.role === 'EMPLOYEE' && (responsibilities.has('ASSET_OWNER') || await usersRepository.hasOwnedAssets(userId))) {
+      permissions.push('assets.read');
+    }
     if (
       user.role === 'EMPLOYEE' &&
-      user._count.security_controls_security_controls_owner_user_idTousers > 0
+      (responsibilities.has('CONTROL_OWNER') || user._count.security_controls_security_controls_owner_user_idTousers > 0)
     ) {
       permissions.push('compliance.assess-controls');
     }
-    if (user.role === 'EMPLOYEE' && user._count.risks_risks_owner_user_idTousers > 0) {
+    if (user.role === 'EMPLOYEE' && (responsibilities.has('RISK_OWNER') || user._count.risks_risks_owner_user_idTousers > 0)) {
       permissions.push('risks.read', 'risks.review-reassessment', 'risks.update-treatment-plan');
+    }
+    if (user.role === 'EMPLOYEE' && isRiskAcceptanceApprover(user)) {
+      if (!permissions.includes('risks.read')) permissions.push('risks.read');
+      permissions.push('risks.approve-acceptance');
     }
     return {
       id: user.id,

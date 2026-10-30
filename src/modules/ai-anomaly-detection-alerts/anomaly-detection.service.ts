@@ -3,12 +3,20 @@ import type { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { AppError } from '../../common/errors/app-error.js';
 import type { RunAnomalyDetectionBody } from './dto/run-anomaly-detection.dto.js';
-import { anomalyDetectionRepository, type DetectionEvent } from './anomaly-detection.repository.js';
+import { anomalyDetectionRepository } from './anomaly-detection.repository.js';
+import {
+  detectionPolicySchema,
+  evaluateContext,
+  detectionSeverity,
+} from './contextual-detection.js';
+import { env } from '../../config/env.js';
+import { detectionJobsRepository, pipelineEngine } from './detection-jobs.repository.js';
 import { generateStoredAlertExplanation } from './alert-explanation.generator.js';
 
 const parametersSchema = z
   .object({
     threshold: z.number().min(0.5).max(1).default(0.8),
+    detectionPolicy: detectionPolicySchema.default(() => detectionPolicySchema.parse({})),
     weights: z
       .object({
         severity: z.number().min(0).max(1),
@@ -24,12 +32,6 @@ const parametersSchema = z
       .default({}),
   })
   .passthrough();
-const severityScore: Readonly<Record<string, number>> = {
-  critical: 1,
-  high: 0.85,
-  medium: 0.55,
-  low: 0.2,
-};
 let detectionQueue: Promise<void> = Promise.resolve();
 
 async function withDetectionLock<T>(operation: () => Promise<T>): Promise<T> {
@@ -44,36 +46,6 @@ async function withDetectionLock<T>(operation: () => Promise<T>): Promise<T> {
   } finally {
     release();
   }
-}
-
-function normalizedSeverity(value: string | null): number {
-  const named = severityScore[value?.toLowerCase() ?? ''];
-  if (named !== undefined) return named;
-  const wazuhLevel = Number(value);
-  return Number.isFinite(wazuhLevel) ? Math.min(1, Math.max(0, wazuhLevel / 15)) : 0.35;
-}
-
-function scoreEvent(
-  event: DetectionEvent,
-  frequency: number,
-  populationSize: number,
-  weights: z.infer<typeof parametersSchema>['weights'],
-): number {
-  const severity = normalizedSeverity(event.severity);
-  const rarity = populationSize === 0 ? 0 : 1 - frequency / populationSize;
-  const hour = event.occurred_at.getUTCHours();
-  const offHours = hour < 6 || hour >= 22 ? 1 : 0;
-  const totalWeight = weights.severity + weights.rarity + weights.offHours;
-  return totalWeight === 0
-    ? 0
-    : Math.min(
-        1,
-        Math.max(
-          0,
-          (severity * weights.severity + rarity * weights.rarity + offHours * weights.offHours) /
-            totalWeight,
-        ),
-      );
 }
 
 export const anomalyDetectionService = {
@@ -144,90 +116,153 @@ async function runDetection(
   },
 ) {
   const parsed = parametersSchema.safeParse(model.parameters ?? {});
-  const parameters = parsed.success ? parsed.data : parametersSchema.parse({});
+  if (!parsed.success)
+    throw new AppError(
+      409,
+      'INVALID_DETECTION_CONFIGURATION',
+      'The deployed detection configuration is invalid. Check its timezone, working hours and rule thresholds.',
+    );
+  const parameters = parsed.data;
   const since =
-    input.lookbackHours === null
-      ? null
-      : new Date(Date.now() - input.lookbackHours * 3_600_000);
+    input.lookbackHours === null ? null : new Date(Date.now() - input.lookbackHours * 3_600_000);
   const batch = await anomalyDetectionRepository.findPendingEvents(
     model.id,
     since,
     input.maxEvents,
     input.eventScope,
   );
-  const detectedAt = new Date();
-  const detections = await Promise.all(
-    batch.events.map(async (event) => {
-      const score = scoreEvent(
-        event,
-        batch.frequencies.get(event.event_type) ?? 0,
-        batch.populationSize,
-        parameters.weights,
+  try {
+    const detectedAt = new Date();
+    const explanations = new Map<string, Promise<string>>();
+    // One shared deadline for optional prose across the entire batch, not a
+    // separate 60-second wait for every alert. Explicit regeneration is unchanged.
+    const explanationDeadline = Date.now() + 5_000;
+    const detections = [];
+    // Bound DB/LLM concurrency; every event uses its own event-time history including previously evaluated events.
+    for (let offset = 0; offset < batch.events.length; offset += 4) {
+      detections.push(
+        ...(await Promise.all(
+          batch.events.slice(offset, offset + 4).map(async (event) => {
+            const context = await anomalyDetectionRepository.findEventContext(event);
+            let decision = evaluateContext(
+              event,
+              context.events,
+              context.truncated,
+              parameters.detectionPolicy,
+              parameters.weights,
+            );
+            if (!decision.baselineReady && env.DETECTION_PIPELINE_ENABLED) {
+              const peers = await anomalyDetectionRepository.findPeerContext(event);
+              decision = evaluateContext(
+                event,
+                peers.events,
+                peers.truncated,
+                parameters.detectionPolicy,
+                parameters.weights,
+                true,
+              );
+            }
+            const score = decision.score;
+            const assetId = event.event_entity_mappings[0]?.asset_id;
+            const customThreshold = assetId ? parameters.assetThresholds[assetId] : undefined;
+            const configuredThresholdSource = customThreshold?.enabled
+              ? 'ASSET_OVERRIDE'
+              : 'MODEL_DEFAULT';
+            const thresholdSource = configuredThresholdSource;
+            const threshold = customThreshold?.enabled
+              ? customThreshold.threshold
+              : parameters.threshold;
+            const isAnomaly = decision.baselineReady && score >= threshold;
+            decision.features.push({
+              featureName: 'configured_threshold',
+              featureValue: JSON.stringify({ threshold, source: configuredThresholdSource }),
+              contributionScore: 0,
+              rank: decision.features.length + 1,
+            });
+            const explanationKey = `${decision.groupKey}:${Math.floor(event.occurred_at.getTime() / (15 * 60_000))}`;
+            if (isAnomaly && !explanations.has(explanationKey))
+              explanations.set(
+                explanationKey,
+                generateStoredAlertExplanation(
+                  {
+                    anomalyScore: score,
+                    threshold,
+                    suggestedRiskLevel: detectionSeverity(score).toLowerCase(),
+                    detectedAt,
+                    featureContributions: decision.features,
+                    eventId: event.id,
+                  },
+                  {
+                    timeoutMs: env.DETECTION_PIPELINE_ENABLED
+                      ? 0
+                      : Math.max(0, explanationDeadline - Date.now()),
+                  },
+                ),
+              );
+            const explanationText = isAnomaly ? await explanations.get(explanationKey) : undefined;
+            return {
+              id: randomUUID(),
+              eventId: event.id,
+              score,
+              baselineReady: decision.baselineReady,
+              threshold,
+              thresholdSource,
+              isAnomaly,
+              occurredAt: event.occurred_at,
+              features: decision.features,
+              groupKey: decision.groupKey,
+              ...(explanationText ? { explanationText, explanationGeneratedAt: detectedAt } : {}),
+            };
+          }),
+        )),
       );
-      const assetId = event.event_entity_mappings[0]?.asset_id;
-      const customThreshold = assetId ? parameters.assetThresholds[assetId] : undefined;
-      const thresholdSource = customThreshold?.enabled ? 'ASSET_OVERRIDE' : 'MODEL_DEFAULT';
-      const threshold = customThreshold?.enabled ? customThreshold.threshold : parameters.threshold;
-      const isAnomaly = score >= threshold;
-      const explanationText = isAnomaly
-        ? await generateStoredAlertExplanation({
-            anomalyScore: score,
-            threshold,
-            suggestedRiskLevel: 'high',
-            detectedAt,
-            featureContributions: [],
-            eventId: event.id,
-          })
-        : undefined;
+    }
+    const summary = {
+      modelVersionId: model.id,
+      modelName: model.model_name,
+      modelVersion: model.version,
+      lookbackHours: input.lookbackHours,
+      scope:
+        input.eventScope === 'WAZUH_REALTIME'
+          ? 'WAZUH_REALTIME'
+          : input.lookbackHours === null
+            ? 'ALL_PENDING'
+            : 'LOOKBACK_WINDOW',
+      eventsEvaluated: detections.length,
+      anomaliesDetected: detections.filter((item) => item.isAnomaly).length,
+      insufficientBaseline: detections.filter((item) => !item.baselineReady).length,
+      engineVersion: env.DETECTION_PIPELINE_ENABLED ? pipelineEngine : 'contextual-rules-v1',
+      timeZone: parameters.detectionPolicy.timeZone,
+      customThresholdsApplied: detections.filter((item) => item.threshold !== parameters.threshold)
+        .length,
+    } satisfies Prisma.InputJsonObject;
+    if (detections.length === 0) {
       return {
-        id: randomUUID(),
-        eventId: event.id,
-        score,
-        threshold,
-        thresholdSource,
-        isAnomaly,
-        ...(explanationText ? { explanationText, explanationGeneratedAt: detectedAt } : {}),
+        ...summary,
+        detectionsCreated: 0,
+        alertsCreated: 0,
+        threshold: parameters.threshold,
+        completedAt: new Date().toISOString(),
       };
-    }),
-  );
-  const summary = {
-    modelVersionId: model.id,
-    modelName: model.model_name,
-    modelVersion: model.version,
-    lookbackHours: input.lookbackHours,
-    scope:
-      input.eventScope === 'WAZUH_REALTIME'
-        ? 'WAZUH_REALTIME'
-        : input.lookbackHours === null
-          ? 'ALL_PENDING'
-          : 'LOOKBACK_WINDOW',
-    eventsEvaluated: detections.length,
-    anomaliesDetected: detections.filter((item) => item.isAnomaly).length,
-    customThresholdsApplied: detections.filter((item) => item.threshold !== parameters.threshold)
-      .length,
-  } satisfies Prisma.InputJsonObject;
-  if (detections.length === 0) {
+    }
+    const persisted = await anomalyDetectionRepository.persistRun({
+      actor: audit.actor,
+      modelVersionId: model.id,
+      leaseToken: batch.leaseToken,
+      ...(audit.correlationId ? { correlationId: audit.correlationId } : {}),
+      detections,
+      summary,
+      sourceIp: audit.sourceIp,
+      userAgent: audit.userAgent,
+    });
     return {
       ...summary,
-      detectionsCreated: 0,
-      alertsCreated: 0,
+      ...persisted,
       threshold: parameters.threshold,
       completedAt: new Date().toISOString(),
     };
+  } catch (error) {
+    if (batch.leaseToken) await detectionJobsRepository.fail(batch.leaseToken);
+    throw error;
   }
-  const persisted = await anomalyDetectionRepository.persistRun({
-    actor: audit.actor,
-    modelVersionId: model.id,
-    ...(audit.correlationId ? { correlationId: audit.correlationId } : {}),
-    detections,
-    summary,
-    sourceIp: audit.sourceIp,
-    userAgent: audit.userAgent,
-  });
-  return {
-    ...summary,
-    ...persisted,
-    threshold: parameters.threshold,
-    completedAt: new Date().toISOString(),
-  };
 }

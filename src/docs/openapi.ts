@@ -370,7 +370,7 @@ export const openApiSpec = {
         summary: 'Decide risk acceptance',
         security: [{ bearerAuth: [] }],
         description:
-          'Active Security Officer or Executive (existing approver group), never requester. Pending only. Approval checks expiry, owner reassignment, Threat/Vulnerability changes, current Control/Evidence basis and exact submitted assessment/plan basis. Legacy requests without verifiable audit basis must be rejected/resubmitted. Rejection remains available for expired/stale requests. Owner justification is preserved; decision reason is audited separately. Only approval sets ACCEPTED. Detail exposes expired/canDecide and actor-scoped acceptanceWorkflow. No named-approver assignment or automatic email.',
+          'Active Security Officer, Executive, or Employee explicitly granted AUTHORIZED_APPROVER for the Risk Acceptance workflow; never the requester or current Risk Owner. Employee approvers can read only owned risks or risks with pending acceptance submitted by another user, not the full register. Pending only. Approval checks expiry, owner reassignment, Threat/Vulnerability changes, current Control/Evidence basis and exact submitted assessment/plan basis. Legacy requests without verifiable audit basis must be rejected/resubmitted. Rejection remains available for expired/stale requests. Owner justification is preserved; decision reason is audited separately. Only approval sets ACCEPTED. Detail exposes expired/canDecide and actor-scoped acceptanceWorkflow. No named-approver assignment or automatic email.',
         parameters: [
           {
             name: 'acceptanceId',
@@ -1563,7 +1563,7 @@ export const openApiSpec = {
         tags: ['Incident Management'],
         summary: 'Create an incident manually or from a confirmed source',
         description:
-          'Creates a V2 incident manually or from an eligible confirmed alert/security finding. Any active signed-in user can submit a manual incident report. Only an active Security Officer can create a source-backed incident, which retains a unique finding link.',
+          'Only an active Security Officer can create a V2 incident, either manually when no suitable alert/finding is available, or from an eligible confirmed alert/security finding. Source-backed incidents retain a unique finding link. Executive/Admin/Employee accounts cannot create incidents. This is not a general incident-report intake endpoint.',
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
@@ -2437,6 +2437,88 @@ export const openApiSpec = {
         },
       },
     },
+    '/compliance/policies/{policyId}/versions': {
+      post: {
+        tags: ['Policies'],
+        summary: 'Create the next policy draft version',
+        description:
+          'Active Security Officer who owns an active published policy only. Requires a unique version number and no DRAFT, IN_REVIEW, WAITING_APPROVAL or APPROVED version. Serializes competing creations. Updates shared policy metadata, but retains the existing publication and acknowledgements. Define applicability for the new draft before submission. The draft follows the normal review, approval and publication workflow.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'policyId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['versionNumber', 'content', 'changeSummary'],
+                properties: {
+                  title: { type: 'string', minLength: 3, maxLength: 255 },
+                  description: { type: 'string', nullable: true, maxLength: 2000 },
+                  versionNumber: { type: 'string', minLength: 1, maxLength: 30 },
+                  content: { type: 'string', minLength: 1, maxLength: 500000 },
+                  changeSummary: { type: 'string', minLength: 1, maxLength: 5000 },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '201': {
+            description: 'New draft created; policy remains active',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', enum: [true] },
+                    data: {
+                      type: 'object',
+                      properties: {
+                        policyId: { type: 'string', format: 'uuid' },
+                        policyCode: { type: 'string' },
+                        title: { type: 'string' },
+                        description: { type: 'string', nullable: true },
+                        ownerUserId: { type: 'string', format: 'uuid', nullable: true },
+                        policyStatus: { type: 'string', enum: ['active'] },
+                        updatedAt: { type: 'string', format: 'date-time' },
+                        version: {
+                          type: 'object',
+                          properties: {
+                            id: { type: 'string', format: 'uuid' },
+                            versionNumber: { type: 'string' },
+                            content: { type: 'string' },
+                            changeSummary: { type: 'string', nullable: true },
+                            status: { type: 'string', enum: ['draft'] },
+                            createdByUserId: { type: 'string', format: 'uuid' },
+                            createdAt: { type: 'string', format: 'date-time' },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          '401': { description: 'Authentication required or inactive account' },
+          '403': { description: 'Security Officer ownership required' },
+          '404': { description: 'Policy not found' },
+          '409': {
+            description: 'Not published, duplicate number or a version is already in progress',
+          },
+          '422': { description: 'Invalid input' },
+        },
+      },
+    },
     '/compliance/policies/{policyId}/versions/{versionId}/history': {
       get: {
         tags: ['Policy Management'],
@@ -3234,7 +3316,7 @@ export const openApiSpec = {
         tags: ['Event Ingestion'],
         summary: 'View centralized list of normalized security events',
         description:
-          'Returns a paginated list of ingested security events with associated source, event family, account/user, asset/device, and mapping status.',
+          'Returns a paginated list of ingested security events with associated source, event family, account/user, asset/device, and mapping status. When the durable pipeline is enabled, each item also includes detection { status, score, alertId }. Status is PENDING, PROCESSING, INSUFFICIENT_BASELINE, BELOW_THRESHOLD, LINKED_TO_ALERT, FAILED or PREVIOUSLY_EVALUATED. score is null when no historical comparison is available. Linked events may share an alert through correlation.',
         security: [{ bearerAuth: [] }],
         parameters: [
           { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
@@ -3380,7 +3462,7 @@ export const openApiSpec = {
         tags: ['AI Anomaly Detection & Alerts'],
         summary: 'Run anomaly detection over unprocessed normalized events',
         description:
-          'Requires an active Security Officer account and a deployed model version. Each request processes one bounded batch of pending normalized events, including file-imported events and events older than 24 hours. Run it again to process the next batch. Direct Wazuh API events are also eligible if an automated run has not processed them yet. Each event is evaluated once per model version; anomalous detections create alerts atomically.',
+          'Requires an active Security Officer account and a deployed model version. Each request processes one bounded batch of pending normalized events, including file-imported events and events older than 24 hours. Run it again to process the next batch. Direct Wazuh API events are also eligible if an automated run has not processed them yet. Each event is evaluated once per model/engine identity. Current scoring compares event-time history using empirical-history-v1; six family rules are evidence labels, not fixed score bonuses. insufficientBaseline counts unscored events; no alert is created without sufficient reference history. All decisions require score >= the configured model threshold or enabled asset override; matched rules contribute to scoring but do not bypass this gate. Open repeated alerts group within 15 minutes; alertsGrouped reports grouped matches. Policy timezone defaults to Asia/Ho_Chi_Minh. Scores are adjusted empirical historical rarity, not attack probabilities. Stored feature evidence preserves policy/weights and matched rules. Existing evaluated events are not rescored.',
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
@@ -3885,7 +3967,7 @@ export const openApiSpec = {
           },
         ],
         responses: {
-          '200': { description: 'Model versions and their latest evaluation metrics' },
+          '200': { description: 'Detection registry and optional historical evaluation metrics, plus explanationModel { provider: Ollama, model: configured runtime model name, enabled: boolean, purpose: EXPLANATION_ONLY, connectionStatus: NOT_CHECKED }. Enabled is configuration only, not a connectivity guarantee.' },
           '401': { description: 'Authentication required' },
           '403': { description: 'Security Officer role required' },
           '422': { description: 'Invalid query parameters' },
@@ -4475,7 +4557,7 @@ export const openApiSpec = {
           { name: 'sortOrder', in: 'query', schema: { type: 'string', enum: ['asc', 'desc'] } },
         ],
         responses: {
-          '200': { description: 'Paginated login history' },
+          '200': { description: 'Paginated login history with summary { successful, failed, accounts } over all matching records, independent of pagination. Accounts counts distinct non-null user IDs; unrecognized login identities are excluded. All query filters and viewer ownership scope apply to totals.' },
           '401': { description: 'Authentication required' },
           '403': { description: 'A supported login-history role is required' },
           '422': { description: 'Invalid query parameters' },

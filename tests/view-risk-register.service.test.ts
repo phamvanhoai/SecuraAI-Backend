@@ -78,9 +78,15 @@ const record = {
 
 describe('view risk register service', () => {
   beforeEach(() => vi.clearAllMocks());
+  it('uses the pending-acceptance scope for an explicitly granted Employee approver', async () => {
+    vi.mocked(riskRegisterRepository.findActor).mockResolvedValue({ id: 'approver', role: user_role.EMPLOYEE, status: user_status.ACTIVE, user_access_scopes_user_access_scopes_user_idTousers: [{ id: 'grant' }] });
+    vi.mocked(riskRegisterRepository.list).mockResolvedValue([0, []]);
+    await riskRegisterService.list('approver', query);
+    expect(riskRegisterRepository.list).toHaveBeenCalledWith(query, 'approver');
+  });
   it('exposes the open-review block to the assigned Owner', async () => {
     const owner = record.users_risks_owner_user_idTousers;
-    vi.mocked(riskRegisterRepository.findActor).mockResolvedValue({ id: owner.id, role: user_role.EMPLOYEE, status: user_status.ACTIVE });
+    vi.mocked(riskRegisterRepository.findActor).mockResolvedValue({ user_access_scopes_user_access_scopes_user_idTousers: [], id: owner.id, role: user_role.EMPLOYEE, status: user_status.ACTIVE });
     vi.mocked(riskRegisterRepository.findById).mockResolvedValue({ ...record, users_risks_created_byTousers: owner,
       risk_threats: [], risk_vulnerabilities: [], control_risk_links: [], risk_treatment_plans: [], incident_risks: [], risk_acceptances: [] });
     vi.mocked(riskRegisterRepository.findAcceptanceAudits).mockResolvedValueOnce([{ action: 'RISK_REVIEW_OPENED', occurred_at: now, after_data: { reason: 'Periodic review' } }]);
@@ -89,7 +95,7 @@ describe('view risk register service', () => {
     });
   });
   it.each([true, false])('reports linked asset context changes from the audit lookup (%s)', async (changed) => {
-    vi.mocked(riskRegisterRepository.findActor).mockResolvedValue({ id: 'u', role: user_role.SECURITY_OFFICER, status: user_status.ACTIVE });
+    vi.mocked(riskRegisterRepository.findActor).mockResolvedValue({ user_access_scopes_user_access_scopes_user_idTousers: [], id: 'u', role: user_role.SECURITY_OFFICER, status: user_status.ACTIVE });
     vi.mocked(riskRegisterRepository.findAcceptanceAudits).mockResolvedValue([]);
     vi.mocked(riskRegisterRepository.findAssetContextChange).mockResolvedValueOnce(changed ? { id: 'audit' } : null);
     vi.mocked(riskRegisterRepository.findById).mockResolvedValue({
@@ -108,7 +114,7 @@ describe('view risk register service', () => {
     [now, false],
     [new Date('2026-09-30T00:00:00Z'), true],
   ])('flags only classification after the inherent assessment (%s)', async (classifiedAt, expected) => {
-    vi.mocked(riskRegisterRepository.findActor).mockResolvedValue({ id: 'u', role: user_role.SECURITY_OFFICER, status: user_status.ACTIVE });
+    vi.mocked(riskRegisterRepository.findActor).mockResolvedValue({ user_access_scopes_user_access_scopes_user_idTousers: [], id: 'u', role: user_role.SECURITY_OFFICER, status: user_status.ACTIVE });
     vi.mocked(riskRegisterRepository.findAcceptanceAudits).mockResolvedValue([]);
     vi.mocked(riskRegisterRepository.findById).mockResolvedValue({
       ...record, users_risks_created_byTousers: record.users_risks_owner_user_idTousers, risk_threats: [], risk_vulnerabilities: [],
@@ -119,18 +125,18 @@ describe('view risk register service', () => {
     expect((await riskRegisterService.get('u', record.id)).assetClassificationReviewRequired).toBe(expected);
   });
   it('scopes non-Security Officers to risks they own', async () => {
-    vi.mocked(riskRegisterRepository.findActor).mockResolvedValue({
+    vi.mocked(riskRegisterRepository.findActor).mockResolvedValue({ user_access_scopes_user_access_scopes_user_idTousers: [],
       id: 'u',
       role: user_role.ADMIN,
       status: user_status.ACTIVE,
     });
     vi.mocked(riskRegisterRepository.list).mockResolvedValue([0, []]);
     await riskRegisterService.list('u', query);
-    expect(riskRegisterRepository.list).toHaveBeenCalledWith({ ...query, ownerId: 'u' });
+    expect(riskRegisterRepository.list).toHaveBeenCalledWith({ ...query, ownerId: 'u' }, undefined);
   });
   it.each(['no-assessment', 'residual-only', 'reassessed', 'newer-residual'])(
     'preserves the inherent assessment baseline: %s', async (scenario) => {
-      vi.mocked(riskRegisterRepository.findActor).mockResolvedValue({ id: 'u', role: user_role.SECURITY_OFFICER, status: user_status.ACTIVE });
+      vi.mocked(riskRegisterRepository.findActor).mockResolvedValue({ user_access_scopes_user_access_scopes_user_idTousers: [], id: 'u', role: user_role.SECURITY_OFFICER, status: user_status.ACTIVE });
       vi.mocked(riskRegisterRepository.findAcceptanceAudits).mockResolvedValue([]);
       const inherent = record.risk_assessments.map((item) => ({ ...item, residual_rating: null }));
       const newer = record.risk_assessments.map((item) => ({ ...item, assessed_at: new Date('2026-10-02T00:00:00Z') }));
@@ -147,7 +153,7 @@ describe('view risk register service', () => {
     },
   );
   it('maps V2 risk relationships into a bounded register page', async () => {
-    vi.mocked(riskRegisterRepository.findActor).mockResolvedValue({
+    vi.mocked(riskRegisterRepository.findActor).mockResolvedValue({ user_access_scopes_user_access_scopes_user_idTousers: [],
       id: 'u',
       role: user_role.SECURITY_OFFICER,
       status: user_status.ACTIVE,
@@ -164,7 +170,7 @@ describe('view risk register service', () => {
   });
 
   it('returns not found only after authorization succeeds', async () => {
-    vi.mocked(riskRegisterRepository.findActor).mockResolvedValue({
+    vi.mocked(riskRegisterRepository.findActor).mockResolvedValue({ user_access_scopes_user_access_scopes_user_idTousers: [],
       id: 'u',
       role: user_role.SECURITY_OFFICER,
       status: user_status.ACTIVE,
@@ -176,7 +182,7 @@ describe('view risk register service', () => {
   });
   it('keeps request and decision reasons separate and exposes expired rejection to an approver', async () => {
     const acceptanceId = '00000000-0000-4000-8000-000000000099';
-    vi.mocked(riskRegisterRepository.findActor).mockResolvedValue({ id: 'approver', role: user_role.SECURITY_OFFICER, status: user_status.ACTIVE });
+    vi.mocked(riskRegisterRepository.findActor).mockResolvedValue({ user_access_scopes_user_access_scopes_user_idTousers: [], id: 'approver', role: user_role.SECURITY_OFFICER, status: user_status.ACTIVE });
     vi.mocked(riskRegisterRepository.findById).mockResolvedValue({ ...record, users_risks_created_byTousers: record.users_risks_owner_user_idTousers,
       risk_threats: [], risk_vulnerabilities: [], control_risk_links: [], risk_treatment_plans: [], incident_risks: [],
       risk_acceptances: [{ id: acceptanceId, decision: 'PENDING', reason: 'Owner justification', requested_at: now, valid_until: new Date('2020-01-01'), requested_by: record.users_risks_owner_user_idTousers.id, decided_by: null, decided_at: null }],
@@ -188,7 +194,7 @@ describe('view risk register service', () => {
   });
   it('exposes review only to the assigned Owner of an accepted Risk', async () => {
     const ownerId = record.users_risks_owner_user_idTousers.id;
-    vi.mocked(riskRegisterRepository.findActor).mockResolvedValue({ id: ownerId, role: user_role.EMPLOYEE, status: user_status.ACTIVE });
+    vi.mocked(riskRegisterRepository.findActor).mockResolvedValue({ user_access_scopes_user_access_scopes_user_idTousers: [], id: ownerId, role: user_role.EMPLOYEE, status: user_status.ACTIVE });
     vi.mocked(riskRegisterRepository.findById).mockResolvedValue({ ...record, status: 'ACCEPTED', users_risks_created_byTousers: record.users_risks_owner_user_idTousers,
       risk_threats: [], risk_vulnerabilities: [], control_risk_links: [], risk_treatment_plans: [], incident_risks: [], risk_acceptances: [],
     });
@@ -197,7 +203,7 @@ describe('view risk register service', () => {
     expect(result.acceptanceWorkflow).toMatchObject({ canOpenReview: true, canSubmit: false });
   });
   it('returns the explicitly saved service without deriving it from assets', async () => {
-    vi.mocked(riskRegisterRepository.findActor).mockResolvedValue({
+    vi.mocked(riskRegisterRepository.findActor).mockResolvedValue({ user_access_scopes_user_access_scopes_user_idTousers: [],
       id: 'u',
       role: user_role.SECURITY_OFFICER,
       status: user_status.ACTIVE,

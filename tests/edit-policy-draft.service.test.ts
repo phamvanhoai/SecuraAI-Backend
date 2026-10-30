@@ -76,6 +76,15 @@ describe('edit policy draft service', () => {
     });
   });
 
+  it('allows editing the next draft while the policy remains active', async () => {
+    const next = draft();
+    vi.mocked(policyComplianceRepository.findDraftForEdit).mockResolvedValue({
+      ...next, policies_policy_versions_policy_idTopolicies: { ...next.policies_policy_versions_policy_idTopolicies, status: 'ACTIVE' },
+    });
+    await expect(policyComplianceService.editOwnDraft(userId, policyId, versionId, { content: 'Next version' })).resolves.toMatchObject({ policyId });
+    expect(policyComplianceRepository.editDraft).toHaveBeenCalledOnce();
+  });
+
   it('rejects users who are not Security Officers', async () => {
     vi.mocked(policyComplianceRepository.findActor).mockResolvedValue({
       id: userId,

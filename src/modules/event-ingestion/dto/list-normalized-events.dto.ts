@@ -7,14 +7,7 @@ export const listNormalizedEventsQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(20),
   sortBy: z
-    .enum([
-      'occurredAt',
-      'ingestedAt',
-      'eventType',
-      'eventFamily',
-      'severity',
-      'mappingStatus',
-    ])
+    .enum(['occurredAt', 'ingestedAt', 'eventType', 'eventFamily', 'severity', 'mappingStatus'])
     .default('occurredAt'),
   sortOrder: z.enum(['asc', 'desc']).default('desc'),
   q: z.string().trim().min(1).optional(),
@@ -117,6 +110,7 @@ export type MappingOptionsDto = {
 };
 
 export type NormalizedEventItemDto = {
+  detection?: { status: string; score: number | null; alertId: string | null };
   id: string;
   eventSourceId: string;
   eventSourceName: string;

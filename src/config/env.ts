@@ -34,6 +34,7 @@ const envSchema = z.object({
   OLLAMA_MODEL: z.string().trim().min(1).default('qwen3:4b'),
   OLLAMA_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120_000).default(60_000),
   ANOMALY_AUTO_DETECTION_ENABLED: booleanString.default(true),
+  DETECTION_PIPELINE_ENABLED: booleanString.default(false),
   ANOMALY_AUTO_DETECTION_INTERVAL_MS: z.coerce
     .number()
     .int()

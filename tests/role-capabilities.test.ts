@@ -93,11 +93,12 @@ describe('WBS role capability compatibility', () => {
       'incidents.read',
       'reports.read',
       'notifications.preferences',
+      'login-history.read',
     ]);
     expect(capabilitiesForRole(user_role.EMPLOYEE)).toEqual([
-      'assets.read',
       'policies.acknowledge',
       'notifications.preferences',
+      'login-history.read',
     ]);
   });
 });
