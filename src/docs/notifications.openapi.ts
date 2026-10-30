@@ -1,4 +1,32 @@
+const notificationImagesInput = {
+  type: 'array', maxItems: 3,
+  description: 'Optional optimized PNG images, up to 192 KiB each and 1600 pixels per side. The UI converts selected PNG/JPEG/WebP files up to 5 MiB to this format.',
+  items: { type: 'object', additionalProperties: false, required: ['name', 'dataUrl'], properties: {
+    name: { type: 'string', maxLength: 120, description: 'PNG filename without path components.' },
+    dataUrl: { type: 'string', maxLength: 262166, pattern: '^data:image/png;base64,[A-Za-z0-9+/]+={0,2}$' },
+  } },
+} as const;
 export const notificationPaths = {
+  '/notifications/inbox/{id}': { get: {
+    tags: ['Notification & System Logs'], summary: 'View an own notification with image references',
+    description: 'Only the active recipient can view this inbox item. Reading details does not mark it read; use the read action after viewing.',
+    security: [{ bearerAuth: [] }],
+    parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } }],
+    responses: { '200': { description: 'Notification content, sender, image references and read timestamp' },
+      '401': { description: 'Authentication required' }, '404': { description: 'Own notification not found' }, '422': { description: 'Invalid identifier' } },
+  } },
+  '/notifications/{id}/images/{index}': { get: {
+    tags: ['Notification & System Logs'], summary: 'Read a private notification image',
+    description: 'Active recipients of this notification and active Administrators may read the image. Binary PNG response; no public file URL or persistent browser caching.',
+    security: [{ bearerAuth: [] }],
+    parameters: [
+      { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+      { name: 'index', in: 'path', required: true, schema: { type: 'integer', minimum: 0, maximum: 2 } },
+    ],
+    responses: { '200': { description: 'Verified PNG image', content: { 'image/png': { schema: { type: 'string', format: 'binary' } } } },
+      '401': { description: 'Authentication required' }, '404': { description: 'Image unavailable or not authorized' },
+      '409': { description: 'Image integrity verification failed' }, '422': { description: 'Invalid identifier or index' } },
+  } },
   '/notifications/preferences': {
     get: {
       tags: ['Notification & System Logs'],
@@ -54,7 +82,7 @@ export const notificationPaths = {
       tags: ['Notification & System Logs'],
       summary: 'Send an email notification',
       description:
-        'Allows an active Administrator to send a text-only email through the configured SMTP service to up to 20 selected active users. Delivery outcomes are recorded per recipient.',
+        'Allows an active Administrator to send a email with optional inline images through the configured SMTP service to up to 20 selected active users. Delivery outcomes are recorded per recipient.',
       security: [{ bearerAuth: [] }],
       requestBody: {
         required: true,
@@ -67,6 +95,7 @@ export const notificationPaths = {
               properties: {
                 subject: { type: 'string', minLength: 1, maxLength: 160 },
                 message: { type: 'string', minLength: 1, maxLength: 4000 },
+                images: notificationImagesInput,
                 userIds: {
                   type: 'array',
                   minItems: 1,
@@ -107,6 +136,7 @@ export const notificationPaths = {
               properties: {
                 title: { type: 'string', minLength: 1, maxLength: 160 },
                 message: { type: 'string', minLength: 1, maxLength: 2000 },
+                images: notificationImagesInput,
                 priority: { type: 'string', enum: ['NORMAL', 'IMPORTANT', 'URGENT'] },
                 audience: {
                   oneOf: [

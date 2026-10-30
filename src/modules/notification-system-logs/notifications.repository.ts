@@ -1,3 +1,4 @@
+import type { StoredNotificationImage } from './notification-images.js';
 import { createHash, randomUUID } from 'node:crypto';
 import { AppError } from '../../common/errors/app-error.js';
 import { prisma } from '../../database/prisma.js';
@@ -13,10 +14,28 @@ const transactionOptions = {
 } as const;
 
 export const notificationsRepository = {
+  findInboxItem(userId: string, id: string) {
+    return prisma.notification_recipients.findFirst({
+      where: { id, user_id: userId },
+      select: { id: true, read_at: true, notification: { select: {
+        id: true, title: true, message: true, image_references: true, priority: true,
+        created_at: true, sender: { select: { full_name: true, email: true } },
+      } } },
+    });
+  },
+  findReadableImageMessage(userId: string, notificationId: string, administrator: boolean) {
+    return prisma.notifications.findFirst({
+      where: {
+        id: notificationId,
+        ...(administrator ? {} : { notification_recipients: { some: { user_id: userId } } }),
+      },
+      select: { image_references: true },
+    });
+  },
   async history(query: NotificationHistoryQuery) {
     const where = {};
     const [items, total] = await prisma.$transaction([
-      prisma.notifications.findMany({ where, orderBy: [{ created_at: 'desc' }, { id: 'desc' }], skip: (query.page - 1) * query.limit, take: query.limit, select: { id: true, title: true, message: true, priority: true, created_at: true, audience_type: true, sender: { select: { full_name: true, email: true } }, notification_recipients: { select: { user: { select: { full_name: true, email: true } }, notification_deliveries: { select: { channel: true, status: true, last_error_code: true, last_error_message: true, sent_at: true, delivered_at: true } } } } } }),
+      prisma.notifications.findMany({ where, orderBy: [{ created_at: 'desc' }, { id: 'desc' }], skip: (query.page - 1) * query.limit, take: query.limit, select: { id: true, title: true, message: true, image_references: true, priority: true, created_at: true, audience_type: true, sender: { select: { full_name: true, email: true } }, notification_recipients: { select: { user: { select: { full_name: true, email: true } }, notification_deliveries: { select: { channel: true, status: true, last_error_code: true, last_error_message: true, sent_at: true, delivered_at: true } } } } } }),
       prisma.notifications.count({ where }),
     ]);
     return { items, total };
@@ -24,7 +43,7 @@ export const notificationsRepository = {
   async inbox(userId: string, query: NotificationInboxQuery) {
     const where = { user_id: userId, ...(query.unread === 'true' ? { read_at: null } : query.unread === 'false' ? { NOT: { read_at: null } } : {}) };
     const [items, total, unreadCount] = await prisma.$transaction([
-      prisma.notification_recipients.findMany({ where, orderBy: [{ created_at: 'desc' }, { id: 'desc' }], skip: (query.page - 1) * query.limit, take: query.limit, select: { id: true, read_at: true, created_at: true, notification: { select: { id: true, title: true, message: true, priority: true, created_at: true, sender: { select: { full_name: true, email: true } } } } } }),
+      prisma.notification_recipients.findMany({ where, orderBy: [{ created_at: 'desc' }, { id: 'desc' }], skip: (query.page - 1) * query.limit, take: query.limit, select: { id: true, read_at: true, created_at: true, notification: { select: { id: true, title: true, message: true, image_references: true, priority: true, created_at: true, sender: { select: { full_name: true, email: true } } } } } }),
       prisma.notification_recipients.count({ where }),
       prisma.notification_recipients.count({ where: { user_id: userId, read_at: null } }),
     ]);
@@ -118,7 +137,7 @@ export const notificationsRepository = {
     });
   },
 
-  create(actorUserId: string, input: SendInSystemNotificationInput, recipientIds: string[]) {
+  create(actorUserId: string, input: SendInSystemNotificationInput, recipientIds: string[], images: StoredNotificationImage[] = []) {
     return prisma.$transaction(async (tx) => {
       const actor = await tx.users.findUnique({
         where: { id: actorUserId },
@@ -145,6 +164,7 @@ export const notificationsRepository = {
         data: {
           title: input.title,
           message: input.message,
+          image_references: images,
           priority: input.priority,
           audience_type: input.audience.type === 'roles' ? 'ROLES' : 'USERS',
           audience_definition:
@@ -209,7 +229,7 @@ export const notificationsRepository = {
     });
   },
 
-  prepareEmail(actorUserId: string, input: SendEmailNotificationInput) {
+  prepareEmail(actorUserId: string, input: SendEmailNotificationInput, images: StoredNotificationImage[] = []) {
     return prisma.$transaction(async (tx) => {
       const actor = await tx.users.findUnique({
         where: { id: actorUserId },
@@ -234,6 +254,7 @@ export const notificationsRepository = {
         data: {
           title: input.subject,
           message: input.message,
+          image_references: images,
           priority: 'NORMAL',
           audience_type: 'USERS',
           audience_definition: { userIds: input.userIds },

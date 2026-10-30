@@ -4076,6 +4076,34 @@ export const openApiSpec = {
         },
       },
     },
+    '/auth/change-password': {
+      post: {
+        tags: ['Authentication'],
+        summary: 'Change password and sign out all devices',
+        description: 'Requires an active authenticated account and the correct current password. Updates the password and revokes all refresh sessions atomically. Previously issued access tokens are rejected on subsequent authenticated requests. All devices must log in again.',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: {
+            type: 'object', additionalProperties: false,
+            required: ['currentPassword', 'newPassword', 'confirmPassword'],
+            properties: {
+              currentPassword: { type: 'string', minLength: 1, maxLength: 128 },
+              newPassword: { type: 'string', minLength: 8, maxLength: 128, description: 'Must contain an uppercase letter and a special character and differ from the current password.' },
+              confirmPassword: { type: 'string', description: 'Must match newPassword.' },
+            },
+          } } },
+        },
+        responses: {
+          '200': { description: 'Password changed; sign in again on all devices' },
+          '400': { description: 'Incorrect current password or unchanged password' },
+          '401': { description: 'Authentication required or password changed since token issuance' },
+          '409': { description: 'Concurrent password change' },
+          '422': { description: 'Invalid password fields or confirmation mismatch' },
+          '429': { description: 'Too many attempts' },
+        },
+      },
+    },
     '/auth/password-reset/verify': {
       post: {
         tags: ['Authentication'],

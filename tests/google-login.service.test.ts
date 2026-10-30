@@ -46,6 +46,7 @@ describe('Google authentication service', () => {
       google_subject: null,
     });
     vi.mocked(authRepository.createGoogleSession).mockResolvedValue({
+      passwordChangedAt: 0,
       id: userId,
       role: user_role.EXECUTIVE,
     });

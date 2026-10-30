@@ -21,6 +21,7 @@ export type NotificationEmailInput = {
   message: string;
   /** Optional — shown in the info callout to identify the sender */
   senderName?: string;
+  inlineImages?: { name: string; cid: string }[];
 };
 
 function renderMessageBody(raw: string): string {
@@ -39,6 +40,10 @@ export function renderNotificationEmail(input: NotificationEmailInput): string {
 
   const bodyHtml = [
     renderMessageBody(input.message),
+    ...(input.inlineImages ?? []).map(
+      (image) =>
+        `<p><img src="cid:${escapeHtml(image.cid)}" alt="${escapeHtml(image.name)}" style="display:block;max-width:100%;height:auto;border:0;"></p>`,
+    ),
     divider(),
     senderLine,
     calloutBox(
