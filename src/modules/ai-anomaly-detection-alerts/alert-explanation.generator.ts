@@ -58,6 +58,10 @@ function fallbackExplanation(input: StoredAlertExplanationInput): string {
           .join(' ')
       : 'The detection score met the configured threshold.',
   ];
+  const statistical = record('statistical_baseline');
+  if (statistical.method === 'empirical-history-v1') {
+    return `The current activity was compared with ${String(statistical.activeWindows)} previous active ${String(statistical.windowMinutes)}-minute windows for the same account/source and event family.\n\nHistorical anomaly score: ${score}. This is an adjusted empirical rarity score, not attack probability. It reached the configured threshold of ${threshold}.\n\nReview the historical comparison below for the observed values, reference sample sizes and equally or more unusual observations. No fixed rule points or severity bonuses are added. Confirm whether this activity was expected before taking action.`;
+  }
   const failures = record('failure_count_in_window');
   if (
     typeof failures.count === 'number' &&

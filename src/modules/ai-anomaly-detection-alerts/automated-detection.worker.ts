@@ -35,17 +35,17 @@ async function drainPendingEvents(): Promise<void> {
 }
 
 export function requestAutomatedDetection(): void {
+  // API ingestion only commits events. A separate process discovers durable
+  // jobs; do not start background detection in a serverless request.
+  if (env.DETECTION_PIPELINE_ENABLED && !timer) return;
   queueMicrotask(() => void drainPendingEvents());
 }
 
 export function startAutomatedDetectionWorker(): void {
   if (!env.ANOMALY_AUTO_DETECTION_ENABLED || timer) return;
-  requestAutomatedDetection();
-  timer = setInterval(
-    () => requestAutomatedDetection(),
-    env.ANOMALY_AUTO_DETECTION_INTERVAL_MS,
-  );
+  timer = setInterval(() => requestAutomatedDetection(), env.ANOMALY_AUTO_DETECTION_INTERVAL_MS);
   timer.unref();
+  requestAutomatedDetection();
   logger.info(
     { intervalMs: env.ANOMALY_AUTO_DETECTION_INTERVAL_MS },
     'Automated anomaly detection worker started',

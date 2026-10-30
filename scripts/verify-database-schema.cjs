@@ -12,20 +12,20 @@ async function verifyDatabaseSchema() {
     'notification_recipients',
     'notifications',
     'authentication_history',
+    'risk_treatment_plan_controls',
+    'detection_jobs',
   ];
   const expected = [
     ...new Set([
-      ...[...sql.matchAll(/^CREATE TABLE\s+([a-z_][a-z0-9_]*)\s*\(/gim)].map(
-        (match) => match[1],
-      ),
+      ...[...sql.matchAll(/^CREATE TABLE\s+([a-z_][a-z0-9_]*)\s*\(/gim)].map((match) => match[1]),
       ...additiveTables,
     ]),
   ].sort();
   // The approved baseline remains immutable. These totals include every
-  // applied additive migration through Send In-System Notification, plus
-  // chk_assets_asset_type from 20261019093000_standardize_asset_types.
-  const expectedForeignKeys = 136;
-  const expectedChecks = 188; // Includes authentication history status constraints.
+  // applied additive migration through the durable detection pipeline, plus
+  // treatment-plan links and detection decision constraints.
+  const expectedForeignKeys = 144;
+  const expectedChecks = 194; // Includes four detection job checks.
   const rows = await prisma.$queryRaw`
     SELECT table_name
     FROM information_schema.tables

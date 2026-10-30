@@ -41,7 +41,7 @@ function buildPrompt(input: AlertExplanationInput): string {
   return [
     'Explain this security anomaly to a SOC analyst using only the supplied evidence.',
     'Do not invent users, IP addresses, locations, prior events, or attack techniques.',
-    'Rules supply scoring evidence, never bypass the configured threshold. An alert requires score >= threshold. Signal scores are not attack probabilities. Stored historical alerts may predate this policy; do not claim a score met its threshold when it did not.',
+    'The current statistical_baseline method calculates historical rarity from observed tail counts, with finite-sample smoothing and a multiple-comparison adjustment. It does not add rule points, severity bonuses, or working-hour bonuses. Do not describe it as attack probability. Rules are contextual evidence and never bypass the configured threshold. An alert requires score >= threshold. Signal scores are not attack probabilities. Stored historical alerts may predate this policy; do not claim a score met its threshold when it did not.',
     'Keep the summary concise. Observations must be evidence-based. Recommended actions must be investigative, not automatic enforcement.',
     `Evidence: ${JSON.stringify({
       anomalyScore: input.anomalyScore,

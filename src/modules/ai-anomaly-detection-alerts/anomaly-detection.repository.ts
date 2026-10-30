@@ -1,10 +1,12 @@
 import { createHash } from 'node:crypto';
-import type { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { prisma } from '../../database/prisma.js';
 import type { DetectionFeature } from './contextual-detection.js';
 import { detectionSeverity } from './contextual-detection.js';
 import { peakSnapshot } from './alert-score-snapshot.js';
-const engineVersion = 'contextual-rules-v1';
+import { env } from '../../config/env.js';
+import { detectionJobsRepository, pipelineEngine } from './detection-jobs.repository.js';
+const engineVersion = env.DETECTION_PIPELINE_ENABLED ? pipelineEngine : 'contextual-rules-v1';
 
 const eventSelect = {
   id: true,
@@ -28,6 +30,22 @@ export type DetectionEvent = Prisma.normalized_eventsGetPayload<{ select: typeof
 export type PendingEventScope = 'ALL' | 'WAZUH_REALTIME';
 
 export const anomalyDetectionRepository = {
+  async findPeerContext(event: DetectionEvent) {
+    const events = await prisma.normalized_events.findMany({
+      where: {
+        event_source_id: event.event_source_id,
+        event_family: event.event_family,
+        occurred_at: {
+          gte: new Date(event.occurred_at.getTime() - 7 * 86_400_000),
+          lte: event.occurred_at,
+        },
+      },
+      select: eventSelect,
+      orderBy: [{ occurred_at: 'desc' }, { id: 'desc' }],
+      take: 5001,
+    });
+    return { events: events.slice(0, 5000), truncated: events.length > 5000 };
+  },
   async findEventContext(event: DetectionEvent) {
     if (!event.account_identifier && !event.source_ip) return { events: [], truncated: false };
     const events = await prisma.normalized_events.findMany({
@@ -66,6 +84,17 @@ export const anomalyDetectionRepository = {
     take: number,
     scope: PendingEventScope,
   ) {
+    if (env.DETECTION_PIPELINE_ENABLED) {
+      await detectionJobsRepository.discover(modelVersionId, scope);
+      const claim = await detectionJobsRepository.claim(modelVersionId, take, 'DETECTION', scope);
+      const ids = claim.jobs.flatMap((job) => (job.event_id ? [job.event_id] : []));
+      const events = await prisma.normalized_events.findMany({
+        where: { id: { in: ids } },
+        select: eventSelect,
+        orderBy: [{ occurred_at: 'asc' }, { id: 'asc' }],
+      });
+      return { events, leaseToken: claim.token };
+    }
     const timeWindow = since ? { occurred_at: { gte: since } } : {};
     const sourceScope: Prisma.normalized_eventsWhereInput =
       scope === 'WAZUH_REALTIME'
@@ -89,6 +118,15 @@ export const anomalyDetectionRepository = {
     return { events };
   },
   async hasPendingEvents(modelVersionId: string) {
+    if (env.DETECTION_PIPELINE_ENABLED) {
+      const rows = await prisma.$queryRaw<{ pending: boolean }[]>`SELECT EXISTS (
+        SELECT 1 FROM detection_jobs j WHERE j.kind='DETECTION' AND j.model_version_id=${modelVersionId}::uuid
+          AND j.engine_version=${pipelineEngine} AND j.status IN ('PENDING','PROCESSING')
+        UNION ALL SELECT 1 FROM normalized_events e WHERE NOT EXISTS(SELECT 1 FROM anomaly_detections d WHERE d.event_id=e.id AND d.model_version_id=${modelVersionId}::uuid)
+          AND NOT EXISTS(SELECT 1 FROM detection_jobs j WHERE j.event_id=e.id AND j.model_version_id=${modelVersionId}::uuid AND j.engine_version=${pipelineEngine})
+      ) AS pending`;
+      return rows[0]?.pending ?? false;
+    }
     const pending = await prisma.normalized_events.findFirst({
       where: {
         anomaly_detections: {
@@ -100,6 +138,7 @@ export const anomalyDetectionRepository = {
     return pending !== null;
   },
   persistRun(input: {
+    leaseToken?: string | undefined;
     actor: { type: 'USER'; userId: string } | { type: 'SYSTEM' };
     modelVersionId: string;
     correlationId?: string | undefined;
@@ -114,6 +153,7 @@ export const anomalyDetectionRepository = {
       isAnomaly: boolean;
       occurredAt: Date;
       features: DetectionFeature[];
+      baselineReady?: boolean;
       groupKey: string;
       explanationText?: string;
       explanationGeneratedAt?: Date;
@@ -139,6 +179,13 @@ export const anomalyDetectionRepository = {
           })),
           skipDuplicates: true,
         });
+        if (input.leaseToken) {
+          const owned = await transaction.$queryRaw<
+            { id: string }[]
+          >`SELECT id FROM detection_jobs WHERE lease_token=${input.leaseToken}::uuid AND status='PROCESSING' AND lease_until>now() FOR UPDATE`;
+          if (owned.length !== input.detections.length)
+            throw new Error('Detection lease expired; discard stale results');
+        }
         const persistedAnomalies = anomalyIds.length
           ? await transaction.anomaly_detections.findMany({
               where: { id: { in: anomalyIds }, anomaly_alerts: null },
@@ -324,6 +371,16 @@ export const anomalyDetectionRepository = {
         }
         if (groupedEvidence.length)
           await transaction.anomaly_feature_contributions.createMany({ data: groupedEvidence });
+        if (input.leaseToken) {
+          for (const item of input.detections) {
+            await transaction.$executeRaw`UPDATE detection_jobs SET status=${item.baselineReady === false ? 'INSUFFICIENT_BASELINE' : 'COMPLETED'},result=${JSON.stringify({ scored: item.baselineReady !== false, score: item.baselineReady === false ? null : item.score, isAnomaly: item.isAnomaly, detectionId: item.id })}::jsonb,
+              lease_token=NULL,lease_until=NULL,error_code=NULL,updated_at=now()
+              WHERE lease_token=${input.leaseToken}::uuid AND event_id=${item.eventId}::uuid`;
+          }
+          await transaction.$executeRaw`INSERT INTO detection_jobs(kind,alert_id,model_version_id,engine_version)
+            SELECT 'EXPLANATION',a.id,${input.modelVersionId}::uuid,${pipelineEngine} FROM anomaly_alerts a JOIN anomaly_detections d ON d.id=a.detection_id
+            WHERE d.id IN (${Prisma.join(input.detections.map((d) => Prisma.sql`${d.id}::uuid`))}) ON CONFLICT DO NOTHING`;
+        }
         const previous = await transaction.audit_logs.findFirst({
           orderBy: [{ occurred_at: 'desc' }, { id: 'desc' }],
           select: { record_hash: true },

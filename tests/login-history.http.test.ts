@@ -31,6 +31,7 @@ describe('login history HTTP endpoint', () => {
   it('returns the paginated response', async () => {
     vi.mocked(loginHistoryService.list).mockResolvedValue({
       items: [],
+      summary: { successful: 0, failed: 0, accounts: 0 },
       pagination: { page: 1, limit: 20, total: 0, totalPages: 0 },
     });
     const response = await request(app)

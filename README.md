@@ -144,3 +144,8 @@ Employee responsibility selection is exclusive: at most one of Risk Owner, Contr
 Contextual actor workflow audit and current access boundaries: [docs/contextual-actor-workflows.md](docs/contextual-actor-workflows.md).
 
 Contextual anomaly detection rules, configuration and demo: [docs/contextual-detection.md](docs/contextual-detection.md).
+
+
+Current detection scoring: empirical-history-v1 compares recorded event-time history by principal/source/family/application/protocol. No 55-point base or weighted severity/off-hours bonuses. Alert requires a READY baseline and score >= model/asset threshold. Insufficient/truncated/missing context records null score in statistical_baseline evidence (zero in the required legacy numeric column is a storage sentinel, not a normality judgment). Manual results expose insufficientBaseline. Existing records are never automatically rescored. See docs/history-baseline-scoring.md.
+
+Durable detection setup and deployment: [docs/durable-detection-pipeline.md](docs/durable-detection-pipeline.md).

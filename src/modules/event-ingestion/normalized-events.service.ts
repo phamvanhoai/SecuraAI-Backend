@@ -1,4 +1,6 @@
 import { AppError } from '../../common/errors/app-error.js';
+import { eventPipelineStatuses } from '../ai-anomaly-detection-alerts/pipeline-status.service.js';
+import { env } from '../../config/env.js';
 import { normalizedEventsRepository } from './normalized-events.repository.js';
 import type {
   EntityMappingDto,
@@ -140,6 +142,7 @@ export const normalizedEventsService = {
     query: ListNormalizedEventsQuery,
   ): Promise<PaginatedNormalizedEventsDto> {
     const { items, total } = await normalizedEventsRepository.findEvents(query);
+    const processing = await eventPipelineStatuses(items.map((item) => item.id));
 
     const formattedItems: NormalizedEventItemDto[] = items.map((event) => {
       const activeUser = event.event_entity_mappings.find(
@@ -166,6 +169,15 @@ export const normalizedEventsService = {
 
       return {
         id: event.id,
+        ...(env.DETECTION_PIPELINE_ENABLED
+          ? {
+              detection: processing.get(event.id) ?? {
+                status: event._count.anomaly_detections > 0 ? 'PREVIOUSLY_EVALUATED' : 'PENDING',
+                score: null,
+                alertId: null,
+              },
+            }
+          : {}),
         eventSourceId: event.event_source_id,
         eventSourceName: event.event_sources.name,
         eventSourceType: event.event_sources.source_type,
@@ -200,10 +212,7 @@ export const normalizedEventsService = {
     };
   },
 
-  async getEventDetail(
-    _userId: string,
-    id: string,
-  ): Promise<NormalizedEventDetailDto> {
+  async getEventDetail(_userId: string, id: string): Promise<NormalizedEventDetailDto> {
     const event = await normalizedEventsRepository.findById(id);
     if (!event) {
       throw new AppError(404, 'NOT_FOUND', 'Normalized security event not found');
@@ -214,7 +223,8 @@ export const normalizedEventsService = {
 
     const mappedUser = activeMappings.find((m) => m.mappedUser)?.mappedUser ?? null;
     const mappedAsset = activeMappings.find((m) => m.mappedAsset)?.mappedAsset ?? null;
-    const monitoredAccount = activeMappings.find((m) => m.monitoredAccount)?.monitoredAccount ?? null;
+    const monitoredAccount =
+      activeMappings.find((m) => m.monitoredAccount)?.monitoredAccount ?? null;
 
     const baseActive = activeMappings[0] ?? rawMappingHistory[0] ?? null;
     const activeMapping = baseActive

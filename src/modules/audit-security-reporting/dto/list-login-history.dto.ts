@@ -8,7 +8,10 @@ export const listLoginHistoryQuerySchema = z
     search: z.string().trim().min(1).max(255).optional(),
     status: z.enum(['success', 'failed']).optional(),
     userId: z.uuid().optional(),
-    ipAddress: z.string().refine((value) => isIP(value) !== 0, 'Invalid IP address').optional(),
+    ipAddress: z
+      .string()
+      .refine((value) => isIP(value) !== 0, 'Invalid IP address')
+      .optional(),
     from: z.iso.datetime({ offset: true }).optional(),
     to: z.iso.datetime({ offset: true }).optional(),
     sortBy: z.literal('loginTime').default('loginTime'),
@@ -23,6 +26,7 @@ export const listLoginHistoryQuerySchema = z
 export type ListLoginHistoryQuery = z.infer<typeof listLoginHistoryQuerySchema>;
 
 export type LoginHistoryList = {
+  summary: { successful: number; failed: number; accounts: number };
   items: Array<{
     id: string;
     userId: string | null;

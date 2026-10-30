@@ -32,6 +32,7 @@ describe('login history service', () => {
         },
       ],
       total: 1,
+      summary: { successful: 18, failed: 2, accounts: 5 },
     });
   });
 
@@ -54,6 +55,7 @@ describe('login history service', () => {
       failureReason: null,
     });
     expect(result.pagination).toEqual({ page: 1, limit: 20, total: 1, totalPages: 1 });
+    expect(result.summary).toEqual({ successful: 18, failed: 2, accounts: 5 });
   });
 
   it('allows an active Security Officer', async () => {
@@ -78,7 +80,11 @@ describe('login history service', () => {
       role: 'EMPLOYEE',
       status: 'ACTIVE',
     });
-    vi.mocked(loginHistoryRepository.list).mockResolvedValue({ items: [], total: 0 });
+    vi.mocked(loginHistoryRepository.list).mockResolvedValue({
+      items: [],
+      total: 0,
+      summary: { successful: 0, failed: 0, accounts: 0 },
+    });
 
     await loginHistoryService.list(viewerId, {
       page: 1,
@@ -99,7 +105,11 @@ describe('login history service', () => {
       role: 'EXECUTIVE',
       status: 'ACTIVE',
     });
-    vi.mocked(loginHistoryRepository.list).mockResolvedValue({ items: [], total: 0 });
+    vi.mocked(loginHistoryRepository.list).mockResolvedValue({
+      items: [],
+      total: 0,
+      summary: { successful: 0, failed: 0, accounts: 0 },
+    });
 
     await loginHistoryService.list(viewerId, {
       page: 1,
