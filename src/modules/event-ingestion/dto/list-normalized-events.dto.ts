@@ -82,7 +82,7 @@ export const updateEntityMappingSchema = z.object({
   userId: z.string().uuid().nullable().optional(),
   assetId: z.string().uuid().nullable().optional(),
   monitoredAccountId: z.string().uuid().nullable().optional(),
-  reason: z.string().trim().min(1, 'Reason for correction is required').max(500),
+  reason: z.string().trim().min(1, 'Reason for mapping correction is required.').max(500),
   confidence: z.coerce.number().min(0).max(1).optional().default(1.0),
 });
 
