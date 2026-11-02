@@ -15,13 +15,13 @@ export const createIntegrationApiKeySchema = z.object({
   name: z
     .string()
     .trim()
-    .min(1, 'API key name is required')
+    .min(1, 'Key name cannot be empty')
     .max(255, 'API key name must not exceed 255 characters')
     .optional(),
   keyName: z
     .string()
     .trim()
-    .min(1, 'Key name is required')
+    .min(1, 'Key name cannot be empty')
     .max(255, 'Key name must not exceed 255 characters')
     .optional(),
   eventSourceId: z
@@ -67,7 +67,7 @@ export const createIntegrationApiKeySchema = z.object({
 }).refine(
   (data) => Boolean(data.name?.trim() || data.keyName?.trim()),
   {
-    message: 'API key name is required',
+    message: 'Key name cannot be empty',
     path: ['name'],
   },
 );
