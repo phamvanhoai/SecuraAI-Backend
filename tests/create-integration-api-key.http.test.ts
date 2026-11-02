@@ -110,6 +110,7 @@ describe('Create Integration API Key HTTP Endpoints', () => {
           name: 'Wazuh Ingest Key',
           eventSourceId: mockIntegrationId,
           scopes: ['events:ingest', 'events:read'],
+          expiresAt: new Date(Date.now() + 86400000 * 30).toISOString(),
         });
 
       expect(res.status).toBe(201);
@@ -133,6 +134,20 @@ describe('Create Integration API Key HTTP Endpoints', () => {
         .set('Authorization', `Bearer ${token}`)
         .send({
           scopes: ['events:ingest'],
+          expiresAt: new Date(Date.now() + 86400000 * 30).toISOString(),
+        });
+
+      expect(res.status).toBe(422);
+    });
+
+    it('returns 422 when expiresAt is missing or null', async () => {
+      const res = await request(app)
+        .post('/api/v1/integrations/api-keys')
+        .set('Authorization', `Bearer ${token}`)
+        .send({
+          name: 'Test Key',
+          scopes: ['events:ingest'],
+          expiresAt: null,
         });
 
       expect(res.status).toBe(422);
@@ -149,6 +164,7 @@ describe('Create Integration API Key HTTP Endpoints', () => {
         .send({
           name: 'Wazuh Ingest Key',
           scopes: ['events:ingest'],
+          expiresAt: new Date(Date.now() + 86400000 * 30).toISOString(),
         });
 
       expect(res.status).toBe(201);
@@ -172,6 +188,7 @@ describe('Create Integration API Key HTTP Endpoints', () => {
         .send({
           name: 'Nonexistent Source Key',
           scopes: ['events:ingest'],
+          expiresAt: new Date(Date.now() + 86400000 * 30).toISOString(),
         });
 
       expect(res.status).toBe(404);

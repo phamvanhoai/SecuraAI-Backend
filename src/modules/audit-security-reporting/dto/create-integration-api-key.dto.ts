@@ -45,17 +45,21 @@ export const createIntegrationApiKeySchema = z.object({
     .min(1, 'At least one authorized scope is required')
     .default(['events:ingest']),
   expiresAt: z
-    .string()
+    .string({ message: 'Expiration date is required. Non-expiring API keys are not permitted' })
+    .trim()
+    .min(1, 'Expiration date is required. Non-expiring API keys are not permitted')
     .datetime({ message: 'Expiration date must be a valid ISO-8601 datetime string' })
-    .nullable()
-    .optional()
     .refine(
-      (val) => {
-        if (!val) return true;
-        return new Date(val).getTime() > Date.now();
-      },
+      (val) => new Date(val).getTime() > Date.now(),
       {
         message: 'Expiration date must be in the future',
+      },
+    )
+    .nullable()
+    .refine(
+      (val) => val !== null,
+      {
+        message: 'Expiration date is required. Non-expiring API keys are not permitted',
       },
     ),
   isActive: z.boolean().optional().default(true),

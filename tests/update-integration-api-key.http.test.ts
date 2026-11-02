@@ -134,4 +134,14 @@ describe('PATCH /api/v1/integrations/:id/api-keys/:keyId & /api/v1/integrations/
 
     expect(response.status).toBe(422);
   });
+
+  it('returns 422 when attempting to set expiresAt to null', async () => {
+    const response = await request(app)
+      .patch(`/api/v1/integrations/${validSourceId}/api-keys/${validKeyId}`)
+      .send({
+        expiresAt: null,
+      });
+
+    expect(response.status).toBe(422);
+  });
 });
