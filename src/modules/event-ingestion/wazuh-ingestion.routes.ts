@@ -5,16 +5,16 @@ import {
 } from '../../common/middleware/authenticate-api-key.js';
 import { validate } from '../../common/middleware/validate.js';
 import { asyncHandler } from '../../common/utils/async-handler.js';
-import { wazuhEventIngestSchema } from './dto/wazuh-event-ingest.dto.js';
+import { wazuhIngestSchema } from './dto/wazuh-event-ingest.dto.js';
 import { handleIngestEvent } from './wazuh-ingestion.controller.js';
 
 export const wazuhIngestionRouter = Router();
 
-// Endpoint for receiving normalized events from Wazuh Edge Normalizer: POST /api/v1/integrations/wazuh/events
+// Accepts either native Wazuh alerts or already-normalized SecuraAI events.
 wazuhIngestionRouter.post(
   '/events',
   authenticateApiKey,
   requireApiKeyScope('events:ingest'),
-  validate({ body: wazuhEventIngestSchema }),
+  validate({ body: wazuhIngestSchema }),
   asyncHandler(handleIngestEvent),
 );

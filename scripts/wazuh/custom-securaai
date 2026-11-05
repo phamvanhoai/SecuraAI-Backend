@@ -130,7 +130,7 @@ def determine_classification(alert: dict):
     if any(k in groups for k in app_auth_keywords):
         if any(k in description for k in ["forbidden", "unauthorized", "access denied", "failed"]):
             return FAMILY_APPLICATION_ACCESS, "ACCESS_DENIED", "application", rule_id
-        return FAMILY_APPLICATION_ACCESS, "APPLICATION_LOGIN", "application", rule_id
+        return FAMILY_APPLICATION_ACCESS, "ACCESS_GRANTED", "application", rule_id
 
     # Mọi alert khác (bao gồm windows_application chung chung, rule 60642...) -> DROP
     return None, None, None, None
@@ -205,6 +205,7 @@ def normalize_wazuh_alert(alert: dict) -> dict:
     agent = alert.get("agent", {})
     rule = alert.get("rule", {})
     data = alert.get("data", {})
+    win_system = data.get("win", {}).get("system", {})
     win_eventdata = data.get("win", {}).get("eventdata", {})
 
     timestamp = alert.get("timestamp") or datetime.now(timezone.utc).isoformat()
@@ -234,10 +235,28 @@ def normalize_wazuh_alert(alert: dict) -> dict:
             "applicationName": data.get("application_name") or data.get("applicationName"),
             "platform": platform,
             "eventId": event_id,
+            "providerName": win_system.get("providerName"),
+            "channel": win_system.get("channel"),
+            "severityValue": win_system.get("severityValue"),
+            "decoder": alert.get("decoder", {}).get("name"),
+            "location": alert.get("location"),
+            "inputType": alert.get("input", {}).get("type"),
             "logonType": win_eventdata.get("logonType"),
+            "authenticationPackage": win_eventdata.get("authenticationPackageName"),
+            "integrityLevel": win_eventdata.get("integrityLevel"),
             "processName": win_eventdata.get("processName") or data.get("program_name"),
+            "parentProcessName": win_eventdata.get("parentProcessName"),
+            "commandLine": win_eventdata.get("commandLine"),
+            "parentCommandLine": win_eventdata.get("parentCommandLine"),
+            "targetFilename": win_eventdata.get("targetFilename"),
+            "hashes": win_eventdata.get("hashes"),
             "status": win_eventdata.get("status") or win_eventdata.get("subStatus"),
+            "subStatus": win_eventdata.get("subStatus"),
             "workstationName": win_eventdata.get("workstationName"),
+            "sourcePort": win_eventdata.get("sourcePort") or win_eventdata.get("ipPort"),
+            "destinationIp": win_eventdata.get("destinationIp"),
+            "destinationPort": win_eventdata.get("destinationPort"),
+            "protocol": win_eventdata.get("protocol"),
         },
     }
 

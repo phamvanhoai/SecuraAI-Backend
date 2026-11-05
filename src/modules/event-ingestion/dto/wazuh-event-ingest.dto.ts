@@ -27,7 +27,41 @@ export const wazuhEventIngestSchema = z.object({
   metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
+/** Native Wazuh alert shape. Unknown fields are deliberately retained for the raw/LLM path. */
+export const wazuhRawEventSchema = z
+  .object({
+    id: z.string().optional(),
+    timestamp: z.string().optional(),
+    '@timestamp': z.string().optional(),
+    rule: z.object({
+      id: z.union([z.string(), z.number()]),
+      level: z.number().int().optional(),
+      description: z.string().optional(),
+      groups: z.array(z.string()).optional(),
+    }).passthrough(),
+    agent: z.object({
+      id: z.union([z.string(), z.number()]),
+      name: z.string().min(1),
+      ip: z.string().optional(),
+    }).passthrough(),
+    data: z.record(z.string(), z.unknown()).optional(),
+    decoder: z.object({ name: z.string().optional() }).passthrough().optional(),
+    location: z.string().optional(),
+    full_log: z.string().optional(),
+  })
+  .passthrough()
+  .refine((value) => !('source' in value) && !('eventFamily' in value), {
+    message: 'A normalized payload must satisfy the SecuraAI event schema',
+  })
+  .refine((value) => Boolean(value.timestamp ?? value['@timestamp']), {
+    message: 'A native Wazuh event requires timestamp or @timestamp',
+  });
+
+export const wazuhIngestSchema = z.union([wazuhEventIngestSchema, wazuhRawEventSchema]);
+
 export type WazuhEventIngestInput = z.infer<typeof wazuhEventIngestSchema>;
+export type WazuhRawEventInput = z.infer<typeof wazuhRawEventSchema>;
+export type WazuhIngestInput = z.infer<typeof wazuhIngestSchema>;
 
 export type WazuhIngestResponseDto = {
   eventId: string;

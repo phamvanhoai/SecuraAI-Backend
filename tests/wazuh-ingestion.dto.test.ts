@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { wazuhEventIngestSchema } from '../src/modules/event-ingestion/dto/wazuh-event-ingest.dto.js';
+import {
+  wazuhEventIngestSchema,
+  wazuhIngestSchema,
+} from '../src/modules/event-ingestion/dto/wazuh-event-ingest.dto.js';
 
 describe('wazuhEventIngestSchema', () => {
   it('accepts a valid normalized event payload', () => {
@@ -48,6 +51,7 @@ describe('wazuhEventIngestSchema', () => {
 
     const parsed = wazuhEventIngestSchema.safeParse(invalid);
     expect(parsed.success).toBe(false);
+    expect(wazuhIngestSchema.safeParse(invalid).success).toBe(false);
   });
 
   it('rejects payload without actor username', () => {
@@ -62,6 +66,29 @@ describe('wazuhEventIngestSchema', () => {
     };
 
     const parsed = wazuhEventIngestSchema.safeParse(invalid);
+    expect(parsed.success).toBe(false);
+  });
+
+  it('accepts a native Wazuh alert for server-side normalization', () => {
+    const parsed = wazuhIngestSchema.safeParse({
+      timestamp: '2026-11-03T12:00:00.000Z',
+      rule: { id: '60122', level: 5, description: 'Windows logon failure' },
+      agent: { id: '001', name: 'DESKTOP-WIN11' },
+      data: {
+        win: {
+          system: { eventID: '4625' },
+          eventdata: { targetUserName: 'alice', ipAddress: '192.0.2.10' },
+        },
+      },
+    });
+    expect(parsed.success).toBe(true);
+  });
+
+  it('rejects a native Wazuh alert without a timestamp', () => {
+    const parsed = wazuhIngestSchema.safeParse({
+      rule: { id: '60122' },
+      agent: { id: '001', name: 'DESKTOP-WIN11' },
+    });
     expect(parsed.success).toBe(false);
   });
 });

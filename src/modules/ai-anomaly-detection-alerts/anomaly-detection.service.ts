@@ -12,6 +12,13 @@ import {
 import { env } from '../../config/env.js';
 import { detectionJobsRepository, pipelineEngine } from './detection-jobs.repository.js';
 import { generateStoredAlertExplanation } from './alert-explanation.generator.js';
+import {
+  buildMlTemporalContext,
+  requestMlShadowPrediction,
+  type MlTemporalContext,
+  type MlShadowResult,
+} from './ml-shadow.client.js';
+import { requestLlmClassification } from './llm-classifier.client.js';
 
 const parametersSchema = z
   .object({
@@ -162,23 +169,107 @@ async function runDetection(
                 true,
               );
             }
-            const score = decision.score;
+            let score = decision.score;
             const assetId = event.event_entity_mappings[0]?.asset_id;
             const customThreshold = assetId ? parameters.assetThresholds[assetId] : undefined;
             const configuredThresholdSource = customThreshold?.enabled
               ? 'ASSET_OVERRIDE'
               : 'MODEL_DEFAULT';
-            const thresholdSource = configuredThresholdSource;
-            const threshold = customThreshold?.enabled
+            let thresholdSource = configuredThresholdSource;
+            let threshold = customThreshold?.enabled
               ? customThreshold.threshold
               : parameters.threshold;
-            const isAnomaly = decision.baselineReady && score >= threshold;
+            let isAnomaly = decision.baselineReady && score >= threshold;
             decision.features.push({
               featureName: 'configured_threshold',
               featureValue: JSON.stringify({ threshold, source: configuredThresholdSource }),
               contributionScore: 0,
               rank: decision.features.length + 1,
             });
+            let mlPrediction: MlShadowResult | null = null;
+            let temporalContext: MlTemporalContext | undefined;
+            let scoringReady = decision.baselineReady;
+            if (env.ML_SHADOW_ENABLED || env.AI_FUSION_ENABLED) {
+              const mlHistory = await anomalyDetectionRepository.findMlTemporalContext(event);
+              temporalContext = buildMlTemporalContext(event, mlHistory);
+              mlPrediction = await requestMlShadowPrediction(event, {
+                temporalContext,
+              });
+              decision.features.push({
+                featureName: 'ml_shadow_prediction',
+                featureValue: JSON.stringify(mlPrediction),
+                contributionScore: 0,
+                rank: decision.features.length + 1,
+              });
+            }
+            const modelEscalated =
+              mlPrediction?.status === 'PREDICTED' &&
+              mlPrediction.prediction.score >= mlPrediction.prediction.escalationThreshold;
+            const llmPrediction = env.AI_FUSION_ENABLED && modelEscalated
+              ? await requestLlmClassification(event, temporalContext)
+              : null;
+            if (llmPrediction) {
+              decision.features.push({
+                featureName: 'llm_security_classification',
+                featureValue: JSON.stringify(llmPrediction),
+                contributionScore: 0,
+                rank: decision.features.length + 1,
+              });
+            }
+            const triage = !env.AI_FUSION_ENABLED
+              ? { status: 'DISABLED' as const }
+              : mlPrediction?.status !== 'PREDICTED'
+                ? { status: 'ML_UNAVAILABLE' as const }
+                : modelEscalated
+                  ? {
+                      status: 'ESCALATED_TO_LLM' as const,
+                      modelScore: mlPrediction.prediction.score,
+                      escalationThreshold: mlPrediction.prediction.escalationThreshold,
+                      llmStatus: llmPrediction?.status ?? 'NOT_CALLED',
+                    }
+                  : {
+                      status: 'LOW_RISK_MONITOR' as const,
+                      modelScore: mlPrediction.prediction.score,
+                      escalationThreshold: mlPrediction.prediction.escalationThreshold,
+                    };
+            decision.features.push({
+              featureName: 'ai_triage_decision',
+              featureValue: JSON.stringify(triage),
+              contributionScore: 0,
+              rank: decision.features.length + 1,
+            });
+            if (env.AI_FUSION_CAN_CREATE_ALERTS && mlPrediction?.status === 'PREDICTED') {
+              scoringReady = true;
+              if (!modelEscalated) {
+                score = mlPrediction.prediction.score;
+                threshold = mlPrediction.prediction.escalationThreshold;
+                isAnomaly = false;
+                thresholdSource = 'AI_MODEL_TRIAGE';
+              } else if (llmPrediction?.status === 'PREDICTED') {
+                score = llmPrediction.prediction.score;
+                if (llmPrediction.prediction.verdict === 'MALICIOUS') {
+                  // The LLM verdict is the final decision. The numeric fields are
+                  // retained for schema/report compatibility and are not a
+                  // calibrated probability boundary.
+                  threshold = mlPrediction.prediction.escalationThreshold;
+                  isAnomaly = true;
+                  thresholdSource = 'AI_LLM_FINAL';
+                } else if (llmPrediction.prediction.verdict === 'SUSPICIOUS') {
+                  threshold = 1;
+                  isAnomaly = false;
+                  thresholdSource = 'AI_REVIEW_PENDING';
+                } else {
+                  threshold = mlPrediction.prediction.escalationThreshold;
+                  isAnomaly = false;
+                  thresholdSource = 'AI_LLM_FINAL';
+                }
+              } else {
+                score = Math.min(mlPrediction.prediction.score, 0.99999999);
+                threshold = 1;
+                isAnomaly = false;
+                thresholdSource = 'AI_REVIEW_PENDING';
+              }
+            }
             const explanationKey = `${decision.groupKey}:${Math.floor(event.occurred_at.getTime() / (15 * 60_000))}`;
             if (isAnomaly && !explanations.has(explanationKey))
               explanations.set(
@@ -204,7 +295,7 @@ async function runDetection(
               id: randomUUID(),
               eventId: event.id,
               score,
-              baselineReady: decision.baselineReady,
+              baselineReady: scoringReady,
               threshold,
               thresholdSource,
               isAnomaly,

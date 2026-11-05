@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   compareHistory,
+  compareMultiWindowHistory,
   type BaselineObservation,
 } from '../src/modules/ai-anomaly-detection-alerts/history-baseline.js';
 const time = 200 * 300_000;
@@ -63,5 +64,35 @@ describe('empirical historical baseline', () => {
       false,
     );
     expect(recent.activeWindows).toBe(base.activeWindows);
+  });
+
+  it('keeps a slow burst visible after early events leave the five-minute window', () => {
+    const reference = Array.from({ length: 240 }, (_, i) => ({
+      ...current,
+      id: `reference-${i}`,
+      time: time - (i + 20) * 300_000,
+      failed: i % 20 === 0,
+      successful: i % 20 !== 0,
+    }));
+    const recent = Array.from({ length: 8 }, (_, i) => ({
+      ...current,
+      id: `recent-${i}`,
+      time: time - (i + 1) * 3 * 60_000,
+      failed: true,
+      successful: false,
+    }));
+    const result = compareMultiWindowHistory(current, [...reference, ...recent], 20, false);
+    const five = result.windows.find((window) => window.windowMinutes === 5);
+    const fifteen = result.windows.find((window) => window.windowMinutes === 15);
+    expect(five?.currentFailures).toBe(2);
+    expect(fifteen?.currentFailures).toBe(6);
+    expect(result.score).toBeGreaterThan(0.8);
+  });
+
+  it('does not add overlapping window scores as independent evidence', () => {
+    const result = compareMultiWindowHistory(current, history, 20, false);
+    const ready = result.windows.filter((window) => window.status === 'READY');
+    const minimumTail = Math.min(...ready.map((window) => window.tailFraction ?? 1));
+    expect(result.adjustedTail).toBe(Math.min(1, minimumTail * ready.length));
   });
 });
