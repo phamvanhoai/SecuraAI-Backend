@@ -27,6 +27,9 @@ services:
       DATABASE_URL: postgresql://postgres:${DEMO_DB_PASSWORD}@postgres:5432/securaai_demo?schema=public
       OLLAMA_BASE_URL: http://host.docker.internal:11434
       DETECTION_PIPELINE_ENABLED: "true"
+      ML_SHADOW_ENABLED: "true"
+      ML_SHADOW_BASE_URL: http://host.docker.internal:8002
+      ML_SHADOW_TIMEOUT_MS: "2000"
       CORS_ORIGINS: http://localhost:3001
     extra_hosts:
       - "host.docker.internal:host-gateway"

@@ -42,6 +42,29 @@ describe('stored AI alert explanation generator', () => {
     expect(result).toContain('92%');
     expect(ollamaClient.generateAlertExplanation).not.toHaveBeenCalled();
   });
+  it('explains corrected multi-window evidence without treating windows as independent', async () => {
+    const result = await generateStoredAlertExplanation(
+      {
+        ...input,
+        featureContributions: [{
+          featureName: 'statistical_baseline',
+          featureValue: JSON.stringify({
+            method: 'empirical-history-multi-window-v2',
+            windows: [
+              { windowMinutes: 5, currentFailures: 2, status: 'READY' },
+              { windowMinutes: 30, currentFailures: 8, status: 'READY' },
+            ],
+          }),
+          contributionScore: 0.92,
+          rank: 1,
+        }],
+      },
+      { timeoutMs: 0 },
+    );
+    expect(result).toContain('5m=2');
+    expect(result).toContain('30m=8');
+    expect(result).toContain('corrected rather than added');
+  });
   it('passes the remaining batch budget to the model request', async () => {
     vi.mocked(ollamaClient.generateAlertExplanation).mockResolvedValue(null);
     await generateStoredAlertExplanation(input, { timeoutMs: 250 });

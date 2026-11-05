@@ -25,6 +25,8 @@ const alertSelect = {
       normalized_events: {
         select: {
           id: true,
+          external_event_id: true,
+          event_family: true,
           event_type: true,
           occurred_at: true,
           event_sources: { select: { id: true, name: true, source_type: true } },
@@ -357,7 +359,12 @@ export const aiAlertsRepository = {
               { severity: { contains: query.q, mode: 'insensitive' } },
               {
                 anomaly_detections: {
-                  normalized_events: { event_type: { contains: query.q, mode: 'insensitive' } },
+                  normalized_events: {
+                    OR: [
+                      { event_type: { contains: query.q, mode: 'insensitive' } },
+                      { external_event_id: { contains: query.q, mode: 'insensitive' } },
+                    ],
+                  },
                 },
               },
               {

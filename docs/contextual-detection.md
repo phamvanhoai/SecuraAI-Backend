@@ -1,18 +1,22 @@
-> Current scoring is empirical-history-v1, replacing the fixed-point formulas documented below. See [Historical anomaly scoring](history-baseline-scoring.md) for the authoritative current algorithm, readiness guard and limitations. Earlier formulas are historical only.
+> Current scoring is empirical-history-multi-window-v2, replacing the fixed-point formulas documented below. It evaluates rolling 1-minute, 5-minute, 15-minute and 60-minute horizons. See [Historical anomaly scoring](history-baseline-scoring.md) for the authoritative current algorithm, readiness guard and limitations. Earlier formulas are historical only.
 
 # Contextual detection v1
 
 The shared realtime/manual engine evaluates pending events once per deployed model version AND engine revision. It uses deterministic rules and contextual signals, not an LLM classifier. Existing detections and explanations are preserved; legacy engine results are retained while contextual-rules-v1 records its own separate result.
 
+The Windows-APT classifier can run alone in shadow mode as documented in
+[`ml-shadow-inference.md`](./ml-shadow-inference.md). When AI fusion is explicitly enabled,
+the classifier supplies first-stage triage and only escalated sequences are sent to the LLM.
+
 ## Rules
 
-| Rule | Trigger within one source and matching account/IP (application/protocol when applicable) |
-|---|---|
-| AUTH_FAILURE_BURST | At least 5 authentication failures in 5 minutes |
-| AUTH_SUCCESS_AFTER_FAILURE | Authentication success after at least 5 failures in 5 minutes |
-| APP_DENIAL_BURST | At least 10 access denials in 5 minutes |
-| APP_SUCCESS_AFTER_DENIAL | Successful application login/access after at least 10 denials in 5 minutes |
-| VPN_SSO_FAILURE_BURST | At least 5 VPN or SSO failures in 5 minutes; VPN and SSO histories are separate |
+| Rule                          | Trigger within one source and matching account/IP (application/protocol when applicable)                                                               |
+| ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| AUTH_FAILURE_BURST            | At least 5 authentication failures in 5 minutes                                                                                                        |
+| AUTH_SUCCESS_AFTER_FAILURE    | Authentication success after at least 5 failures in 5 minutes                                                                                          |
+| APP_DENIAL_BURST              | At least 10 access denials in 5 minutes                                                                                                                |
+| APP_SUCCESS_AFTER_DENIAL      | Successful application login/access after at least 10 denials in 5 minutes                                                                             |
+| VPN_SSO_FAILURE_BURST         | At least 5 VPN or SSO failures in 5 minutes; VPN and SSO histories are separate                                                                        |
 | VPN_SSO_NEW_CONTEXT_OFF_HOURS | Successful VPN/SSO login outside working hours with a new IP or device, after at least 20 prior successful events for the same account/protocol/source |
 
 Application rules require an explicit application identity in normalizedPayload.applicationId/applicationName, application.id/name or corresponding metadata fields. Missing application identity is not guessed. New context requires a complete, nontruncated 7-day baseline. No geolocation, MFA or malicious-IP evidence is invented.
@@ -59,6 +63,7 @@ Ollama generates prose only. Deterministic explanations are stored on failure/di
 Import docs/contextual-detection-demo.json as JSON into an active source accepting all three families. Run manual detection on a clean source/model with default thresholds. Expected rule evidence for this file alone: 49 evaluations and 9 rule matches. Actual alert/group counts depend on each score reaching the configured threshold. Three normal events and baseline events stay below the default threshold. Prior source history, old pending events, custom thresholds or existing open alerts can change totals. External IDs are fixed for safe duplicate-import checks; use a fresh source or intentional new IDs for another independent demo.
 
 For App Access realtime, the Wazuh integration preserves data.application_id/application_name (or camelCase equivalents) as metadata. The updated script must be deployed to Wazuh separately; the repository change alone does not replace a running container's script.
+
 ## Evidence-weighted rule scores (v2)
 
 Rule matches no longer all receive 0.90 or HIGH. This is a transparent prioritization heuristic, not a calibrated attack probability or trained-model result:
@@ -80,12 +85,21 @@ Apply migration `20261030033000_allow_rule_match_decisions` before running evide
 
 Automatic explanation generation has a shared 5-second deadline per batch. After it expires, the existing deterministic evidence-based fallback is stored. Explicit explanation regeneration retains its configured Ollama timeout. Database work still contributes to total batch latency; this is not a five-second end-to-end guarantee.
 
+## Staged ML triage and LLM review
+
+The ML classifier evaluates every normalized event first. Its artifact contains an
+`escalationThreshold` selected only on Validation as the highest threshold preserving at
+least 98% recall. Scores below it are stored as `LOW_RISK_MONITOR` without calling the
+LLM. Scores at or above it send the event and its 1m/5m/15m/60m sequence context to the
+LLM for the final decision. An unavailable or invalid LLM response is stored as
+`AI_REVIEW_PENDING` and cannot create an alert. This flow reduces LLM calls and records
+the model score, escalation reason, LLM result and final decision separately.
+
 ## Live priority updates (evidence-weighted-v3)
 
 In addition to v2 signals, matched rules gain up to 10 priority points for temporal concentration: `10 * max(0, 1 - observedFailureSpan / configuredWindow)`, using the earliest related failure and current event time. The result is capped at 99 points. This is an engineering heuristic requiring labeled-data evaluation, not a probability model. Do not invent privileged-account or asset-criticality inputs when those facts are unavailable.
 
 Open alerts retain a monotonic peak score across the fixed 15-minute same-rule/account/source/IP group. Each stronger match appends alert_score_update evidence containing previous/new scores, event/detection references, actor, reason, timestamp and scoring snapshot; alert severity updates atomically. The detection-run audit includes these changes. Original detection scores, features and explanation text are not overwritten. List/detail/explanation projections use the peak snapshot; explicit regeneration uses its evidence. Lower-scored later events do not reduce investigation priority. Terminal alerts cannot be updated. Rule chains remain separate groups so a successful access after failures gets a distinct decision. Existing alerts are not backfilled; send fresh events. No schema addition is required beyond the rule-decision migration above.
-
 
 ## Current policy: one threshold gate
 

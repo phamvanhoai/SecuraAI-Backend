@@ -1540,9 +1540,9 @@ export const openApiSpec = {
     '/integrations/wazuh/events': {
       post: {
         tags: ['Event Ingestion'],
-        summary: 'Ingest a normalized Wazuh event',
+        summary: 'Ingest a native or normalized Wazuh event',
         description:
-          'Accepts one normalized event from Wazuh. Requires an active integration API key with the events:ingest scope.',
+          'Accepts either a native Wazuh alert or an event already normalized to the SecuraAI AUTHENTICATION, VPN_SSO or APPLICATION_ACCESS schema. Native alerts are mapped server-side while the original payload is retained in metadata for the raw analysis path. Requires an active integration API key with the events:ingest scope.',
         security: [{ apiKeyAuth: [] }],
         requestBody: {
           required: true,
@@ -1552,7 +1552,10 @@ export const openApiSpec = {
           '201': { description: 'Event ingested' },
           '401': { description: 'API key missing, invalid, expired, or revoked' },
           '403': { description: 'API key lacks the events:ingest scope' },
-          '422': { description: 'Invalid normalized event' },
+          '422': {
+            description:
+              'Invalid event, missing principal/application context, or Wazuh event outside the three supported families',
+          },
           '503': { description: 'Wazuh ingestion is not configured' },
         },
       },
@@ -3462,7 +3465,7 @@ export const openApiSpec = {
         tags: ['AI Anomaly Detection & Alerts'],
         summary: 'Run anomaly detection over unprocessed normalized events',
         description:
-          'Requires an active Security Officer account and a deployed model version. Each request processes one bounded batch of pending normalized events, including file-imported events and events older than 24 hours. Run it again to process the next batch. Direct Wazuh API events are also eligible if an automated run has not processed them yet. Each event is evaluated once per model/engine identity. Current scoring compares event-time history using empirical-history-v1; six family rules are evidence labels, not fixed score bonuses. insufficientBaseline counts unscored events; no alert is created without sufficient reference history. All decisions require score >= the configured model threshold or enabled asset override; matched rules contribute to scoring but do not bypass this gate. Open repeated alerts group within 15 minutes; alertsGrouped reports grouped matches. Policy timezone defaults to Asia/Ho_Chi_Minh. Scores are adjusted empirical historical rarity, not attack probabilities. Stored feature evidence preserves policy/weights and matched rules. Existing evaluated events are not rescored.',
+          'Requires an active Security Officer account and a deployed model version. Each request processes one bounded batch of pending normalized events. Current feature extraction uses rolling 1-minute, 5-minute, 15-minute and 60-minute horizons. The ML model performs first-stage triage using an escalation threshold selected on Validation. Low-risk results are recorded without calling the LLM. Escalated sequences are sent to the LLM for final review; unavailable or invalid LLM responses remain review-pending and cannot create alerts. Stored evidence preserves the model score, escalation threshold, temporal context, LLM result and final decision. Existing evaluated events are not rescored.',
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,

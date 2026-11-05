@@ -1,6 +1,8 @@
 ﻿# Historical anomaly scoring (empirical-history-v1)
 
-Current implementation replaces the 55-point base and all heuristic bonuses. Scores describe rarity in recorded history, never attack probability. No model is trained and Ollama never selects scores.
+Current implementation is `empirical-history-multi-window-v2`. It replaces the 55-point base and all heuristic bonuses. Scores describe rarity in recorded history, never attack probability. No model is trained and Ollama never selects scores.
+
+The current event is evaluated over rolling 1-minute, 5-minute, 15-minute and 60-minute horizons. These windows overlap, so their scores are not summed or averaged. The implementation applies a Bonferroni correction to the most unusual empirical tail over all ready horizons.
 
 ## Cohort and readiness
 

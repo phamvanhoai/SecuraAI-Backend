@@ -9,6 +9,19 @@ export interface BaselineObservation {
   hour: number;
 }
 
+export const BASELINE_WINDOWS = [1, 5, 15, 60] as const;
+
+export interface WindowBaselineResult {
+  windowMinutes: number;
+  status: 'READY' | 'INSUFFICIENT_BASELINE';
+  reason: string | null;
+  score: number | null;
+  activeWindows: number;
+  minimumSamples: number;
+  currentFailures: number;
+  tailFraction: number | null;
+}
+
 /** Empirical rank, not a calibrated attack probability. No invented risk points. */
 export function compareHistory(
   current: BaselineObservation,
@@ -109,6 +122,74 @@ export function compareHistory(
     currentFailures,
     comparisons,
     adjustment: 'BONFERRONI',
+    adjustedTail,
+  };
+}
+
+/**
+ * Compares the same event over several rolling horizons. The windows overlap, so their
+ * scores are not averaged or treated as independent evidence. A Bonferroni correction
+ * is applied to the most unusual ready window before producing one conservative score.
+ */
+export function compareMultiWindowHistory(
+  current: BaselineObservation,
+  history: readonly BaselineObservation[],
+  minimumSamples: number,
+  truncated: boolean,
+  windowMinutes: readonly number[] = BASELINE_WINDOWS,
+) {
+  const windows: WindowBaselineResult[] = windowMinutes.map((minutes) => {
+    const requiredSamples = minimumSamples;
+    const result = compareHistory(
+      current,
+      history,
+      minutes * 60_000,
+      requiredSamples,
+      truncated,
+    );
+    const failureComparison = result.comparisons.find(
+      (comparison) => comparison.signal === 'failures_per_window',
+    );
+    return {
+      windowMinutes: minutes,
+      status: result.status === 'READY' ? 'READY' as const : 'INSUFFICIENT_BASELINE' as const,
+      reason: result.reason,
+      score: failureComparison ? Number((1 - failureComparison.tailFraction).toFixed(8)) : null,
+      activeWindows: result.activeWindows,
+      minimumSamples: requiredSamples,
+      currentFailures: result.currentFailures,
+      tailFraction: failureComparison?.tailFraction ?? null,
+    };
+  });
+  const ready = windows.filter(
+    (window): window is WindowBaselineResult & { tailFraction: number } =>
+      window.status === 'READY' && window.tailFraction !== null,
+  );
+  const adjustedTail = ready.length
+    ? Math.min(1, Math.min(...ready.map((window) => window.tailFraction)) * ready.length)
+    : 1;
+  const primary = windows[0];
+  return {
+    method: 'empirical-history-multi-window-v2',
+    status: ready.length ? 'READY' as const : 'INSUFFICIENT_BASELINE' as const,
+    reason: ready.length ? null : (primary?.reason ?? 'TOO_FEW_ACTIVE_WINDOWS'),
+    score: ready.length ? Number((1 - adjustedTail).toFixed(8)) : null,
+    activeWindows: primary?.activeWindows ?? 0,
+    minimumSamples,
+    windowMinutes: primary?.windowMinutes ?? 5,
+    currentFailures: primary?.currentFailures ?? Number(current.failed),
+    windows,
+    comparisons: ready.map((window) => ({
+      signal: `failures_${window.windowMinutes}m`,
+      observed: window.currentFailures,
+      samples: window.activeWindows,
+      equallyOrMoreUnusual: Math.max(
+        0,
+        Math.round(window.tailFraction * (window.activeWindows + 1) - 1),
+      ),
+      tailFraction: window.tailFraction,
+    })),
+    adjustment: 'BONFERRONI_OVER_READY_WINDOWS',
     adjustedTail,
   };
 }

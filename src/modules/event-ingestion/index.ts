@@ -9,6 +9,7 @@ export { normalizedEventsRepository } from './normalized-events.repository.js';
 export { wazuhIngestionRouter } from './wazuh-ingestion.routes.js';
 export { wazuhIngestionService } from './wazuh-ingestion.service.js';
 export { wazuhIngestionRepository } from './wazuh-ingestion.repository.js';
+export { normalizeWazuhEvent } from './wazuh-event.normalizer.js';
 export { eventGovernanceRouter } from './event-governance.routes.js';
 export { eventGovernanceService } from './event-governance.service.js';
 export { eventGovernanceRepository } from './event-governance.repository.js';

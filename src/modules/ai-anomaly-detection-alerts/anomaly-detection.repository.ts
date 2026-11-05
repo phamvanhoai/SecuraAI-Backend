@@ -65,6 +65,26 @@ export const anomalyDetectionRepository = {
     });
     return { events: events.slice(0, 5000), truncated: events.length > 5000 };
   },
+  async findMlTemporalContext(event: DetectionEvent) {
+    if (!event.account_identifier && !event.source_ip) return [];
+    return prisma.normalized_events.findMany({
+      where: {
+        event_source_id: event.event_source_id,
+        event_family: event.event_family,
+        OR: [
+          ...(event.account_identifier ? [{ account_identifier: event.account_identifier }] : []),
+          ...(event.source_ip ? [{ source_ip: event.source_ip }] : []),
+        ],
+        occurred_at: {
+          gte: new Date(event.occurred_at.getTime() - 60 * 60_000),
+          lte: event.occurred_at,
+        },
+      },
+      select: eventSelect,
+      orderBy: [{ occurred_at: 'asc' }, { id: 'asc' }],
+      take: 5001,
+    });
+  },
   findActor(userId: string) {
     return prisma.users.findUnique({
       where: { id: userId },

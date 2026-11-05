@@ -5,6 +5,7 @@ param(
     [string]$Container = 'single-node-wazuh.manager-1',
     [ValidateRange(2, 1000)]
     [int]$BurstCount,
+    [string]$SourceIp,
     [switch]$WithBaseline,
     [switch]$Send
 )
@@ -15,7 +16,7 @@ if ($PSBoundParameters.ContainsKey('BurstCount') -and $Case -notin @('AuthBurst'
 }
 $demoPath = Join-Path $PSScriptRoot '../../docs/contextual-detection-demo.json'
 $records = Get-Content -LiteralPath $demoPath -Raw | ConvertFrom-Json
-$runId = 'wazuh-demo-' + [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() + '-' + [guid]::NewGuid().ToString('N').Substring(0, 6)
+$runId = 'wazuh-e2e-' + [DateTimeOffset]::UtcNow.ToUnixTimeMilliseconds() + '-' + [guid]::NewGuid().ToString('N').Substring(0, 6)
 $outputDirectory = Join-Path ([IO.Path]::GetTempPath()) $runId
 [void][IO.Directory]::CreateDirectory($outputDirectory)
 $utf8 = New-Object System.Text.UTF8Encoding($false)
@@ -60,6 +61,9 @@ if ($PSBoundParameters.ContainsKey('BurstCount')) {
     })
     $expected[$Case] = "$BurstCount failures over 50 seconds for one account/IP; alerts require the applicable threshold."
 }
+if ($PSBoundParameters.ContainsKey('SourceIp')) {
+    foreach ($record in $selected) { $record.sourceIp = $SourceIp }
+}
 
 $index = 0
 if ($WithBaseline) {
@@ -78,18 +82,41 @@ if ($WithBaseline) {
 foreach ($record in $selected) {
     $index++
     $timestamp = ([DateTimeOffset]::Parse($record.occurredAt).UtcDateTime + $shift).ToString("yyyy-MM-ddTHH:mm:ss.fff'Z'")
-    $account = $runId + '-' + $record.accountIdentifier
-    $data = @{ dstuser = $account; srcip = $record.sourceIp }
+    # Keep internal scenario labels out of telemetry. The classifier must evaluate
+    # behavior, not shortcuts such as "demo", "simulated", or documentation IPs.
+    $principal = switch -Wildcard ($record.accountIdentifier) {
+        'demo-auth' { 'ops-admin' }
+        'demo-app' { 'web-operator' }
+        'demo-vpn-burst' { 'remote-user' }
+        'demo-sso-new-context' { 'finance-user' }
+        'demo-normal-auth' { 'service-reader' }
+        'demo-normal-app' { 'portal-user' }
+        'demo-normal-vpn' { 'remote-analyst' }
+        default { 'enterprise-user' }
+    }
+    $account = $runId.Replace('wazuh-e2e-', 'session-') + '-' + $principal
+    $eventSourceIp = if ($PSBoundParameters.ContainsKey('SourceIp')) { $SourceIp } elseif ($record.sourceIp -eq '192.0.2.99') {
+        # Preserve the SSO new-context scenario while keeping documentation IPs
+        # out of the telemetry presented to the classifier.
+        '10.20.30.99'
+    } else {
+        switch ($record.eventFamily) {
+            'AUTHENTICATION' { '10.20.30.41' }
+            'APPLICATION_ACCESS' { '10.20.30.42' }
+            'VPN_SSO' { '10.20.30.43' }
+        }
+    }
+    $data = @{ dstuser = $account; srcip = $eventSourceIp }
     switch ($record.eventFamily) {
         'AUTHENTICATION' {
             $failed = $record.eventType -eq 'LOGIN_FAILURE'
-            $description = if ($failed) { 'Simulated Windows login failed' } else { 'Simulated Windows login success' }
+            $description = if ($failed) { 'Windows account login failed' } else { 'Windows account login succeeded' }
             $groups = @('windows', 'windows_security')
             $eventCode = if ($failed) { '4625' } else { '4624' }
-            $data.win = @{ system = @{ eventID = $eventCode; channel = 'Security' }; eventdata = @{ targetUserName = $account; ipAddress = $record.sourceIp } }
+            $data.win = @{ system = @{ eventID = $eventCode; channel = 'Security' }; eventdata = @{ targetUserName = $account; ipAddress = $eventSourceIp } }
         }
         'APPLICATION_ACCESS' {
-            $description = if ($record.eventType -eq 'ACCESS_DENIED') { 'Simulated application access denied' } else { 'Simulated application login success' }
+            $description = if ($record.eventType -eq 'ACCESS_DENIED') { 'Application access denied' } else { 'Application login succeeded' }
             $groups = @('web_access_auth')
             $data.application_id = $record.normalizedPayload.applicationId
         }
@@ -97,15 +124,15 @@ foreach ($record in $selected) {
             $isSso = $record.eventType.StartsWith('SSO_')
             $protocol = if ($isSso) { 'sso' } else { 'vpn' }
             $result = if ($record.eventType.EndsWith('FAILURE')) { 'failed' } else { 'success' }
-            $description = "Simulated $protocol login $result"
+            $description = "$protocol login $result"
             $groups = @($protocol)
         }
     }
     $alert = @{
         id = "$runId-$index"
         timestamp = $timestamp
-        rule = @{ id = '929001'; level = 3; description = $description; groups = $groups }
-        agent = @{ id = '001'; name = 'SecuraAI-Demo-Device'; ip = '192.0.2.50' }
+        rule = @{ id = '60122'; level = 8; description = $description; groups = $groups }
+        agent = @{ id = '021'; name = 'WIN-OPS-021'; ip = '10.20.30.21' }
         data = $data
     }
     $filePath = Join-Path $outputDirectory ('{0:D3}.json' -f $index)

@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto';
 import { z } from 'zod';
-import { compareHistory } from './history-baseline.js';
+import { compareMultiWindowHistory } from './history-baseline.js';
 
 export const detectionPolicySchema = z
   .object({
@@ -202,10 +202,9 @@ export function evaluateContext(
       (failure(item) || success(item)) &&
       (event.event_family !== 'APPLICATION_ACCESS' || sameApplication(item)),
   );
-  const statistical = compareHistory(
+  const statistical = compareMultiWindowHistory(
     observation(event),
     cohort.map(observation),
-    policy.windowMinutes * 60_000,
     policy.minimumBaselineEvents,
     truncated,
   );
@@ -231,7 +230,7 @@ export function evaluateContext(
   const key = createHash('sha256')
     .update(
       JSON.stringify([
-        'empirical-history-v1',
+        'empirical-history-multi-window-v2',
         event.event_source_id,
         event.event_family,
         event.account_identifier ?? event.source_ip ?? event.id,

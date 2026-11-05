@@ -81,7 +81,13 @@ function toResponse(alert: AiAlertRecord) {
       version: model.version,
       provider: model.model_type,
     },
-    event: { id: event.id, eventType: event.event_type, eventTime: event.occurred_at },
+    event: {
+      id: event.id,
+      externalEventId: event.external_event_id,
+      eventFamily: event.event_family,
+      eventType: event.event_type,
+      eventTime: event.occurred_at,
+    },
     createdAt: alert.created_at,
   };
 }
