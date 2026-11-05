@@ -132,7 +132,7 @@ export const integrationApiKeysService = {
       throw new AppError(
         400,
         'BAD_REQUEST',
-        'Scope "events:ingest" requires an associated event source. Please specify an eventSourceId or generate the key from the event source.',
+        'Event source selection is required. Scope "events:ingest" requires an associated event source.',
       );
     }
 
@@ -240,7 +240,7 @@ export const integrationApiKeysService = {
         throw new AppError(
           400,
           'BAD_REQUEST',
-          'Scope "events:ingest" requires an associated event source. An unassociated API key cannot be granted "events:ingest".',
+          'Event source selection is required. Scope "events:ingest" requires an associated event source.',
         );
       }
       nextScopes = sanitized;
