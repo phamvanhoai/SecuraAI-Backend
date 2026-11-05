@@ -92,7 +92,7 @@ export const openApiSpec = {
             'application/json': {
               schema: {
                 type: 'object',
-                required: ['name'],
+                required: ['name', 'expiresAt'],
                 properties: {
                   name: { type: 'string', minLength: 1, maxLength: 255 },
                   keyName: { type: 'string', minLength: 1, maxLength: 255 },
@@ -103,7 +103,7 @@ export const openApiSpec = {
                     items: { type: 'string' },
                     default: ['events:ingest'],
                   },
-                  expiresAt: { type: 'string', format: 'date-time', nullable: true },
+                  expiresAt: { type: 'string', format: 'date-time' },
                   isActive: { type: 'boolean', default: true },
                   status: { type: 'string', enum: ['ACTIVE', 'INACTIVE'], default: 'ACTIVE' },
                 },

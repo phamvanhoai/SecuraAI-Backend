@@ -100,30 +100,15 @@ describe('Edit API Key Scope & Expiration Service', () => {
     expect(result.status).toBe('ACTIVE');
   });
 
-  it('allows clearing expiration date by setting expiresAt to null', async () => {
+  it('rejects setting expiresAt to null with 400 Bad Request', async () => {
     vi.spyOn(integrationApiKeysRepository, 'findUserById').mockResolvedValue(mockAdminUser);
     vi.spyOn(integrationApiKeysRepository, 'findById').mockResolvedValue(mockExistingRecord);
 
-    const updatedRecord = {
-      ...mockExistingRecord,
-      expires_at: null,
-    };
-
-    const updateSpy = vi
-      .spyOn(integrationApiKeysRepository, 'updateApiKey')
-      .mockResolvedValue(updatedRecord);
-
-    const result = await integrationApiKeysService.updateApiKey(mockAdminUser.id, sampleKeyId, {
-      expiresAt: null,
-    });
-
-    expect(updateSpy).toHaveBeenCalledWith(
-      sampleKeyId,
-      expect.objectContaining({
-        expiresAt: null,
+    await expect(
+      integrationApiKeysService.updateApiKey(mockAdminUser.id, sampleKeyId, {
+        expiresAt: null as unknown as string,
       }),
-    );
-    expect(result.expiresAt).toBeNull();
+    ).rejects.toThrow('Expiration date is required. Non-expiring API keys are not permitted');
   });
 
   it('rejects past expiration date with 400 Bad Request', async () => {

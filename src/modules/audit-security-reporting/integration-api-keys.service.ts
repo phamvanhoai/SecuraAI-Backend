@@ -104,8 +104,16 @@ export const integrationApiKeysService = {
       }
     }
 
-    const expiresAt = input.expiresAt ? new Date(input.expiresAt) : null;
-    if (expiresAt && expiresAt.getTime() <= Date.now()) {
+    if (!input.expiresAt) {
+      throw new AppError(
+        400,
+        'BAD_REQUEST',
+        'Expiration date is required. Non-expiring API keys are not permitted',
+      );
+    }
+
+    const expiresAt = new Date(input.expiresAt);
+    if (isNaN(expiresAt.getTime()) || expiresAt.getTime() <= Date.now()) {
       throw new AppError(400, 'BAD_REQUEST', 'Expiration date must be in the future');
     }
 
@@ -206,17 +214,20 @@ export const integrationApiKeysService = {
       throw new AppError(400, 'BAD_REQUEST', 'Cannot modify a revoked API key');
     }
 
-    let nextExpiresAt: Date | null | undefined;
+    let nextExpiresAt: Date | undefined;
     if (input.expiresAt !== undefined) {
-      if (input.expiresAt === null) {
-        nextExpiresAt = null;
-      } else {
-        const parsedDate = new Date(input.expiresAt);
-        if (isNaN(parsedDate.getTime()) || parsedDate.getTime() <= Date.now()) {
-          throw new AppError(400, 'BAD_REQUEST', 'Expiration date must be in the future');
-        }
-        nextExpiresAt = parsedDate;
+      if (!input.expiresAt) {
+        throw new AppError(
+          400,
+          'BAD_REQUEST',
+          'Expiration date is required. Non-expiring API keys are not permitted',
+        );
       }
+      const parsedDate = new Date(input.expiresAt);
+      if (isNaN(parsedDate.getTime()) || parsedDate.getTime() <= Date.now()) {
+        throw new AppError(400, 'BAD_REQUEST', 'Expiration date must be in the future');
+      }
+      nextExpiresAt = parsedDate;
     }
 
     let nextScopes: string[] | undefined;
