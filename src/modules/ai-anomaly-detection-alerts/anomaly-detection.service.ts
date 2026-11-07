@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import type { Prisma } from '@prisma/client';
 import { z } from 'zod';
 import { AppError } from '../../common/errors/app-error.js';
@@ -8,6 +8,8 @@ import {
   detectionPolicySchema,
   evaluateContext,
   detectionSeverity,
+  type ContextEvent,
+  type ContextualDecision,
 } from './contextual-detection.js';
 import { env } from '../../config/env.js';
 import { detectionJobsRepository, pipelineEngine } from './detection-jobs.repository.js';
@@ -40,6 +42,50 @@ const parametersSchema = z
   })
   .passthrough();
 let detectionQueue: Promise<void> = Promise.resolve();
+
+function createAiOnlyDecision(event: ContextEvent): ContextualDecision {
+  const groupKey = createHash('sha256')
+    .update(
+      JSON.stringify([
+        'ai-triage-v1',
+        event.event_source_id,
+        event.event_family,
+        event.account_identifier ?? event.source_ip ?? event.id,
+        event.source_ip,
+      ]),
+    )
+    .digest('hex');
+  return {
+    baselineReady: false,
+    score: 0,
+    matchedRules: [],
+    groupKey,
+    features: [
+      {
+        featureName: 'detection_mode',
+        featureValue: JSON.stringify({
+          mode: 'AI_ONLY',
+          legacyRulesEvaluated: false,
+          legacySevenDayBaselineEvaluated: false,
+        }),
+        contributionScore: 0,
+        rank: 1,
+      },
+      {
+        featureName: 'evidence_event_ids',
+        featureValue: JSON.stringify([event.id]),
+        contributionScore: 0,
+        rank: 2,
+      },
+      {
+        featureName: 'detection_group',
+        featureValue: JSON.stringify(groupKey),
+        contributionScore: 0,
+        rank: 3,
+      },
+    ],
+  };
+}
 
 async function withDetectionLock<T>(operation: () => Promise<T>): Promise<T> {
   const previous = detectionQueue;
@@ -140,6 +186,7 @@ async function runDetection(
   );
   try {
     const detectedAt = new Date();
+    const aiOnlyMode = env.AI_FUSION_ENABLED && env.AI_FUSION_CAN_CREATE_ALERTS;
     const explanations = new Map<string, Promise<string>>();
     // One shared deadline for optional prose across the entire batch, not a
     // separate 60-second wait for every alert. Explicit regeneration is unchanged.
@@ -150,24 +197,29 @@ async function runDetection(
       detections.push(
         ...(await Promise.all(
           batch.events.slice(offset, offset + 4).map(async (event) => {
-            const context = await anomalyDetectionRepository.findEventContext(event);
-            let decision = evaluateContext(
-              event,
-              context.events,
-              context.truncated,
-              parameters.detectionPolicy,
-              parameters.weights,
-            );
-            if (!decision.baselineReady && env.DETECTION_PIPELINE_ENABLED) {
-              const peers = await anomalyDetectionRepository.findPeerContext(event);
+            let decision: ContextualDecision;
+            if (aiOnlyMode) {
+              decision = createAiOnlyDecision(event);
+            } else {
+              const context = await anomalyDetectionRepository.findEventContext(event);
               decision = evaluateContext(
                 event,
-                peers.events,
-                peers.truncated,
+                context.events,
+                context.truncated,
                 parameters.detectionPolicy,
                 parameters.weights,
-                true,
               );
+              if (!decision.baselineReady && env.DETECTION_PIPELINE_ENABLED) {
+                const peers = await anomalyDetectionRepository.findPeerContext(event);
+                decision = evaluateContext(
+                  event,
+                  peers.events,
+                  peers.truncated,
+                  parameters.detectionPolicy,
+                  parameters.weights,
+                  true,
+                );
+              }
             }
             let score = decision.score;
             const assetId = event.event_entity_mappings[0]?.asset_id;
@@ -180,12 +232,13 @@ async function runDetection(
               ? customThreshold.threshold
               : parameters.threshold;
             let isAnomaly = decision.baselineReady && score >= threshold;
-            decision.features.push({
-              featureName: 'configured_threshold',
-              featureValue: JSON.stringify({ threshold, source: configuredThresholdSource }),
-              contributionScore: 0,
-              rank: decision.features.length + 1,
-            });
+            if (!aiOnlyMode)
+              decision.features.push({
+                featureName: 'configured_threshold',
+                featureValue: JSON.stringify({ threshold, source: configuredThresholdSource }),
+                contributionScore: 0,
+                rank: decision.features.length + 1,
+              });
             let mlPrediction: MlShadowResult | null = null;
             let temporalContext: MlTemporalContext | undefined;
             let scoringReady = decision.baselineReady;
@@ -205,9 +258,10 @@ async function runDetection(
             const modelEscalated =
               mlPrediction?.status === 'PREDICTED' &&
               mlPrediction.prediction.score >= mlPrediction.prediction.escalationThreshold;
-            const llmPrediction = env.AI_FUSION_ENABLED && modelEscalated
-              ? await requestLlmClassification(event, temporalContext)
-              : null;
+            const llmPrediction =
+              env.AI_FUSION_ENABLED && modelEscalated
+                ? await requestLlmClassification(event, temporalContext)
+                : null;
             if (llmPrediction) {
               decision.features.push({
                 featureName: 'llm_security_classification',
@@ -238,14 +292,21 @@ async function runDetection(
               contributionScore: 0,
               rank: decision.features.length + 1,
             });
-            if (env.AI_FUSION_CAN_CREATE_ALERTS && mlPrediction?.status === 'PREDICTED') {
-              scoringReady = true;
-              if (!modelEscalated) {
+            if (aiOnlyMode) {
+              if (mlPrediction?.status !== 'PREDICTED') {
+                score = 0;
+                threshold = 1;
+                isAnomaly = false;
+                scoringReady = false;
+                thresholdSource = 'AI_REVIEW_PENDING';
+              } else if (!modelEscalated) {
+                scoringReady = true;
                 score = mlPrediction.prediction.score;
                 threshold = mlPrediction.prediction.escalationThreshold;
                 isAnomaly = false;
                 thresholdSource = 'AI_MODEL_TRIAGE';
               } else if (llmPrediction?.status === 'PREDICTED') {
+                scoringReady = true;
                 score = llmPrediction.prediction.score;
                 if (llmPrediction.prediction.verdict === 'MALICIOUS') {
                   // The LLM verdict is the final decision. The numeric fields are
@@ -264,6 +325,7 @@ async function runDetection(
                   thresholdSource = 'AI_LLM_FINAL';
                 }
               } else {
+                scoringReady = false;
                 score = Math.min(mlPrediction.prediction.score, 0.99999999);
                 threshold = 1;
                 isAnomaly = false;
