@@ -1,4 +1,46 @@
+import { createHash, randomUUID } from 'node:crypto';
+import type { Prisma } from '@prisma/client';
 import { prisma } from '../../database/prisma.js';
+
+// Authentication audits contain event metadata only, never credentials or token hashes.
+async function recordAuthAudit(
+  database: Prisma.TransactionClient,
+  userId: string,
+  action: string,
+): Promise<void> {
+  const id = randomUUID();
+  const occurredAt = new Date();
+  const previous = await database.audit_logs.findFirst({
+    orderBy: [{ occurred_at: 'desc' }, { id: 'desc' }],
+    select: { record_hash: true },
+  });
+  await database.audit_logs.create({
+    data: {
+      id,
+      actor_type: 'USER',
+      actor_user_id: userId,
+      action,
+      resource_type: 'USER',
+      resource_id: userId,
+      source: 'API',
+      occurred_at: occurredAt,
+      outcome: 'SUCCESS',
+      previous_hash: previous?.record_hash ?? null,
+      record_hash: createHash('sha256')
+        .update(
+          JSON.stringify({
+            previousHash: previous?.record_hash ?? null,
+            id,
+            userId,
+            action,
+            occurredAt,
+          }),
+        )
+        .digest('hex'),
+    },
+    select: { id: true },
+  });
+}
 
 const authUserSelect = {
   id: true,
@@ -160,9 +202,17 @@ export const authRepository = {
   },
 
   async revokeSession(refreshTokenHash: string): Promise<void> {
-    await prisma.auth_sessions.updateMany({
-      where: { refresh_token_hash: refreshTokenHash, revoked_at: null },
-      data: { revoked_at: new Date() },
+    await prisma.$transaction(async (database) => {
+      const session = await database.auth_sessions.findFirst({
+        where: { refresh_token_hash: refreshTokenHash },
+        select: { id: true, user_id: true },
+      });
+      if (!session) return;
+      const revoked = await database.auth_sessions.updateMany({
+        where: { id: session.id, revoked_at: null },
+        data: { revoked_at: new Date() },
+      });
+      if (revoked.count === 1) await recordAuthAudit(database, session.user_id, 'USER_LOGGED_OUT');
     });
   },
 
@@ -178,24 +228,25 @@ export const authRepository = {
     tokenHash: string;
     expiresAt: Date;
   }): Promise<void> {
-    await prisma.$transaction([
-      prisma.password_reset_tokens.deleteMany({
+    await prisma.$transaction(async (database) => {
+      await database.password_reset_tokens.deleteMany({
         where: {
           OR: [{ used_at: { not: null } }, { expires_at: { lte: new Date() } }],
         },
-      }),
-      prisma.password_reset_tokens.deleteMany({
+      });
+      await database.password_reset_tokens.deleteMany({
         where: { user_id: input.userId, used_at: null },
-      }),
-      prisma.password_reset_tokens.create({
+      });
+      await database.password_reset_tokens.create({
         data: {
           user_id: input.userId,
           token_hash: input.tokenHash,
           expires_at: input.expiresAt,
         },
         select: { id: true },
-      }),
-    ]);
+      });
+      await recordAuthAudit(database, input.userId, 'PASSWORD_RESET_REQUESTED');
+    });
   },
 
   async deletePasswordResetToken(tokenHash: string): Promise<void> {
@@ -243,6 +294,7 @@ export const authRepository = {
         where: { user_id: token.user_id, revoked_at: null },
         data: { revoked_at: new Date() },
       });
+      await recordAuthAudit(database, token.user_id, 'PASSWORD_RESET_COMPLETED');
       return true;
     });
   },
@@ -278,6 +330,7 @@ export const authRepository = {
           where: { user_id: userId, revoked_at: null },
           data: { revoked_at: new Date() },
         });
+        await recordAuthAudit(database, userId, 'PASSWORD_CHANGED');
         return true;
       },
       { maxWait: 30_000, timeout: 30_000 },

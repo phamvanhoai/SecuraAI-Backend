@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { prisma } from '../../database/prisma.js';
 import type { CreateUserBody } from './dto/create-user.dto.js';
 import type { ListUsersQuery } from './dto/list-users-query.dto.js';
@@ -92,7 +93,10 @@ export const usersRepository = {
         where: {
           user_id: userId,
           scope_code: { in: supplementalScopeCodes },
-          effect: 'ALLOW', role: null, asset_id: null, business_service_id: null,
+          effect: 'ALLOW',
+          role: null,
+          asset_id: null,
+          business_service_id: null,
           OR: [{ expires_at: null }, { expires_at: { gt: new Date() } }],
         },
         select: {
@@ -152,8 +156,15 @@ export const usersRepository = {
           transaction.assets.count({ where: { owner_user_id: userId } }),
         ]);
         const responsibilities = ['RISK_OWNER', 'CONTROL_OWNER', 'ASSET_OWNER'];
-        if (user.role === 'EMPLOYEE' && owned.some((count, index) => count > 0 &&
-          (input.role !== 'EMPLOYEE' || !input.scopes.some((scope) => scope.scopeCode === responsibilities[index])))) {
+        if (
+          user.role === 'EMPLOYEE' &&
+          owned.some(
+            (count, index) =>
+              count > 0 &&
+              (input.role !== 'EMPLOYEE' ||
+                !input.scopes.some((scope) => scope.scopeCode === responsibilities[index])),
+          )
+        ) {
           return { kind: 'ownership_transfer_required' } as const;
         }
         if (actorUserId === userId && input.role !== user.role)
@@ -239,6 +250,11 @@ export const usersRepository = {
             data: { revoked_at: new Date() },
           });
         }
+        const previous = await transaction.audit_logs.findFirst({
+          orderBy: [{ occurred_at: 'desc' }, { id: 'desc' }],
+          select: { record_hash: true },
+        });
+
         await transaction.audit_logs.create({
           data: {
             actor_user_id: actor.id,
@@ -252,7 +268,19 @@ export const usersRepository = {
               scopes: beforeScopes,
             },
             after_data: input,
-            record_hash: `USER_ACCESS_ASSIGNED:${userId}:${actor.id}:${Date.now()}`,
+            previous_hash: previous?.record_hash ?? null,
+            record_hash: createHash('sha256')
+              .update(
+                JSON.stringify({
+                  previousHash: previous?.record_hash ?? null,
+                  action: 'USER_ACCESS_ASSIGNED',
+                  actorUserId: actor.id,
+                  userId,
+                  before: { role: user.role, scopes: beforeScopes },
+                  after: input,
+                }),
+              )
+              .digest('hex'),
           },
         });
         return {
@@ -334,6 +362,11 @@ export const usersRepository = {
         },
         select: userDetailSelect,
       });
+      const previous = await transaction.audit_logs.findFirst({
+        orderBy: [{ occurred_at: 'desc' }, { id: 'desc' }],
+        select: { record_hash: true },
+      });
+
       await transaction.audit_logs.create({
         data: {
           actor_user_id: actor.id,
@@ -356,7 +389,31 @@ export const usersRepository = {
             departmentId: user.department_id,
             status: user.status,
           },
-          record_hash: `USER_UPDATED:${user.id}:${actor.id}:${user.updated_at.toISOString()}`,
+          previous_hash: previous?.record_hash ?? null,
+          record_hash: createHash('sha256')
+            .update(
+              JSON.stringify({
+                previousHash: previous?.record_hash ?? null,
+                action: 'USER_UPDATED',
+                actorUserId: actor.id,
+                userId: user.id,
+                before: {
+                  fullName: existing.full_name,
+                  phone: existing.phone,
+                  employeeCode: existing.employee_code,
+                  departmentId: existing.department_id,
+                  status: existing.status,
+                },
+                after: {
+                  fullName: user.full_name,
+                  phone: user.phone,
+                  employeeCode: user.employee_code,
+                  departmentId: user.department_id,
+                  status: user.status,
+                },
+              }),
+            )
+            .digest('hex'),
         },
       });
       return { kind: 'updated', user } as const;
@@ -405,15 +462,26 @@ export const usersRepository = {
     return { kind: 'found', items, total, statusCounts } as const;
   },
   hasPendingApprovalWork(userId: string) {
-    return prisma.risk_acceptances.count({ where: { decision: 'PENDING', requested_by: { not: userId } } });
+    return prisma.risk_acceptances.count({
+      where: { decision: 'PENDING', requested_by: { not: userId } },
+    });
   },
   hasOwnedAssets(userId: string) {
     return prisma.assets.count({ where: { owner_user_id: userId } });
   },
   findEmployeeResponsibilities(userId: string) {
-    return prisma.user_access_scopes.findMany({ where: { user_id: userId, role: null,
-      scope_code: { in: supplementalScopeCodes }, effect: 'ALLOW', business_service_id: null, asset_id: null, expires_at: null },
-      select: { scope_code: true } });
+    return prisma.user_access_scopes.findMany({
+      where: {
+        user_id: userId,
+        role: null,
+        scope_code: { in: supplementalScopeCodes },
+        effect: 'ALLOW',
+        business_service_id: null,
+        asset_id: null,
+        expires_at: null,
+      },
+      select: { scope_code: true },
+    });
   },
   findCurrentUser(userId: string) {
     return prisma.users.findUnique({
@@ -474,6 +542,11 @@ export const usersRepository = {
           status: true,
         },
       });
+      const previous = await transaction.audit_logs.findFirst({
+        orderBy: [{ occurred_at: 'desc' }, { id: 'desc' }],
+        select: { record_hash: true },
+      });
+
       await transaction.audit_logs.create({
         data: {
           actor_user_id: actor.id,
@@ -488,7 +561,23 @@ export const usersRepository = {
             role: user.role,
             status: user.status,
           },
-          record_hash: `USER_CREATED:${user.id}:${actor.id}`,
+          previous_hash: previous?.record_hash ?? null,
+          record_hash: createHash('sha256')
+            .update(
+              JSON.stringify({
+                previousHash: previous?.record_hash ?? null,
+                action: 'USER_CREATED',
+                actorUserId: actor.id,
+                userId: user.id,
+                after: {
+                  email: user.email,
+                  username: user.username,
+                  role: user.role,
+                  status: user.status,
+                },
+              }),
+            )
+            .digest('hex'),
         },
       });
       return { kind: 'created', user } as const;
