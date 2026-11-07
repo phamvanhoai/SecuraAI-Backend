@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { report_export_status, user_role } from '@prisma/client';
+import type { Prisma, report_export_status, user_role } from '@prisma/client';
 import { AppError } from '../src/common/errors/app-error.js';
 import { reportExportsRepository } from '../src/modules/audit-security-reporting/report-exports.repository.js';
 import { reportExportsService } from '../src/modules/audit-security-reporting/report-exports.service.js';
@@ -22,7 +22,7 @@ type MockExportRecord = {
   id: string;
   report_type: string;
   requested_by: string;
-  filters: Record<string, unknown>;
+  filters: Prisma.JsonValue;
   status: report_export_status;
   storage_uri: string | null;
   generated_at: Date | null;
