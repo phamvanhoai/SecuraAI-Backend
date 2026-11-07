@@ -1,6 +1,7 @@
 import type { Prisma } from '@prisma/client';
 import { createHash, randomUUID } from 'node:crypto';
 import { prisma } from '../../database/prisma.js';
+import { AppError } from '../../common/errors/app-error.js';
 import type { ViewIncidentsQuery } from './dto/view-incidents.dto.js';
 import type { ClassifyIncidentSeverity } from './dto/classify-incident-severity.dto.js';
 import type { AssignIncidentHandler } from './dto/assign-incident-handler.dto.js';
@@ -728,9 +729,16 @@ export const incidentsRepository = {
   },
 
   createFromSource(userId: string, input: CreateIncidentFromSource) {
-    if (input.sourceType === 'manual') {
-      return prisma.incidents
-        .create({
+    return prisma.$transaction(async (transaction) => {
+      const actor = await transaction.users.findUnique({
+        where: { id: userId },
+        select: { role: true, status: true },
+      });
+      if (!actor || actor.status !== 'ACTIVE' || actor.role !== 'SECURITY_OFFICER') {
+        throw new AppError(403, 'FORBIDDEN', 'Active Security Officer required');
+      }
+      if (input.sourceType === 'manual') {
+        const incident = await transaction.incidents.create({
           data: {
             incident_code: `INC-${randomUUID().replaceAll('-', '').slice(0, 16).toUpperCase()}`,
             title: input.title,
@@ -741,10 +749,9 @@ export const incidentsRepository = {
             created_by: userId,
           },
           select: incidentViewSelect,
-        })
-        .then((incident) => ({ outcome: 'created' as const, incident }));
-    }
-    return prisma.$transaction(async (transaction) => {
+        });
+        return { outcome: 'created' as const, incident };
+      }
       const finding = await transaction.security_findings.findFirst({
         where: input.sourceType === 'alert' ? { alert_id: input.sourceId } : { id: input.sourceId },
         select: {

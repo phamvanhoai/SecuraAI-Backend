@@ -107,26 +107,94 @@ export const systemLogsRepository = {
 
   async configurationHistory(query: ConfigurationHistoryQuery) {
     const term = query.q?.trim();
-    const terms = term?.split(/[\s·]+/u).filter(Boolean).slice(0, 5) ?? [];
+    const terms =
+      term
+        ?.split(/[\s·]+/u)
+        .filter(Boolean)
+        .slice(0, 5) ?? [];
     const where: Prisma.audit_logsWhereInput = {
       AND: [
-        { OR: [{ action: { contains: 'CONFIG', mode: 'insensitive' } }, { resource_type: { contains: 'CONFIG', mode: 'insensitive' } }] },
+        {
+          OR: [
+            { action: { contains: 'CONFIG', mode: 'insensitive' } },
+            { resource_type: { contains: 'CONFIG', mode: 'insensitive' } },
+          ],
+        },
         ...terms.map((value) => {
-          const isUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value);
-          return { OR: [{ action: { contains: value, mode: 'insensitive' as const } }, { resource_type: { contains: value, mode: 'insensitive' as const } }, ...(isUuid ? [{ resource_id: { equals: value } }] : [])] };
+          const isUuid =
+            /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+              value,
+            );
+          return {
+            OR: [
+              { action: { contains: value, mode: 'insensitive' as const } },
+              { resource_type: { contains: value, mode: 'insensitive' as const } },
+              ...(isUuid ? [{ resource_id: { equals: value } }] : []),
+            ],
+          };
         }),
-        ...(query.actor ? [{ OR: [{ users: { full_name: { contains: query.actor, mode: 'insensitive' as const } } }, { users: { email: { contains: query.actor, mode: 'insensitive' as const } } }] }] : []),
-        ...(query.from || query.to ? [{ occurred_at: { ...(query.from ? { gte: new Date(query.from) } : {}), ...(query.to ? { lte: new Date(query.to) } : {}) } }] : []),
+        ...(query.actor
+          ? [
+              {
+                OR: [
+                  { users: { full_name: { contains: query.actor, mode: 'insensitive' as const } } },
+                  { users: { email: { contains: query.actor, mode: 'insensitive' as const } } },
+                ],
+              },
+            ]
+          : []),
+        ...(query.from || query.to
+          ? [
+              {
+                occurred_at: {
+                  ...(query.from ? { gte: new Date(query.from) } : {}),
+                  ...(query.to ? { lte: new Date(query.to) } : {}),
+                },
+              },
+            ]
+          : []),
       ],
     };
     const [items, total] = await prisma.$transaction([
-      prisma.audit_logs.findMany({ where, orderBy: [{ occurred_at: 'desc' }, { id: 'desc' }], skip: (query.page - 1) * query.limit, take: query.limit, select: { id: true, action: true, resource_type: true, resource_id: true, occurred_at: true, before_data: true, after_data: true, outcome: true, users: { select: { full_name: true, email: true, role: true } } } }),
+      prisma.audit_logs.findMany({
+        where,
+        orderBy: [{ occurred_at: 'desc' }, { id: 'desc' }],
+        skip: (query.page - 1) * query.limit,
+        take: query.limit,
+        select: {
+          id: true,
+          action: true,
+          resource_type: true,
+          resource_id: true,
+          occurred_at: true,
+          before_data: true,
+          after_data: true,
+          outcome: true,
+          users: { select: { full_name: true, email: true, role: true } },
+        },
+      }),
       prisma.audit_logs.count({ where }),
     ]);
-    const userIds = items.filter((item) => item.resource_id && /USER|PERMISSION/i.test(`${item.action} ${item.resource_type}`)).map((item) => item.resource_id as string);
-    const users = userIds.length ? await prisma.users.findMany({ where: { id: { in: userIds } }, select: { id: true, full_name: true, email: true, role: true } }) : [];
+    const userIds = items
+      .filter(
+        (item) =>
+          item.resource_id && /USER|PERMISSION/i.test(`${item.action} ${item.resource_type}`),
+      )
+      .map((item) => item.resource_id as string);
+    const users = userIds.length
+      ? await prisma.users.findMany({
+          where: { id: { in: userIds } },
+          select: { id: true, full_name: true, email: true, role: true },
+        })
+      : [];
     const userById = new Map(users.map((user) => [user.id, user]));
-    return { items: items.map((item) => ({ ...item, resourceDetails: item.resource_id ? userById.get(item.resource_id) ?? null : null })), total };
+    return {
+      items: items.map((item) => ({
+        ...item,
+        resourceDetails: item.resource_id ? (userById.get(item.resource_id) ?? null) : null,
+      })),
+      total,
+    };
   },
 
   findForExport(input: ExportInvestigationLogsInput) {
@@ -179,6 +247,10 @@ export const systemLogsRepository = {
         reason: input.reason,
         contentSha256,
       };
+      const previous = await tx.audit_logs.findFirst({
+        orderBy: [{ occurred_at: 'desc' }, { id: 'desc' }],
+        select: { record_hash: true },
+      });
       await tx.audit_logs.create({
         data: {
           id: auditId,
@@ -189,9 +261,16 @@ export const systemLogsRepository = {
           resource_id: exportId,
           source: 'API',
           after_data: after,
+          previous_hash: previous?.record_hash ?? null,
           record_hash: createHash('sha256')
             .update(
-              JSON.stringify({ id: auditId, actorUserId, after, at: generatedAt.toISOString() }),
+              JSON.stringify({
+                previousHash: previous?.record_hash ?? null,
+                id: auditId,
+                actorUserId,
+                after,
+                at: generatedAt.toISOString(),
+              }),
             )
             .digest('hex'),
         },

@@ -34,10 +34,18 @@ export const userAccessScopeSchema = z.discriminatedUnion('targetType', [
 export const assignUserAccessBodySchema = z
   .object({
     role: z.enum(['ADMIN', 'SECURITY_OFFICER', 'EMPLOYEE', 'EXECUTIVE']),
-    scopes: z.array(userAccessScopeSchema).max(200),
+    scopes: z.array(userAccessScopeSchema).max(1, 'Select at most one Employee business responsibility'),
   })
   .strict()
   .superRefine((value, context) => {
+    if (value.scopes.length && value.role !== 'EMPLOYEE') {
+      context.addIssue({ code: 'custom', path: ['scopes'], message: 'Business responsibilities require the Employee role' });
+    }
+    value.scopes.forEach((scope, index) => {
+      if (scope.targetType !== 'GLOBAL' || scope.expiresAt) {
+        context.addIssue({ code: 'custom', path: ['scopes', index], message: 'Business responsibilities use permanent eligibility; assign individual records in their modules' });
+      }
+    });
     const keys = value.scopes.map(
       (scope) =>
         `${scope.scopeCode}:${scope.targetType}:${'targetId' in scope ? scope.targetId : ''}`,

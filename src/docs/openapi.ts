@@ -92,7 +92,7 @@ export const openApiSpec = {
             'application/json': {
               schema: {
                 type: 'object',
-                required: ['name'],
+                required: ['name', 'expiresAt'],
                 properties: {
                   name: { type: 'string', minLength: 1, maxLength: 255 },
                   keyName: { type: 'string', minLength: 1, maxLength: 255 },
@@ -103,7 +103,7 @@ export const openApiSpec = {
                     items: { type: 'string' },
                     default: ['events:ingest'],
                   },
-                  expiresAt: { type: 'string', format: 'date-time', nullable: true },
+                  expiresAt: { type: 'string', format: 'date-time' },
                   isActive: { type: 'boolean', default: true },
                   status: { type: 'string', enum: ['ACTIVE', 'INACTIVE'], default: 'ACTIVE' },
                 },
@@ -370,7 +370,7 @@ export const openApiSpec = {
         summary: 'Decide risk acceptance',
         security: [{ bearerAuth: [] }],
         description:
-          'Active Security Officer or Executive (existing approver group), never requester. Pending only. Approval checks expiry, owner reassignment, Threat/Vulnerability changes, current Control/Evidence basis and exact submitted assessment/plan basis. Legacy requests without verifiable audit basis must be rejected/resubmitted. Rejection remains available for expired/stale requests. Owner justification is preserved; decision reason is audited separately. Only approval sets ACCEPTED. Detail exposes expired/canDecide and actor-scoped acceptanceWorkflow. No named-approver assignment or automatic email.',
+          'Active Security Officer, Executive, or Employee explicitly granted AUTHORIZED_APPROVER for the Risk Acceptance workflow; never the requester or current Risk Owner. Employee approvers can read only owned risks or risks with pending acceptance submitted by another user, not the full register. Pending only. Approval checks expiry, owner reassignment, Threat/Vulnerability changes, current Control/Evidence basis and exact submitted assessment/plan basis. Legacy requests without verifiable audit basis must be rejected/resubmitted. Rejection remains available for expired/stale requests. Owner justification is preserved; decision reason is audited separately. Only approval sets ACCEPTED. Detail exposes expired/canDecide and actor-scoped acceptanceWorkflow. No named-approver assignment or automatic email.',
         parameters: [
           {
             name: 'acceptanceId',
@@ -646,9 +646,8 @@ export const openApiSpec = {
     '/users/access-assignment-options': {
       get: {
         tags: ['Users'],
-        summary: 'List role and access-scope assignment options',
-        description:
-          'Returns the four V2 roles, allow-listed supplemental permission codes, and active business services and assets that may target a scope. Active Admin account required.',
+        summary: 'List system roles and Employee business responsibilities',
+        description: 'scopeCodes contains RISK_OWNER, CONTROL_OWNER, ASSET_OWNER and AUTHORIZED_APPROVER. These are eligibility labels stored in existing user_access_scopes, not fixed roles. At most one permanent GLOBAL grant for EMPLOYEE is accepted; individual resource ownership remains separate. Legacy AUDIT_VIEW/POLICY_APPROVE are not supported.',
         security: [{ bearerAuth: [] }],
         responses: {
           '200': { description: 'Assignment options' },
@@ -660,7 +659,8 @@ export const openApiSpec = {
     '/users/{userId}/access-assignment': {
       get: {
         tags: ['Users'],
-        summary: 'View a user role, scopes, and ownership summary',
+        summary: 'View a user role, business responsibilities, and ownership summary',
+        description: 'Existing Employee ownership supplies implicit responsibility eligibility without backfill; assignedAt is null for inferred entries. Transfer all owned records before removing the corresponding responsibility or changing that Employee role (409 OWNERSHIP_TRANSFER_REQUIRED). Grants alone do not expose resource lists without ownership.',
         security: [{ bearerAuth: [] }],
         parameters: [
           {
@@ -1540,9 +1540,9 @@ export const openApiSpec = {
     '/integrations/wazuh/events': {
       post: {
         tags: ['Event Ingestion'],
-        summary: 'Ingest a normalized Wazuh event',
+        summary: 'Ingest a native or normalized Wazuh event',
         description:
-          'Accepts one normalized event from Wazuh. Requires an active integration API key with the events:ingest scope.',
+          'Accepts either a native Wazuh alert or an event already normalized to the SecuraAI AUTHENTICATION, VPN_SSO or APPLICATION_ACCESS schema. Native alerts are mapped server-side while the original payload is retained in metadata for the raw analysis path. Requires an active integration API key with the events:ingest scope.',
         security: [{ apiKeyAuth: [] }],
         requestBody: {
           required: true,
@@ -1552,7 +1552,10 @@ export const openApiSpec = {
           '201': { description: 'Event ingested' },
           '401': { description: 'API key missing, invalid, expired, or revoked' },
           '403': { description: 'API key lacks the events:ingest scope' },
-          '422': { description: 'Invalid normalized event' },
+          '422': {
+            description:
+              'Invalid event, missing principal/application context, or Wazuh event outside the three supported families',
+          },
           '503': { description: 'Wazuh ingestion is not configured' },
         },
       },
@@ -1563,7 +1566,7 @@ export const openApiSpec = {
         tags: ['Incident Management'],
         summary: 'Create an incident manually or from a confirmed source',
         description:
-          'Creates a V2 incident manually or from an eligible confirmed alert/security finding. Any active signed-in user can submit a manual incident report. Only an active Security Officer can create a source-backed incident, which retains a unique finding link.',
+          'Only an active Security Officer can create a V2 incident, either manually when no suitable alert/finding is available, or from an eligible confirmed alert/security finding. Source-backed incidents retain a unique finding link. Executive/Admin/Employee accounts cannot create incidents. This is not a general incident-report intake endpoint.',
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
@@ -2437,6 +2440,88 @@ export const openApiSpec = {
         },
       },
     },
+    '/compliance/policies/{policyId}/versions': {
+      post: {
+        tags: ['Policies'],
+        summary: 'Create the next policy draft version',
+        description:
+          'Active Security Officer who owns an active published policy only. Requires a unique version number and no DRAFT, IN_REVIEW, WAITING_APPROVAL or APPROVED version. Serializes competing creations. Updates shared policy metadata, but retains the existing publication and acknowledgements. Define applicability for the new draft before submission. The draft follows the normal review, approval and publication workflow.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'policyId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['versionNumber', 'content', 'changeSummary'],
+                properties: {
+                  title: { type: 'string', minLength: 3, maxLength: 255 },
+                  description: { type: 'string', nullable: true, maxLength: 2000 },
+                  versionNumber: { type: 'string', minLength: 1, maxLength: 30 },
+                  content: { type: 'string', minLength: 1, maxLength: 500000 },
+                  changeSummary: { type: 'string', minLength: 1, maxLength: 5000 },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '201': {
+            description: 'New draft created; policy remains active',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', enum: [true] },
+                    data: {
+                      type: 'object',
+                      properties: {
+                        policyId: { type: 'string', format: 'uuid' },
+                        policyCode: { type: 'string' },
+                        title: { type: 'string' },
+                        description: { type: 'string', nullable: true },
+                        ownerUserId: { type: 'string', format: 'uuid', nullable: true },
+                        policyStatus: { type: 'string', enum: ['active'] },
+                        updatedAt: { type: 'string', format: 'date-time' },
+                        version: {
+                          type: 'object',
+                          properties: {
+                            id: { type: 'string', format: 'uuid' },
+                            versionNumber: { type: 'string' },
+                            content: { type: 'string' },
+                            changeSummary: { type: 'string', nullable: true },
+                            status: { type: 'string', enum: ['draft'] },
+                            createdByUserId: { type: 'string', format: 'uuid' },
+                            createdAt: { type: 'string', format: 'date-time' },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          '401': { description: 'Authentication required or inactive account' },
+          '403': { description: 'Security Officer ownership required' },
+          '404': { description: 'Policy not found' },
+          '409': {
+            description: 'Not published, duplicate number or a version is already in progress',
+          },
+          '422': { description: 'Invalid input' },
+        },
+      },
+    },
     '/compliance/policies/{policyId}/versions/{versionId}/history': {
       get: {
         tags: ['Policy Management'],
@@ -3234,7 +3319,7 @@ export const openApiSpec = {
         tags: ['Event Ingestion'],
         summary: 'View centralized list of normalized security events',
         description:
-          'Returns a paginated list of ingested security events with associated source, event family, account/user, asset/device, and mapping status.',
+          'Returns a paginated list of ingested security events with associated source, event family, account/user, asset/device, and mapping status. When the durable pipeline is enabled, each item also includes detection { status, score, alertId }. Status is PENDING, PROCESSING, INSUFFICIENT_BASELINE, BELOW_THRESHOLD, LINKED_TO_ALERT, FAILED or PREVIOUSLY_EVALUATED. score is null when no historical comparison is available. Linked events may share an alert through correlation.',
         security: [{ bearerAuth: [] }],
         parameters: [
           { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
@@ -3380,7 +3465,7 @@ export const openApiSpec = {
         tags: ['AI Anomaly Detection & Alerts'],
         summary: 'Run anomaly detection over unprocessed normalized events',
         description:
-          'Requires an active Security Officer account and a deployed model version. Each request processes one bounded batch of pending normalized events, including file-imported events and events older than 24 hours. Run it again to process the next batch. Direct Wazuh API events are also eligible if an automated run has not processed them yet. Each event is evaluated once per model version; anomalous detections create alerts atomically.',
+          'Requires an active Security Officer account and a deployed model version. Each request processes one bounded batch of pending normalized events. Current feature extraction uses rolling 1-minute, 5-minute, 15-minute and 60-minute horizons. The ML model performs first-stage triage using an escalation threshold selected on Validation. Low-risk results are recorded without calling the LLM. Escalated sequences are sent to the LLM for final review; unavailable or invalid LLM responses remain review-pending and cannot create alerts. Stored evidence preserves the model score, escalation threshold, temporal context, LLM result and final decision. Existing evaluated events are not rescored.',
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
@@ -3885,7 +3970,7 @@ export const openApiSpec = {
           },
         ],
         responses: {
-          '200': { description: 'Model versions and their latest evaluation metrics' },
+          '200': { description: 'Detection registry and optional historical evaluation metrics, plus explanationModel { provider: Ollama, model: configured runtime model name, enabled: boolean, purpose: EXPLANATION_ONLY, connectionStatus: NOT_CHECKED }. Enabled is configuration only, not a connectivity guarantee.' },
           '401': { description: 'Authentication required' },
           '403': { description: 'Security Officer role required' },
           '422': { description: 'Invalid query parameters' },
@@ -4076,6 +4161,34 @@ export const openApiSpec = {
         },
       },
     },
+    '/auth/change-password': {
+      post: {
+        tags: ['Authentication'],
+        summary: 'Change password and sign out all devices',
+        description: 'Requires an active authenticated account and the correct current password. Updates the password, revokes all refresh sessions and records PASSWORD_CHANGED atomically. Audit records exclude credentials and token hashes. Previously issued access tokens are rejected on subsequent authenticated requests. All devices must log in again.',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: true,
+          content: { 'application/json': { schema: {
+            type: 'object', additionalProperties: false,
+            required: ['currentPassword', 'newPassword', 'confirmPassword'],
+            properties: {
+              currentPassword: { type: 'string', minLength: 1, maxLength: 128 },
+              newPassword: { type: 'string', minLength: 8, maxLength: 128, description: 'Must contain an uppercase letter and a special character and differ from the current password.' },
+              confirmPassword: { type: 'string', description: 'Must match newPassword.' },
+            },
+          } } },
+        },
+        responses: {
+          '200': { description: 'Password changed; sign in again on all devices' },
+          '400': { description: 'Incorrect current password or unchanged password' },
+          '401': { description: 'Authentication required or password changed since token issuance' },
+          '409': { description: 'Concurrent password change' },
+          '422': { description: 'Invalid password fields or confirmation mismatch' },
+          '429': { description: 'Too many attempts' },
+        },
+      },
+    },
     '/auth/password-reset/verify': {
       post: {
         tags: ['Authentication'],
@@ -4136,6 +4249,7 @@ export const openApiSpec = {
       post: {
         tags: ['Authentication'],
         summary: 'Revoke a refresh session',
+        description: 'Revokes the matching session and records USER_LOGGED_OUT atomically. Unknown or already revoked sessions remain idempotent and do not create duplicate audit events.',
         security: [],
         requestBody: {
           required: true,
@@ -4447,7 +4561,7 @@ export const openApiSpec = {
           { name: 'sortOrder', in: 'query', schema: { type: 'string', enum: ['asc', 'desc'] } },
         ],
         responses: {
-          '200': { description: 'Paginated login history' },
+          '200': { description: 'Paginated login history with summary { successful, failed, accounts } over all matching records, independent of pagination. Accounts counts distinct non-null user IDs; unrecognized login identities are excluded. All query filters and viewer ownership scope apply to totals.' },
           '401': { description: 'Authentication required' },
           '403': { description: 'A supported login-history role is required' },
           '422': { description: 'Invalid query parameters' },

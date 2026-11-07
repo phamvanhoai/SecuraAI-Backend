@@ -2,6 +2,7 @@ import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { integrationApiKeysService } from '../src/modules/audit-security-reporting/integration-api-keys.service.js';
 import { integrationApiKeysRepository } from '../src/modules/audit-security-reporting/integration-api-keys.repository.js';
 import { AppError } from '../src/common/errors/app-error.js';
+import type { CreateIntegrationApiKeyInput } from '../src/modules/audit-security-reporting/dto/create-integration-api-key.dto.js';
 
 describe('Create Integration API Key Service', () => {
   const mockAdminUser = {
@@ -96,6 +97,7 @@ describe('Create Integration API Key Service', () => {
       integrationApiKeysService.createApiKey(mockNonAdminUser.id, {
         name: 'Unauthorized Key',
         scopes: ['events:ingest'],
+        expiresAt: new Date(Date.now() + 86400000 * 30).toISOString(),
       }),
     ).rejects.toThrow(AppError);
 
@@ -103,6 +105,7 @@ describe('Create Integration API Key Service', () => {
       integrationApiKeysService.createApiKey(mockNonAdminUser.id, {
         name: 'Unauthorized Key',
         scopes: ['events:ingest'],
+        expiresAt: new Date(Date.now() + 86400000 * 30).toISOString(),
       }),
     ).rejects.toMatchObject({ statusCode: 403 });
   });
@@ -116,6 +119,7 @@ describe('Create Integration API Key Service', () => {
         name: 'Missing Source Key',
         eventSourceId: '00000000-0000-0000-0000-000000000000',
         scopes: ['events:ingest'],
+        expiresAt: new Date(Date.now() + 86400000 * 30).toISOString(),
       }),
     ).rejects.toMatchObject({ statusCode: 404 });
   });
@@ -127,6 +131,7 @@ describe('Create Integration API Key Service', () => {
       integrationApiKeysService.createApiKey(mockAdminUser.id, {
         name: 'Unbound Ingest Key',
         scopes: ['events:ingest'],
+        expiresAt: new Date(Date.now() + 86400000 * 30).toISOString(),
       }),
     ).rejects.toMatchObject({
       statusCode: 400,
@@ -145,11 +150,25 @@ describe('Create Integration API Key Service', () => {
     const result = await integrationApiKeysService.createApiKey(mockAdminUser.id, {
       name: 'Global Read-Only Key',
       scopes: ['events:read', 'alerts:read'],
+      expiresAt: new Date(Date.now() + 86400000 * 30).toISOString(),
     });
 
     expect(result.id).toBe(mockCreatedKeyRecord.id);
     expect(result.eventSourceId).toBeNull();
     expect(result.secret).toMatch(/^sec_live_/);
+  });
+
+  it('rejects creating API key when expiresAt is missing with 400 Bad Request', async () => {
+    vi.spyOn(integrationApiKeysRepository, 'findUserById').mockResolvedValue(mockAdminUser);
+
+    await expect(
+      integrationApiKeysService.createApiKey(mockAdminUser.id, {
+        name: 'No Expiry Key',
+        scopes: ['events:read'],
+      } as unknown as CreateIntegrationApiKeyInput),
+    ).rejects.toMatchObject({
+      message: expect.stringContaining('Expiration date is required'),
+    });
   });
 });
 

@@ -1,4 +1,8 @@
 import type { RequestHandler } from 'express';
+import {
+  createPolicyVersionBodySchema,
+  createPolicyVersionParamsSchema,
+} from './dto/create-policy-version.dto.js';
 import { AppError } from '../../common/errors/app-error.js';
 import {
   policyDraftReviewParamsSchema,
@@ -34,6 +38,16 @@ import {
   definePolicyApplicabilityBodySchema,
   policyApplicabilityParamsSchema,
 } from './dto/define-policy-applicability.dto.js';
+
+export const createPolicyVersion: RequestHandler = async (req, res) => {
+  const { policyId } = createPolicyVersionParamsSchema.parse(req.params);
+  const data = await policyComplianceService.createPolicyVersion(
+    authenticatedUserId(res.locals.authenticatedUserId),
+    policyId,
+    createPolicyVersionBodySchema.parse(req.body),
+  );
+  res.status(201).json({ success: true, data });
+};
 
 export const getPolicyApplicability: RequestHandler = async (req, res) => {
   const { policyId, versionId } = policyApplicabilityParamsSchema.parse(req.params);

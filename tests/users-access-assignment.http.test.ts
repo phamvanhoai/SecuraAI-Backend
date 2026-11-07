@@ -38,10 +38,11 @@ describe('user role, scope, and ownership HTTP routes', () => {
     vi.mocked(usersService.getUserAccessAssignmentOptions).mockResolvedValue({
       roles: [{ code: 'EMPLOYEE', name: 'Employee' }],
       scopeCodes: [
-        { code: 'AUDIT_VIEW', name: 'View audit information' },
-        { code: 'POLICY_APPROVE', name: 'Approve policies' },
+        { code: 'RISK_OWNER', name: 'Risk Owner' },
+        { code: 'CONTROL_OWNER', name: 'Control Owner' },
+        { code: 'ASSET_OWNER', name: 'Asset Owner' }, { code: 'AUTHORIZED_APPROVER', name: 'Authorized Approver' },
       ],
-      targetTypes: ['GLOBAL', 'BUSINESS_SERVICE', 'ASSET'],
+      targetTypes: ['GLOBAL'],
       businessServices: [],
       assets: [],
     });
@@ -55,12 +56,12 @@ describe('user role, scope, and ownership HTTP routes', () => {
   it('validates and replaces an assignment', async () => {
     vi.mocked(usersService.assignUserAccess).mockResolvedValue({
       changed: true,
-      role: 'EXECUTIVE',
+      role: 'EMPLOYEE',
       scopeCount: 1,
     });
     const body = {
-      role: 'EXECUTIVE',
-      scopes: [{ scopeCode: 'AUDIT_VIEW', targetType: 'GLOBAL' }],
+      role: 'EMPLOYEE',
+      scopes: [{ scopeCode: 'RISK_OWNER', targetType: 'GLOBAL' }],
     };
     const response = await request(app)
       .put(`/api/v1/users/${userId}/access-assignment`)
@@ -76,7 +77,7 @@ describe('user role, scope, and ownership HTTP routes', () => {
       .set('Authorization', `Bearer ${token}`)
       .send({
         role: 'EMPLOYEE',
-        scopes: [{ scopeCode: 'AUDIT_VIEW', targetType: 'ASSET' }],
+        scopes: [{ scopeCode: 'RISK_OWNER', targetType: 'ASSET' }],
       });
     expect(response.status).toBe(422);
     expect(usersService.assignUserAccess).not.toHaveBeenCalled();

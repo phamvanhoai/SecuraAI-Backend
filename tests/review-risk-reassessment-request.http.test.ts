@@ -39,6 +39,8 @@ describe('risk reassessment review routes', () => {
       requestedAt: new Date(),
       reviewedAt: null,
       reviewComment: null,
+      canReview: false,
+      canReassess: true,
       canReject: true,
       risk: {
         id: requestId,

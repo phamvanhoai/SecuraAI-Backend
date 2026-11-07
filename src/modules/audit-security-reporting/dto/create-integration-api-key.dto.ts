@@ -15,13 +15,13 @@ export const createIntegrationApiKeySchema = z.object({
   name: z
     .string()
     .trim()
-    .min(1, 'API key name is required')
+    .min(1, 'Key name cannot be empty')
     .max(255, 'API key name must not exceed 255 characters')
     .optional(),
   keyName: z
     .string()
     .trim()
-    .min(1, 'Key name is required')
+    .min(1, 'Key name cannot be empty')
     .max(255, 'Key name must not exceed 255 characters')
     .optional(),
   eventSourceId: z
@@ -45,17 +45,21 @@ export const createIntegrationApiKeySchema = z.object({
     .min(1, 'At least one authorized scope is required')
     .default(['events:ingest']),
   expiresAt: z
-    .string()
+    .string({ message: 'Expiration date is required. Non-expiring API keys are not permitted' })
+    .trim()
+    .min(1, 'Expiration date is required. Non-expiring API keys are not permitted')
     .datetime({ message: 'Expiration date must be a valid ISO-8601 datetime string' })
-    .nullable()
-    .optional()
     .refine(
-      (val) => {
-        if (!val) return true;
-        return new Date(val).getTime() > Date.now();
-      },
+      (val) => new Date(val).getTime() > Date.now(),
       {
         message: 'Expiration date must be in the future',
+      },
+    )
+    .nullable()
+    .refine(
+      (val) => val !== null,
+      {
+        message: 'Expiration date is required. Non-expiring API keys are not permitted',
       },
     ),
   isActive: z.boolean().optional().default(true),
@@ -63,7 +67,7 @@ export const createIntegrationApiKeySchema = z.object({
 }).refine(
   (data) => Boolean(data.name?.trim() || data.keyName?.trim()),
   {
-    message: 'API key name is required',
+    message: 'Key name cannot be empty',
     path: ['name'],
   },
 );

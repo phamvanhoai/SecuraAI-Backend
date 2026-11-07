@@ -75,7 +75,7 @@ it('serves detail through the real route, service and scoped repository instead 
       policy_id: id,
       status: 'DRAFT',
       author_user_id: id,
-      policies_policy_versions_policy_idTopolicies: { owner_user_id: id, status: 'DRAFT' },
+      policies_policy_versions_policy_idTopolicies: { owner_user_id: id, status: { in: ['DRAFT', 'ACTIVE'] } },
     },
     select: expect.objectContaining({ content: true, author_user_id: true }),
   });

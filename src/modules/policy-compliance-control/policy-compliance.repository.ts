@@ -1,5 +1,8 @@
 import { Prisma, type policy_version_status } from '@prisma/client';
+import { createHash } from 'node:crypto';
 import { prisma } from '../../database/prisma.js';
+import { AppError } from '../../common/errors/app-error.js';
+import type { CreatePolicyVersionBody } from './dto/create-policy-version.dto.js';
 import type { ReviewablePolicyDraftQuery } from './dto/view-policy-draft.dto.js';
 import type { ListPolicyDraftsQuery } from './dto/list-policy-drafts.dto.js';
 import type { EditPolicyDraftBody } from './dto/edit-policy-draft.dto.js';
@@ -180,6 +183,107 @@ export type PolicyVersionHistoryRecord = Prisma.policy_versionsGetPayload<{
 }>;
 
 export const policyComplianceRepository = {
+  createPolicyVersion(userId: string, policyId: string, input: CreatePolicyVersionBody) {
+    return prisma.$transaction(async (transaction) => {
+      // Serialize competing drafts for the same policy, including requests using different numbers.
+      await transaction.$queryRaw`SELECT id FROM policies WHERE id = ${policyId}::uuid FOR UPDATE`;
+      const actor = await transaction.users.findUnique({
+        where: { id: userId },
+        select: { role: true, status: true },
+      });
+      if (!actor || actor.status !== 'ACTIVE')
+        throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+      if (actor.role !== 'SECURITY_OFFICER')
+        throw new AppError(403, 'FORBIDDEN', 'Security Officer role required');
+      const policy = await transaction.policies.findUnique({ where: { id: policyId } });
+      if (!policy) throw new AppError(404, 'POLICY_NOT_FOUND', 'Policy not found');
+      if (policy.owner_user_id !== userId)
+        throw new AppError(403, 'FORBIDDEN', 'Only the policy owner can create a version');
+      if (policy.status !== 'ACTIVE' || !policy.current_published_version_id) {
+        throw new AppError(
+          409,
+          'POLICY_NOT_PUBLISHED',
+          'A new version requires an active published policy',
+        );
+      }
+      const published = await transaction.policy_versions.findFirst({
+        where: {
+          id: policy.current_published_version_id,
+          policy_id: policyId,
+          status: 'PUBLISHED',
+        },
+        select: { id: true },
+      });
+      if (!published)
+        throw new AppError(
+          409,
+          'POLICY_NOT_PUBLISHED',
+          'The current policy version is not published',
+        );
+      const unfinished = await transaction.policy_versions.findFirst({
+        where: {
+          policy_id: policyId,
+          status: { in: ['DRAFT', 'IN_REVIEW', 'WAITING_APPROVAL', 'APPROVED'] },
+        },
+        select: { id: true },
+      });
+      if (unfinished)
+        throw new AppError(
+          409,
+          'POLICY_VERSION_IN_PROGRESS',
+          'This policy already has a version in progress',
+        );
+      const duplicate = await transaction.policy_versions.findUnique({
+        where: {
+          policy_id_version_number: { policy_id: policyId, version_number: input.versionNumber },
+        },
+        select: { id: true },
+      });
+      if (duplicate)
+        throw new AppError(
+          409,
+          'POLICY_VERSION_EXISTS',
+          'This policy already has the requested version number',
+        );
+      const version = await transaction.policy_versions.create({
+        data: {
+          policy_id: policyId,
+          version_number: input.versionNumber,
+          content: input.content,
+          change_summary: input.changeSummary,
+          author_user_id: userId,
+          status: 'DRAFT',
+        },
+      });
+      const updatedPolicy = await transaction.policies.update({
+        where: { id: policyId },
+        data: {
+          ...(input.title !== undefined && { title: input.title }),
+          ...(input.description !== undefined && { description: input.description }),
+          updated_at: new Date(),
+        },
+      });
+      const after = {
+        policyId,
+        versionId: version.id,
+        versionNumber: version.version_number,
+        changeSummary: version.change_summary,
+      };
+      await transaction.audit_logs.create({
+        data: {
+          actor_type: 'USER',
+          actor_user_id: userId,
+          action: 'POLICY_VERSION_CREATED',
+          resource_type: 'POLICY_VERSION',
+          resource_id: version.id,
+          source: 'API',
+          after_data: after,
+          record_hash: createHash('sha256').update(JSON.stringify(after)).digest('hex'),
+        },
+      });
+      return { policy: updatedPolicy, version };
+    });
+  },
   findActor(userId: string) {
     return prisma.users.findUnique({
       where: { id: userId },
@@ -371,7 +475,7 @@ export const policyComplianceRepository = {
           id: versionId,
           policy_id: policyId,
           status: 'IN_REVIEW',
-          policies_policy_versions_policy_idTopolicies: { status: 'DRAFT' },
+          policies_policy_versions_policy_idTopolicies: { status: { in: ['DRAFT', 'ACTIVE'] } },
         },
         data: { status: 'WAITING_APPROVAL' },
       });
@@ -415,7 +519,7 @@ export const policyComplianceRepository = {
           id: versionId,
           policy_id: policyId,
           status: { in: [...submittedPolicyVersionStatuses] },
-          policies_policy_versions_policy_idTopolicies: { status: 'DRAFT' },
+          policies_policy_versions_policy_idTopolicies: { status: { in: ['DRAFT', 'ACTIVE'] } },
         },
         data: { status: 'DRAFT' },
       });
@@ -704,7 +808,7 @@ export const policyComplianceRepository = {
           id: versionId,
           policy_id: policyId,
           status: { in: [...submittedPolicyVersionStatuses] },
-          policies_policy_versions_policy_idTopolicies: { status: 'DRAFT' },
+          policies_policy_versions_policy_idTopolicies: { status: { in: ['DRAFT', 'ACTIVE'] } },
         },
         data: { status: 'REJECTED' },
       });
@@ -743,7 +847,7 @@ export const policyComplianceRepository = {
       author_user_id: userId,
       policies_policy_versions_policy_idTopolicies: {
         owner_user_id: userId,
-        status: 'DRAFT',
+        status: { in: ['DRAFT', 'ACTIVE'] },
         ...(query.q
           ? {
               OR: [
@@ -785,7 +889,7 @@ export const policyComplianceRepository = {
         author_user_id: userId,
         policies_policy_versions_policy_idTopolicies: {
           owner_user_id: userId,
-          status: 'DRAFT',
+          status: { in: ['DRAFT', 'ACTIVE'] },
         },
       },
       select: ownedPolicyDraftSelect,
@@ -809,7 +913,7 @@ export const policyComplianceRepository = {
           status: 'DRAFT',
           policies_policy_versions_policy_idTopolicies: {
             owner_user_id: actorUserId,
-            status: 'DRAFT',
+            status: { in: ['DRAFT', 'ACTIVE'] },
           },
         },
         data: {

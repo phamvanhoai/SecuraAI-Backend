@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const notificationId = '22222222-2222-4222-8222-222222222222';
@@ -10,7 +11,7 @@ const mocks = vi.hoisted(() => ({
     notifications: { create: vi.fn() },
     notification_recipients: { createMany: vi.fn(), findMany: vi.fn() },
     notification_deliveries: { createMany: vi.fn() },
-    audit_logs: { create: vi.fn() },
+    audit_logs: { create: vi.fn(), findFirst: vi.fn() },
   },
 }));
 
@@ -46,6 +47,20 @@ describe('in-system notification repository', () => {
       [recipientId],
     );
 
+    const audit = mocks.tx.audit_logs.create.mock.calls[0]?.[0].data;
+    expect(audit.previous_hash).toBeNull();
+    expect(audit.record_hash).toBe(
+      createHash('sha256')
+        .update(
+          JSON.stringify({
+            previousHash: null,
+            id: audit.id,
+            actorUserId: recipientId,
+            after: audit.after_data,
+          }),
+        )
+        .digest('hex'),
+    );
     const delivery = mocks.tx.notification_deliveries.createMany.mock.calls[0]?.[0].data[0];
     expect(delivery).toMatchObject({
       notification_recipient_id: deliveryId,

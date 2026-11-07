@@ -12,6 +12,7 @@ describe('Create Integration API Key DTO', () => {
     const result = createIntegrationApiKeySchema.safeParse({
       name: 'Wazuh Ingestion Collector',
       eventSourceId: validEventSourceId,
+      expiresAt: futureDate,
     });
 
     expect(result.success).toBe(true);
@@ -42,6 +43,7 @@ describe('Create Integration API Key DTO', () => {
     const result = createIntegrationApiKeySchema.safeParse({
       name: '   ',
       scopes: ['events:ingest'],
+      expiresAt: futureDate,
     });
 
     expect(result.success).toBe(false);
@@ -51,6 +53,7 @@ describe('Create Integration API Key DTO', () => {
     const result = createIntegrationApiKeySchema.safeParse({
       name: 'Test Key',
       scopes: [],
+      expiresAt: futureDate,
     });
 
     expect(result.success).toBe(false);
@@ -66,15 +69,28 @@ describe('Create Integration API Key DTO', () => {
     expect(result.success).toBe(false);
   });
 
-  it('allows null expiresAt for non-expiring keys', () => {
-    const result = createIntegrationApiKeySchema.safeParse({
+  it('rejects null or missing expiresAt since non-expiring keys are not permitted', () => {
+    const nullResult = createIntegrationApiKeySchema.safeParse({
       name: 'Persistent Service Key',
       expiresAt: null,
     });
 
-    expect(result.success).toBe(true);
-    if (result.success) {
-      expect(result.data.expiresAt).toBeNull();
+    expect(nullResult.success).toBe(false);
+    if (!nullResult.success) {
+      expect(nullResult.error.issues[0]?.message).toBe(
+        'Expiration date is required. Non-expiring API keys are not permitted',
+      );
+    }
+
+    const missingResult = createIntegrationApiKeySchema.safeParse({
+      name: 'Persistent Service Key',
+    });
+
+    expect(missingResult.success).toBe(false);
+    if (!missingResult.success) {
+      expect(missingResult.error.issues[0]?.message).toBe(
+        'Expiration date is required. Non-expiring API keys are not permitted',
+      );
     }
   });
 
@@ -82,6 +98,7 @@ describe('Create Integration API Key DTO', () => {
     const result = createIntegrationApiKeySchema.safeParse({
       name: 'Invalid Source Key',
       eventSourceId: 'not-a-uuid',
+      expiresAt: futureDate,
     });
 
     expect(result.success).toBe(false);

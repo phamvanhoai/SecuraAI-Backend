@@ -8,6 +8,7 @@ import { usersEmailService } from './users.email.service.js';
 import { usersRepository } from './users.repository.js';
 import { capabilitiesForRole } from './role-capabilities.js';
 import { userAccessScopeCatalog } from './user-access-scope-catalog.js';
+import { isRiskAcceptanceApprover } from './business-responsibilities.js';
 import type { UpdateUserBody } from './dto/update-user.dto.js';
 import type { AssignUserAccessBody } from './dto/assign-user-access.dto.js';
 import { createUserBodySchema } from './dto/create-user.dto.js';
@@ -160,7 +161,7 @@ export const usersService = {
     return {
       roles: Object.entries(roleNames).map(([code, name]) => ({ code, name })),
       scopeCodes: userAccessScopeCatalog,
-      targetTypes: ['GLOBAL', 'BUSINESS_SERVICE', 'ASSET'] as const,
+      targetTypes: ['GLOBAL'] as const,
       businessServices: result.businessServices,
       assets: result.assets,
     };
@@ -176,7 +177,8 @@ export const usersService = {
         status: result.user.status,
       },
       role: result.user.role,
-      scopes: result.scopes.map((scope) => ({
+      scopes: [
+        ...result.scopes.map((scope) => ({
         id: scope.id,
         scopeCode: scope.scope_code,
         targetType: scope.business_service_id
@@ -187,13 +189,22 @@ export const usersService = {
         targetId: scope.business_service_id ?? scope.asset_id,
         assignedAt: scope.assigned_at,
         expiresAt: scope.expires_at,
-      })),
+        })),
+        ...(result.user.role === 'EMPLOYEE' ? userAccessScopeCatalog.filter(({ code }) => {
+          const count = code === 'RISK_OWNER' ? result.ownershipSummary.risks : code === 'CONTROL_OWNER' ? result.ownershipSummary.securityControls : code === 'ASSET_OWNER' ? result.ownershipSummary.assets : 0;
+          return count > 0 && !result.scopes.some((scope) => scope.scope_code === code);
+        }).map(({ code }) => ({ id: result.user.id, scopeCode: code, targetType: 'GLOBAL' as const, targetId: null,
+          assignedAt: null, expiresAt: null })) : []),
+      ],
       ownershipSummary: result.ownershipSummary,
     };
   },
   async assignUserAccess(actorUserId: string, userId: string, input: AssignUserAccessBody) {
     const result = await usersRepository.assignUserAccess(actorUserId, userId, input);
     if (result.kind !== 'updated') {
+      if (result.kind === 'ownership_transfer_required') {
+        throw new AppError(409, 'OWNERSHIP_TRANSFER_REQUIRED', 'Transfer owned Risk, Control or Asset records before removing their business responsibility or changing the Employee role');
+      }
       if (result.kind === 'invalid_scope_target') {
         throw new AppError(422, 'INVALID_SCOPE_TARGET', 'One or more scope targets are invalid');
       }
@@ -346,14 +357,24 @@ export const usersService = {
       throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
     }
     const permissions = [...capabilitiesForRole(user.role)];
+    const responsibilities = user.role === 'EMPLOYEE'
+      ? new Set((await usersRepository.findEmployeeResponsibilities(userId)).map((item) => item.scope_code))
+      : new Set<string>();
+    if (user.role === 'EMPLOYEE' && (responsibilities.has('ASSET_OWNER') || await usersRepository.hasOwnedAssets(userId))) {
+      permissions.push('assets.read');
+    }
     if (
       user.role === 'EMPLOYEE' &&
-      user._count.security_controls_security_controls_owner_user_idTousers > 0
+      (responsibilities.has('CONTROL_OWNER') || user._count.security_controls_security_controls_owner_user_idTousers > 0)
     ) {
       permissions.push('compliance.assess-controls');
     }
-    if (user.role === 'EMPLOYEE' && user._count.risks_risks_owner_user_idTousers > 0) {
+    if (user.role === 'EMPLOYEE' && (responsibilities.has('RISK_OWNER') || user._count.risks_risks_owner_user_idTousers > 0)) {
       permissions.push('risks.read', 'risks.review-reassessment', 'risks.update-treatment-plan');
+    }
+    if (user.role === 'EMPLOYEE' && isRiskAcceptanceApprover(user)) {
+      if (!permissions.includes('risks.read')) permissions.push('risks.read');
+      permissions.push('risks.approve-acceptance');
     }
     return {
       id: user.id,

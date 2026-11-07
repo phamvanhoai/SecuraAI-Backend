@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-const state = vi.hoisted(() => ({ users: { findFirst: vi.fn() }, business_services: { findFirst: vi.fn() }, assets: { findMany: vi.fn() }, risks: { create: vi.fn() }, transaction: vi.fn() }));
+const state = vi.hoisted(() => ({ $queryRaw: vi.fn(), users: { findFirst: vi.fn() }, business_services: { findFirst: vi.fn() }, assets: { findMany: vi.fn() }, risks: { create: vi.fn() }, transaction: vi.fn() }));
 vi.mock('../src/database/prisma.js', () => ({ prisma: { $transaction: state.transaction } }));
 import { riskRegisterRepository } from '../src/modules/risk-assessment/risk-register.repository.js';
 const input = { title: 'Service risk', description: 'Customer service risk scope', ownerUserId: 'owner', reviewDate: '2027-01-15', scope: { type: 'business_service' as const, businessServiceId: 'service' } };

@@ -76,6 +76,63 @@ const parameter = [
   { name: 'controlId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
 ];
 export const controlCatalogPaths = {
+  '/compliance/controls/{controlId}/assessments': {
+    post: {
+      tags: ['Controls'],
+      summary: 'Assess Control effectiveness and optionally update implementation progress',
+      security,
+      parameters: parameter,
+      description:
+        'Active Security Officer or assigned Employee Control Owner. Requires usable linked Evidence. Optionally provide implementationStatus and expectedImplementationStatus together; a changed status requires implementationChangeReason. The implementation update, appended assessment and audit are atomic. No existing assessment is overwritten. Result does not automatically change implementation status. Internal scoring policy for new assessments: [0,50) Ineffective; [50,80) Partially effective; [80,100] Effective. An inconsistent result/effectiveness pair is rejected. Historical records remain unchanged.',
+      requestBody: {
+        required: true,
+        content: {
+          'application/json': {
+            schema: {
+              type: 'object',
+              additionalProperties: false,
+              required: ['testMethod', 'result', 'effectiveness', 'notes'],
+              properties: {
+                testMethod: { type: 'string', minLength: 3, maxLength: 1000 },
+                result: {
+                  type: 'string',
+                  enum: ['effective', 'partially_effective', 'ineffective'],
+                },
+                effectiveness: { type: 'number', minimum: 0, maximum: 100, multipleOf: 0.01 },
+                notes: { type: 'string', minLength: 10, maxLength: 5000 },
+                implementationStatus: fields.implementationStatus,
+                expectedImplementationStatus: {
+                  ...fields.implementationStatus,
+                  description: 'Baseline shown when the form was opened. A mismatch returns 409.',
+                },
+                implementationChangeReason: {
+                  type: 'string',
+                  minLength: 10,
+                  maxLength: 2000,
+                  description:
+                    'Required when selected implementation status differs from the baseline.',
+                },
+              },
+            },
+          },
+        },
+      },
+      responses: {
+        '201': {
+          description:
+            'Success data contains assessmentId, controlId, controlCode, result, effectiveness and assessedAt.',
+        },
+        '401': { description: 'Active authentication required' },
+        '403': { description: 'Security Officer or assigned Employee Control Owner required' },
+        '404': { description: 'Control not found' },
+        '409': { description: 'Stale configuration: close and reopen Assess Control' },
+        '422': {
+          description:
+            'Invalid assessment, missing implementation baseline/reason or no usable Evidence',
+        },
+      },
+    },
+  },
   '/compliance/controls': {
     post: {
       tags: ['Controls'],

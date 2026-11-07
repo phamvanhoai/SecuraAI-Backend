@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { notificationImagesSchema } from '../notification-images.js';
 
 const safeText = (maximum: number) =>
   z
@@ -23,6 +24,7 @@ export const sendEmailNotificationSchema = z
   .object({
     subject: safeSubject,
     message: safeText(4000),
+    images: notificationImagesSchema,
     userIds: z
       .array(z.uuid())
       .min(1)

@@ -35,6 +35,7 @@ describe('V2 authentication service', () => {
       status: user_status.ACTIVE,
     });
     vi.mocked(authRepository.createSession).mockResolvedValue({
+      passwordChangedAt: 0,
       id: userId,
       role: user_role.ADMIN,
     });
@@ -143,6 +144,7 @@ describe('V2 authentication service', () => {
 
   it('rotates refresh tokens and rejects a session that cannot be claimed', async () => {
     vi.mocked(authRepository.rotateSession).mockResolvedValueOnce({
+      passwordChangedAt: 0,
       id: userId,
       role: user_role.ADMIN,
     });

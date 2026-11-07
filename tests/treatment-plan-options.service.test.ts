@@ -7,7 +7,7 @@ import { riskRegisterService } from '../src/modules/risk-assessment/risk-registe
 describe('treatment options authorization', () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    vi.mocked(riskRegisterRepository.findActor).mockResolvedValue({ id: 'owner', role: 'EMPLOYEE', status: 'ACTIVE' });
+    vi.mocked(riskRegisterRepository.findActor).mockResolvedValue({ user_access_scopes_user_access_scopes_user_idTousers: [], id: 'owner', role: 'EMPLOYEE', status: 'ACTIVE' });
     vi.mocked(riskRegisterRepository.findTreatmentPlanScope).mockResolvedValue({ owner_user_id: 'owner' });
     vi.mocked(riskRegisterRepository.treatmentPlanOptions).mockResolvedValue([[], []]);
   });

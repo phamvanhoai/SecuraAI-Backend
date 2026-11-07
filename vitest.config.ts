@@ -5,10 +5,12 @@ export default defineConfig({
   resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
   test: {
     environment: 'node',
+    setupFiles: ['tests/auth-boundary.setup.ts'],
     exclude: [...configDefaults.exclude, 'reference/legacy-v3/**'],
     testTimeout: 30_000,
     env: {
       NODE_ENV: 'test',
+      DETECTION_PIPELINE_ENABLED: 'false',
       DATABASE_URL: 'postgresql://test:test@localhost:5432/test',
       JWT_ACCESS_SECRET: 'test-secret-with-at-least-thirty-two-characters',
       LOG_LEVEL: 'silent',

@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { notificationImagesSchema } from '../notification-images.js';
 
 const normalizedText = (maximum: number) =>
   z
@@ -18,7 +19,10 @@ const normalizedText = (maximum: number) =>
 const roleAudienceSchema = z
   .object({
     type: z.literal('roles'),
-    roles: z.array(z.enum(['ADMIN', 'SECURITY_OFFICER', 'EXECUTIVE', 'EMPLOYEE'])).min(1).max(4),
+    roles: z
+      .array(z.enum(['ADMIN', 'SECURITY_OFFICER', 'EXECUTIVE', 'EMPLOYEE']))
+      .min(1)
+      .max(4),
   })
   .strict()
   .transform((audience) => ({ ...audience, roles: [...new Set(audience.roles)] }));
@@ -35,6 +39,7 @@ export const sendInSystemNotificationSchema = z
   .object({
     title: normalizedText(160),
     message: normalizedText(2000),
+    images: notificationImagesSchema,
     priority: z.enum(['NORMAL', 'IMPORTANT', 'URGENT']),
     audience: z.discriminatedUnion('type', [roleAudienceSchema, userAudienceSchema]),
   })

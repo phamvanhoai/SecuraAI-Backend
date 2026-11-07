@@ -3,6 +3,7 @@ import { currentRiskReview } from './current-risk-review.js';
 import { reviewDeadline, vietnamDate } from './review-schedule.js';
 import type { CompleteRiskReview } from './dto/complete-risk-review.dto.js';
 import { createHash, randomUUID } from 'node:crypto';
+import { responsibilityWhere, approverGrantSelect, isRiskAcceptanceApprover } from '../user-management-authorization/index.js';
 import { Prisma, type risk_status, type treatment_status } from '@prisma/client';
 import { assessmentRequiresReview, vulnerabilityBlockedReason } from './vulnerability-workflow.js';
 import { residualControlLinks, residualControlBasis, sameResidualControlBasis, validateResidualControls } from './residual-control-basis.js';
@@ -278,11 +279,11 @@ export const riskRegisterRepository = {
   findActor(userId: string) {
     return prisma.users.findUnique({
       where: { id: userId },
-      select: { id: true, role: true, status: true },
+      select: { id: true, role: true, status: true, ...approverGrantSelect },
     });
   },
-  list(query: ListRiskRegisterQuery) {
-    const where = whereFor(query);
+  list(query: ListRiskRegisterQuery, approverId?: string) {
+    const where = { ...whereFor(query), ...(approverId ? { AND: [{ OR: [{ owner_user_id: approverId }, { risk_acceptances: { some: { decision: "PENDING" as const, requested_by: { not: approverId } } } }] }] } : {}) };
     return Promise.all([
       prisma.risks.count({ where }),
       prisma.risks.findMany({
@@ -344,6 +345,7 @@ export const riskRegisterRepository = {
     const userWhere: Prisma.usersWhereInput = {
       status: 'ACTIVE',
       role: 'EMPLOYEE',
+      AND: [responsibilityWhere('RISK_OWNER', false)],
       ...(query.q ? { full_name: { contains: query.q, mode: 'insensitive' } } : {}),
     };
     const assetWhere: Prisma.assetsWhereInput = {
@@ -391,12 +393,13 @@ export const riskRegisterRepository = {
     return prisma
       .$transaction(
         async (database) => {
+          await database.$queryRaw`SELECT id FROM users WHERE id = ${input.ownerUserId}::uuid FOR SHARE`;
           const owner = await database.users.findFirst({
-            where: { id: input.ownerUserId, role: 'EMPLOYEE', status: 'ACTIVE' },
+            where: { id: input.ownerUserId, role: 'EMPLOYEE', AND: [responsibilityWhere('RISK_OWNER', false)] },
             select: { id: true },
           });
           if (!owner)
-            throw new AppError(422, 'INVALID_RISK_OWNER', 'Risk owner must be an active Employee');
+            throw new AppError(422, 'INVALID_RISK_OWNER', 'Select an active Employee with Risk Owner responsibility');
           if (input.scope.type === 'business_service') {
             const service = await database.business_services.findFirst({
               where: { id: input.scope.businessServiceId, status: 'ACTIVE' },
@@ -455,7 +458,7 @@ export const riskRegisterRepository = {
   },
   findOwner(userId: string) {
     return prisma.users.findFirst({
-      where: { id: userId, status: 'ACTIVE', role: 'EMPLOYEE' },
+      where: { id: userId, role: 'EMPLOYEE', AND: [responsibilityWhere('RISK_OWNER', false)] },
       select: { id: true },
     });
   },
@@ -1682,11 +1685,12 @@ export const riskRegisterRepository = {
   decideAcceptance(acceptanceId: string, actorId: string, input: DecideRiskAcceptanceBody) {
     return prisma.$transaction(
       async (database) => {
+        await database.$queryRaw`SELECT id FROM users WHERE id = ${actorId}::uuid FOR SHARE`;
         const actor = await database.users.findUnique({
           where: { id: actorId },
-          select: { role: true, status: true },
+          select: { role: true, status: true, ...approverGrantSelect },
         });
-        if (!actor || actor.status !== 'ACTIVE' || !['SECURITY_OFFICER', 'EXECUTIVE'].includes(actor.role))
+        if (!actor || !isRiskAcceptanceApprover(actor))
           return { kind: 'forbidden' as const };
         const target = await database.risk_acceptances.findUnique({
           where: { id: acceptanceId },
@@ -1697,8 +1701,8 @@ export const riskRegisterRepository = {
         await database.$queryRaw`SELECT control.id FROM security_controls AS control
           JOIN control_risk_links AS link ON link.control_id = control.id
           WHERE link.risk_id = ${target.risk_id}::uuid ORDER BY control.id FOR SHARE OF control`;
-        const currentActor = await database.users.findUnique({ where: { id: actorId }, select: { role: true, status: true } });
-        if (!currentActor || currentActor.status !== 'ACTIVE' || !['SECURITY_OFFICER', 'EXECUTIVE'].includes(currentActor.role))
+        const currentActor = await database.users.findUnique({ where: { id: actorId }, select: { role: true, status: true, ...approverGrantSelect } });
+        if (!currentActor || !isRiskAcceptanceApprover(currentActor))
           return { kind: 'forbidden' as const };
         const acceptance = await database.risk_acceptances.findUnique({
           where: { id: acceptanceId },
@@ -1720,7 +1724,7 @@ export const riskRegisterRepository = {
         });
         if (!acceptance) return { kind: 'not_found' as const };
         if (acceptance.decision !== 'PENDING') return { kind: 'already_decided' as const };
-        if (acceptance.requested_by === actorId) return { kind: 'self_approval' as const };
+        if (acceptance.requested_by === actorId || acceptance.risks.owner_user_id === actorId) return { kind: 'self_approval' as const };
         const decidedAt = await contextWriteTime(database);
         if (
           input.decision === 'approved' && acceptance.valid_until &&

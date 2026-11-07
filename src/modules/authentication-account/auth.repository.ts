@@ -1,4 +1,46 @@
+import { createHash, randomUUID } from 'node:crypto';
+import type { Prisma } from '@prisma/client';
 import { prisma } from '../../database/prisma.js';
+
+// Authentication audits contain event metadata only, never credentials or token hashes.
+async function recordAuthAudit(
+  database: Prisma.TransactionClient,
+  userId: string,
+  action: string,
+): Promise<void> {
+  const id = randomUUID();
+  const occurredAt = new Date();
+  const previous = await database.audit_logs.findFirst({
+    orderBy: [{ occurred_at: 'desc' }, { id: 'desc' }],
+    select: { record_hash: true },
+  });
+  await database.audit_logs.create({
+    data: {
+      id,
+      actor_type: 'USER',
+      actor_user_id: userId,
+      action,
+      resource_type: 'USER',
+      resource_id: userId,
+      source: 'API',
+      occurred_at: occurredAt,
+      outcome: 'SUCCESS',
+      previous_hash: previous?.record_hash ?? null,
+      record_hash: createHash('sha256')
+        .update(
+          JSON.stringify({
+            previousHash: previous?.record_hash ?? null,
+            id,
+            userId,
+            action,
+            occurredAt,
+          }),
+        )
+        .digest('hex'),
+    },
+    select: { id: true },
+  });
+}
 
 const authUserSelect = {
   id: true,
@@ -9,6 +51,12 @@ const authUserSelect = {
 } as const;
 
 export const authRepository = {
+  findAccessTokenUser(userId: string) {
+    return prisma.users.findUnique({
+      where: { id: userId },
+      select: { status: true, password_changed_at: true },
+    });
+  },
   findByEmail(email: string) {
     return prisma.users.findUnique({ where: { email }, select: authUserSelect });
   },
@@ -30,7 +78,13 @@ export const authRepository = {
       await database.$queryRaw`SELECT id FROM users WHERE id = ${userId}::uuid FOR UPDATE`;
       const user = await database.users.findUnique({
         where: { id: userId },
-        select: { id: true, role: true, status: true, google_subject: true },
+        select: {
+          id: true,
+          role: true,
+          status: true,
+          google_subject: true,
+          password_changed_at: true,
+        },
       });
       if (
         !user ||
@@ -48,7 +102,11 @@ export const authRepository = {
         data: { user_id: user.id, refresh_token_hash: refreshTokenHash, expires_at: expiresAt },
         select: { id: true },
       });
-      return { id: user.id, role: user.role };
+      return {
+        id: user.id,
+        role: user.role,
+        passwordChangedAt: user.password_changed_at?.getTime() ?? 0,
+      };
     });
   },
 
@@ -62,7 +120,13 @@ export const authRepository = {
       await database.$queryRaw`SELECT id FROM users WHERE id = ${userId}::uuid FOR UPDATE`;
       const user = await database.users.findUnique({
         where: { id: userId },
-        select: { id: true, role: true, status: true, password_hash: true },
+        select: {
+          id: true,
+          role: true,
+          status: true,
+          password_hash: true,
+          password_changed_at: true,
+        },
       });
       if (!user || user.status !== 'ACTIVE' || user.password_hash !== expectedPasswordHash) {
         return null;
@@ -76,57 +140,79 @@ export const authRepository = {
         data: { last_login_at: new Date() },
         select: { id: true },
       });
-      return { id: user.id, role: user.role };
+      return {
+        id: user.id,
+        role: user.role,
+        passwordChangedAt: user.password_changed_at?.getTime() ?? 0,
+      };
     });
   },
 
   rotateSession(refreshTokenHash: string, nextTokenHash: string, expiresAt: Date) {
-    return prisma.$transaction(async (database) => {
-      const session = await database.auth_sessions.findFirst({
-        where: {
-          refresh_token_hash: refreshTokenHash,
-          revoked_at: null,
-          expires_at: { gt: new Date() },
-        },
-        select: { id: true, user_id: true, created_at: true },
-      });
-      if (!session) return null;
+    return prisma.$transaction(
+      async (database) => {
+        const session = await database.auth_sessions.findFirst({
+          where: {
+            refresh_token_hash: refreshTokenHash,
+            revoked_at: null,
+            expires_at: { gt: new Date() },
+          },
+          select: { id: true, user_id: true, created_at: true },
+        });
+        if (!session) return null;
 
-      const claimed = await database.auth_sessions.updateMany({
-        where: {
-          id: session.id,
-          refresh_token_hash: refreshTokenHash,
-          revoked_at: null,
-          expires_at: { gt: new Date() },
-        },
-        data: { revoked_at: new Date() },
-      });
-      if (claimed.count !== 1) return null;
+        // Serialize refresh rotation with password changes and session revocation.
+        await database.$queryRaw`SELECT id FROM users WHERE id = ${session.user_id}::uuid FOR UPDATE`;
 
-      const user = await database.users.findUnique({
-        where: { id: session.user_id },
-        select: { id: true, role: true, status: true, password_changed_at: true },
-      });
-      if (
-        !user ||
-        user.status !== 'ACTIVE' ||
-        (user.password_changed_at && user.password_changed_at > session.created_at)
-      ) {
-        return null;
-      }
+        const claimed = await database.auth_sessions.updateMany({
+          where: {
+            id: session.id,
+            refresh_token_hash: refreshTokenHash,
+            revoked_at: null,
+            expires_at: { gt: new Date() },
+          },
+          data: { revoked_at: new Date() },
+        });
+        if (claimed.count !== 1) return null;
 
-      await database.auth_sessions.create({
-        data: { user_id: user.id, refresh_token_hash: nextTokenHash, expires_at: expiresAt },
-        select: { id: true },
-      });
-      return { id: user.id, role: user.role };
-    });
+        const user = await database.users.findUnique({
+          where: { id: session.user_id },
+          select: { id: true, role: true, status: true, password_changed_at: true },
+        });
+        if (
+          !user ||
+          user.status !== 'ACTIVE' ||
+          (user.password_changed_at && user.password_changed_at > session.created_at)
+        ) {
+          return null;
+        }
+
+        await database.auth_sessions.create({
+          data: { user_id: user.id, refresh_token_hash: nextTokenHash, expires_at: expiresAt },
+          select: { id: true },
+        });
+        return {
+          id: user.id,
+          role: user.role,
+          passwordChangedAt: user.password_changed_at?.getTime() ?? 0,
+        };
+      },
+      { maxWait: 30_000, timeout: 30_000 },
+    );
   },
 
   async revokeSession(refreshTokenHash: string): Promise<void> {
-    await prisma.auth_sessions.updateMany({
-      where: { refresh_token_hash: refreshTokenHash, revoked_at: null },
-      data: { revoked_at: new Date() },
+    await prisma.$transaction(async (database) => {
+      const session = await database.auth_sessions.findFirst({
+        where: { refresh_token_hash: refreshTokenHash },
+        select: { id: true, user_id: true },
+      });
+      if (!session) return;
+      const revoked = await database.auth_sessions.updateMany({
+        where: { id: session.id, revoked_at: null },
+        data: { revoked_at: new Date() },
+      });
+      if (revoked.count === 1) await recordAuthAudit(database, session.user_id, 'USER_LOGGED_OUT');
     });
   },
 
@@ -142,24 +228,25 @@ export const authRepository = {
     tokenHash: string;
     expiresAt: Date;
   }): Promise<void> {
-    await prisma.$transaction([
-      prisma.password_reset_tokens.deleteMany({
+    await prisma.$transaction(async (database) => {
+      await database.password_reset_tokens.deleteMany({
         where: {
           OR: [{ used_at: { not: null } }, { expires_at: { lte: new Date() } }],
         },
-      }),
-      prisma.password_reset_tokens.deleteMany({
+      });
+      await database.password_reset_tokens.deleteMany({
         where: { user_id: input.userId, used_at: null },
-      }),
-      prisma.password_reset_tokens.create({
+      });
+      await database.password_reset_tokens.create({
         data: {
           user_id: input.userId,
           token_hash: input.tokenHash,
           expires_at: input.expiresAt,
         },
         select: { id: true },
-      }),
-    ]);
+      });
+      await recordAuthAudit(database, input.userId, 'PASSWORD_RESET_REQUESTED');
+    });
   },
 
   async deletePasswordResetToken(tokenHash: string): Promise<void> {
@@ -207,6 +294,7 @@ export const authRepository = {
         where: { user_id: token.user_id, revoked_at: null },
         data: { revoked_at: new Date() },
       });
+      await recordAuthAudit(database, token.user_id, 'PASSWORD_RESET_COMPLETED');
       return true;
     });
   },
@@ -219,25 +307,33 @@ export const authRepository = {
   },
 
   changePassword(userId: string, expectedPasswordHash: string, passwordHash: string) {
-    return prisma.$transaction(async (database) => {
-      await database.$queryRaw`SELECT id FROM users WHERE id = ${userId}::uuid FOR UPDATE`;
-      const user = await database.users.findUnique({
-        where: { id: userId },
-        select: { password_hash: true, status: true },
-      });
-      if (!user || user.status !== 'ACTIVE' || user.password_hash !== expectedPasswordHash)
-        return false;
+    return prisma.$transaction(
+      async (database) => {
+        await database.$queryRaw`SELECT id FROM users WHERE id = ${userId}::uuid FOR UPDATE`;
+        const user = await database.users.findUnique({
+          where: { id: userId },
+          select: { password_hash: true, status: true },
+        });
+        if (!user || user.status !== 'ACTIVE' || user.password_hash !== expectedPasswordHash)
+          return false;
 
-      await database.users.update({
-        where: { id: userId },
-        data: {
-          password_hash: passwordHash,
-          password_changed_at: new Date(),
-          updated_at: new Date(),
-        },
-        select: { id: true },
-      });
-      return true;
-    });
+        await database.users.update({
+          where: { id: userId },
+          data: {
+            password_hash: passwordHash,
+            password_changed_at: new Date(),
+            updated_at: new Date(),
+          },
+          select: { id: true },
+        });
+        await database.auth_sessions.updateMany({
+          where: { user_id: userId, revoked_at: null },
+          data: { revoked_at: new Date() },
+        });
+        await recordAuthAudit(database, userId, 'PASSWORD_CHANGED');
+        return true;
+      },
+      { maxWait: 30_000, timeout: 30_000 },
+    );
   },
 };

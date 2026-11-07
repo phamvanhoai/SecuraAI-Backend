@@ -30,6 +30,7 @@ describe('GET /api/v1/ai-alerts/models', () => {
 
   it('returns paginated model versions', async () => {
     vi.mocked(aiAlertsService.listModelVersions).mockResolvedValue({
+      explanationModel: { provider: 'Ollama', model: 'qwen3:4b', enabled: true, purpose: 'EXPLANATION_ONLY', connectionStatus: 'NOT_CHECKED' },
       items: [],
       pagination: { page: 1, limit: 20, total: 0, totalPages: 0 },
     });

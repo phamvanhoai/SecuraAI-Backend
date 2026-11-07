@@ -34,6 +34,13 @@ const envSchema = z.object({
   OLLAMA_MODEL: z.string().trim().min(1).default('qwen3:4b'),
   OLLAMA_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120_000).default(60_000),
   ANOMALY_AUTO_DETECTION_ENABLED: booleanString.default(true),
+  DETECTION_PIPELINE_ENABLED: booleanString.default(false),
+  ML_SHADOW_ENABLED: booleanString.default(false),
+  ML_SHADOW_BASE_URL: z.url().default('http://127.0.0.1:8000'),
+  ML_SHADOW_TIMEOUT_MS: z.coerce.number().int().min(100).max(10_000).default(2_000),
+  AI_FUSION_ENABLED: booleanString.default(false),
+  LLM_CLASSIFIER_ENABLED: booleanString.default(false),
+  AI_FUSION_CAN_CREATE_ALERTS: booleanString.default(false),
   ANOMALY_AUTO_DETECTION_INTERVAL_MS: z.coerce
     .number()
     .int()

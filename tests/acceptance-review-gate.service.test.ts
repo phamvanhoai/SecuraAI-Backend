@@ -3,7 +3,7 @@ vi.mock('../src/modules/risk-assessment/risk-register.repository.js', () => ({ r
 import { riskRegisterRepository } from '../src/modules/risk-assessment/risk-register.repository.js';
 import { riskRegisterService } from '../src/modules/risk-assessment/risk-register.service.js';
 it('returns an actionable conflict for direct acceptance requests during review', async () => {
-  vi.mocked(riskRegisterRepository.findActor).mockResolvedValue({ id: 'owner', role: 'EMPLOYEE', status: 'ACTIVE' });
+  vi.mocked(riskRegisterRepository.findActor).mockResolvedValue({ user_access_scopes_user_access_scopes_user_idTousers: [], id: 'owner', role: 'EMPLOYEE', status: 'ACTIVE' });
   vi.mocked(riskRegisterRepository.submitAcceptance).mockResolvedValue({ kind: 'review_in_progress' });
   await expect(riskRegisterService.submitAcceptance('owner', 'risk', {
     residualLikelihood: 2, residualImpact: 2, assessmentReason: 'Verified current remaining risk.', treatmentPlanId: 'plan',

@@ -42,6 +42,7 @@ describe('list AI alerts service', () => {
           generated_at: new Date('2026-09-25T01:00:00Z'),
           created_at: new Date('2026-09-25T01:00:00Z'),
           anomaly_detections: {
+            anomaly_feature_contributions: [],
             anomaly_score: new Prisma.Decimal('0.91'),
             detected_at: new Date('2026-09-25T01:00:00Z'),
             ai_model_versions: {
@@ -52,6 +53,8 @@ describe('list AI alerts service', () => {
             },
             normalized_events: {
               id: '00000000-0000-4000-8000-000000000003',
+              external_event_id: 'wazuh-source-event-001',
+              event_family: 'AUTHENTICATION',
               event_type: 'privileged_login',
               occurred_at: new Date('2026-09-25T00:59:00Z'),
               event_sources: {
@@ -72,6 +75,11 @@ describe('list AI alerts service', () => {
       status: 'new',
       title: 'Privileged login',
       asset: null,
+      event: {
+        id: '00000000-0000-4000-8000-000000000003',
+        externalEventId: 'wazuh-source-event-001',
+        eventFamily: 'AUTHENTICATION',
+      },
     });
     expect(result.pagination).toMatchObject({ total: 1, totalPages: 1 });
   });

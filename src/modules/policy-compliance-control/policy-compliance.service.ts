@@ -1,4 +1,5 @@
 import { AppError } from '../../common/errors/app-error.js';
+import type { CreatePolicyVersionBody } from './dto/create-policy-version.dto.js';
 import type { ReviewablePolicyDraftQuery } from './dto/view-policy-draft.dto.js';
 import type { ListPolicyDraftsQuery } from './dto/list-policy-drafts.dto.js';
 import type { EditPolicyDraftBody } from './dto/edit-policy-draft.dto.js';
@@ -282,6 +283,48 @@ export const policyComplianceService = {
         publishedBy: summary.publishedBy,
       },
     };
+  },
+
+  async createPolicyVersion(userId: string, policyId: string, input: CreatePolicyVersionBody) {
+    const actor = await policyComplianceRepository.findActor(userId);
+    if (!actor || actor.status !== 'ACTIVE')
+      throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+    if (actor.role !== 'SECURITY_OFFICER')
+      throw new AppError(403, 'FORBIDDEN', 'Security Officer role required');
+    try {
+      const { policy, version } = await policyComplianceRepository.createPolicyVersion(
+        userId,
+        policyId,
+        input,
+      );
+      return {
+        policyId: policy.id,
+        policyCode: policy.policy_code,
+        title: policy.title,
+        description: policy.description,
+        ownerUserId: policy.owner_user_id,
+        policyStatus: policy.status.toLowerCase(),
+        version: {
+          id: version.id,
+          versionNumber: version.version_number,
+          content: version.content,
+          changeSummary: version.change_summary,
+          status: version.status.toLowerCase(),
+          createdByUserId: version.author_user_id,
+          createdAt: version.created_at,
+        },
+        updatedAt: policy.updated_at,
+      };
+    } catch (error: unknown) {
+      if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+        throw new AppError(
+          409,
+          'POLICY_VERSION_EXISTS',
+          'This policy already has the requested version number',
+        );
+      }
+      throw error;
+    }
   },
 
   async createPolicyDraft(userId: string, input: CreatePolicyDraftBody) {
@@ -600,7 +643,7 @@ export const policyComplianceService = {
     const policy = draft.policies_policy_versions_policy_idTopolicies;
     if (draft.author_user_id !== userId || policy.owner_user_id !== userId)
       throw new AppError(403, 'FORBIDDEN', 'You can only edit policy drafts you own');
-    if (policy.status !== 'DRAFT' || draft.status !== 'DRAFT')
+    if (!['DRAFT', 'ACTIVE'].includes(policy.status) || draft.status !== 'DRAFT')
       throw new AppError(
         409,
         'POLICY_DRAFT_NOT_EDITABLE',
@@ -679,7 +722,7 @@ export const policyComplianceService = {
     const policy = draft.policies_policy_versions_policy_idTopolicies;
     if (draft.author_user_id !== userId && policy.owner_user_id !== userId)
       throw new AppError(403, 'FORBIDDEN', 'You can only submit policy drafts you own');
-    if (policy.status !== 'DRAFT' || draft.status !== 'DRAFT')
+    if (!['DRAFT', 'ACTIVE'].includes(policy.status) || draft.status !== 'DRAFT')
       throw new AppError(
         409,
         'POLICY_DRAFT_NOT_SUBMITTABLE',

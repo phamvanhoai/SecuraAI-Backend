@@ -7,6 +7,23 @@ import { updateNotificationPreferencesSchema } from './dto/update-notification-p
 import { notificationInboxQuerySchema } from './dto/notification-inbox.dto.js';
 import { z } from 'zod';
 import { notificationHistoryQuerySchema } from './dto/notification-history.dto.js';
+export const getNotificationDetail: RequestHandler = async (req, res) => {
+  const userId: unknown = res.locals.authenticatedUserId;
+  if (typeof userId !== 'string') throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+  const data = await notificationsService.detail(userId, z.uuid().parse(req.params.id));
+  res.set('Cache-Control', 'private, no-store').json({ success: true, data });
+};
+export const getNotificationImage: RequestHandler = async (req, res) => {
+  const userId: unknown = res.locals.authenticatedUserId;
+  if (typeof userId !== 'string') throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+  const id = z.uuid().parse(req.params.id);
+  const index = z.coerce.number().int().min(0).max(2).parse(req.params.index);
+  const image = await notificationsService.image(userId, id, index);
+  res.set({ 'Content-Type': 'image/png', 'Cache-Control': 'private, no-store',
+    'Content-Disposition': 'inline; filename="notification-image.png"',
+    'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'none'; sandbox" });
+  res.send(image.buffer);
+};
 export const getNotificationHistory: RequestHandler = async (req, res) => { const userId: unknown = res.locals.authenticatedUserId; if (typeof userId !== 'string') throw new AppError(401, 'UNAUTHORIZED', 'Authentication required'); const data = await notificationsService.history(userId, notificationHistoryQuerySchema.parse(req.query)); res.json({ success: true, data }); };
 
 export const getNotificationInbox: RequestHandler = async (req, res) => { const userId: unknown = res.locals.authenticatedUserId; if (typeof userId !== 'string') throw new AppError(401, 'UNAUTHORIZED', 'Authentication required'); const data = await notificationsService.inbox(userId, notificationInboxQuerySchema.parse(req.query)); res.json({ success: true, data }); };

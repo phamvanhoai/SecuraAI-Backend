@@ -1,8 +1,5 @@
 import { AppError } from '../../common/errors/app-error.js';
-import type {
-  ListLoginHistoryQuery,
-  LoginHistoryList,
-} from './dto/list-login-history.dto.js';
+import type { ListLoginHistoryQuery, LoginHistoryList } from './dto/list-login-history.dto.js';
 import { loginHistoryRepository } from './login-history.repository.js';
 
 export const loginHistoryService = {
@@ -26,6 +23,7 @@ export const loginHistoryService = {
         : query;
     const result = await loginHistoryRepository.list(scopedQuery);
     return {
+      summary: result.summary,
       items: result.items.map((item) => ({
         id: item.id,
         userId: item.user_id,

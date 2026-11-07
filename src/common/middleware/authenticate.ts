@@ -3,13 +3,16 @@ import jwt from 'jsonwebtoken';
 import { z } from 'zod';
 import { AppError } from '../errors/app-error.js';
 import { env } from '../../config/env.js';
+import { assertAccessTokenCurrent } from '../../modules/authentication-account/access-token.service.js';
 
 export const accessClaimsSchema = z.object({
   sub: z.uuid(),
   type: z.literal('access'),
+  passwordVersion: z.number().int().nonnegative().optional(),
+  iat: z.number().int().optional(),
 });
 
-export const authenticate: RequestHandler = (req, res, next) => {
+export const authenticate: RequestHandler = async (req, res, next) => {
   const authorization = req.headers.authorization;
   const match = typeof authorization === 'string' ? /^Bearer ([^\s]+)$/.exec(authorization) : null;
   if (!match?.[1]) {
@@ -25,6 +28,7 @@ export const authenticate: RequestHandler = (req, res, next) => {
     });
     const claims = accessClaimsSchema.safeParse(verified);
     if (!claims.success) throw new Error('Invalid access claims');
+    await assertAccessTokenCurrent(claims.data.sub, claims.data.passwordVersion, claims.data.iat);
     res.locals.authenticatedUserId = claims.data.sub;
     next();
   } catch {

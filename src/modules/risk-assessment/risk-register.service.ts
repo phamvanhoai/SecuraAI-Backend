@@ -1,5 +1,6 @@
 import { readAcceptanceCost } from './dto/acceptance-cost.dto.js';
 import { AppError } from '../../common/errors/app-error.js';
+import { isRiskAcceptanceApprover } from '../user-management-authorization/index.js';
 import { currentRiskReview } from './current-risk-review.js';
 import type { CompleteRiskReview } from './dto/complete-risk-review.dto.js';
 import type { ListRiskRegisterQuery } from './dto/view-risk-register.dto.js';
@@ -229,7 +230,7 @@ export const riskRegisterService = {
       throw new AppError(
         403,
         'AUTHORIZED_APPROVER_REQUIRED',
-        'Security Officer or Executive approver required',
+        'An eligible Risk Acceptance Approver is required',
       );
     if (result.kind === 'not_found')
       throw new AppError(404, 'ACCEPTANCE_NOT_FOUND', 'Risk acceptance request not found');
@@ -811,13 +812,18 @@ export const riskRegisterService = {
     const actor = await riskRegisterRepository.findActor(userId);
     if (!actor || actor.status !== 'ACTIVE')
       throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
-    const scopedQuery = ['SECURITY_OFFICER', 'EXECUTIVE'].includes(actor.role)
+    const employeeApprover = actor.role === 'EMPLOYEE' && isRiskAcceptanceApprover(actor);
+    const scopedQuery = ['SECURITY_OFFICER', 'EXECUTIVE'].includes(actor.role) || employeeApprover
       ? query
       : { ...query, ownerId: userId };
-    const [total, records] = await riskRegisterRepository.list(scopedQuery);
+    const [total, records] = await riskRegisterRepository.list(scopedQuery, employeeApprover ? userId : undefined);
     const reviewEvents = records.length ? await riskRegisterRepository.findReviewEvents(records.map((item) => item.id)) : [];
     return {
-      items: records.map((item) => ({ ...listItem(item), reviewInProgress:
+      items: records.map((item) => ({ ...listItem(item),
+        canAssessResidual: actor.role === 'EMPLOYEE' && item.users_risks_owner_user_idTousers?.id === userId,
+        canDefineTarget: actor.role === 'EMPLOYEE' && item.users_risks_owner_user_idTousers?.id === userId,
+        canManageTreatmentPlan: !['ACCEPTED', 'CLOSED', 'ARCHIVED'].includes(item.status) && (actor.role === 'SECURITY_OFFICER' || (actor.role === 'EMPLOYEE' && item.users_risks_owner_user_idTousers?.id === userId)),
+        reviewInProgress:
         ['OPEN', 'UNDER_TREATMENT'].includes(item.status) && Boolean(currentRiskReview(reviewEvents.filter((event) => event.resource_id === item.id))),
       })),
       pagination: {
@@ -839,7 +845,8 @@ export const riskRegisterService = {
     if (!found) throw new AppError(404, 'RISK_NOT_FOUND', 'Risk record not found');
     if (
       !['SECURITY_OFFICER', 'EXECUTIVE'].includes(actor.role) &&
-      found.users_risks_owner_user_idTousers?.id !== userId
+      found.users_risks_owner_user_idTousers?.id !== userId &&
+      !(isRiskAcceptanceApprover(actor) && found.risk_acceptances.some((item) => item.decision === 'PENDING' && item.requested_by !== userId))
     )
       throw new AppError(403, 'FORBIDDEN', 'Risk Owner or Security Officer access required');
     const risk: RiskRegisterDetailRecord = found;
@@ -1037,7 +1044,7 @@ export const riskRegisterService = {
         historical: Boolean(reviewOpenedAt && item.decision === 'APPROVED' && item.decided_at && item.decided_at <= reviewOpenedAt),
         approvalBlockedReason: item.decision === 'PENDING' ? approvalBlockedReason : null,
         acceptanceCost: readAcceptanceCost(acceptanceCostSnapshots.get(item.id)),
-        canDecide: item.decision === 'PENDING' && item.requested_by !== userId && ['SECURITY_OFFICER', 'EXECUTIVE'].includes(actor.role),
+        canDecide: item.decision === 'PENDING' && item.requested_by !== userId && risk.users_risks_owner_user_idTousers?.id !== userId && isRiskAcceptanceApprover(actor),
         requestedAt: item.requested_at,
         validUntil: item.valid_until,
         requestedBy: item.requested_by,

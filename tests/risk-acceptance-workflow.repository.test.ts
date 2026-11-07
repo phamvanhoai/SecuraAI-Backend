@@ -217,6 +217,18 @@ describe('acceptance submission', () => {
   });
 });
 describe('acceptance decision', () => {
+  it('rejects a granted approver who is the current Risk Owner', async () => {
+    db.users.findUnique.mockResolvedValue({ role: 'EMPLOYEE', status: 'ACTIVE', user_access_scopes_user_access_scopes_user_idTousers: [{ id: 'grant' }] });
+    db.risk_acceptances.findUnique.mockResolvedValue({ ...request, requested_by: 'another-requester' });
+    expect(await riskRegisterRepository.decideAcceptance('request', 'owner', { decision: 'approved', reason: 'Independent approval is required.' })).toEqual({ kind: 'self_approval' });
+    expect(db.risk_acceptances.update).not.toHaveBeenCalled();
+  });
+  it('allows a granted Employee approver and rejects an ungranted Employee', async () => {
+    db.users.findUnique.mockResolvedValue({ role: 'EMPLOYEE', status: 'ACTIVE', user_access_scopes_user_access_scopes_user_idTousers: [] });
+    expect(await riskRegisterRepository.decideAcceptance('request', 'approver', { decision: 'rejected', reason: 'More investigation is needed.' })).toEqual({ kind: 'forbidden' });
+    db.users.findUnique.mockResolvedValue({ role: 'EMPLOYEE', status: 'ACTIVE', user_access_scopes_user_access_scopes_user_idTousers: [{ id: 'grant' }] });
+    expect(await riskRegisterRepository.decideAcceptance('request', 'approver', { decision: 'rejected', reason: 'More investigation is needed.' })).toMatchObject({ kind: 'decided' });
+  });
   it.each(['DRAFT', 'ACTIVE'])('completes only the submitted Accept plan from %s on approval', async (status) => {
     const cost = { costToFix: '100', expectedLoss: '5', currency: 'VND', periodMonths: 12, basis: 'Synthetic comparison of estimated costs.' };
     db.audit_logs.findFirst.mockResolvedValue({ after_data: { assessmentId: 'residual', treatmentPlanId: 'plan', planUpdatedAt: old.toISOString(), controlBasis: residualControlBasis(links) } });

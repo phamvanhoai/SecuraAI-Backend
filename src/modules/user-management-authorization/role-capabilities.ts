@@ -82,7 +82,6 @@ export const capabilitiesByRole = {
     'login-history.read',
   ],
   EMPLOYEE: [
-    'assets.read',
     'policies.acknowledge',
     'notifications.preferences',
     'login-history.read',

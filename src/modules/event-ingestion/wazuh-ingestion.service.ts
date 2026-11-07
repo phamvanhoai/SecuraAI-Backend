@@ -1,10 +1,11 @@
 import { AppError } from '../../common/errors/app-error.js';
 import type {
-  WazuhEventIngestInput,
+  WazuhIngestInput,
   WazuhIngestResponseDto,
 } from './dto/wazuh-event-ingest.dto.js';
 import { wazuhIngestionRepository } from './wazuh-ingestion.repository.js';
 import { requestAutomatedDetection } from '../ai-anomaly-detection-alerts/automated-detection.worker.js';
+import { normalizeWazuhEvent } from './wazuh-event.normalizer.js';
 
 type ResolvedSource = { id: string; status: string };
 
@@ -28,7 +29,7 @@ async function resolveTargetSource(apiKeyEventSourceId: string | null): Promise<
 export const wazuhIngestionService = {
   async ingestNormalizedEvent(
     apiKeyEventSourceId: string | null,
-    input: WazuhEventIngestInput,
+    input: WazuhIngestInput,
   ): Promise<WazuhIngestResponseDto> {
     // Caller has already been authenticated and scope-checked by authenticateApiKey middleware.
     const source = await resolveTargetSource(apiKeyEventSourceId);
@@ -37,7 +38,8 @@ export const wazuhIngestionService = {
       throw new AppError(403, 'FORBIDDEN', 'Event source is inactive or disabled');
     }
 
-    const saved = await wazuhIngestionRepository.saveNormalizedEvent(source.id, input);
+    const normalized = normalizeWazuhEvent(input);
+    const saved = await wazuhIngestionRepository.saveNormalizedEvent(source.id, normalized);
     requestAutomatedDetection();
 
     return {
