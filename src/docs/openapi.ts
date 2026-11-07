@@ -1345,7 +1345,7 @@ export const openApiSpec = {
         tags: ['Audit & Security Reporting'],
         summary: 'Export Risk / Incident / Security Report',
         description:
-          'Allow Security Officers and authorized Executives to generate and export risk, incident, and security reports for a selected period using available filters into PDF or Excel/CSV formats.',
+          'Allow Security Officers and authorized Executives to generate and export risk, incident, and security reports for a selected period using available filters into PDF or Excel/CSV formats. Records an atomic REPORT_EXPORT_GENERATED audit trail.',
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
@@ -1403,7 +1403,8 @@ export const openApiSpec = {
       get: {
         tags: ['Audit & Security Reporting'],
         summary: 'Download exported report file',
-        description: 'Download the compiled report in CSV/Excel or printable HTML/PDF format.',
+        description:
+          'Download the compiled report in CSV/Excel or printable HTML/PDF format. Records a REPORT_EXPORT_DOWNLOADED audit event (or DENIED if revoked).',
         security: [{ bearerAuth: [] }],
         parameters: [
           { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },

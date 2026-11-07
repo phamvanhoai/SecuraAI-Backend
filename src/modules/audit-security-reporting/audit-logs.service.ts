@@ -42,6 +42,19 @@ function mapActor(record: RawAuditRecord): AuditLogActorDto | null {
   return null;
 }
 
+function normalizeDisplayIp(ip: string | null): string | null {
+  if (!ip) {
+    return null;
+  }
+  if (ip === '::1' || ip === '::ffff:127.0.0.1') {
+    return '127.0.0.1';
+  }
+  if (ip.startsWith('::ffff:')) {
+    return ip.replace('::ffff:', '');
+  }
+  return ip;
+}
+
 function mapAuditLogItem(record: RawAuditRecord): AuditLogItemDto {
   return {
     id: record.id,
@@ -57,7 +70,7 @@ function mapAuditLogItem(record: RawAuditRecord): AuditLogItemDto {
     afterData: (record.after_data as Record<string, unknown> | null) ?? null,
     correlationId: record.correlation_id,
     source: record.source,
-    sourceIp: record.source_ip,
+    sourceIp: normalizeDisplayIp(record.source_ip),
     userAgent: record.user_agent,
     previousHash: record.previous_hash,
     recordHash: record.record_hash,
