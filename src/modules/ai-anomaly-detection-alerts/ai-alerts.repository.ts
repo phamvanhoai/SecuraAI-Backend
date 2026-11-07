@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type { Prisma, alert_status, model_status, triage_decision } from '@prisma/client';
 import { prisma } from '../../database/prisma.js';
 import type { ListAiAlertsQuery } from './dto/list-ai-alerts.dto.js';
@@ -72,6 +73,46 @@ function readThresholdMap(
   );
 }
 
+async function latestAuditHash(transaction: Prisma.TransactionClient): Promise<string | null> {
+  const previous = await transaction.audit_logs.findFirst({
+    orderBy: [{ occurred_at: 'desc' }, { id: 'desc' }],
+    select: { record_hash: true },
+  });
+  return previous?.record_hash ?? null;
+}
+
+export function hashAuditRecord(input: {
+  previousHash: string | null;
+  actorUserId: string;
+  action: string;
+  resourceType: string;
+  resourceId: string;
+  source: string;
+  sourceIp?: string | null;
+  userAgent?: string | null;
+  beforeData?: Prisma.InputJsonValue | null;
+  afterData?: Prisma.InputJsonValue | null;
+  occurredAt: Date;
+}): string {
+  return createHash('sha256')
+    .update(
+      JSON.stringify({
+        previousHash: input.previousHash,
+        actorUserId: input.actorUserId,
+        action: input.action,
+        resourceType: input.resourceType,
+        resourceId: input.resourceId,
+        source: input.source,
+        sourceIp: input.sourceIp ?? null,
+        userAgent: input.userAgent ?? null,
+        beforeData: input.beforeData ?? null,
+        afterData: input.afterData ?? null,
+        occurredAt: input.occurredAt.toISOString(),
+      }),
+    )
+    .digest('hex');
+}
+
 export const aiAlertsRepository = {
   async startTriage(input: { alertId: string; analystUserId: string }) {
     return prisma.$transaction(async (transaction) => {
@@ -85,16 +126,31 @@ export const aiAlertsRepository = {
         },
       });
       if (claimed.count === 1) {
+        const action = 'START_AI_ALERT_TRIAGE';
+        const resourceType = 'ANOMALY_ALERT';
+        const afterData = { status: 'IN_TRIAGE', assignedTo: input.analystUserId };
+        const previousHash = await latestAuditHash(transaction);
         await transaction.audit_logs.create({
           data: {
             actor_user_id: input.analystUserId,
             actor_type: 'USER',
-            action: 'START_AI_ALERT_TRIAGE',
-            resource_type: 'ANOMALY_ALERT',
+            action,
+            resource_type: resourceType,
             resource_id: input.alertId,
             source: 'API',
-            after_data: { status: 'IN_TRIAGE', assignedTo: input.analystUserId },
-            record_hash: `${input.alertId}:START_TRIAGE:${input.analystUserId}:${startedAt.toISOString()}`,
+            occurred_at: startedAt,
+            after_data: afterData,
+            ...(previousHash ? { previous_hash: previousHash } : {}),
+            record_hash: hashAuditRecord({
+              previousHash,
+              actorUserId: input.analystUserId,
+              action,
+              resourceType,
+              resourceId: input.alertId,
+              source: 'API',
+              afterData,
+              occurredAt: startedAt,
+            }),
           },
         });
       }
@@ -196,18 +252,36 @@ export const aiAlertsRepository = {
           deployed_at: true,
         },
       });
+      const occurredAt = new Date();
+      const action = 'CONFIGURE_DETECTION_THRESHOLD';
+      const resourceType = 'AI_MODEL_VERSION';
+      const afterData = { threshold: input.threshold };
+      const previousHash = await latestAuditHash(transaction);
       await transaction.audit_logs.create({
         data: {
           actor_user_id: input.actorUserId,
           actor_type: 'USER',
-          action: 'CONFIGURE_DETECTION_THRESHOLD',
-          resource_type: 'AI_MODEL_VERSION',
+          action,
+          resource_type: resourceType,
           resource_id: model.id,
           source: 'API',
           source_ip: input.sourceIp ?? null,
           user_agent: input.userAgent ?? null,
-          after_data: { threshold: input.threshold },
-          record_hash: `${model.id}:${input.threshold}:${input.actorUserId}`,
+          occurred_at: occurredAt,
+          after_data: afterData,
+          ...(previousHash ? { previous_hash: previousHash } : {}),
+          record_hash: hashAuditRecord({
+            previousHash,
+            actorUserId: input.actorUserId,
+            action,
+            resourceType,
+            resourceId: model.id,
+            source: 'API',
+            sourceIp: input.sourceIp ?? null,
+            userAgent: input.userAgent ?? null,
+            afterData,
+            occurredAt,
+          }),
         },
       });
       return updated;
@@ -478,27 +552,46 @@ export const aiAlertsRepository = {
         },
       });
       if (updated.count !== 1) return false;
+      const action = 'REGENERATE_AI_ALERT_EXPLANATION';
+      const resourceType = 'AI_ALERT';
+      const beforeData = {
+        explanationText: input.previousText,
+        generatedAt: input.previousGeneratedAt.toISOString(),
+      };
+      const afterData = {
+        explanationText: input.explanationText,
+        generatedAt: input.generatedAt.toISOString(),
+        modelVersionId: input.modelVersionId,
+        reason: input.reason,
+      };
+      const previousHash = await latestAuditHash(transaction);
       await transaction.audit_logs.create({
         data: {
           actor_user_id: input.actorUserId,
           actor_type: 'USER',
-          action: 'REGENERATE_AI_ALERT_EXPLANATION',
-          resource_type: 'AI_ALERT',
+          action,
+          resource_type: resourceType,
           resource_id: input.alertId,
           source: 'API',
           source_ip: input.sourceIp ?? null,
           user_agent: input.userAgent ?? null,
-          before_data: {
-            explanationText: input.previousText,
-            generatedAt: input.previousGeneratedAt.toISOString(),
-          },
-          after_data: {
-            explanationText: input.explanationText,
-            generatedAt: input.generatedAt.toISOString(),
-            modelVersionId: input.modelVersionId,
-            reason: input.reason,
-          },
-          record_hash: `${input.alertId}:REGENERATE_EXPLANATION:${input.actorUserId}:${input.generatedAt.toISOString()}`,
+          occurred_at: input.generatedAt,
+          before_data: beforeData,
+          after_data: afterData,
+          ...(previousHash ? { previous_hash: previousHash } : {}),
+          record_hash: hashAuditRecord({
+            previousHash,
+            actorUserId: input.actorUserId,
+            action,
+            resourceType,
+            resourceId: input.alertId,
+            source: 'API',
+            sourceIp: input.sourceIp ?? null,
+            userAgent: input.userAgent ?? null,
+            beforeData,
+            afterData,
+            occurredAt: input.generatedAt,
+          }),
         },
       });
       return true;
@@ -747,17 +840,34 @@ export const aiAlertsRepository = {
         },
         select: { analyst_user_id: true, completed_at: true, created_at: true },
       });
+      const action = 'MARK_AI_ALERT_NEEDS_INVESTIGATION';
+      const resourceType = 'ANOMALY_ALERT';
+      const beforeData = { status: 'IN_TRIAGE' };
+      const afterData = { status: 'NEED_INVESTIGATION', reason: input.reason };
+      const previousHash = await latestAuditHash(transaction);
       await transaction.audit_logs.create({
         data: {
           actor_user_id: input.userId,
           actor_type: 'USER',
-          action: 'MARK_AI_ALERT_NEEDS_INVESTIGATION',
-          resource_type: 'ANOMALY_ALERT',
+          action,
+          resource_type: resourceType,
           resource_id: alert.id,
           source: 'API',
-          before_data: { status: 'IN_TRIAGE' },
-          after_data: { status: 'NEED_INVESTIGATION', reason: input.reason },
-          record_hash: `${alert.id}:NEED_INVESTIGATION:${input.userId}:${now.toISOString()}`,
+          occurred_at: now,
+          before_data: beforeData,
+          after_data: afterData,
+          ...(previousHash ? { previous_hash: previousHash } : {}),
+          record_hash: hashAuditRecord({
+            previousHash,
+            actorUserId: input.userId,
+            action,
+            resourceType,
+            resourceId: alert.id,
+            source: 'API',
+            beforeData,
+            afterData,
+            occurredAt: now,
+          }),
         },
       });
       return { outcome: 'changed' as const, alert, triage };
