@@ -2,6 +2,19 @@ import { AppError } from '../../common/errors/app-error.js';
 import type { ListUserActivityAuditQuery } from './dto/list-user-activity-audit.dto.js';
 import { userActivityAuditRepository } from './user-activity-audit.repository.js';
 
+function normalizeDisplayIp(ip: string | null): string | null {
+  if (!ip) {
+    return null;
+  }
+  if (ip === '::1' || ip === '::ffff:127.0.0.1') {
+    return '127.0.0.1';
+  }
+  if (ip.startsWith('::ffff:')) {
+    return ip.replace('::ffff:', '');
+  }
+  return ip;
+}
+
 export const userActivityAuditService = {
   async list(actorUserId: string, query: ListUserActivityAuditQuery) {
     const actor = await userActivityAuditRepository.findActor(actorUserId);
@@ -24,7 +37,7 @@ export const userActivityAuditService = {
         occurredAt: record.occurred_at.toISOString(),
         outcome: record.outcome,
         source: record.source,
-        sourceIp: record.source_ip,
+        sourceIp: normalizeDisplayIp(record.source_ip),
         errorCode: record.error_code,
       })),
       pagination: {

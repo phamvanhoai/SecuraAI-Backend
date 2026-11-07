@@ -42,9 +42,10 @@ describe('Report Exports HTTP API tests', () => {
     vi.clearAllMocks();
     mockAuthenticatedUserId = '11111111-1111-1111-1111-111111111111';
     vi.mocked(prisma.users.findUnique).mockResolvedValue({
+      id: '11111111-1111-1111-1111-111111111111',
       role: 'SECURITY_OFFICER',
       status: 'ACTIVE',
-    } as any);
+    } as unknown as Awaited<ReturnType<typeof prisma.users.findUnique>>);
   });
 
   it('requires authentication and returns 401 when unauthenticated', async () => {
@@ -59,9 +60,10 @@ describe('Report Exports HTTP API tests', () => {
 
   it('returns 403 when user is not Security Officer or Executive', async () => {
     vi.mocked(prisma.users.findUnique).mockResolvedValue({
+      id: '11111111-1111-1111-1111-111111111111',
       role: 'ADMIN',
       status: 'ACTIVE',
-    } as any);
+    } as unknown as Awaited<ReturnType<typeof prisma.users.findUnique>>);
 
     const res = await request(app).post('/api/v1/reports/exports').send({
       reportType: 'RISK',
@@ -101,6 +103,11 @@ describe('Report Exports HTTP API tests', () => {
     expect(res.body.success).toBe(true);
     expect(res.body.data.id).toBe('aaaa1111-2222-4333-8444-555566667777');
     expect(res.body.data.downloadUrl).toContain('/download');
+    expect(reportExportsService.exportReport).toHaveBeenCalledWith(
+      '11111111-1111-1111-1111-111111111111',
+      expect.objectContaining({ reportType: 'RISK', format: 'EXCEL' }),
+      expect.objectContaining({ sourceIp: '127.0.0.1' }),
+    );
   });
 
   it('returns 200 on GET /api/v1/reports/exports', async () => {
@@ -114,7 +121,7 @@ describe('Report Exports HTTP API tests', () => {
       },
     };
 
-    vi.mocked(reportExportsService.listExports).mockResolvedValue(mockList as any);
+    vi.mocked(reportExportsService.listExports).mockResolvedValue(mockList);
 
     const res = await request(app).get('/api/v1/reports/exports?page=1&limit=10');
     expect(res.status).toBe(200);

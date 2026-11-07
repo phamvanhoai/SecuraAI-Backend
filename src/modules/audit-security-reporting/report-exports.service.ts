@@ -1,5 +1,7 @@
+import type { Prisma, report_export_status } from '@prisma/client';
 import { AppError } from '../../common/errors/app-error.js';
 import { reportExportsRepository } from './report-exports.repository.js';
+import type { ReportExportAuditContext } from './report-exports.repository.js';
 import { renderSecurityReportXlsx } from './security-report-xlsx.js';
 import { renderSecurityReportCsv } from './security-report-csv.js';
 import { renderSecurityReportPdf } from './security-report-pdf.js';
@@ -7,17 +9,17 @@ import type {
   ExportReportRequest,
   ListExportReportsQuery,
   ReportExportItem,
+  ReportFormat,
+  ReportType,
 } from './dto/export-security-reports.dto.js';
-
-
 
 function mapReportExportItem(
   item: {
     id: string;
     report_type: string;
-    status: any;
+    status: report_export_status;
     storage_uri: string | null;
-    filters: any;
+    filters: Prisma.JsonValue;
     generated_at: Date | null;
     created_at: Date;
     users: { id: string; full_name: string; role: string };
@@ -25,7 +27,7 @@ function mapReportExportItem(
   overrideSummary?: { recordCount: number; period?: string; highlights?: string[] },
 ): ReportExportItem {
   const filters = (item.filters as Record<string, unknown> | null) || null;
-  const format = (filters?.format as 'EXCEL' | 'PDF' | 'CSV') || 'EXCEL';
+  const format = (filters?.format as ReportFormat) || 'EXCEL';
   const recordCount =
     overrideSummary?.recordCount ??
     (typeof filters?.recordCount === 'number' ? filters.recordCount : 0);
@@ -33,6 +35,13 @@ function mapReportExportItem(
   const revokedAt = typeof filters?.revokedAt === 'string' ? filters.revokedAt : null;
   const revokedBy = typeof filters?.revokedBy === 'string' ? filters.revokedBy : null;
   const revocationReason = typeof filters?.revocationReason === 'string' ? filters.revocationReason : null;
+
+  const startStr = typeof filters?.startDate === 'string' ? filters.startDate : 'All';
+  const endStr = typeof filters?.endDate === 'string' ? filters.endDate : 'Now';
+  const defaultPeriod =
+    filters?.startDate || filters?.endDate
+      ? `${startStr} to ${endStr}`
+      : 'All available records';
 
   return {
     id: item.id,
@@ -48,11 +57,7 @@ function mapReportExportItem(
     filters,
     summary: {
       recordCount,
-      period:
-        overrideSummary?.period ??
-        (filters?.startDate || filters?.endDate
-          ? `${String(filters?.startDate || 'All')} to ${String(filters?.endDate || 'Now')}`
-          : 'All available records'),
+      period: overrideSummary?.period ?? defaultPeriod,
       highlights: overrideSummary?.highlights,
     },
     downloadUrl: `/api/v1/reports/exports/${item.id}/download`,
@@ -66,7 +71,11 @@ function mapReportExportItem(
 }
 
 export const reportExportsService = {
-  async exportReport(userId: string, input: ExportReportRequest): Promise<ReportExportItem> {
+  async exportReport(
+    userId: string,
+    input: ExportReportRequest,
+    context?: ReportExportAuditContext,
+  ): Promise<ReportExportItem> {
     const actor = await reportExportsRepository.findActor(userId);
     if (!actor || actor.status !== 'ACTIVE') {
       throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
@@ -107,16 +116,23 @@ export const reportExportsService = {
       recordCount,
     };
 
-    const tempId = crypto.randomUUID();
-    const storageUri = `/api/v1/reports/exports/${tempId}/download`;
-
     const createdRecord = await reportExportsRepository.createExportRecord({
       reportType: input.reportType,
       requestedBy: actor.id,
       filters: filtersRecord,
       status: 'COMPLETED',
-      storageUri,
       generatedAt: now,
+      auditData: {
+        report_type: input.reportType,
+        format,
+        start_date: filtersRecord.startDate,
+        end_date: filtersRecord.endDate,
+        severity: filtersRecord.severity,
+        status_filter: filtersRecord.status,
+        record_count: recordCount,
+        export_status: 'COMPLETED',
+      },
+      ...(context ? { context } : {}),
     });
 
     return mapReportExportItem(createdRecord, {
@@ -183,7 +199,12 @@ export const reportExportsService = {
     return mapReportExportItem(item);
   },
 
-  async revokeExport(userId: string, exportId: string, reason: string): Promise<ReportExportItem> {
+  async revokeExport(
+    userId: string,
+    exportId: string,
+    reason: string,
+    context?: ReportExportAuditContext,
+  ): Promise<ReportExportItem> {
     const actor = await reportExportsRepository.findActor(userId);
     if (!actor || actor.status !== 'ACTIVE') {
       throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
@@ -229,11 +250,12 @@ export const reportExportsService = {
 
     const updated = await reportExportsRepository.updateExportFilters(
       exportId,
-      updatedFilters as any,
+      updatedFilters,
       {
         actorUserId: actor.id,
         beforeData,
         afterData,
+        ...(context ? { context } : {}),
       },
     );
     return mapReportExportItem(updated);
@@ -242,6 +264,7 @@ export const reportExportsService = {
   async downloadReport(
     userId: string,
     exportId: string,
+    context?: ReportExportAuditContext,
   ): Promise<{ filename: string; contentType: string; content: string | Buffer }> {
     const actor = await reportExportsRepository.findActor(userId);
     if (!actor || actor.status !== 'ACTIVE') {
@@ -258,49 +281,74 @@ export const reportExportsService = {
     }
 
     const filters = (item.filters as Record<string, unknown> | null) || {};
+    const format = (filters.format as ReportFormat) || 'EXCEL';
+    const reportType = item.report_type as ReportType;
+
     if (filters.isRevoked === true) {
-      const reason = filters.revocationReason ? `: ${String(filters.revocationReason)}` : '';
+      // Trace access denial on revoked exports
+      await reportExportsRepository.recordDownloadAudit({
+        actorUserId: actor.id,
+        exportId: item.id,
+        outcome: 'DENIED',
+        errorCode: 'GONE',
+        afterData: { id: item.id, report_type: reportType, format },
+        ...(context ? { context } : {}),
+      });
+      const reason =
+        typeof filters.revocationReason === 'string' ? `: ${filters.revocationReason}` : '';
       throw new AppError(410, 'GONE', `Report export has been revoked${reason}`);
     }
 
-    const format = (filters.format as string) || 'EXCEL';
-    const reportType = item.report_type;
     const dateStr = item.created_at.toISOString().slice(0, 10);
 
     const safeFilters: ExportReportRequest = {
-      reportType: reportType as any,
-      format: format as any,
-      startDate: filters.startDate as string | undefined,
-      endDate: filters.endDate as string | undefined,
-      severity: filters.severity as string | undefined,
-      status: filters.status as string | undefined,
+      reportType,
+      format,
+      startDate: typeof filters.startDate === 'string' ? filters.startDate : undefined,
+      endDate: typeof filters.endDate === 'string' ? filters.endDate : undefined,
+      severity: typeof filters.severity === 'string' ? filters.severity : undefined,
+      status: typeof filters.status === 'string' ? filters.status : undefined,
     };
 
+    let file: { filename: string; contentType: string; content: string | Buffer };
     if (format === 'PDF') {
-      const pdfBuffer = await renderSecurityReportPdf(reportType as any, item, safeFilters);
-      return {
+      const pdfBuffer = await renderSecurityReportPdf(reportType, item, safeFilters);
+      file = {
         filename: `securaai-${reportType.toLowerCase()}-report-${dateStr}.pdf`,
         contentType: 'application/pdf',
         content: pdfBuffer,
       };
-    }
-
-    if (format === 'EXCEL') {
-      const excelBuffer = await renderSecurityReportXlsx(reportType as any, item, safeFilters);
-      return {
+    } else if (format === 'EXCEL') {
+      const excelBuffer = await renderSecurityReportXlsx(reportType, item, safeFilters);
+      file = {
         filename: `securaai-${reportType.toLowerCase()}-report-${dateStr}.xlsx`,
         contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         content: excelBuffer,
       };
+    } else {
+      // Default: CSV with UTF-8 BOM (\uFEFF)
+      const csvContent = await renderSecurityReportCsv(reportType, item, safeFilters);
+      file = {
+        filename: `securaai-${reportType.toLowerCase()}-report-${dateStr}.csv`,
+        contentType: 'text/csv; charset=utf-8',
+        content: csvContent,
+      };
     }
 
-    // Default: CSV with UTF-8 BOM (\uFEFF)
-    const csvContent = await renderSecurityReportCsv(reportType as any, item, safeFilters);
-    return {
-      filename: `securaai-${reportType.toLowerCase()}-report-${dateStr}.csv`,
-      contentType: 'text/csv; charset=utf-8',
-      content: csvContent,
-    };
+    await reportExportsRepository.recordDownloadAudit({
+      actorUserId: actor.id,
+      exportId: item.id,
+      outcome: 'SUCCESS',
+      afterData: {
+        id: item.id,
+        report_type: reportType,
+        format,
+        filename: file.filename,
+      },
+      ...(context ? { context } : {}),
+    });
+
+    return file;
   },
 };
 

@@ -86,6 +86,24 @@ describe('audit logs service', () => {
       });
     });
 
+    it('normalizes IPv6 loopback ::1 to 127.0.0.1 for display', async () => {
+      vi.mocked(auditLogsRepository.findMany).mockResolvedValue([
+        {
+          ...mockAuditRecord,
+          source_ip: '::1',
+        },
+      ]);
+
+      const result = await auditLogsService.listAuditLogs(adminUserId, {
+        page: 1,
+        limit: 20,
+        sortBy: 'occurredAt',
+        sortOrder: 'desc',
+      });
+
+      expect(result.items[0]?.sourceIp).toBe('127.0.0.1');
+    });
+
     it('passes search and filter parameters to repository', async () => {
       const query = {
         page: 1,

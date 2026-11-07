@@ -1,10 +1,90 @@
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { prisma } from '../../database/prisma.js';
 import type {
   ExportReportRequest,
-  ListExportReportsQuery,
 } from './dto/export-security-reports.dto.js';
-import type { Prisma, report_export_status } from '@prisma/client';
+import type {
+  audit_outcome,
+  incident_status,
+  Prisma,
+  report_export_status,
+  risk_status,
+} from '@prisma/client';
+
+export type ReportExportAuditContext = {
+  sourceIp?: string;
+  userAgent?: string;
+};
+
+type ReportExportAuditEvent = {
+  actorUserId: string;
+  action: string;
+  resourceId: string;
+  beforeData?: Record<string, unknown>;
+  afterData?: Record<string, unknown>;
+  outcome?: audit_outcome;
+  errorCode?: string;
+  context?: ReportExportAuditContext;
+};
+
+const reportExportInclude = {
+  users: {
+    select: { id: true, full_name: true, role: true, email: true },
+  },
+} as const;
+
+/**
+ * Appends one report-export audit record linked to the latest audit hash.
+ * Must run inside the transaction that performs the audited change.
+ */
+async function appendReportExportAudit(
+  tx: Prisma.TransactionClient,
+  event: ReportExportAuditEvent,
+): Promise<void> {
+  const previous = await tx.audit_logs.findFirst({
+    orderBy: [{ occurred_at: 'desc' }, { id: 'desc' }],
+    select: { record_hash: true },
+  });
+  const occurredAt = new Date();
+  const outcome = event.outcome ?? 'SUCCESS';
+
+  const recordHash = createHash('sha256')
+    .update(
+      JSON.stringify({
+        previousHash: previous?.record_hash ?? null,
+        actorUserId: event.actorUserId,
+        action: event.action,
+        resourceType: 'REPORT_EXPORT',
+        resourceId: event.resourceId,
+        outcome,
+        errorCode: event.errorCode ?? null,
+        beforeData: event.beforeData ?? null,
+        afterData: event.afterData ?? null,
+        occurredAt: occurredAt.toISOString(),
+      }),
+    )
+    .digest('hex');
+
+  await tx.audit_logs.create({
+    data: {
+      actor_user_id: event.actorUserId,
+      actor_type: 'USER',
+      action: event.action,
+      resource_type: 'REPORT_EXPORT',
+      resource_id: event.resourceId,
+      occurred_at: occurredAt,
+      source: 'API',
+      outcome,
+      ...(event.errorCode ? { error_code: event.errorCode } : {}),
+      ...(event.beforeData ? { before_data: event.beforeData as Prisma.InputJsonValue } : {}),
+      ...(event.afterData ? { after_data: event.afterData as Prisma.InputJsonValue } : {}),
+      ...(event.context?.sourceIp ? { source_ip: event.context.sourceIp.slice(0, 45) } : {}),
+      ...(event.context?.userAgent ? { user_agent: event.context.userAgent.slice(0, 500) } : {}),
+      ...(previous ? { previous_hash: previous.record_hash } : {}),
+      record_hash: recordHash,
+    },
+  });
+}
 
 function parseStartDate(dateStr: string): Date {
   const dateOnly = dateStr.includes('T') ? dateStr.split('T')[0] : dateStr;
@@ -24,31 +104,68 @@ export const reportExportsRepository = {
     });
   },
 
+  /**
+   * Creates the export record and its REPORT_EXPORT_GENERATED audit event atomically.
+   * The identifier is generated first so storage_uri points to the real record.
+   */
   createExportRecord(data: {
     reportType: string;
     requestedBy: string;
     filters: Prisma.InputJsonValue;
     status: report_export_status;
-    storageUri: string;
     generatedAt?: Date;
+    auditData: Record<string, unknown>;
+    context?: ReportExportAuditContext;
   }) {
-    const now = new Date();
-    return prisma.report_exports.create({
-      data: {
-        report_type: data.reportType,
-        requested_by: data.requestedBy,
-        filters: data.filters,
-        status: data.status,
-        storage_uri: data.storageUri,
-        created_at: now,
-        generated_at: now,
-      },
-      include: {
-        users: {
-          select: { id: true, full_name: true, role: true, email: true },
+    const id = randomUUID();
+    const now = data.generatedAt ?? new Date();
+    return prisma.$transaction(async (tx) => {
+      const created = await tx.report_exports.create({
+        data: {
+          id,
+          report_type: data.reportType,
+          requested_by: data.requestedBy,
+          filters: data.filters,
+          status: data.status,
+          storage_uri: `/api/v1/reports/exports/${id}/download`,
+          created_at: now,
+          generated_at: now,
         },
-      },
+        include: reportExportInclude,
+      });
+
+      await appendReportExportAudit(tx, {
+        actorUserId: data.requestedBy,
+        action: 'REPORT_EXPORT_GENERATED',
+        resourceId: id,
+        afterData: { id, ...data.auditData },
+        ...(data.context ? { context: data.context } : {}),
+      });
+
+      return created;
     });
+  },
+
+  /** Records a download attempt for an existing export (successful or denied). */
+  recordDownloadAudit(event: {
+    actorUserId: string;
+    exportId: string;
+    outcome: audit_outcome;
+    afterData: Record<string, unknown>;
+    errorCode?: string;
+    context?: ReportExportAuditContext;
+  }): Promise<void> {
+    return prisma.$transaction((tx) =>
+      appendReportExportAudit(tx, {
+        actorUserId: event.actorUserId,
+        action: 'REPORT_EXPORT_DOWNLOADED',
+        resourceId: event.exportId,
+        outcome: event.outcome,
+        afterData: event.afterData,
+        ...(event.errorCode ? { errorCode: event.errorCode } : {}),
+        ...(event.context ? { context: event.context } : {}),
+      }),
+    );
   },
 
   async listExports(params: {
@@ -110,6 +227,7 @@ export const reportExportsRepository = {
       actorUserId: string;
       beforeData: Record<string, unknown>;
       afterData: Record<string, unknown>;
+      context?: ReportExportAuditContext;
     },
   ) {
     if (!auditMeta) {
@@ -118,11 +236,7 @@ export const reportExportsRepository = {
         data: {
           filters: updatedFilters,
         },
-        include: {
-          users: {
-            select: { id: true, full_name: true, role: true, email: true },
-          },
-        },
+        include: reportExportInclude,
       });
     }
 
@@ -132,44 +246,16 @@ export const reportExportsRepository = {
         data: {
           filters: updatedFilters,
         },
-        include: {
-          users: {
-            select: { id: true, full_name: true, role: true, email: true },
-          },
-        },
+        include: reportExportInclude,
       });
 
-      const previous = await tx.audit_logs.findFirst({
-        orderBy: { occurred_at: 'desc' },
-        select: { record_hash: true },
-      });
-
-      const recordHash = createHash('sha256')
-        .update(
-          JSON.stringify({
-            previousHash: previous?.record_hash ?? null,
-            actorUserId: auditMeta.actorUserId,
-            resourceId: id,
-            action: 'REVOKE_REPORT_EXPORT',
-            beforeData: auditMeta.beforeData,
-            afterData: auditMeta.afterData,
-          }),
-        )
-        .digest('hex');
-
-      await tx.audit_logs.create({
-        data: {
-          actor_user_id: auditMeta.actorUserId,
-          actor_type: 'USER',
-          action: 'REVOKE_REPORT_EXPORT',
-          resource_type: 'REPORT_EXPORT',
-          resource_id: id,
-          source: 'API',
-          before_data: auditMeta.beforeData as Prisma.InputJsonValue,
-          after_data: auditMeta.afterData as Prisma.InputJsonValue,
-          ...(previous ? { previous_hash: previous.record_hash } : {}),
-          record_hash: recordHash,
-        },
+      await appendReportExportAudit(tx, {
+        actorUserId: auditMeta.actorUserId,
+        action: 'REVOKE_REPORT_EXPORT',
+        resourceId: id,
+        beforeData: auditMeta.beforeData,
+        afterData: auditMeta.afterData,
+        ...(auditMeta.context ? { context: auditMeta.context } : {}),
       });
 
       return updated;
@@ -179,7 +265,7 @@ export const reportExportsRepository = {
   async compileRiskData(filters: ExportReportRequest) {
     const where: Prisma.risksWhereInput = {};
     if (filters.status) {
-      where.status = filters.status as any;
+      where.status = filters.status as risk_status;
     }
     if (filters.startDate || filters.endDate) {
       where.created_at = {
@@ -220,7 +306,7 @@ export const reportExportsRepository = {
       where.severity = { equals: filters.severity, mode: 'insensitive' };
     }
     if (filters.status) {
-      where.status = filters.status as any;
+      where.status = filters.status as incident_status;
     }
     if (filters.startDate || filters.endDate) {
       where.created_at = {
@@ -251,7 +337,7 @@ export const reportExportsRepository = {
     return incidents;
   },
 
-  async compileSecurityPostureData(filters: ExportReportRequest) {
+  async compileSecurityPostureData(_filters: ExportReportRequest) {
     const since24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
     const [
