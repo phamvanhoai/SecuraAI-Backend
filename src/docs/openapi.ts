@@ -4165,7 +4165,7 @@ export const openApiSpec = {
       post: {
         tags: ['Authentication'],
         summary: 'Change password and sign out all devices',
-        description: 'Requires an active authenticated account and the correct current password. Updates the password and revokes all refresh sessions atomically. Previously issued access tokens are rejected on subsequent authenticated requests. All devices must log in again.',
+        description: 'Requires an active authenticated account and the correct current password. Updates the password, revokes all refresh sessions and records PASSWORD_CHANGED atomically. Audit records exclude credentials and token hashes. Previously issued access tokens are rejected on subsequent authenticated requests. All devices must log in again.',
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
@@ -4249,6 +4249,7 @@ export const openApiSpec = {
       post: {
         tags: ['Authentication'],
         summary: 'Revoke a refresh session',
+        description: 'Revokes the matching session and records USER_LOGGED_OUT atomically. Unknown or already revoked sessions remain idempotent and do not create duplicate audit events.',
         security: [],
         requestBody: {
           required: true,
