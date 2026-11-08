@@ -9,6 +9,7 @@ import pinoHttp from 'pino-http';
 import { env } from './config/env.js';
 import { logger } from './config/logger.js';
 import { errorHandler, notFoundHandler } from './common/middleware/error-handler.js';
+import { requestContextMiddleware } from './common/middleware/request-context.js';
 import { openApiSpec } from './docs/openapi.js';
 import { swaggerUiAssets, swaggerUiHtml } from './docs/swagger-ui.js';
 import { apiRouter } from './routes/index.js';
@@ -23,6 +24,7 @@ export const createApp = () => {
     res.setHeader('x-request-id', id);
     return id;
   }}));
+  app.use(requestContextMiddleware);
   app.use(helmet(env.SWAGGER_ENABLED ? { contentSecurityPolicy: false } : {}));
   app.use(cors({ origin: env.corsOrigins, credentials: true, methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'] }));
   app.use(rateLimit({ windowMs: 15 * 60 * 1000, limit: 300, standardHeaders: 'draft-8', legacyHeaders: false }));
