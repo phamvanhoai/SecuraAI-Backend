@@ -1,5 +1,6 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
 import { prisma } from '../../database/prisma.js';
+import { auditWriter } from './audit-writer.js';
 import type {
   ExportReportRequest,
 } from './dto/export-security-reports.dto.js';
@@ -35,55 +36,27 @@ const reportExportInclude = {
 
 /**
  * Appends one report-export audit record linked to the latest audit hash.
- * Must run inside the transaction that performs the audited change.
+ * Delegates to the unified auditWriter service within the active transaction.
  */
 async function appendReportExportAudit(
   tx: Prisma.TransactionClient,
   event: ReportExportAuditEvent,
 ): Promise<void> {
-  const previous = await tx.audit_logs.findFirst({
-    orderBy: [{ occurred_at: 'desc' }, { id: 'desc' }],
-    select: { record_hash: true },
-  });
-  const occurredAt = new Date();
-  const outcome = event.outcome ?? 'SUCCESS';
-
-  const recordHash = createHash('sha256')
-    .update(
-      JSON.stringify({
-        previousHash: previous?.record_hash ?? null,
-        actorUserId: event.actorUserId,
-        action: event.action,
-        resourceType: 'REPORT_EXPORT',
-        resourceId: event.resourceId,
-        outcome,
-        errorCode: event.errorCode ?? null,
-        beforeData: event.beforeData ?? null,
-        afterData: event.afterData ?? null,
-        occurredAt: occurredAt.toISOString(),
-      }),
-    )
-    .digest('hex');
-
-  await tx.audit_logs.create({
-    data: {
-      actor_user_id: event.actorUserId,
-      actor_type: 'USER',
+  await auditWriter.record(
+    {
+      actorUserId: event.actorUserId,
       action: event.action,
-      resource_type: 'REPORT_EXPORT',
-      resource_id: event.resourceId,
-      occurred_at: occurredAt,
-      source: 'API',
-      outcome,
-      ...(event.errorCode ? { error_code: event.errorCode } : {}),
-      ...(event.beforeData ? { before_data: event.beforeData as Prisma.InputJsonValue } : {}),
-      ...(event.afterData ? { after_data: event.afterData as Prisma.InputJsonValue } : {}),
-      ...(event.context?.sourceIp ? { source_ip: event.context.sourceIp.slice(0, 45) } : {}),
-      ...(event.context?.userAgent ? { user_agent: event.context.userAgent.slice(0, 500) } : {}),
-      ...(previous ? { previous_hash: previous.record_hash } : {}),
-      record_hash: recordHash,
+      resourceType: 'REPORT_EXPORT',
+      resourceId: event.resourceId,
+      outcome: event.outcome,
+      errorCode: event.errorCode,
+      beforeData: event.beforeData,
+      afterData: event.afterData,
+      sourceIp: event.context?.sourceIp,
+      userAgent: event.context?.userAgent,
     },
-  });
+    tx,
+  );
 }
 
 function parseStartDate(dateStr: string): Date {
