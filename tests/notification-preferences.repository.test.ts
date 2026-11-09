@@ -2,9 +2,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   transaction: vi.fn(),
+  queryRaw: vi.fn(),
   users: { findUnique: vi.fn() },
-  preferences: { upsert: vi.fn() },
-  audit: { create: vi.fn() },
+  preferences: { findMany: vi.fn(), upsert: vi.fn() },
+  audit: { findFirst: vi.fn(), create: vi.fn() },
 }));
 vi.mock('../src/database/prisma.js', () => ({
   prisma: { $transaction: mocks.transaction },
@@ -18,13 +19,16 @@ describe('notification preferences repository', () => {
     mocks.transaction.mockImplementation(
       (callback: (tx: unknown) => unknown) =>
         callback({
+          $queryRaw: mocks.queryRaw,
           users: mocks.users,
           notification_preferences: mocks.preferences,
           audit_logs: mocks.audit,
         }),
     );
     mocks.users.findUnique.mockResolvedValue({ status: 'ACTIVE' });
+    mocks.preferences.findMany.mockResolvedValue([]);
     mocks.preferences.upsert.mockResolvedValue({ id: 'preference' });
+    mocks.audit.findFirst.mockResolvedValue(null);
     mocks.audit.create.mockResolvedValue({ id: 'audit' });
   });
 

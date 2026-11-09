@@ -7,6 +7,8 @@ const deliveryId = '33333333-3333-4333-8333-333333333333';
 const mocks = vi.hoisted(() => ({
   transaction: vi.fn(),
   tx: {
+    $queryRaw: vi.fn(),
+    notification_preferences: { findMany: vi.fn(), upsert: vi.fn() },
     users: { findUnique: vi.fn(), findMany: vi.fn() },
     notifications: { create: vi.fn() },
     notification_recipients: { createMany: vi.fn(), findMany: vi.fn() },
@@ -48,15 +50,23 @@ describe('in-system notification repository', () => {
     );
 
     const audit = mocks.tx.audit_logs.create.mock.calls[0]?.[0].data;
-    expect(audit.previous_hash).toBeNull();
+    expect(audit.previous_hash).toBeUndefined();
     expect(audit.record_hash).toBe(
       createHash('sha256')
         .update(
           JSON.stringify({
             previousHash: null,
-            id: audit.id,
             actorUserId: recipientId,
-            after: audit.after_data,
+            actorApiKeyId: null,
+            actorType: 'USER',
+            action: audit.action,
+            resourceType: audit.resource_type,
+            resourceId: audit.resource_id,
+            outcome: 'SUCCESS',
+            errorCode: null,
+            beforeData: null,
+            afterData: audit.after_data,
+            occurredAt: audit.occurred_at.toISOString(),
           }),
         )
         .digest('hex'),
@@ -70,5 +80,49 @@ describe('in-system notification repository', () => {
     expect(delivery.created_at).toBe(delivery.sent_at);
     expect(delivery.created_at).toBe(delivery.delivered_at);
     expect(delivery.created_at).toBe(delivery.updated_at);
+  });
+});
+
+describe('personal notification preference audit snapshots', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    mocks.transaction.mockImplementation(
+      async (callback: (tx: typeof mocks.tx) => Promise<unknown>) => callback(mocks.tx),
+    );
+    mocks.tx.users.findUnique.mockResolvedValue({ status: 'ACTIVE' });
+  });
+  it('records previous channel values and new values within the write transaction', async () => {
+    mocks.tx.notification_preferences.findMany.mockResolvedValue([
+      { channel: 'IN_SYSTEM', enabled: true },
+      { channel: 'EMAIL', enabled: false },
+    ]);
+    await notificationsRepository.updatePreferences(recipientId, {
+      channels: { inSystem: false, email: true },
+    });
+    expect(mocks.tx.$queryRaw).toHaveBeenCalled();
+    expect(mocks.tx.audit_logs.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          before_data: { channels: { inSystem: true, email: false } },
+          after_data: { channels: { inSystem: false, email: true } },
+        }),
+      }),
+    );
+    expect(mocks.tx.notification_preferences.findMany.mock.invocationCallOrder[0]).toBeLessThan(
+      mocks.tx.notification_preferences.upsert.mock.invocationCallOrder[0] ?? Infinity,
+    );
+  });
+  it('uses enabled defaults for channels with no stored preference', async () => {
+    mocks.tx.notification_preferences.findMany.mockResolvedValue([]);
+    await notificationsRepository.updatePreferences(recipientId, {
+      channels: { inSystem: true, email: false },
+    });
+    expect(mocks.tx.audit_logs.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          before_data: { channels: { inSystem: true, email: true } },
+        }),
+      }),
+    );
   });
 });

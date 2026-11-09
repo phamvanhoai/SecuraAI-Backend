@@ -1,5 +1,5 @@
+import { auditWriter } from '../audit-security-reporting/audit-writer.js';
 import type { StoredNotificationImage } from './notification-images.js';
-import { createHash, randomUUID } from 'node:crypto';
 import { AppError } from '../../common/errors/app-error.js';
 import { prisma } from '../../database/prisma.js';
 import type { SendInSystemNotificationInput } from './dto/send-in-system-notification.dto.js';
@@ -156,12 +156,24 @@ export const notificationsRepository = {
 
   updatePreferences(userId: string, input: UpdateNotificationPreferencesInput) {
     return prisma.$transaction(async (tx) => {
+      await tx.$queryRaw`SELECT id FROM users WHERE id = ${userId}::uuid FOR UPDATE`;
       const actor = await tx.users.findUnique({
         where: { id: userId },
         select: { status: true },
       });
       if (!actor || actor.status !== 'ACTIVE') return { kind: 'unauthorized' } as const;
 
+      const existing = await tx.notification_preferences.findMany({
+        where: { user_id: userId, event_type: 'ALL' },
+        select: { channel: true, enabled: true },
+      });
+      // Missing settings have the same enabled defaults as the preferences API.
+      const before = {
+        channels: {
+          inSystem: existing.find((item) => item.channel === 'IN_SYSTEM')?.enabled ?? true,
+          email: existing.find((item) => item.channel === 'EMAIL')?.enabled ?? true,
+        },
+      };
       const updatedAt = new Date();
       const preferences = [
         { channel: 'IN_SYSTEM' as const, enabled: input.channels.inSystem },
@@ -189,36 +201,21 @@ export const notificationsRepository = {
         });
       }
 
-      const auditId = randomUUID();
       const after = { channels: input.channels };
-      const previous = await tx.audit_logs.findFirst({
-        orderBy: [{ occurred_at: 'desc' }, { id: 'desc' }],
-        select: { record_hash: true },
-      });
-      await tx.audit_logs.create({
-        data: {
-          id: auditId,
-          actor_type: 'USER',
-          actor_user_id: userId,
+
+      await auditWriter.record(
+        {
+          actorType: 'USER',
+          actorUserId: userId,
           action: 'PERSONAL_NOTIFICATION_PREFERENCES_UPDATED',
-          resource_type: 'USER_NOTIFICATION_PREFERENCES',
-          resource_id: userId,
+          resourceType: 'USER_NOTIFICATION_PREFERENCES',
+          resourceId: userId,
           source: 'API',
-          after_data: after,
-          previous_hash: previous?.record_hash ?? null,
-          record_hash: createHash('sha256')
-            .update(
-              JSON.stringify({
-                previousHash: previous?.record_hash ?? null,
-                id: auditId,
-                userId,
-                after,
-              }),
-            )
-            .digest('hex'),
+          beforeData: before,
+          afterData: after,
         },
-        select: { id: true },
-      });
+        tx,
+      );
       return { kind: 'updated', preferences, updatedAt } as const;
     }, transactionOptions);
   },
@@ -299,41 +296,26 @@ export const notificationsRepository = {
           delivered_at: deliveredAt,
         })),
       });
-      const auditId = randomUUID();
+
       const after = {
         notificationId: notification.id,
         priority: input.priority,
         audienceType: input.audience.type,
         recipientCount: activeRecipients.length,
       };
-      const previous = await tx.audit_logs.findFirst({
-        orderBy: [{ occurred_at: 'desc' }, { id: 'desc' }],
-        select: { record_hash: true },
-      });
-      await tx.audit_logs.create({
-        data: {
-          id: auditId,
-          actor_type: 'USER',
-          actor_user_id: actorUserId,
+
+      await auditWriter.record(
+        {
+          actorType: 'USER',
+          actorUserId: actorUserId,
           action: 'IN_SYSTEM_NOTIFICATION_SENT',
-          resource_type: 'NOTIFICATION',
-          resource_id: notification.id,
+          resourceType: 'NOTIFICATION',
+          resourceId: notification.id,
           source: 'API',
-          after_data: after,
-          previous_hash: previous?.record_hash ?? null,
-          record_hash: createHash('sha256')
-            .update(
-              JSON.stringify({
-                previousHash: previous?.record_hash ?? null,
-                id: auditId,
-                actorUserId,
-                after,
-              }),
-            )
-            .digest('hex'),
+          afterData: after,
         },
-        select: { id: true },
-      });
+        tx,
+      );
       return { kind: 'created', notification, recipientCount: activeRecipients.length } as const;
     }, transactionOptions);
   },
@@ -420,40 +402,25 @@ export const notificationsRepository = {
         select: { id: true, destination: true },
         orderBy: { id: 'asc' },
       });
-      const auditId = randomUUID();
+
       const after = {
         notificationId: notification.id,
         channel: 'EMAIL',
         recipientCount: deliveries.length,
       };
-      const previous = await tx.audit_logs.findFirst({
-        orderBy: [{ occurred_at: 'desc' }, { id: 'desc' }],
-        select: { record_hash: true },
-      });
-      await tx.audit_logs.create({
-        data: {
-          id: auditId,
-          actor_type: 'USER',
-          actor_user_id: actorUserId,
+
+      await auditWriter.record(
+        {
+          actorType: 'USER',
+          actorUserId: actorUserId,
           action: 'EMAIL_NOTIFICATION_QUEUED',
-          resource_type: 'NOTIFICATION',
-          resource_id: notification.id,
+          resourceType: 'NOTIFICATION',
+          resourceId: notification.id,
           source: 'API',
-          after_data: after,
-          previous_hash: previous?.record_hash ?? null,
-          record_hash: createHash('sha256')
-            .update(
-              JSON.stringify({
-                previousHash: previous?.record_hash ?? null,
-                id: auditId,
-                actorUserId,
-                after,
-              }),
-            )
-            .digest('hex'),
+          afterData: after,
         },
-        select: { id: true },
-      });
+        tx,
+      );
       return { kind: 'prepared', notification, deliveries } as const;
     }, transactionOptions);
   },
