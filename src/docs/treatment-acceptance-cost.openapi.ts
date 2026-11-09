@@ -29,5 +29,7 @@ export const createTreatmentPlanOpenApi = { type: 'object', additionalProperties
 };
 export const updateTreatmentPlanOpenApi = { type: 'object', additionalProperties: false,
   required: ['title', 'strategy', 'ownerUserId', 'targetDate', 'status', 'controlIds', 'actions', 'expectedUpdatedAt'],
-  properties: { ...properties, status: { type: 'string', enum: ['draft', 'active', 'completed', 'cancelled'] }, expectedUpdatedAt: { type: 'string', format: 'date-time' } },
+  properties: { ...properties,
+    changeReason: { type: 'string', minLength: 10, maxLength: 2000, description: 'Required when the stored plan is Active or the requested status is Cancelled. Written to the existing audit log.' },
+    status: { type: 'string', enum: ['draft', 'active', 'completed', 'cancelled'] }, expectedUpdatedAt: { type: 'string', format: 'date-time' } },
 };

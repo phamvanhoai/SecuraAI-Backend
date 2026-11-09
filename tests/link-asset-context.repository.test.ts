@@ -6,7 +6,7 @@ const mocks = vi.hoisted(() => {
     business_services: { findFirst: vi.fn() },
     event_sources: { count: vi.fn() },
     asset_dependencies: { findMany: vi.fn() },
-    audit_logs: { create: vi.fn(), count: vi.fn(), findMany: vi.fn() },
+    audit_logs: { findFirst: vi.fn(), create: vi.fn(), count: vi.fn(), findMany: vi.fn() },
     $queryRaw: vi.fn(),
   };
   return { tx, transaction: vi.fn() };

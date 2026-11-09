@@ -10,7 +10,7 @@ const db = vi.hoisted(() => ({
   risk_assessments: { create: vi.fn(), findFirst: vi.fn() },
   control_risk_links: { createMany: vi.fn() },
   risk_treatment_plans: { create: vi.fn() },
-  audit_logs: { create: vi.fn() },
+  audit_logs: { findFirst: vi.fn(), create: vi.fn() },
 }));
 
 vi.mock('../src/database/prisma.js', () => ({
@@ -37,7 +37,7 @@ describe('create treatment plan with an overdue Risk review', () => {
   it('blocks pending acceptance', async () => {
     const risk = await db.risks.findUnique();
     db.risks.findUnique.mockResolvedValue({ ...risk, risk_acceptances: [{ id: 'pending' }] });
-    await expect(riskRegisterRepository.createTreatmentPlan(actorId, request())).resolves.toEqual({ kind: 'context_locked' });
+    await expect(riskRegisterRepository.createTreatmentPlan(actorId, request())).resolves.toEqual({ kind: 'pending_acceptance' });
   });
   it('rejects a control omitted by the eligibility query', async () => {
     const risk = await db.risks.findUnique();

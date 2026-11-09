@@ -3,7 +3,7 @@ const db = vi.hoisted(() => ({
   $queryRaw: vi.fn(),
   risks: { findUnique: vi.fn() },
   risk_assessments: { findFirst: vi.fn(), create: vi.fn() },
-  audit_logs: { create: vi.fn() },
+  audit_logs: { findFirst: vi.fn(), create: vi.fn() },
 }));
 vi.mock('../src/database/prisma.js', () => ({
   prisma: {
@@ -62,6 +62,7 @@ describe('residual risk workflow', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     db.risks.findUnique.mockResolvedValue(risk);
+    db.audit_logs.findFirst.mockResolvedValue({ record_hash: 'previous-risk-hash' });
     db.risk_assessments.findFirst.mockResolvedValue(null);
     db.risk_assessments.create.mockResolvedValue({ id: 'assessment', assessed_at: time });
     db.$queryRaw.mockResolvedValue([{ time }]);
@@ -73,6 +74,8 @@ describe('residual risk workflow', () => {
     expect(db.audit_logs.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
+          previous_hash: 'previous-risk-hash',
+          record_hash: expect.stringMatching(/^[a-f0-9]{64}$/),
           after_data: expect.objectContaining({
             controlBasis: [expect.objectContaining({ assessmentId: 'test', controlId: 'control' })],
           }),
@@ -80,7 +83,12 @@ describe('residual risk workflow', () => {
       }),
     );
   });
-  it.each(['ACCEPTED', 'CLOSED', 'ARCHIVED'])('blocks %s', async (status) => {
+  it('propagates a failed chain-head read rather than reporting a successful assessment', async () => {
+    db.audit_logs.findFirst.mockRejectedValueOnce(new Error('audit chain unavailable'));
+    await expect(riskRegisterRepository.assessResidualRisk('risk', 'owner', input)).rejects.toThrow('audit chain unavailable');
+    expect(db.audit_logs.create).not.toHaveBeenCalled();
+  });
+  it.each(['ACCEPTED' , 'CLOSED', 'ARCHIVED'])('blocks %s', async (status) => {
     db.risks.findUnique.mockResolvedValue({ ...risk, status });
     await expect(
       riskRegisterRepository.assessResidualRisk('risk', 'owner', input),
@@ -98,7 +106,7 @@ describe('residual risk workflow', () => {
   });
   it('blocks pending acceptance', async () => {
     db.risks.findUnique.mockResolvedValue({ ...risk, risk_acceptances: [{ id: 'pending' }] });
-    await expect(riskRegisterRepository.assessResidualRisk('risk', 'owner', input)).resolves.toEqual({ kind: 'context_locked' });
+    await expect(riskRegisterRepository.assessResidualRisk('risk', 'owner', input)).resolves.toEqual({ kind: 'pending_acceptance' });
   });
   it('blocks another user', async () => {
     await expect(riskRegisterRepository.assessResidualRisk('risk', 'other', input)).resolves.toEqual({ kind: 'not_owner' });

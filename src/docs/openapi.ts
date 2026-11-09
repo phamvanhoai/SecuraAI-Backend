@@ -151,7 +151,7 @@ export const openApiSpec = {
         summary: 'Identify a vulnerability',
         security: [{ bearerAuth: [] }],
         description:
-          'Active Security Officer required. Only OPEN/UNDER_TREATMENT risks without PENDING acceptance may change vulnerability context. Checks and writes are serialized with acceptance submission/decision. Controls are optional and must already belong to the risk. History and ratings are preserved; newer vulnerabilities require reassessment.',
+          'Active Security Officer required. Only OPEN/UNDER_TREATMENT risks without PENDING acceptance may change vulnerability context. Checks and writes are serialized with acceptance submission/decision. Controls are optional and must already belong to the risk. History and ratings are preserved; newer vulnerabilities require reassessment. Pending acceptance returns HTTP 409 ACCEPTANCE_PENDING with the shared Risk lock message.',
         parameters: [
           {
             name: 'riskId',
@@ -189,7 +189,7 @@ export const openApiSpec = {
           '404': { description: 'Risk not found' },
           '409': {
             description:
-              'RISK_CONTEXT_LOCKED or VULNERABILITY_ALREADY_EXISTS; reload risk and review the reason',
+              'ACCEPTANCE_PENDING, RISK_CONTEXT_LOCKED or VULNERABILITY_ALREADY_EXISTS; reload risk and review the reason',
           },
           '422': { description: 'Invalid input or controls not linked to risk' },
         },
@@ -201,7 +201,7 @@ export const openApiSpec = {
         summary: 'Update an identified threat',
         security: [{ bearerAuth: [] }],
         description:
-          'Active Security Officer required. Updates the existing threat and its vulnerability links without deleting history. OPEN/UNDER_TREATMENT context and no pending acceptance are required. A successful change requires risk reassessment.',
+          'Active Security Officer required. Updates the existing threat and its vulnerability links without deleting history. OPEN/UNDER_TREATMENT context and no pending acceptance are required. A successful change requires risk reassessment. Pending acceptance returns HTTP 409 ACCEPTANCE_PENDING with the shared Risk lock message.',
         parameters: [
           {
             name: 'riskId',
@@ -256,7 +256,7 @@ export const openApiSpec = {
         summary: 'Submit risk acceptance',
         security: [{ bearerAuth: [] }],
         description:
-          'Active assigned Risk Owner only. Locks Risk and related Controls. Requires OPEN/UNDER_TREATMENT, no pending request, eligible plan, current inherent/residual context including Threat/Vulnerability edits, and current applicable implemented Control assessments with valid Evidence. Records a fresh residual assessment and an immutable acceptance audit basis; never changes plan status or its source assessment. Optional legacy treatmentPlanStatus must match the stored status. Appetite/tolerance exceedance is disclosed for approver review, not automatically rejected. Validity is an inclusive UTC calendar date. After opening review, a new residual assessment and Complete Risk Review are required before submission. An open review returns HTTP 409 RISK_REVIEW_IN_PROGRESS; detail exposes canSubmit=false and the completion instruction.',
+          'Active assigned Risk Owner only. Locks Risk and related Controls. Requires OPEN/UNDER_TREATMENT, no pending request, eligible plan, current inherent/residual context including Threat/Vulnerability edits, and current applicable implemented Control assessments with valid Evidence. Records a fresh residual assessment and an immutable acceptance audit basis; never changes plan status or its source assessment. Stores versioned Asset classification/context and Evidence metadata/link fingerprints in the existing submission audit. Optional legacy treatmentPlanStatus must match the stored status. Appetite/tolerance exceedance is disclosed for approver review, not automatically rejected. Validity is an inclusive UTC calendar date. After opening review, a new residual assessment and Complete Risk Review are required before submission. An open review returns HTTP 409 RISK_REVIEW_IN_PROGRESS. A review_date before today in Asia/Ho_Chi_Minh returns 409 RISK_REVIEW_OVERDUE, including when submission crosses midnight; a date equal to today remains eligible. Missing review_date is not treated as overdue. Detail exposes canSubmit=false and the completion instruction. Ongoing treatment and assessment actions remain available subject to their existing checks.',
         parameters: [
           {
             name: 'riskId',
@@ -370,7 +370,7 @@ export const openApiSpec = {
         summary: 'Decide risk acceptance',
         security: [{ bearerAuth: [] }],
         description:
-          'Active Security Officer, Executive, or Employee explicitly granted AUTHORIZED_APPROVER for the Risk Acceptance workflow; never the requester or current Risk Owner. Employee approvers can read only owned risks or risks with pending acceptance submitted by another user, not the full register. Pending only. Approval checks expiry, owner reassignment, Threat/Vulnerability changes, current Control/Evidence basis and exact submitted assessment/plan basis. Legacy requests without verifiable audit basis must be rejected/resubmitted. Rejection remains available for expired/stale requests. Owner justification is preserved; decision reason is audited separately. Only approval sets ACCEPTED. Detail exposes expired/canDecide and actor-scoped acceptanceWorkflow. No named-approver assignment or automatic email.',
+          'Active Security Officer, Executive, or Employee explicitly granted AUTHORIZED_APPROVER for the Risk Acceptance workflow; never the requester or current Risk Owner. Employee approvers can read only owned risks or risks with pending acceptance submitted by another user, not the full register. Pending only. Approval checks expiry, owner reassignment, Threat/Vulnerability changes, current Control/Evidence basis and exact submitted assessment/plan basis. Approval locks linked Assets and Evidence, compares versioned submission fingerprints, and rejects changed classification, business-service/dependency/event-source links, Evidence metadata/file hash or validity. HTTP 409 ACCEPTANCE_BASIS_CHANGED includes recovery guidance. Legacy requests without a verifiable Asset/Evidence snapshot must be rejected/resubmitted; no historical backfill is inferred. Rejection remains available for expired/stale requests. Owner justification is preserved; decision reason is audited separately. Approval also rechecks review_date against the current Vietnam calendar date and returns 409 RISK_REVIEW_OVERDUE if it became overdue while pending; rejection stays available. Only approval sets ACCEPTED. Detail exposes expired/canDecide and actor-scoped acceptanceWorkflow. No named-approver assignment or automatic email.',
         parameters: [
           {
             name: 'acceptanceId',
@@ -414,7 +414,7 @@ export const openApiSpec = {
           content: { 'application/json': { schema: createTreatmentPlanOpenApi } },
         },
         description:
-          'Active Security Officer or assigned Risk Owner. Locks selected Risk. OPEN/UNDER_TREATMENT with no pending acceptance or Draft/Active plan. Eligible controls must belong to the Risk; mitigate requires at least one, other strategies allow none. Non-accept strategies require actions. Unique control IDs and action titles, active owners, future dates and action dates within plan date required. Target cannot exceed known residual and is saved as TARGET_DEFINITION without copying inherent/residual. Creation remains Draft and does not approve acceptance.',
+          'Active Security Officer or assigned Risk Owner. Locks selected Risk. OPEN/UNDER_TREATMENT with no pending acceptance or Draft/Active plan. Eligible controls must belong to the Risk; mitigate requires at least one, other strategies allow none. Non-accept strategies require actions. Unique control IDs and action titles, active owners, future dates and action dates within plan date required. Target cannot exceed known residual and is saved as TARGET_DEFINITION without copying inherent/residual. Creation remains Draft and does not approve acceptance. Pending acceptance returns HTTP 409 ACCEPTANCE_PENDING with the shared Risk lock message.',
         responses: {
           '201': { description: 'Draft plan with intended target saved' },
           '401': { description: 'Authentication required' },
@@ -435,7 +435,7 @@ export const openApiSpec = {
           content: { 'application/json': { schema: updateTreatmentPlanOpenApi } },
         },
         description:
-          'Active Security Officer or assigned Risk Owner. Locks Risk and plan, checks expectedUpdatedAt and blocks pending acceptance or finalized records. Existing overdue deadlines may be retained; dates cannot predate record creation. Completed/cancelled actions are read-only, original completion timestamps are preserved. In-progress actions cannot return to pending. Non-acceptance plans with all actions cancelled cannot be completed. Changes append an audit snapshot. Progress uses status weights and excludes cancelled actions.',
+          'Active Security Officer or assigned Risk Owner. Locks Risk and plan, checks expectedUpdatedAt and blocks pending acceptance or finalized records. Existing overdue deadlines may be retained; dates cannot predate record creation. Completed/cancelled actions are read-only, original completion timestamps are preserved. In-progress actions cannot return to pending. Non-acceptance plans with all actions cancelled cannot be completed. Stored Active strategy is immutable (409 ACTIVE_PLAN_STRATEGY_LOCKED); Draft may change strategy. Active updates and all cancellations require changeReason (10?2000 characters, 422 PLAN_CHANGE_REASON_REQUIRED for missing Active reason). Cancellation changes only plan status and preserves all action/control records, including work already started/completed; audit stores reason, actor, time and preserved action status. To replace strategy, cancel the current plan then create a new one. Changes append an audit snapshot. Progress uses status weights and excludes cancelled actions.',
         parameters: [
           {
             name: 'treatmentPlanId',
@@ -462,7 +462,7 @@ export const openApiSpec = {
         summary: 'Define target risk',
         security: [{ bearerAuth: [] }],
         description:
-          'Assigned active Risk Owner only. Requires OPEN/UNDER_TREATMENT, no pending acceptance, a residual assessment newer than Threat/Vulnerability edits, and a Draft/Active plan belonging to this Risk. Target cannot exceed residual. A target outside appetite/tolerance is allowed with rationale. Saves TARGET_DEFINITION separately and audits the original residual ID/time and plan ID. Comparison is null when its threshold is missing.',
+          'Assigned active Risk Owner only. Requires OPEN/UNDER_TREATMENT, no pending acceptance, a residual assessment newer than Threat/Vulnerability edits, and a Draft/Active plan belonging to this Risk. Target cannot exceed residual. A target outside appetite/tolerance is allowed with rationale. Saves TARGET_DEFINITION separately and audits the original residual ID/time and plan ID. Comparison is null when its threshold is missing. Pending acceptance returns HTTP 409 ACCEPTANCE_PENDING with the shared Risk lock message.',
         parameters: [
           {
             in: 'path',
@@ -501,13 +501,34 @@ export const openApiSpec = {
         },
       },
     },
+    '/risks/{riskId}/inherent-assessments': {
+      post: {
+        tags: ['Risks'],
+        summary: 'Assess inherent risk',
+        security: [{ bearerAuth: [] }],
+        description: 'Active Security Officer only. Requires OPEN/UNDER_TREATMENT and an asset, threat and vulnerability. Checks pending acceptance inside the transaction holding the Risk row FOR UPDATE lock. Pending acceptance returns HTTP 409 ACCEPTANCE_PENDING without creating an assessment.',
+        parameters: [{ in: 'path', name: 'riskId', required: true, schema: { type: 'string', format: 'uuid' } }],
+        requestBody: { required: true, content: { 'application/json': { schema: {
+          type: 'object', additionalProperties: false, required: ['likelihood', 'impact', 'assessmentReason'],
+          properties: { likelihood: { type: 'integer', minimum: 1, maximum: 5 }, impact: { type: 'integer', minimum: 1, maximum: 5 }, assessmentReason: { type: 'string', minLength: 10, maxLength: 3000 } },
+        } } } },
+        responses: {
+          '201': { description: 'Inherent assessment recorded' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Active Security Officer required' },
+          '404': { description: 'Risk not found' },
+          '409': { description: 'ACCEPTANCE_PENDING or Risk status locked' },
+          '422': { description: 'Invalid input, incomplete context or major rating reduction requires a new detailed reason' },
+        },
+      },
+    },
     '/risks/{riskId}/residual-assessments': {
       post: {
         tags: ['Risks'],
         summary: 'Assess residual risk',
         security: [{ bearerAuth: [] }],
         description:
-          'Assigned active Risk Owner only. OPEN or UNDER_TREATMENT with no pending acceptance. Requires current inherent context and applicable implemented controls with current effectiveness assessments and usable evidence. Appetite must not exceed tolerance; existing Risk thresholds cannot be changed here. Residual rating is likelihood × impact; control effectiveness is a reference average. Audit preserves the Control Assessment IDs used.',
+          'Assigned active Risk Owner only. OPEN or UNDER_TREATMENT with no pending acceptance. Requires current inherent context and applicable implemented controls with current effectiveness assessments and usable evidence. Appetite must not exceed tolerance; existing Risk thresholds cannot be changed here. Residual rating is likelihood × impact; control effectiveness is a reference average. Audit preserves the Control Assessment IDs used. Pending acceptance returns HTTP 409 ACCEPTANCE_PENDING with the shared Risk lock message.',
         parameters: [
           {
             name: 'riskId',
@@ -801,7 +822,7 @@ export const openApiSpec = {
         tags: ['IT Asset Management'],
         summary: 'Archive an IT asset',
         description:
-          'Requires an active Security Officer and reason (1–1000 trimmed characters). Rejects incoming dependencies from active assets. Atomically preserves relationships, saves archivedAt/archivedBy/archiveReason and appends an audit record. Detail returns those metadata fields; legacy archives have null actor/reason. Does not stop infrastructure or ingestion.',
+          'Requires an active Security Officer and reason (20–1000 trimmed characters). Rejects incoming dependencies from active assets. Atomically preserves relationships, saves archivedAt/archivedBy/archiveReason and appends an audit record. Detail returns those metadata fields; legacy archives have null actor/reason. Does not stop infrastructure or ingestion.',
         security: [{ bearerAuth: [] }],
         parameters: [
           {
@@ -819,7 +840,7 @@ export const openApiSpec = {
                 type: 'object',
                 additionalProperties: false,
                 required: ['reason'],
-                properties: { reason: { type: 'string', minLength: 1, maxLength: 1000 } },
+                properties: { reason: { type: 'string', minLength: 20, maxLength: 1000 } },
               },
             },
           },

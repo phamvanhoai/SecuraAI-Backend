@@ -18,8 +18,13 @@ export const updateTreatmentPlanBodySchema = z.object({
   controlIds: z.array(z.uuid()).max(100).refine((ids) => new Set(ids).size === ids.length, 'Control IDs must be unique'),
   actions: z.array(action).max(100),
   expectedUpdatedAt: z.iso.datetime({ offset: true }),
+  changeReason: z.string().trim().min(10).max(2000).optional(),
   acceptanceCost: acceptanceCostSchema.nullish(),
 }).strict().superRefine((value, context) => {
+  if (value.status === 'cancelled') {
+    if (!value.changeReason) context.addIssue({ code: 'custom', path: ['changeReason'], message: 'Enter a cancellation reason (10–2000 characters)' });
+    return;
+  }
   validateAcceptanceCost(value, context);
   if (value.strategy === 'mitigate' && !value.controlIds.length) context.addIssue({ code: 'custom', path: ['controlIds'], message: 'Mitigation plans require at least one related control' });
   const actionIds = value.actions.flatMap((item) => item.id ? [item.id] : []);

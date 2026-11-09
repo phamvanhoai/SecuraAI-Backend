@@ -1,6 +1,7 @@
+import { createHash } from 'node:crypto';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
-  tx: { $queryRaw: vi.fn(), users: { findUnique: vi.fn() }, assets: { findUnique: vi.fn(), update: vi.fn() }, asset_dependencies: { count: vi.fn(), findMany: vi.fn() }, audit_logs: { create: vi.fn() } },
+  tx: { $queryRaw: vi.fn(), users: { findUnique: vi.fn() }, assets: { findUnique: vi.fn(), update: vi.fn() }, asset_dependencies: { count: vi.fn(), findMany: vi.fn() }, audit_logs: { findFirst: vi.fn(), create: vi.fn() } },
   transaction: vi.fn(),
 }));
 vi.mock('../src/database/prisma.js', () => ({ prisma: { $transaction: mocks.transaction } }));
@@ -12,14 +13,24 @@ describe('atomic archive', () => {
     mocks.tx.users.findUnique.mockResolvedValue({ role: 'SECURITY_OFFICER', status: 'ACTIVE' });
     mocks.tx.assets.findUnique.mockResolvedValue({ status: 'ACTIVE', archived_at: null });
     mocks.tx.asset_dependencies.count.mockResolvedValue(0);
+    mocks.tx.audit_logs.findFirst.mockResolvedValue({ record_hash: 'previous-asset-hash' });
     mocks.tx.$queryRaw.mockResolvedValue([{ at: new Date('2026-10-02T00:00:00Z') }]);
   });
   const archive = () => assetsRepository.archive('asset', 'officer', 'Retired', 'request');
   it('writes metadata and audit together in a serializable transaction', async () => {
     expect(await archive()).toEqual({ kind: 'updated' });
+    const expectedHash = createHash('sha256').update(JSON.stringify({
+      previousHash: 'previous-asset-hash', actorUserId: 'officer', actorApiKeyId: null,
+      actorType: 'USER', action: 'ASSET_ARCHIVED', resourceType: 'ASSET', resourceId: 'asset',
+      outcome: 'SUCCESS', errorCode: null,
+      beforeData: { status: 'ACTIVE', archivedAt: null },
+      afterData: { status: 'ARCHIVED', archivedAt: '2026-10-02T00:00:00.000Z', archivedBy: 'officer', archiveReason: 'Retired' },
+      occurredAt: '2026-10-02T00:00:00.000Z',
+    })).digest('hex');
+    expect(mocks.tx.audit_logs.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ record_hash: expectedHash }) }));
     expect(mocks.transaction).toHaveBeenCalledWith(expect.any(Function), { isolationLevel: 'Serializable', maxWait: 5000, timeout: 15000 });
     expect(mocks.tx.assets.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: 'ARCHIVED', archived_by: 'officer', archive_reason: 'Retired', archived_at: expect.any(Date) }) }));
-    expect(mocks.tx.audit_logs.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ actor_user_id: 'officer', action: 'ASSET_ARCHIVED', resource_id: 'asset', correlation_id: 'request', record_hash: expect.stringMatching(/^[a-f0-9]{64}$/), after_data: expect.objectContaining({ archiveReason: 'Retired' }) }) }));
+    expect(mocks.tx.audit_logs.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ actor_user_id: 'officer', action: 'ASSET_ARCHIVED', resource_id: 'asset', correlation_id: 'request', previous_hash: 'previous-asset-hash', record_hash: expect.stringMatching(/^[a-f0-9]{64}$/), after_data: expect.objectContaining({ archiveReason: 'Retired' }) }) }));
   });
   it('checks incoming active dependencies and preserves links', async () => {
     mocks.tx.asset_dependencies.count.mockResolvedValue(1);
