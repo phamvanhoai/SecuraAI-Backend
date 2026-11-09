@@ -1,3 +1,4 @@
+import { requestContextStorage } from '../src/common/middleware/request-context.js';
 import { beforeEach, expect, it, vi } from 'vitest';
 
 const database = vi.hoisted(() => ({
@@ -119,4 +120,25 @@ it('records reset requests and completion without exposing reset codes or passwo
     'PASSWORD_RESET_COMPLETED',
   ]);
   expect(JSON.stringify(database.audit_logs.create.mock.calls)).not.toContain('secret-');
+});
+
+it('captures request IP, user agent and correlation ID through the shared audit writer', async () => {
+  await requestContextStorage.run(
+    {
+      sourceIp: '::ffff:192.0.2.10',
+      userAgent: 'Audit integration test',
+      correlationId: 'audit-request',
+    },
+    () => authRepository.changePassword('user-id', 'old-hash', 'new-hash'),
+  );
+  expect(database.audit_logs.create).toHaveBeenCalledWith(
+    expect.objectContaining({
+      data: expect.objectContaining({
+        action: 'PASSWORD_CHANGED',
+        source_ip: '192.0.2.10',
+        user_agent: 'Audit integration test',
+        correlation_id: 'audit-request',
+      }),
+    }),
+  );
 });

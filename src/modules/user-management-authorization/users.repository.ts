@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { auditWriter } from '../audit-security-reporting/audit-writer.js';
 import { prisma } from '../../database/prisma.js';
 import type { CreateUserBody } from './dto/create-user.dto.js';
 import type { ListUsersQuery } from './dto/list-users-query.dto.js';
@@ -250,39 +250,23 @@ export const usersRepository = {
             data: { revoked_at: new Date() },
           });
         }
-        const previous = await transaction.audit_logs.findFirst({
-          orderBy: [{ occurred_at: 'desc' }, { id: 'desc' }],
-          select: { record_hash: true },
-        });
 
-        await transaction.audit_logs.create({
-          data: {
-            actor_user_id: actor.id,
-            actor_type: 'USER',
+        await auditWriter.record(
+          {
+            actorUserId: actor.id,
+            actorType: 'USER',
             action: 'USER_ACCESS_ASSIGNED',
-            resource_type: 'USER',
-            resource_id: userId,
+            resourceType: 'USER',
+            resourceId: userId,
             source: 'API',
-            before_data: {
+            beforeData: {
               role: user.role,
               scopes: beforeScopes,
             },
-            after_data: input,
-            previous_hash: previous?.record_hash ?? null,
-            record_hash: createHash('sha256')
-              .update(
-                JSON.stringify({
-                  previousHash: previous?.record_hash ?? null,
-                  action: 'USER_ACCESS_ASSIGNED',
-                  actorUserId: actor.id,
-                  userId,
-                  before: { role: user.role, scopes: beforeScopes },
-                  after: input,
-                }),
-              )
-              .digest('hex'),
+            afterData: input,
           },
-        });
+          transaction,
+        );
         return {
           kind: 'updated',
           changed,
@@ -362,60 +346,32 @@ export const usersRepository = {
         },
         select: userDetailSelect,
       });
-      const previous = await transaction.audit_logs.findFirst({
-        orderBy: [{ occurred_at: 'desc' }, { id: 'desc' }],
-        select: { record_hash: true },
-      });
 
-      await transaction.audit_logs.create({
-        data: {
-          actor_user_id: actor.id,
-          actor_type: 'USER',
+      await auditWriter.record(
+        {
+          actorUserId: actor.id,
+          actorType: 'USER',
           action: 'USER_UPDATED',
-          resource_type: 'USER',
-          resource_id: user.id,
+          resourceType: 'USER',
+          resourceId: user.id,
           source: 'API',
-          before_data: {
+          beforeData: {
             fullName: existing.full_name,
             phone: existing.phone,
             employeeCode: existing.employee_code,
             departmentId: existing.department_id,
             status: existing.status,
           },
-          after_data: {
+          afterData: {
             fullName: user.full_name,
             phone: user.phone,
             employeeCode: user.employee_code,
             departmentId: user.department_id,
             status: user.status,
           },
-          previous_hash: previous?.record_hash ?? null,
-          record_hash: createHash('sha256')
-            .update(
-              JSON.stringify({
-                previousHash: previous?.record_hash ?? null,
-                action: 'USER_UPDATED',
-                actorUserId: actor.id,
-                userId: user.id,
-                before: {
-                  fullName: existing.full_name,
-                  phone: existing.phone,
-                  employeeCode: existing.employee_code,
-                  departmentId: existing.department_id,
-                  status: existing.status,
-                },
-                after: {
-                  fullName: user.full_name,
-                  phone: user.phone,
-                  employeeCode: user.employee_code,
-                  departmentId: user.department_id,
-                  status: user.status,
-                },
-              }),
-            )
-            .digest('hex'),
         },
-      });
+        transaction,
+      );
       return { kind: 'updated', user } as const;
     });
   },
@@ -542,44 +498,24 @@ export const usersRepository = {
           status: true,
         },
       });
-      const previous = await transaction.audit_logs.findFirst({
-        orderBy: [{ occurred_at: 'desc' }, { id: 'desc' }],
-        select: { record_hash: true },
-      });
 
-      await transaction.audit_logs.create({
-        data: {
-          actor_user_id: actor.id,
-          actor_type: 'USER',
+      await auditWriter.record(
+        {
+          actorUserId: actor.id,
+          actorType: 'USER',
           action: 'USER_CREATED',
-          resource_type: 'USER',
-          resource_id: user.id,
+          resourceType: 'USER',
+          resourceId: user.id,
           source: 'API',
-          after_data: {
+          afterData: {
             email: user.email,
             username: user.username,
             role: user.role,
             status: user.status,
           },
-          previous_hash: previous?.record_hash ?? null,
-          record_hash: createHash('sha256')
-            .update(
-              JSON.stringify({
-                previousHash: previous?.record_hash ?? null,
-                action: 'USER_CREATED',
-                actorUserId: actor.id,
-                userId: user.id,
-                after: {
-                  email: user.email,
-                  username: user.username,
-                  role: user.role,
-                  status: user.status,
-                },
-              }),
-            )
-            .digest('hex'),
         },
-      });
+        transaction,
+      );
       return { kind: 'created', user } as const;
     });
   },

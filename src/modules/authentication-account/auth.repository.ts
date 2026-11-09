@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { auditWriter } from '../audit-security-reporting/audit-writer.js';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '../../database/prisma.js';
 
@@ -8,38 +8,21 @@ async function recordAuthAudit(
   userId: string,
   action: string,
 ): Promise<void> {
-  const id = randomUUID();
   const occurredAt = new Date();
-  const previous = await database.audit_logs.findFirst({
-    orderBy: [{ occurred_at: 'desc' }, { id: 'desc' }],
-    select: { record_hash: true },
-  });
-  await database.audit_logs.create({
-    data: {
-      id,
-      actor_type: 'USER',
-      actor_user_id: userId,
-      action,
-      resource_type: 'USER',
-      resource_id: userId,
+
+  await auditWriter.record(
+    {
+      actorType: 'USER',
+      actorUserId: userId,
+      action: action,
+      resourceType: 'USER',
+      resourceId: userId,
       source: 'API',
-      occurred_at: occurredAt,
+      occurredAt: occurredAt,
       outcome: 'SUCCESS',
-      previous_hash: previous?.record_hash ?? null,
-      record_hash: createHash('sha256')
-        .update(
-          JSON.stringify({
-            previousHash: previous?.record_hash ?? null,
-            id,
-            userId,
-            action,
-            occurredAt,
-          }),
-        )
-        .digest('hex'),
     },
-    select: { id: true },
-  });
+    database,
+  );
 }
 
 const authUserSelect = {
