@@ -1,8 +1,8 @@
 import { z } from 'zod';
 import { acceptanceCostSchema, validateAcceptanceCost } from './acceptance-cost.dto.js';
-const action = z.object({ title: z.string().trim().min(3).max(255), description: z.string().trim().max(2000).optional(), assignedToUserId: z.uuid(), dueDate: z.iso.date() });
+const action = z.object({ title: z.string().trim().min(3).max(100), description: z.string().trim().max(2000).refine((value) => value.length === 0 || value.length >= 20, "Enter at least 20 characters or leave blank.").optional(), assignedToUserId: z.uuid(), dueDate: z.iso.date() });
 export const createTreatmentPlanBodySchema = z.object({
-  riskId: z.uuid(), title: z.string().trim().min(3).max(255), strategy: z.enum(['avoid', 'mitigate', 'transfer', 'accept']),
+  riskId: z.uuid(), title: z.string().trim().min(3).max(100), strategy: z.enum(['avoid', 'mitigate', 'transfer', 'accept']),
   ownerUserId: z.uuid(), targetDate: z.iso.date(), targetRisk: z.enum(['low', 'medium', 'high', 'critical']),
   controlIds: z.array(z.uuid()).max(100), actions: z.array(action).max(100),
   acceptanceCost: acceptanceCostSchema.nullish(),

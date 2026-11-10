@@ -7,8 +7,8 @@ export const updateThreatParamsSchema = z.object({
 });
 export const identifyThreatBodySchema = z
   .object({
-    name: z.string().trim().min(2).max(255),
-    description: z.string().trim().min(3).max(3000),
+    name: z.string().trim().min(2).max(100),
+    description: z.string().trim().min(20).max(2000),
     vulnerabilityIds: z.array(z.uuid()).min(1).max(50),
   })
   .strict()

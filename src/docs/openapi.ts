@@ -169,8 +169,8 @@ export const openApiSpec = {
                 additionalProperties: false,
                 required: ['name', 'description', 'controlIds'],
                 properties: {
-                  name: { type: 'string', minLength: 2, maxLength: 255 },
-                  description: { type: 'string', minLength: 3, maxLength: 3000 },
+                  name: { type: 'string', minLength: 2, maxLength: 100 },
+                  description: { type: 'string', minLength: 20, maxLength: 2000 },
                   controlIds: {
                     type: 'array',
                     maxItems: 50,
@@ -225,8 +225,8 @@ export const openApiSpec = {
                 additionalProperties: false,
                 required: ['name', 'description', 'vulnerabilityIds', 'expectedUpdatedAt'],
                 properties: {
-                  name: { type: 'string', minLength: 2, maxLength: 255 },
-                  description: { type: 'string', minLength: 3, maxLength: 3000 },
+                  name: { type: 'string', minLength: 2, maxLength: 100 },
+                  description: { type: 'string', minLength: 20, maxLength: 2000 },
                   vulnerabilityIds: {
                     type: 'array',
                     minItems: 1,
@@ -482,7 +482,7 @@ export const openApiSpec = {
                 properties: {
                   treatmentPlanId: { type: 'string', format: 'uuid' },
                   targetRisk: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] },
-                  rationale: { type: 'string', minLength: 10, maxLength: 3000 },
+                  rationale: { type: 'string', minLength: 10, maxLength: 2000 },
                 },
               },
             },
@@ -510,7 +510,7 @@ export const openApiSpec = {
         parameters: [{ in: 'path', name: 'riskId', required: true, schema: { type: 'string', format: 'uuid' } }],
         requestBody: { required: true, content: { 'application/json': { schema: {
           type: 'object', additionalProperties: false, required: ['likelihood', 'impact', 'assessmentReason'],
-          properties: { likelihood: { type: 'integer', minimum: 1, maximum: 5 }, impact: { type: 'integer', minimum: 1, maximum: 5 }, assessmentReason: { type: 'string', minLength: 10, maxLength: 3000 } },
+          properties: { likelihood: { type: 'integer', minimum: 1, maximum: 5 }, impact: { type: 'integer', minimum: 1, maximum: 5 }, assessmentReason: { type: 'string', minLength: 10, maxLength: 2000 } },
         } } } },
         responses: {
           '201': { description: 'Inherent assessment recorded' },
@@ -558,7 +558,7 @@ export const openApiSpec = {
                   targetRisk: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] },
                   riskAppetite: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] },
                   riskTolerance: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] },
-                  assessmentReason: { type: 'string', minLength: 10, maxLength: 3000 },
+                  assessmentReason: { type: 'string', minLength: 10, maxLength: 2000 },
                 },
               },
             },
@@ -603,8 +603,8 @@ export const openApiSpec = {
                 type: 'object',
                 required: ['title', 'description', 'ownerUserId', 'reviewDate', 'scope'],
                 properties: {
-                  title: { type: 'string', minLength: 3, maxLength: 255 },
-                  description: { type: 'string', minLength: 3, maxLength: 5000 },
+                  title: { type: 'string', minLength: 3, maxLength: 100 },
+                  description: { type: 'string', minLength: 20, maxLength: 2000 },
                   ownerUserId: { type: 'string', format: 'uuid' },
                   reviewDate: { type: 'string', format: 'date' },
                   scope: {
@@ -740,7 +740,7 @@ export const openApiSpec = {
         tags: ['IT Asset Management'],
         summary: 'View the IT asset list',
         description:
-          'Returns a searchable, filterable, paginated asset directory. Security Officers can view all assets; other active users can view only assets assigned to them as Asset Owner.',
+          'Returns a searchable, filterable, paginated asset directory, newest created first by default (createdAt desc). Security Officers can view all assets; other active users can view only assets assigned to them as Asset Owner.',
         security: [{ bearerAuth: [] }],
         parameters: [
           { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
@@ -750,6 +750,8 @@ export const openApiSpec = {
             schema: { type: 'integer', minimum: 1, maximum: 100, default: 10 },
           },
           { name: 'q', in: 'query', schema: { type: 'string', maxLength: 100 } },
+          { name: 'sortBy', in: 'query', schema: { type: 'string', enum: ['assetCode', 'name', 'assetType', 'criticality', 'createdAt', 'updatedAt'], default: 'createdAt' } },
+          { name: 'sortOrder', in: 'query', schema: { type: 'string', enum: ['asc', 'desc'], default: 'desc' } },
           { name: 'assetType', in: 'query', schema: { type: 'string', enum: [...assetTypes] } },
           { name: 'criticality', in: 'query', schema: { type: 'string', maxLength: 50 } },
           { name: 'status', in: 'query', schema: { type: 'string', enum: ['active', 'archived'] } },
@@ -775,10 +777,10 @@ export const openApiSpec = {
                 required: ['name', 'assetType'],
                 additionalProperties: false,
                 properties: {
-                  name: { type: 'string', maxLength: 255 },
+                  name: { type: 'string', minLength: 3, maxLength: 100 },
                   assetType: { type: 'string', enum: [...assetTypes] },
                   ownerUserId: { type: 'string', format: 'uuid' },
-                  description: { type: 'string', maxLength: 10000 },
+                  description: { type: 'string', maxLength: 2000, description: 'Optional; empty or 20-2000 characters after trimming.' },
                   dependencies: { type: 'array', maxItems: 50 },
                   eventSourceIds: {
                     type: 'array',
@@ -881,9 +883,9 @@ export const openApiSpec = {
                 additionalProperties: false,
                 required: ['name', 'assetType', 'description'],
                 properties: {
-                  name: { type: 'string', maxLength: 255 },
+                  name: { type: 'string', minLength: 3, maxLength: 100 },
                   assetType: { type: 'string', enum: [...assetTypes] },
-                  description: { type: 'string', maxLength: 10000, nullable: true },
+                  description: { type: 'string', maxLength: 2000, nullable: true, description: 'Null/empty clears the description; otherwise 20-2000 characters after trimming.' },
                 },
               },
             },

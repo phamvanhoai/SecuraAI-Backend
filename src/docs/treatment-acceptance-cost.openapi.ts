@@ -13,10 +13,10 @@ export const acceptanceCostOpenApi = {
 
 const action = {
   type: 'object', required: ['title', 'assignedToUserId', 'dueDate'],
-  properties: { id: { type: 'string', format: 'uuid' }, title: { type: 'string', minLength: 3, maxLength: 255 }, description: { type: 'string', maxLength: 2000 }, assignedToUserId: { type: 'string', format: 'uuid' }, dueDate: { type: 'string', format: 'date' }, status: { type: 'string', enum: ['pending', 'in_progress', 'completed', 'cancelled'] } },
+  properties: { id: { type: 'string', format: 'uuid' }, title: { type: 'string', minLength: 3, maxLength: 100 }, description: { type: 'string', maxLength: 2000, description: 'Optional/empty; if entered, 20-2000 characters after trimming.' }, assignedToUserId: { type: 'string', format: 'uuid' }, dueDate: { type: 'string', format: 'date' }, status: { type: 'string', enum: ['pending', 'in_progress', 'completed', 'cancelled'] } },
 };
 const properties = {
-  title: { type: 'string', minLength: 3, maxLength: 255 },
+  title: { type: 'string', minLength: 3, maxLength: 100 },
   strategy: { type: 'string', enum: ['mitigate', 'avoid', 'transfer', 'accept'] },
   ownerUserId: { type: 'string', format: 'uuid' }, targetDate: { type: 'string', format: 'date' },
   controlIds: { type: 'array', maxItems: 100, uniqueItems: true, items: { type: 'string', format: 'uuid' } },
