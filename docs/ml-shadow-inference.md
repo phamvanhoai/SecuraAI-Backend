@@ -5,7 +5,7 @@ SecuraAI calls the separately deployed classifier for every evaluated event. Wit
 - AI-only mode does not query or evaluate the legacy seven-day empirical baseline and cannot fall back to legacy rules for alert creation.
 - Only the past-only 1m/5m/15m/60m context required by ML and LLM is queried, bounded to the preceding 60 minutes.
 - The ML response is stored as an `ml_shadow_prediction` feature contribution with contribution score `0`.
-- ML or LLM timeout, network, HTTP and response-validation failures produce `AI_REVIEW_PENDING`; they never create an alert or fall back to legacy rules.
+- ML or LLM timeout, network, HTTP and response-validation failures produce a durable `FAILED` job with a stage-specific error code. They never create an alert, fall back to legacy rules, or masquerade as a review-pending security decision. Security Officers may explicitly retry the event.
 - Only an LLM `MALICIOUS` verdict creates or groups an alert. `BENIGN` and `SUSPICIOUS` do not.
 - The classifier score is experimental and is not a calibrated probability.
 

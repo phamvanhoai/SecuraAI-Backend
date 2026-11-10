@@ -3320,7 +3320,7 @@ export const openApiSpec = {
         tags: ['Event Ingestion'],
         summary: 'View centralized list of normalized security events',
         description:
-          'Returns a paginated list of ingested security events with associated source, event family, account/user, asset/device, and mapping status. When the durable pipeline is enabled, each item also includes detection { status, score, alertId }. Status is PENDING, PROCESSING, INSUFFICIENT_BASELINE, BELOW_THRESHOLD, LINKED_TO_ALERT, FAILED or PREVIOUSLY_EVALUATED. score is null when no historical comparison is available. Linked events may share an alert through correlation.',
+          'Returns a paginated list of ingested security events with associated source, event family, account/user, asset/device, and mapping status. When the durable pipeline is enabled, each item also includes detection { status, score, alertId, errorCode, errorMessage, retryable }. Technical ML/LLM failures use FAILED and are never represented as normal, review-pending, or alert decisions. score is null when analysis did not produce a valid score. Linked events may share an alert through correlation.',
         security: [{ bearerAuth: [] }],
         parameters: [
           { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
@@ -3461,12 +3461,32 @@ export const openApiSpec = {
         },
       },
     },
+    '/events/{id}/detection/retry': {
+      post: {
+        tags: ['Event Ingestion'],
+        summary: 'Retry failed AI analysis for an event',
+        description:
+          'Resets the latest failed durable detection job to Pending. Only active Security Officers may retry, and only FAILED jobs are eligible.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'id', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+        ],
+        responses: {
+          '200': { description: 'AI analysis queued for the next scheduled cycle' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer role required' },
+          '404': { description: 'Normalized security event not found' },
+          '409': { description: 'Detection is not in a retryable failed state' },
+          '422': { description: 'Invalid event ID' },
+        },
+      },
+    },
     '/anomaly-detections/runs': {
       post: {
         tags: ['AI Anomaly Detection & Alerts'],
         summary: 'Run anomaly detection over unprocessed normalized events',
         description:
-          'Requires an active Security Officer account and a deployed model version. Each request processes one bounded batch of pending normalized events. Current feature extraction uses rolling 1-minute, 5-minute, 15-minute and 60-minute horizons. The ML model performs first-stage triage using an escalation threshold selected on Validation. Low-risk results are recorded without calling the LLM. Escalated sequences are sent to the LLM for final review; unavailable or invalid LLM responses remain review-pending and cannot create alerts. Stored evidence preserves the model score, escalation threshold, temporal context, LLM result and final decision. Existing evaluated events are not rescored.',
+          'Requires an active Security Officer account and a deployed model version. Each request processes one bounded batch of pending normalized events. Current feature extraction uses rolling 1-minute, 5-minute, 15-minute and 60-minute horizons. The ML model performs first-stage triage using an escalation threshold selected on Validation. Low-risk results are recorded without calling the LLM. Escalated sequences are sent to Foundation-Sec for final review. ML/LLM timeout, unavailability or invalid responses create an explicit failed processing job and never create an alert or a review-pending security decision. Existing evaluated events are not rescored.',
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,

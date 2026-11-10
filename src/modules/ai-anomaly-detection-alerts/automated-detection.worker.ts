@@ -5,6 +5,7 @@ import { anomalyDetectionService } from './anomaly-detection.service.js';
 let timer: NodeJS.Timeout | undefined;
 let running = false;
 let rerunRequested = false;
+const scheduledCycleMs = Math.max(60_000, env.ANOMALY_AUTO_DETECTION_INTERVAL_MS);
 
 async function drainPendingEvents(): Promise<void> {
   if (!env.ANOMALY_AUTO_DETECTION_ENABLED) return;
@@ -36,18 +37,17 @@ async function drainPendingEvents(): Promise<void> {
 
 export function requestAutomatedDetection(): void {
   // API ingestion only commits events. A separate process discovers durable
-  // jobs; do not start background detection in a serverless request.
-  if (env.DETECTION_PIPELINE_ENABLED && !timer) return;
+  // jobs on its fixed schedule; ingestion never triggers immediate analysis.
+  if (env.DETECTION_PIPELINE_ENABLED) return;
   queueMicrotask(() => void drainPendingEvents());
 }
 
 export function startAutomatedDetectionWorker(): void {
   if (!env.ANOMALY_AUTO_DETECTION_ENABLED || timer) return;
-  timer = setInterval(() => requestAutomatedDetection(), env.ANOMALY_AUTO_DETECTION_INTERVAL_MS);
+  timer = setInterval(() => queueMicrotask(() => void drainPendingEvents()), scheduledCycleMs);
   timer.unref();
-  requestAutomatedDetection();
   logger.info(
-    { intervalMs: env.ANOMALY_AUTO_DETECTION_INTERVAL_MS },
+    { intervalMs: scheduledCycleMs },
     'Automated anomaly detection worker started',
   );
 }

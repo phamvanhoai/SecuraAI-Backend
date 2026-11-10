@@ -2,6 +2,7 @@ import { Prisma } from '@prisma/client';
 import { describe, expect, it, vi } from 'vitest';
 import { normalizedEventsRepository } from '../src/modules/event-ingestion/normalized-events.repository.js';
 import { normalizedEventsService } from '../src/modules/event-ingestion/normalized-events.service.js';
+import { detectionJobsRepository } from '../src/modules/ai-anomaly-detection-alerts/detection-jobs.repository.js';
 
 describe('normalizedEventsService', () => {
   it('lists normalized events with mapped user and asset formatting', async () => {
@@ -78,6 +79,21 @@ describe('normalizedEventsService', () => {
     await expect(
       normalizedEventsService.getEventDetail('user-admin-1', '550e8400-e29b-41d4-a716-446655440099'),
     ).rejects.toThrow('Normalized security event not found');
+  });
+
+  it('requeues a failed AI analysis', async () => {
+    vi.spyOn(normalizedEventsRepository, 'exists').mockResolvedValue(true);
+    vi.spyOn(detectionJobsRepository, 'retryFailedEvent').mockResolvedValue(true);
+
+    await expect(
+      normalizedEventsService.retryDetection(
+        'user-admin-1',
+        '550e8400-e29b-41d4-a716-446655440001',
+      ),
+    ).resolves.toEqual({
+      eventId: '550e8400-e29b-41d4-a716-446655440001',
+      status: 'PENDING',
+    });
   });
 
   it('returns event detail with payload and anomaly detections', async () => {

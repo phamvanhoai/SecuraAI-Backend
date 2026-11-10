@@ -17,6 +17,7 @@ vi.mock('../src/modules/event-ingestion/normalized-events.service.js', () => ({
     getMetrics: vi.fn(),
     updateEventMapping: vi.fn(),
     getMappingOptions: vi.fn(),
+    retryDetection: vi.fn(),
   },
 }));
 
@@ -152,9 +153,22 @@ describe('Normalized Security Events HTTP Endpoints', () => {
     it('rejects users without SECURITY_OFFICER role with 403 Forbidden', async () => {
       const prismaModule = await import('../src/database/prisma.js');
       vi.mocked(prismaModule.prisma.users.findUnique).mockResolvedValueOnce({
+        id: userId,
+        email: 'admin@example.com',
+        username: 'admin',
+        password_hash: 'test-only-hash',
+        phone: null,
+        google_subject: null,
+        employee_code: null,
+        full_name: 'Admin User',
+        department_id: null,
         role: 'ADMIN',
         status: 'ACTIVE',
-      } as any);
+        last_login_at: null,
+        password_changed_at: null,
+        created_at: new Date('2026-01-01T00:00:00Z'),
+        updated_at: new Date('2026-01-01T00:00:00Z'),
+      });
 
       const response = await request(app)
         .get('/api/v1/events')
@@ -167,6 +181,23 @@ describe('Normalized Security Events HTTP Endpoints', () => {
           code: 'FORBIDDEN',
         }),
       });
+    });
+  });
+
+  describe('POST /api/v1/events/:id/detection/retry', () => {
+    it('queues a failed AI analysis for retry', async () => {
+      vi.mocked(normalizedEventsService.retryDetection).mockResolvedValue({
+        eventId,
+        status: 'PENDING',
+      });
+
+      const response = await request(app)
+        .post(`/api/v1/events/${eventId}/detection/retry`)
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.data).toEqual({ eventId, status: 'PENDING' });
+      expect(normalizedEventsService.retryDetection).toHaveBeenCalledWith(userId, eventId);
     });
   });
 

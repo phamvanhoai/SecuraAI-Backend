@@ -3,6 +3,10 @@ import { prisma } from '../../database/prisma.js';
 import type { ListNormalizedEventsQuery } from './dto/list-normalized-events.dto.js';
 
 export const normalizedEventsRepository = {
+  async exists(id: string): Promise<boolean> {
+    const event = await prisma.normalized_events.findUnique({ where: { id }, select: { id: true } });
+    return event !== null;
+  },
   async findEvents(params: ListNormalizedEventsQuery) {
     const sortFieldMap: Record<string, keyof Prisma.normalized_eventsOrderByWithRelationInput> = {
       occurredAt: 'occurred_at',

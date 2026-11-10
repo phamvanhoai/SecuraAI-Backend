@@ -7,15 +7,18 @@ the pipeline flag is enabled. Do not also run `npm run worker` in this mode.
 Production uses `npm run build`,
 `npm start` and `npm run worker:start`; a serverless API alone cannot run the worker.
 
-Flow: committed Wazuh event -> durable detection job -> historical comparison ->
-threshold decision -> stored alert/fallback explanation -> separate Ollama job.
+Flow: committed Wazuh event -> next one-minute worker cycle -> durable detection job ->
+1/5/15/60-minute temporal context -> ML triage -> Foundation-Sec final review when
+escalated -> stored alert/fallback explanation -> separate explanation job.
 Imported events remain manual: each manual request claims at most its requested
 batch size through the same queue. Automatic discovery selects Wazuh API events.
 
 A unique event/model/engine job prevents duplicate scheduling. Claims use PostgreSQL
 SKIP LOCKED and a ten-minute lease. Detection writes and job completion commit in
-one transaction. Failed work is retried with backoff up to five attempts, then is
-shown as Failed. A crashed worker's lease expires; processing can resume. Previous
+one transaction. Unexpected failures are retried with backoff up to five attempts.
+Known ML/LLM availability, timeout and response-validation failures are recorded
+immediately as Failed with a safe stage-specific reason and may be explicitly
+retried by a Security Officer. A crashed worker's lease expires; processing can resume. Previous
 model/event detections are not automatically replayed. Insufficient-baseline jobs
 are terminal observations, not normality judgments, and are not silently rescored.
 
@@ -33,7 +36,8 @@ and compare-and-set to avoid overwriting manual regeneration. An unavailable mod
 therefore does not block event ingestion or detection.
 
 Security Events shows Pending, Processing, Insufficient baseline, Below threshold,
-Linked to alert or Failed. Older results show Previously evaluated. Scores are
+Linked to alert or Failed. A technical AI failure is never relabeled as normal or
+review-pending. Older results show Previously evaluated. Scores are
 historical unusualness indicators, not calibrated attack probabilities.
 
 Local synthetic smoke test (PowerShell from backend root):

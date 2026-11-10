@@ -13,6 +13,7 @@ import {
   getNormalizedEventDetail,
   getNormalizedEventMetrics,
   listNormalizedEvents,
+  retryEventDetection,
   updateEntityMapping,
 } from './normalized-events.controller.js';
 
@@ -54,6 +55,14 @@ normalizedEventsRouter.patch(
   authorizeRoles('SECURITY_OFFICER'),
   validate({ params: eventIdParamSchema, body: updateEntityMappingSchema }),
   asyncHandler(updateEntityMapping),
+);
+
+normalizedEventsRouter.post(
+  '/:id/detection/retry',
+  authenticate,
+  authorizeRoles('SECURITY_OFFICER'),
+  validate({ params: eventIdParamSchema }),
+  asyncHandler(retryEventDetection),
 );
 
 normalizedEventsRouter.get(

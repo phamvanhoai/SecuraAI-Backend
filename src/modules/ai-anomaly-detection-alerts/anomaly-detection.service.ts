@@ -22,6 +22,30 @@ import {
 } from './ml-shadow.client.js';
 import { requestLlmClassification } from './llm-classifier.client.js';
 
+type ProcessingFailure = {
+  eventId: string;
+  processingFailure: {
+    code: string;
+    stage: 'ML_MODEL' | 'FOUNDATION_SEC';
+    message: string;
+  };
+};
+
+type SuccessfulDetection = {
+  id: string;
+  eventId: string;
+  score: number;
+  baselineReady: boolean;
+  threshold: number;
+  thresholdSource: string;
+  isAnomaly: boolean;
+  occurredAt: Date;
+  features: ContextualDecision['features'];
+  groupKey: string;
+  explanationText?: string;
+  explanationGeneratedAt?: Date;
+};
+
 const parametersSchema = z
   .object({
     threshold: z.number().min(0.5).max(1).default(0.8),
@@ -191,10 +215,10 @@ async function runDetection(
     // One shared deadline for optional prose across the entire batch, not a
     // separate 60-second wait for every alert. Explicit regeneration is unchanged.
     const explanationDeadline = Date.now() + 5_000;
-    const detections = [];
+    const evaluated: Array<SuccessfulDetection | ProcessingFailure> = [];
     // Bound DB/LLM concurrency; every event uses its own event-time history including previously evaluated events.
     for (let offset = 0; offset < batch.events.length; offset += 4) {
-      detections.push(
+      evaluated.push(
         ...(await Promise.all(
           batch.events.slice(offset, offset + 4).map(async (event) => {
             let decision: ContextualDecision;
@@ -255,6 +279,25 @@ async function runDetection(
                 rank: decision.features.length + 1,
               });
             }
+            if (aiOnlyMode && mlPrediction?.status !== 'PREDICTED') {
+              const reason = mlPrediction?.status === 'UNAVAILABLE' ? mlPrediction.reason : 'DISABLED';
+              return {
+                eventId: event.id,
+                processingFailure: {
+                  code:
+                    reason === 'TIMEOUT'
+                      ? 'ML_MODEL_TIMEOUT'
+                      : reason === 'INVALID_RESPONSE'
+                        ? 'ML_INVALID_RESPONSE'
+                        : 'ML_MODEL_UNAVAILABLE',
+                  stage: 'ML_MODEL' as const,
+                  message:
+                    reason === 'TIMEOUT'
+                      ? 'The anomaly detection model timed out.'
+                      : 'The anomaly detection model is unavailable.',
+                },
+              };
+            }
             const modelEscalated =
               mlPrediction?.status === 'PREDICTED' &&
               mlPrediction.prediction.score >= mlPrediction.prediction.escalationThreshold;
@@ -269,6 +312,29 @@ async function runDetection(
                 contributionScore: 0,
                 rank: decision.features.length + 1,
               });
+            }
+            if (
+              aiOnlyMode &&
+              modelEscalated &&
+              (!llmPrediction || llmPrediction.status !== 'PREDICTED')
+            ) {
+              const reason = llmPrediction?.status === 'UNAVAILABLE' ? llmPrediction.reason : 'DISABLED';
+              return {
+                eventId: event.id,
+                processingFailure: {
+                  code:
+                    reason === 'TIMEOUT'
+                      ? 'LLM_TIMEOUT'
+                      : reason === 'INVALID_RESPONSE'
+                        ? 'LLM_INVALID_RESPONSE'
+                        : 'LLM_UNAVAILABLE',
+                  stage: 'FOUNDATION_SEC' as const,
+                  message:
+                    reason === 'TIMEOUT'
+                      ? 'Foundation-Sec analysis timed out.'
+                      : 'Foundation-Sec analysis is unavailable.',
+                },
+              };
             }
             const triage = !env.AI_FUSION_ENABLED
               ? { status: 'DISABLED' as const }
@@ -293,13 +359,9 @@ async function runDetection(
               rank: decision.features.length + 1,
             });
             if (aiOnlyMode) {
-              if (mlPrediction?.status !== 'PREDICTED') {
-                score = 0;
-                threshold = 1;
-                isAnomaly = false;
-                scoringReady = false;
-                thresholdSource = 'AI_REVIEW_PENDING';
-              } else if (!modelEscalated) {
+              if (mlPrediction?.status !== 'PREDICTED')
+                throw new Error('ML prediction state changed during AI-only evaluation');
+              if (!modelEscalated) {
                 scoringReady = true;
                 score = mlPrediction.prediction.score;
                 threshold = mlPrediction.prediction.escalationThreshold;
@@ -317,19 +379,15 @@ async function runDetection(
                   thresholdSource = 'AI_LLM_FINAL';
                 } else if (llmPrediction.prediction.verdict === 'SUSPICIOUS') {
                   threshold = 1;
+                  score = Math.min(score, 0.99999999);
                   isAnomaly = false;
-                  thresholdSource = 'AI_REVIEW_PENDING';
+                  thresholdSource = 'AI_LLM_FINAL';
                 } else {
                   threshold = mlPrediction.prediction.escalationThreshold;
+                  score = Math.min(score, 0.99999999);
                   isAnomaly = false;
                   thresholdSource = 'AI_LLM_FINAL';
                 }
-              } else {
-                scoringReady = false;
-                score = Math.min(mlPrediction.prediction.score, 0.99999999);
-                threshold = 1;
-                isAnomaly = false;
-                thresholdSource = 'AI_REVIEW_PENDING';
               }
             }
             const explanationKey = `${decision.groupKey}:${Math.floor(event.occurred_at.getTime() / (15 * 60_000))}`;
@@ -370,6 +428,12 @@ async function runDetection(
         )),
       );
     }
+    const failures = evaluated.flatMap((item) =>
+      'processingFailure' in item ? [{ eventId: item.eventId, ...item.processingFailure }] : [],
+    );
+    const detections = evaluated.filter((item): item is SuccessfulDetection =>
+      !('processingFailure' in item),
+    );
     const summary = {
       modelVersionId: model.id,
       modelName: model.model_name,
@@ -381,7 +445,8 @@ async function runDetection(
           : input.lookbackHours === null
             ? 'ALL_PENDING'
             : 'LOOKBACK_WINDOW',
-      eventsEvaluated: detections.length,
+      eventsEvaluated: evaluated.length,
+      processingFailures: failures.length,
       anomaliesDetected: detections.filter((item) => item.isAnomaly).length,
       insufficientBaseline: detections.filter((item) => !item.baselineReady).length,
       engineVersion: env.DETECTION_PIPELINE_ENABLED ? pipelineEngine : 'contextual-rules-v1',
@@ -389,7 +454,7 @@ async function runDetection(
       customThresholdsApplied: detections.filter((item) => item.threshold !== parameters.threshold)
         .length,
     } satisfies Prisma.InputJsonObject;
-    if (detections.length === 0) {
+    if (evaluated.length === 0) {
       return {
         ...summary,
         detectionsCreated: 0,
@@ -404,6 +469,7 @@ async function runDetection(
       leaseToken: batch.leaseToken,
       ...(audit.correlationId ? { correlationId: audit.correlationId } : {}),
       detections,
+      failures,
       summary,
       sourceIp: audit.sourceIp,
       userAgent: audit.userAgent,

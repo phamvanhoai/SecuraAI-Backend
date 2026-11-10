@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 const db = vi.hoisted(() => ({
   $queryRaw: vi.fn(),
+  $executeRaw: vi.fn(),
   anomaly_detections: { createMany: vi.fn(), findMany: vi.fn(), findUniqueOrThrow: vi.fn() },
   anomaly_feature_contributions: { createMany: vi.fn() },
   anomaly_alerts: { findFirst: vi.fn(), create: vi.fn(), updateMany: vi.fn() },
@@ -149,5 +150,34 @@ describe('contextual detection persistence', () => {
     expect(
       await anomalyDetectionRepository.persistRun(input([detection('a'), detection('b', 16)])),
     ).toMatchObject({ alertsCreated: 2, alertsGrouped: 0 });
+  });
+  it('marks a known AI service failure without creating a detection or alert', async () => {
+    db.$queryRaw
+      .mockResolvedValueOnce([{ locked: 'ok' }])
+      .mockResolvedValueOnce([{ id: 'job-1' }]);
+    const result = await anomalyDetectionRepository.persistRun({
+      actor: { type: 'SYSTEM' },
+      modelVersionId: 'model',
+      leaseToken: '550e8400-e29b-41d4-a716-446655440000',
+      detections: [],
+      failures: [
+        {
+          eventId: '550e8400-e29b-41d4-a716-446655440001',
+          code: 'LLM_TIMEOUT',
+          stage: 'FOUNDATION_SEC',
+          message: 'Foundation-Sec analysis timed out.',
+        },
+      ],
+      summary: {},
+    });
+
+    expect(result).toEqual({ detectionsCreated: 0, alertsCreated: 0, alertsGrouped: 0 });
+    expect(db.anomaly_detections.createMany).not.toHaveBeenCalled();
+    expect(db.anomaly_alerts.create).not.toHaveBeenCalled();
+    expect(db.$executeRaw).toHaveBeenCalled();
+    const failureUpdate = db.$executeRaw.mock.calls.find((call) =>
+      (call[0] as readonly string[]).join('?').includes("status='FAILED'"),
+    );
+    expect(failureUpdate).toContain('LLM_TIMEOUT');
   });
 });
