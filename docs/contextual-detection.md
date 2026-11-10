@@ -1,6 +1,6 @@
 > Current scoring is empirical-history-multi-window-v2, replacing the fixed-point formulas documented below. It evaluates rolling 1-minute, 5-minute, 15-minute and 60-minute horizons. See [Historical anomaly scoring](history-baseline-scoring.md) for the authoritative current algorithm, readiness guard and limitations. Earlier formulas are historical only.
 
-> **AI-only decision mode:** when `AI_FUSION_ENABLED=true` and `AI_FUSION_CAN_CREATE_ALERTS=true`, the historical rules and seven-day baseline described in this document are not queried or evaluated. Only the ML/LLM 1m/5m/15m/60m context is used. ML/LLM failure becomes `AI_REVIEW_PENDING`, never a legacy-rule fallback. The sections below apply only when AI-only decision mode is disabled or describe retained historical behavior.
+> **AI-only decision mode:** when `AI_FUSION_ENABLED=true` and `AI_FUSION_CAN_CREATE_ALERTS=true`, the historical rules and seven-day baseline described in this document are not queried or evaluated. Only the ML/LLM 1m/5m/15m/60m context is used. ML/LLM failure becomes an explicit durable `FAILED` job, never a review-pending decision or legacy-rule fallback. The sections below apply only when AI-only decision mode is disabled or describe retained historical behavior.
 
 # Contextual detection v1
 
@@ -93,12 +93,12 @@ The ML classifier evaluates every normalized event first. Its artifact contains 
 `escalationThreshold` selected only on Validation as the highest threshold preserving at
 least 98% recall. Scores below it are stored as `LOW_RISK_MONITOR` without calling the
 LLM. Scores at or above it send the event and its 1m/5m/15m/60m sequence context to the
-LLM for the final decision. An unavailable or invalid LLM response is stored as
-`AI_REVIEW_PENDING` and cannot create an alert. This flow reduces LLM calls and records
+Foundation-Sec for the final decision. An unavailable, timed-out or invalid response is
+stored as an explicit failed processing job and cannot create an alert. This flow reduces calls and records
 the model score, escalation reason, LLM result and final decision separately.
 When AI-only decision mode is enabled, this staged flow is the sole alert decision path:
-only `MALICIOUS` creates an alert, while unavailable ML, unavailable LLM and
-`SUSPICIOUS` remain pending review. The legacy seven-day detector is not a fallback.
+only `MALICIOUS` creates an alert. Unavailable ML/LLM becomes a technical failure;
+`SUSPICIOUS` is retained as a completed non-alert decision. The legacy seven-day detector is not a fallback.
 
 ## Live priority updates (evidence-weighted-v3)
 

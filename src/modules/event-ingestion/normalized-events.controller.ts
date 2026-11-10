@@ -47,3 +47,10 @@ export const getNormalizedEventMetrics: RequestHandler = async (_req, res) => {
   const data = await normalizedEventsService.getMetrics(userId);
   res.status(200).json({ success: true, data });
 };
+
+export const retryEventDetection: RequestHandler = async (req, res) => {
+  const userId = authenticatedUserId(res.locals.authenticatedUserId);
+  const params = eventIdParamSchema.parse(req.params);
+  const data = await normalizedEventsService.retryDetection(userId, params.id);
+  res.status(200).json({ success: true, data });
+};

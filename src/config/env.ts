@@ -46,7 +46,7 @@ const envSchema = z.object({
     .int()
     .min(1_000)
     .max(300_000)
-    .default(5_000),
+    .default(60_000),
   WAZUH_INGEST_TOKEN: optionalSecret,
   GOOGLE_CLIENT_ID: optionalString,
 });

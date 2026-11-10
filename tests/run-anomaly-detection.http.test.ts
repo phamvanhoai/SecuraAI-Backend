@@ -32,6 +32,7 @@ describe('POST /api/v1/anomaly-detections/runs', () => {
   it('validates and returns the persisted run summary', async () => {
     vi.mocked(anomalyDetectionService.run).mockResolvedValue({
       insufficientBaseline: 0,
+      processingFailures: 0,
       engineVersion: 'contextual-rules-v1',
       timeZone: 'Asia/Ho_Chi_Minh',
       alertsGrouped: 0,

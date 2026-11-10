@@ -371,7 +371,7 @@ describe('run anomaly detection service', () => {
 
   it.each([
     ['MALICIOUS', 0.9, true, 'AI_LLM_FINAL', 0.5],
-    ['SUSPICIOUS', 0.5, false, 'AI_REVIEW_PENDING', 1],
+    ['SUSPICIOUS', 0.5, false, 'AI_LLM_FINAL', 1],
     ['BENIGN', 0.1, false, 'AI_LLM_FINAL', 0.5],
   ] as const)(
     'routes an escalated %s LLM verdict safely',
@@ -477,17 +477,12 @@ describe('run anomaly detection service', () => {
     expect(anomalyDetectionRepository.findEventContext).not.toHaveBeenCalled();
     expect(anomalyDetectionRepository.persistRun).toHaveBeenCalledWith(
       expect.objectContaining({
-        detections: [
+        detections: [],
+        failures: [
           expect.objectContaining({
-            isAnomaly: false,
-            baselineReady: false,
-            thresholdSource: 'AI_REVIEW_PENDING',
-            features: expect.arrayContaining([
-              expect.objectContaining({
-                featureName: 'detection_mode',
-                featureValue: expect.stringContaining('"legacySevenDayBaselineEvaluated":false'),
-              }),
-            ]),
+            eventId: event.id,
+            code: 'ML_MODEL_UNAVAILABLE',
+            stage: 'ML_MODEL',
           }),
         ],
       }),

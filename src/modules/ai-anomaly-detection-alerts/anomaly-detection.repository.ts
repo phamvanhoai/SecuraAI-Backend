@@ -178,16 +178,24 @@ export const anomalyDetectionRepository = {
       explanationText?: string;
       explanationGeneratedAt?: Date;
     }[];
+    failures?: readonly {
+      eventId: string;
+      code: string;
+      stage: 'ML_MODEL' | 'FOUNDATION_SEC';
+      message: string;
+    }[];
     summary: Prisma.InputJsonValue;
   }) {
+    const failures = input.failures ?? [];
     const anomalyIds = input.detections.filter((item) => item.isAnomaly).map((item) => item.id);
     return prisma.$transaction(
       async (transaction) => {
         // Serializes duplicate runs across worker processes, not only this Node instance.
         // Cast PostgreSQL's void result so Prisma can deserialize the acquired lock.
         await transaction.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${input.modelVersionId}, 0))::text AS locked`;
-        const created = await transaction.anomaly_detections.createMany({
-          data: input.detections.map((item) => ({
+        const created = input.detections.length
+          ? await transaction.anomaly_detections.createMany({
+              data: input.detections.map((item) => ({
             id: item.id,
             event_id: item.eventId,
             model_version_id: input.modelVersionId,
@@ -196,14 +204,15 @@ export const anomalyDetectionRepository = {
             threshold: item.threshold,
             threshold_source: item.thresholdSource,
             is_anomaly: item.isAnomaly,
-          })),
-          skipDuplicates: true,
-        });
+              })),
+              skipDuplicates: true,
+            })
+          : { count: 0 };
         if (input.leaseToken) {
           const owned = await transaction.$queryRaw<
             { id: string }[]
           >`SELECT id FROM detection_jobs WHERE lease_token=${input.leaseToken}::uuid AND status='PROCESSING' AND lease_until>now() FOR UPDATE`;
-          if (owned.length !== input.detections.length)
+          if (owned.length !== input.detections.length + failures.length)
             throw new Error('Detection lease expired; discard stale results');
         }
         const persistedAnomalies = anomalyIds.length
@@ -212,13 +221,14 @@ export const anomalyDetectionRepository = {
               select: { id: true },
             })
           : [];
-        const persisted = await transaction.anomaly_detections.findMany({
-          where: { id: { in: input.detections.map((item) => item.id) } },
-          select: { id: true },
-        });
+        const persisted = input.detections.length
+          ? await transaction.anomaly_detections.findMany({
+              where: { id: { in: input.detections.map((item) => item.id) } },
+              select: { id: true },
+            })
+          : [];
         const persistedIds = new Set(persisted.map((item) => item.id));
-        await transaction.anomaly_feature_contributions.createMany({
-          data: input.detections
+        const featureRows = input.detections
             .filter((item) => persistedIds.has(item.id))
             .flatMap((item) =>
               item.features.map((feature) => ({
@@ -228,8 +238,9 @@ export const anomalyDetectionRepository = {
                 contribution_score: feature.contributionScore,
                 rank: feature.rank,
               })),
-            ),
-        });
+            );
+        if (featureRows.length)
+          await transaction.anomaly_feature_contributions.createMany({ data: featureRows });
         let alertsCreated = 0;
         let alertsGrouped = 0;
         const groups = new Map<string, { detection_id: string; occurredAt: Date }>();
@@ -397,7 +408,14 @@ export const anomalyDetectionRepository = {
               lease_token=NULL,lease_until=NULL,error_code=NULL,updated_at=now()
               WHERE lease_token=${input.leaseToken}::uuid AND event_id=${item.eventId}::uuid`;
           }
-          await transaction.$executeRaw`INSERT INTO detection_jobs(kind,alert_id,model_version_id,engine_version)
+          for (const item of failures) {
+            await transaction.$executeRaw`UPDATE detection_jobs SET status='FAILED',
+              result=${JSON.stringify({ stage: item.stage, message: item.message, retryable: true })}::jsonb,
+              lease_token=NULL,lease_until=NULL,error_code=${item.code},updated_at=now()
+              WHERE lease_token=${input.leaseToken}::uuid AND event_id=${item.eventId}::uuid`;
+          }
+          if (input.detections.length > 0)
+            await transaction.$executeRaw`INSERT INTO detection_jobs(kind,alert_id,model_version_id,engine_version)
             SELECT 'EXPLANATION',a.id,${input.modelVersionId}::uuid,${pipelineEngine} FROM anomaly_alerts a JOIN anomaly_detections d ON d.id=a.detection_id
             WHERE d.id IN (${Prisma.join(input.detections.map((d) => Prisma.sql`${d.id}::uuid`))}) ON CONFLICT DO NOTHING`;
         }
