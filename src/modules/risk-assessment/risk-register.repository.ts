@@ -1,8 +1,9 @@
+import { auditWriter } from '../audit-security-reporting/audit-writer.js';
+import { readAcceptanceContextBasis, acceptanceContextBlockedReason, lockAcceptanceContextSources } from './acceptance-context-basis.js';
 import { readAcceptanceCost } from './dto/acceptance-cost.dto.js';
 import { currentRiskReview } from './current-risk-review.js';
-import { reviewDeadline, vietnamDate } from './review-schedule.js';
+import { reviewDeadline, vietnamDate, riskReviewOverdue } from './review-schedule.js';
 import type { CompleteRiskReview } from './dto/complete-risk-review.dto.js';
-import { createHash, randomUUID } from 'node:crypto';
 import { responsibilityWhere, approverGrantSelect, isRiskAcceptanceApprover } from '../user-management-authorization/index.js';
 import { Prisma, type risk_status, type treatment_status } from '@prisma/client';
 import { assessmentRequiresReview, vulnerabilityBlockedReason } from './vulnerability-workflow.js';
@@ -497,6 +498,7 @@ export const riskRegisterRepository = {
           },
         });
         if (!risk) return { kind: 'risk_not_found' as const };
+        if (risk.risk_acceptances.length) return { kind: 'pending_acceptance' as const };
         const blockedReason = vulnerabilityBlockedReason(risk.status, risk.risk_acceptances.length > 0);
         if (blockedReason) return { kind: 'context_locked' as const, blockedReason };
         if (risk.risk_threats.length) return { kind: 'duplicate' as const };
@@ -523,28 +525,24 @@ export const riskRegisterRepository = {
             },
           },
         });
-        const auditId = randomUUID();
-        await database.audit_logs.create({
-          data: {
-            id: auditId,
-            actor_type: 'USER',
-            actor_user_id: actorId,
+        await auditWriter.record(
+          {
+            actorType: 'USER',
+            actorUserId: actorId,
             action: 'RISK_THREAT_CREATED',
-            resource_type: 'RISK',
-            resource_id: riskId,
+            resourceType: 'RISK',
+            resourceId: riskId,
             source: 'API',
-            before_data: Prisma.JsonNull,
-            after_data: {
+            beforeData: null,
+            afterData: {
               id: threat.id,
               name: threat.name,
               description: threat.description,
               vulnerabilityIds: input.vulnerabilityIds,
             },
-            record_hash: createHash('sha256')
-              .update(JSON.stringify({ auditId, actorId, riskId, threatId: threat.id }))
-              .digest('hex'),
           },
-        });
+          database,
+        );
         return { kind: 'created' as const, threat };
       },
       { timeout: 15_000 },
@@ -563,6 +561,7 @@ export const riskRegisterRepository = {
           },
         });
         if (!risk) return { kind: 'risk_not_found' as const };
+        if (risk.risk_acceptances.length) return { kind: 'pending_acceptance' as const };
         const blockedReason = vulnerabilityBlockedReason(
           risk.status,
           risk.risk_acceptances.length > 0,
@@ -632,17 +631,15 @@ export const riskRegisterRepository = {
           },
         });
         await database.risks.update({ where: { id: riskId }, data: { updated_at: changedAt } });
-        const auditId = randomUUID();
-        await database.audit_logs.create({
-          data: {
-            id: auditId,
-            actor_type: 'USER',
-            actor_user_id: actorId,
+        await auditWriter.record(
+          {
+            actorType: 'USER',
+            actorUserId: actorId,
             action: 'RISK_THREAT_UPDATED',
-            resource_type: 'RISK',
-            resource_id: riskId,
+            resourceType: 'RISK',
+            resourceId: riskId,
             source: 'API',
-            before_data: {
+            beforeData: {
               id: threatId,
               name: current.name,
               description: current.description,
@@ -650,17 +647,15 @@ export const riskRegisterRepository = {
                 ({ risk_vulnerabilities }) => risk_vulnerabilities.id,
               ),
             },
-            after_data: {
+            afterData: {
               id: threatId,
               name: threat.name,
               description: threat.description,
               vulnerabilityIds: input.vulnerabilityIds,
             },
-            record_hash: createHash('sha256')
-              .update(JSON.stringify({ auditId, actorId, riskId, threatId, changedAt }))
-              .digest('hex'),
           },
-        });
+          database,
+        );
         return { kind: 'updated' as const, threat };
       },
       { timeout: 15_000 },
@@ -685,6 +680,7 @@ export const riskRegisterRepository = {
           },
         });
         if (!risk) return { kind: 'risk_not_found' as const };
+        if (risk.risk_acceptances.length) return { kind: 'pending_acceptance' as const };
         const blockedReason = vulnerabilityBlockedReason(
           risk.status,
           risk.risk_acceptances.length > 0,
@@ -728,30 +724,24 @@ export const riskRegisterRepository = {
           },
         });
         await database.risks.update({ where: { id: riskId }, data: { updated_at: new Date() } });
-        const auditId = randomUUID();
-        await database.audit_logs.create({
-          data: {
-            id: auditId,
-            actor_type: 'USER',
-            actor_user_id: actorId,
+        await auditWriter.record(
+          {
+            actorType: 'USER',
+            actorUserId: actorId,
             action: 'RISK_VULNERABILITY_CREATED',
-            resource_type: 'RISK',
-            resource_id: riskId,
+            resourceType: 'RISK',
+            resourceId: riskId,
             source: 'API',
-            before_data: Prisma.JsonNull,
-            after_data: {
+            beforeData: null,
+            afterData: {
               id: vulnerability.id,
               name: vulnerability.name,
               description: vulnerability.description,
               controlIds: input.controlIds,
             },
-            record_hash: createHash('sha256')
-              .update(
-                JSON.stringify({ auditId, actorId, riskId, vulnerabilityId: vulnerability.id }),
-              )
-              .digest('hex'),
           },
-        });
+          database,
+        );
         return { kind: 'created' as const, vulnerability };
       },
       { timeout: 15_000 },
@@ -775,6 +765,7 @@ export const riskRegisterRepository = {
           },
         });
         if (!risk) return { kind: 'risk_not_found' as const };
+        if (risk.risk_acceptances.length) return { kind: 'pending_acceptance' as const };
         const blockedReason = vulnerabilityBlockedReason(
           risk.status,
           risk.risk_acceptances.length > 0,
@@ -853,33 +844,29 @@ export const riskRegisterRepository = {
           },
         });
         await database.risks.update({ where: { id: riskId }, data: { updated_at: changedAt } });
-        const auditId = randomUUID();
-        await database.audit_logs.create({
-          data: {
-            id: auditId,
-            actor_type: 'USER',
-            actor_user_id: actorId,
+        await auditWriter.record(
+          {
+            actorType: 'USER',
+            actorUserId: actorId,
             action: 'RISK_VULNERABILITY_UPDATED',
-            resource_type: 'RISK',
-            resource_id: riskId,
+            resourceType: 'RISK',
+            resourceId: riskId,
             source: 'API',
-            before_data: {
+            beforeData: {
               id: vulnerabilityId,
               name: current.name,
               description: current.description,
               controlIds: current.risk_vulnerability_controls.map((item) => item.control_id),
             },
-            after_data: {
+            afterData: {
               id: vulnerabilityId,
               name: vulnerability.name,
               description: vulnerability.description,
               controlIds: input.controlIds,
             },
-            record_hash: createHash('sha256')
-              .update(JSON.stringify({ auditId, actorId, riskId, vulnerabilityId, changedAt }))
-              .digest('hex'),
           },
-        });
+          database,
+        );
         return { kind: 'updated' as const, vulnerability };
       },
       { timeout: 15_000 },
@@ -921,6 +908,7 @@ export const riskRegisterRepository = {
           title: true,
           status: true,
           review_date: true,
+          risk_acceptances: { where: { decision: 'PENDING' }, select: { id: true }, take: 1 },
           risk_assessments: {
             where: {
               inherent_likelihood: { not: null },
@@ -935,6 +923,7 @@ export const riskRegisterRepository = {
         },
       });
       if (!risk) return { kind: 'risk_not_found' as const };
+      if (risk.risk_acceptances.length) return { kind: 'pending_acceptance' as const };
       if (!['OPEN', 'UNDER_TREATMENT'].includes(risk.status))
         return { kind: 'context_locked' as const };
       if (
@@ -1050,7 +1039,8 @@ export const riskRegisterRepository = {
       });
       if (!risk) return { kind: 'risk_not_found' as const };
       if (risk.owner_user_id !== actorId) return { kind: 'not_owner' as const };
-      if (!['OPEN', 'UNDER_TREATMENT'].includes(risk.status) || risk.risk_acceptances.length)
+      if (risk.risk_acceptances.length) return { kind: 'pending_acceptance' as const };
+      if (!['OPEN', 'UNDER_TREATMENT'].includes(risk.status))
         return { kind: 'context_locked' as const };
       const inherent = risk.risk_assessments[0];
       if (!inherent) return { kind: 'inherent_required' as const };
@@ -1098,7 +1088,6 @@ export const riskRegisterRepository = {
         },
         select: { id: true, assessed_at: true },
       });
-      const auditId = randomUUID();
       const controlBasis = risk.control_risk_links.map(({ security_controls: control }) => ({
         controlId: control.id,
         assessmentId: control.control_assessments[0]?.id ?? null,
@@ -1108,12 +1097,18 @@ export const riskRegisterRepository = {
         linkedEvidenceIds: control.control_evidence_links.map((link) => link.evidence_items.id),
       }));
       const auditData = { assessmentId: assessment.id, score, rating, controlBasis };
-      await database.audit_logs.create({ data: {
-        id: auditId, actor_type: 'USER', actor_user_id: actorId,
-        action: 'RISK_RESIDUAL_ASSESSED', resource_type: 'RISK', resource_id: riskId,
-        source: 'API', after_data: auditData,
-        record_hash: createHash('sha256').update(JSON.stringify({ auditId, actorId, ...auditData })).digest('hex'),
-      } });
+      await auditWriter.record(
+        {
+          actorType: 'USER',
+          actorUserId: actorId,
+          action: 'RISK_RESIDUAL_ASSESSED',
+          resourceType: 'RISK',
+          resourceId: riskId,
+          source: 'API',
+          afterData: auditData,
+        },
+        database,
+      );
       return { kind: 'created' as const, risk, assessment, score, rating, controlEffectiveness };
     });
   },
@@ -1147,7 +1142,8 @@ export const riskRegisterRepository = {
       });
       if (!risk) return { kind: 'risk_not_found' as const };
       if (risk.owner_user_id !== actorId) return { kind: 'not_owner' as const };
-      if (!['OPEN', 'UNDER_TREATMENT'].includes(risk.status) || risk.risk_acceptances.length)
+      if (risk.risk_acceptances.length) return { kind: 'pending_acceptance' as const };
+      if (!['OPEN', 'UNDER_TREATMENT'].includes(risk.status))
         return { kind: 'context_locked' as const };
       const current = risk.risk_assessments[0];
       if (!current) return { kind: 'residual_required' as const };
@@ -1179,18 +1175,24 @@ export const riskRegisterRepository = {
         where: { id: plan.id },
         data: { source_assessment_id: assessment.id },
       });
-      const auditId = randomUUID();
       const targetData = {
         assessmentId: assessment.id, treatmentPlanId: plan.id, treatmentPlanTitle: plan.title,
         residualAssessmentId: current.id, residualAssessedAt: current.assessed_at.toISOString(),
         residualRating: current.residual_rating, targetRisk: target,
         riskAppetite: current.risk_appetite, riskTolerance: current.risk_tolerance,
       };
-      await database.audit_logs.create({ data: {
-        id: auditId, actor_type: 'USER', actor_user_id: actorId, action: 'RISK_TARGET_DEFINED',
-        resource_type: 'RISK', resource_id: riskId, source: 'API', after_data: targetData,
-        record_hash: createHash('sha256').update(JSON.stringify({ auditId, actorId, ...targetData })).digest('hex'),
-      } });
+      await auditWriter.record(
+        {
+          actorType: 'USER',
+          actorUserId: actorId,
+          action: 'RISK_TARGET_DEFINED',
+          resourceType: 'RISK',
+          resourceId: riskId,
+          source: 'API',
+          afterData: targetData,
+        },
+        database,
+      );
       return { kind: 'created' as const, risk, current, plan, assessment, target };
     });
   },
@@ -1267,7 +1269,8 @@ export const riskRegisterRepository = {
           });
           if (actor?.role !== 'SECURITY_OFFICER' && risk.owner_user_id !== actorId)
             return { kind: 'forbidden' as const };
-          if (!['OPEN', 'UNDER_TREATMENT'].includes(risk.status) || risk.risk_acceptances.length)
+          if (risk.risk_acceptances.length) return { kind: 'pending_acceptance' as const };
+          if (!['OPEN', 'UNDER_TREATMENT'].includes(risk.status))
             return { kind: 'context_locked' as const };
           if (risk.risk_treatment_plans.length) return { kind: 'active_plan_exists' as const };
           const users = await database.users.count({
@@ -1342,15 +1345,23 @@ export const riskRegisterRepository = {
               created_at: true,
             },
           });
-          const auditId = randomUUID();
           const auditData = { assessmentId: source.id, treatmentPlanId: plan.id, treatmentPlanTitle: plan.title,
             residualAssessmentId: latest?.residual_rating ? latest.id : null,
             residualAssessedAt: latest?.residual_rating ? latest.assessed_at.toISOString() : null,
             residualRating: latest?.residual_rating ?? null, targetRisk: targetRating,
             strategy: input.strategy, acceptanceCost: input.acceptanceCost ?? null, ownerUserId: input.ownerUserId, controlIds: input.controlIds, actions: input.actions };
-          await database.audit_logs.create({ data: { id: auditId, actor_type: 'USER', actor_user_id: actorId,
-            action: 'RISK_TARGET_DEFINED', resource_type: 'RISK', resource_id: risk.id, source: 'API', after_data: auditData,
-            record_hash: createHash('sha256').update(JSON.stringify({ auditId, actorId, ...auditData })).digest('hex') } });
+          await auditWriter.record(
+            {
+              actorType: 'USER',
+              actorUserId: actorId,
+              action: 'RISK_TARGET_DEFINED',
+              resourceType: 'RISK',
+              resourceId: risk.id,
+              source: 'API',
+              afterData: auditData,
+            },
+            database,
+          );
           return {
             kind: 'created' as const,
             plan,
@@ -1403,6 +1414,34 @@ export const riskRegisterRepository = {
           return { kind: 'conflict' as const };
         if (await database.risk_acceptances.count({ where: { risk_id: plan.risks.id, decision: 'PENDING' } }))
           return { kind: 'pending_acceptance' as const };
+        if (plan.status === 'ACTIVE' && input.strategy.toUpperCase() !== plan.strategy)
+          return { kind: 'active_strategy_locked' as const };
+        if ((plan.status === 'ACTIVE' || input.status === 'cancelled') &&
+            (!input.changeReason || input.changeReason.trim().length < 10))
+          return { kind: 'change_reason_required' as const };
+        if (input.status === 'cancelled') {
+          const cancelledAt = await contextWriteTime(database);
+          const updated = await database.risk_treatment_plans.update({
+            where: { id: planId }, data: { status: 'CANCELLED', updated_at: cancelledAt },
+            include: {
+              risk_treatment_actions: { orderBy: { created_at: 'asc' } },
+              risk_treatment_plan_controls: { include: { security_controls: true }, orderBy: { linked_at: 'asc' } },
+            },
+          });
+          let riskStatus = plan.risks.status;
+          if (riskStatus === 'UNDER_TREATMENT' &&
+              await database.risk_treatment_plans.count({ where: { risk_id: plan.risks.id, status: 'ACTIVE' } }) === 0) {
+            const risk = await database.risks.update({ where: { id: plan.risks.id }, data: { status: 'OPEN', updated_at: cancelledAt }, select: { status: true } });
+            riskStatus = risk.status;
+          }
+          await auditWriter.record({ actorType: 'USER', actorUserId: actorId,
+            action: 'RISK_TREATMENT_PLAN_UPDATED', resourceType: 'RISK', resourceId: plan.risks.id, source: 'API', occurredAt: cancelledAt,
+            beforeData: { planId, title: plan.title, strategy: plan.strategy, status: plan.status },
+            afterData: { planId, title: plan.title, strategy: plan.strategy, status: 'CANCELLED', changeReason: input.changeReason?.trim(),
+              cancelledBy: actorId, cancelledAt: cancelledAt.toISOString(), preservedActions: plan.risk_treatment_actions.map((item) => ({ id: item.id, status: item.status, completedAt: item.completed_at?.toISOString() ?? null })) },
+          }, database);
+          return { kind: 'updated' as const, updated, riskCode: plan.risks.risk_code, riskStatus };
+        }
         if (input.status === 'completed' && input.strategy !== 'accept' && !input.actions.some((item) => item.status === 'completed'))
           return { kind: 'no_completed_actions' as const };
         if (
@@ -1508,25 +1547,24 @@ export const riskRegisterRepository = {
             select: { status: true },
           });
           riskStatus = risk.status;
-        } else if (plan.status === 'ACTIVE' && input.status === 'cancelled') {
-          const otherActivePlans = await database.risk_treatment_plans.count({
-            where: { risk_id: plan.risks.id, id: { not: planId }, status: 'ACTIVE' },
-          });
-          if (otherActivePlans === 0 && riskStatus === 'UNDER_TREATMENT') {
-            const risk = await database.risks.update({
-              where: { id: plan.risks.id },
-              data: { status: 'OPEN', updated_at: new Date() },
-              select: { status: true },
-            });
-            riskStatus = risk.status;
-          }
         }
-        const auditId = randomUUID();
         const before = { title: plan.title, status: plan.status, strategy: plan.strategy, acceptanceCost: readAcceptanceCost(plan.acceptance_cost_basis), ownerUserId: plan.owner_user_id, targetDate: plan.target_completion_date?.toISOString() ?? null,
           controls: plan.risk_treatment_plan_controls.map((item) => item.control_id),
           actions: plan.risk_treatment_actions.map((item) => ({ id: item.id, title: item.action_description, status: item.status, ownerUserId: item.owner_user_id, dueDate: item.due_date?.toISOString() ?? null, completedAt: item.completed_at?.toISOString() ?? null })) };
         const after = { ...input, actions: updated.risk_treatment_actions.map((item) => ({ id: item.id, title: item.action_description, status: item.status, ownerUserId: item.owner_user_id, dueDate: item.due_date?.toISOString() ?? null, completedAt: item.completed_at?.toISOString() ?? null })) };
-        await database.audit_logs.create({ data: { id: auditId, actor_type: 'USER', actor_user_id: actorId, action: 'RISK_TREATMENT_PLAN_UPDATED', resource_type: 'RISK', resource_id: plan.risks.id, source: 'API', before_data: { planId, ...before }, after_data: { planId, ...after }, record_hash: createHash('sha256').update(JSON.stringify({ auditId, actorId, before, after })).digest('hex') } });
+        await auditWriter.record(
+          {
+            actorType: 'USER',
+            actorUserId: actorId,
+            action: 'RISK_TREATMENT_PLAN_UPDATED',
+            resourceType: 'RISK',
+            resourceId: plan.risks.id,
+            source: 'API',
+            beforeData: { planId, ...before },
+            afterData: { planId, ...after },
+          },
+          database,
+        );
         return {
           kind: 'updated' as const,
           updated,
@@ -1546,6 +1584,7 @@ export const riskRegisterRepository = {
           WHERE link.risk_id = ${riskId}::uuid ORDER BY control.id FOR SHARE OF control`;
         const actor = await database.users.findUnique({ where: { id: actorId }, select: { status: true } });
         if (actor?.status !== 'ACTIVE') return { kind: 'not_owner' as const };
+        await lockAcceptanceContextSources(database, riskId);
         const risk = await database.risks.findUnique({
           where: { id: riskId },
           select: {
@@ -1589,6 +1628,8 @@ export const riskRegisterRepository = {
           orderBy: [{ occurred_at: 'desc' }, { id: 'desc' }],
         });
         if (currentRiskReview(reviewEvents)) return { kind: 'review_in_progress' as const };
+        const submissionTime = await contextWriteTime(database);
+        if (riskReviewOverdue(risk.review_date, submissionTime)) return { kind: 'review_overdue' as const };
         if (!risk.risk_treatment_plans[0]) return { kind: 'invalid_plan' as const };
         const selectedPlan = risk.risk_treatment_plans[0];
         if (selectedPlan.strategy === 'ACCEPT' && !readAcceptanceCost(selectedPlan.acceptance_cost_basis)) return { kind: 'acceptance_cost_required' as const };
@@ -1624,11 +1665,13 @@ export const riskRegisterRepository = {
         if (controlsBlocked === 'control_assessments_required') return { kind: 'control_assessments_required' as const };
         if (controlsBlocked === 'control_assessments_stale') return { kind: 'control_assessments_stale' as const };
         const controlBasis = residualControlBasis(risk.control_risk_links);
+        const contextBasis = await readAcceptanceContextBasis(database, riskId);
         const controlEffectiveness = controlBasis.reduce((sum, item) => sum + (item.effectiveness ?? 0), 0) / controlBasis.length;
         const score = input.residualLikelihood * input.residualImpact;
         const rating =
           score <= 4 ? 'LOW' : score <= 9 ? 'MEDIUM' : score <= 16 ? 'HIGH' : 'CRITICAL';
         const assessedAt = await contextWriteTime(database);
+        if (riskReviewOverdue(risk.review_date, assessedAt)) return { kind: 'review_overdue' as const };
         const assessment = await database.risk_assessments.create({
           data: {
             risk_id: riskId,
@@ -1660,16 +1703,25 @@ export const riskRegisterRepository = {
           },
           select: { id: true, decision: true, requested_at: true, valid_until: true },
         });
-        const auditId = randomUUID();
         const auditData = { acceptanceId: acceptance.id, assessmentId: assessment.id,
           inherentAssessmentId: inherent.id, treatmentPlanId: selectedPlan.id,
-          planUpdatedAt: selectedPlan.updated_at.toISOString(), controlBasis,
+          planUpdatedAt: selectedPlan.updated_at.toISOString(), controlBasis, contextBasis,
           acceptanceCost: readAcceptanceCost(selectedPlan.acceptance_cost_basis),
           acceptanceReason: input.acceptanceReason, residualScore: score, residualRating: rating,
           validUntil: input.validUntil };
-        await database.audit_logs.create({ data: { id: auditId, actor_type: 'USER', actor_user_id: actorId,
-          action: 'RISK_ACCEPTANCE_SUBMITTED', resource_type: 'RISK', resource_id: riskId, source: 'API', occurred_at: assessedAt,
-          after_data: auditData, record_hash: createHash('sha256').update(JSON.stringify({ auditId, actorId, ...auditData })).digest('hex') } });
+        await auditWriter.record(
+          {
+            actorType: 'USER',
+            actorUserId: actorId,
+            action: 'RISK_ACCEPTANCE_SUBMITTED',
+            resourceType: 'RISK',
+            resourceId: riskId,
+            source: 'API',
+            occurredAt: assessedAt,
+            afterData: auditData,
+          },
+          database,
+        );
         return {
           kind: 'submitted' as const,
           riskCode: risk.risk_code,
@@ -1704,6 +1756,7 @@ export const riskRegisterRepository = {
         const currentActor = await database.users.findUnique({ where: { id: actorId }, select: { role: true, status: true, ...approverGrantSelect } });
         if (!currentActor || !isRiskAcceptanceApprover(currentActor))
           return { kind: 'forbidden' as const };
+        if (input.decision === 'approved') await lockAcceptanceContextSources(database, target.risk_id);
         const acceptance = await database.risk_acceptances.findUnique({
           where: { id: acceptanceId },
           include: {
@@ -1712,6 +1765,7 @@ export const riskRegisterRepository = {
                 id: true,
                 risk_code: true,
                 status: true,
+                review_date: true,
                 control_risk_links: residualControlLinks,
                 owner_user_id: true,
                 risk_threats: { select: { created_at: true, updated_at: true } },
@@ -1726,6 +1780,8 @@ export const riskRegisterRepository = {
         if (acceptance.decision !== 'PENDING') return { kind: 'already_decided' as const };
         if (acceptance.requested_by === actorId || acceptance.risks.owner_user_id === actorId) return { kind: 'self_approval' as const };
         const decidedAt = await contextWriteTime(database);
+        if (input.decision === 'approved' && riskReviewOverdue(acceptance.risks.review_date, decidedAt))
+          return { kind: 'review_overdue' as const };
         if (
           input.decision === 'approved' && acceptance.valid_until &&
           acceptance.valid_until.toISOString().slice(0, 10) < decidedAt.toISOString().slice(0, 10)
@@ -1761,19 +1817,32 @@ export const riskRegisterRepository = {
           if (currentPlan?.strategy === 'ACCEPT' && !readAcceptanceCost(currentPlan.acceptance_cost_basis)) return { kind: 'context_changed' as const };
           if (currentAssessment?.id !== basis.assessmentId || currentPlan?.updated_at.toISOString() !== basis.planUpdatedAt)
             return { kind: 'context_changed' as const };
+          const currentContextBasis = await readAcceptanceContextBasis(database, acceptance.risk_id);
+          const changedBasisReason = acceptanceContextBlockedReason(basis.contextBasis, currentContextBasis);
+          if (changedBasisReason)
+            return { kind: 'acceptance_basis_changed' as const, blockedReason: changedBasisReason };
           if (currentPlan?.strategy === 'ACCEPT' && currentPlan.status !== 'COMPLETED') {
             await database.risk_treatment_plans.update({
               where: { id: basis.treatmentPlanId },
               data: { status: 'COMPLETED', updated_at: decidedAt },
             });
             completedAcceptPlanId = basis.treatmentPlanId;
-            const planAuditId = randomUUID();
             const before = { planId: basis.treatmentPlanId, status: currentPlan.status };
             const after = { planId: basis.treatmentPlanId, status: 'COMPLETED', acceptanceId, reason: 'Accept proposal completed by independent acceptance approval; no remediation actions were performed.' };
-            await database.audit_logs.create({ data: { id: planAuditId, actor_type: 'USER', actor_user_id: actorId,
-              action: 'RISK_TREATMENT_PLAN_COMPLETED_BY_ACCEPTANCE', resource_type: 'RISK', resource_id: acceptance.risk_id,
-              source: 'API', occurred_at: decidedAt, before_data: before, after_data: after,
-              record_hash: createHash('sha256').update(JSON.stringify({ planAuditId, actorId, before, after })).digest('hex') } });
+            await auditWriter.record(
+              {
+                actorType: 'USER',
+                actorUserId: actorId,
+                action: 'RISK_TREATMENT_PLAN_COMPLETED_BY_ACCEPTANCE',
+                resourceType: 'RISK',
+                resourceId: acceptance.risk_id,
+                source: 'API',
+                occurredAt: decidedAt,
+                beforeData: before,
+                afterData: after,
+              },
+              database,
+            );
           }
         }
         const decision = input.decision.toUpperCase() as 'APPROVED' | 'REJECTED';
@@ -1781,13 +1850,22 @@ export const riskRegisterRepository = {
           where: { id: acceptanceId },
           data: { decision, decided_by: actorId, decided_at: decidedAt },
         });
-        const auditId = randomUUID();
         const auditData = { acceptanceId, decision, decisionReason: input.reason, completedAcceptPlanId,
           requestReason: acceptance.reason, validUntil: acceptance.valid_until?.toISOString() ?? null };
-        await database.audit_logs.create({ data: { id: auditId, actor_type: 'USER', actor_user_id: actorId,
-          action: 'RISK_ACCEPTANCE_DECIDED', resource_type: 'RISK', resource_id: acceptance.risk_id, source: 'API', occurred_at: decidedAt,
-          before_data: { decision: acceptance.decision, reason: acceptance.reason }, after_data: auditData,
-          record_hash: createHash('sha256').update(JSON.stringify({ auditId, actorId, ...auditData })).digest('hex') } });
+        await auditWriter.record(
+          {
+            actorType: 'USER',
+            actorUserId: actorId,
+            action: 'RISK_ACCEPTANCE_DECIDED',
+            resourceType: 'RISK',
+            resourceId: acceptance.risk_id,
+            source: 'API',
+            occurredAt: decidedAt,
+            beforeData: { decision: acceptance.decision, reason: acceptance.reason },
+            afterData: auditData,
+          },
+          database,
+        );
         if (decision === 'APPROVED')
           await database.risks.update({
             where: { id: acceptance.risk_id },
@@ -1814,6 +1892,9 @@ export const riskRegisterRepository = {
   getAcceptanceControlLinks(riskId: string) {
     return prisma.control_risk_links.findMany({ ...residualControlLinks, where: { risk_id: riskId } });
   },
+  getAcceptanceContextBasis(riskId: string) {
+    return readAcceptanceContextBasis(prisma, riskId);
+  },
   openAcceptanceReview(riskId: string, actorId: string, input: OpenRiskReviewBody) {
     return prisma.$transaction(async (database) => {
       await database.$queryRaw`SELECT id FROM risks WHERE id = ${riskId}::uuid FOR UPDATE`;
@@ -1836,13 +1917,22 @@ export const riskRegisterRepository = {
       const now = await contextWriteTime(database);
       const status = risk.status === 'ACCEPTED' ? (risk.risk_treatment_plans.length ? 'UNDER_TREATMENT' : 'OPEN') : risk.status;
       const updated = await database.risks.update({ where: { id: riskId }, data: { status, updated_at: now }, select: { id: true, status: true, updated_at: true } });
-      const auditId = randomUUID();
       const after = { status, reason: input.reason, openedBy: actorId, openedByName: actor.full_name,
         previousReviewDate: risk.review_date?.toISOString() ?? null };
-      await database.audit_logs.create({ data: { id: auditId, actor_type: 'USER', actor_user_id: actorId,
-        action: 'RISK_REVIEW_OPENED', resource_type: 'RISK', resource_id: riskId, source: 'API', occurred_at: now,
-        before_data: { status: risk.status }, after_data: after,
-        record_hash: createHash('sha256').update(JSON.stringify({ auditId, actorId, ...after })).digest('hex') } });
+      await auditWriter.record(
+        {
+          actorType: 'USER',
+          actorUserId: actorId,
+          action: 'RISK_REVIEW_OPENED',
+          resourceType: 'RISK',
+          resourceId: riskId,
+          source: 'API',
+          occurredAt: now,
+          beforeData: { status: risk.status },
+          afterData: after,
+        },
+        database,
+      );
       return { kind: 'opened' as const, updated };
     });
   },
@@ -1895,11 +1985,20 @@ export const riskRegisterRepository = {
         assessmentId: assessment.id, residualRating: assessment.residual_rating.toLowerCase(),
         nextReviewDate: input.nextReviewDate, recommendedReviewDate: maximum, methodologyVersion: 'SECURAAI-REVIEW-CYCLE-v1' };
       await tx.risks.update({ where: { id: riskId }, data: { review_date: new Date(`${input.nextReviewDate}T00:00:00Z`), updated_at: now } });
-      const id = randomUUID();
-      await tx.audit_logs.create({ data: { id, actor_type: 'USER', actor_user_id: actorId, action: 'RISK_REVIEW_COMPLETED',
-        resource_type: 'RISK', resource_id: riskId, source: 'API', occurred_at: now,
-        before_data: { reviewDate: risk.review_date?.toISOString() ?? null }, after_data: after,
-        record_hash: createHash('sha256').update(JSON.stringify({ id, actorId, riskId, after })).digest('hex') } });
+      await auditWriter.record(
+        {
+          actorType: 'USER',
+          actorUserId: actorId,
+          action: 'RISK_REVIEW_COMPLETED',
+          resourceType: 'RISK',
+          resourceId: riskId,
+          source: 'API',
+          occurredAt: now,
+          beforeData: { reviewDate: risk.review_date?.toISOString() ?? null },
+          afterData: after,
+        },
+        tx,
+      );
       return { riskId, completedAt: now, nextReviewDate: input.nextReviewDate };
     }, { isolationLevel: 'Serializable', maxWait: 5000, timeout: 15000 });
   },

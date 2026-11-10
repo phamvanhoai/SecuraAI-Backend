@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const db = vi.hoisted(() => ({
-  $queryRaw: vi.fn(), risk_acceptances: { count: vi.fn() }, audit_logs: { create: vi.fn() },
+  $queryRaw: vi.fn(), risk_acceptances: { count: vi.fn() }, audit_logs: { findFirst: vi.fn(), create: vi.fn() },
   risks: { update: vi.fn() },
   control_risk_links: { count: vi.fn() },
   risk_treatment_plan_controls: { deleteMany: vi.fn(), createMany: vi.fn() },
@@ -36,6 +36,7 @@ const updatedAt = new Date('2026-10-12T08:00:00.000Z');
 function plan(status: 'DRAFT' | 'ACTIVE', riskStatus: 'OPEN' | 'UNDER_TREATMENT') {
   return {
     id: planId,
+    strategy: "MITIGATE",
     status,
     updated_at: updatedAt,
     risk_id: riskId,
@@ -55,6 +56,7 @@ function plan(status: 'DRAFT' | 'ACTIVE', riskStatus: 'OPEN' | 'UNDER_TREATMENT'
 
 function input(status: 'active' | 'cancelled') {
   return {
+    changeReason: "Documented change for the treatment plan.",
     title: 'Improve database recovery',
     strategy: 'mitigate' as const,
     ownerUserId: actorId,
@@ -73,6 +75,48 @@ function input(status: 'active' | 'cancelled') {
 }
 
 describe('treatment plan and Risk status synchronization', () => {
+  it.each(['avoid', 'transfer', 'accept'] as const)('blocks changing Active strategy to %s before any writes', async (strategy) => {
+    db.risk_treatment_plans.findUnique.mockResolvedValue(plan('ACTIVE', 'UNDER_TREATMENT'));
+    await expect(riskRegisterRepository.updateTreatmentPlan(planId, actorId, { ...input('active'), strategy })).resolves.toEqual({ kind: 'active_strategy_locked' });
+    expect(db.risk_treatment_plans.update).not.toHaveBeenCalled();
+    expect(db.risk_treatment_actions.update).not.toHaveBeenCalled();
+    expect(db.$queryRaw).toHaveBeenCalledTimes(2);
+  });
+  it('requires a reason for Active edits even if called without DTO validation', async () => {
+    db.risk_treatment_plans.findUnique.mockResolvedValue(plan('ACTIVE', 'UNDER_TREATMENT'));
+    const { changeReason, ...request } = input('active');
+    expect(changeReason).toBeTruthy();
+    await expect(riskRegisterRepository.updateTreatmentPlan(planId, actorId, request)).resolves.toEqual({ kind: 'change_reason_required' });
+    expect(db.risk_treatment_plans.update).not.toHaveBeenCalled();
+  });
+  it('permits a strategy change while Draft', async () => {
+    db.risk_treatment_plans.findUnique.mockResolvedValue(plan('DRAFT', 'OPEN'));
+    db.risks.update.mockResolvedValue({ status: 'UNDER_TREATMENT' });
+    await expect(riskRegisterRepository.updateTreatmentPlan(planId, actorId, { ...input('active'), strategy: 'transfer' })).resolves.toMatchObject({ kind: 'updated' });
+    expect(db.risk_treatment_plans.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ strategy: 'TRANSFER' }) }));
+  });
+  it('keeps completed and in-progress actions intact when cancelling, and audits the reason', async () => {
+    const completedAt = new Date('2026-10-10');
+    db.risk_treatment_plans.findUnique.mockResolvedValue({ ...plan('ACTIVE', 'UNDER_TREATMENT'),
+      risk_treatment_actions: [{ id: actionId, status: 'COMPLETED', completed_at: completedAt }, { id: 'in-progress', status: 'IN_PROGRESS', completed_at: null }],
+    });
+    db.risk_treatment_plans.count.mockResolvedValue(0);
+    db.risks.update.mockResolvedValue({ status: 'OPEN' });
+    await expect(riskRegisterRepository.updateTreatmentPlan(planId, actorId, input('cancelled'))).resolves.toMatchObject({ kind: 'updated' });
+    expect(db.risk_treatment_actions.deleteMany).not.toHaveBeenCalled();
+    expect(db.risk_treatment_actions.update).not.toHaveBeenCalled();
+    expect(db.risk_treatment_plan_controls.deleteMany).not.toHaveBeenCalled();
+    expect(db.risk_treatment_plans.update).toHaveBeenCalledWith(expect.objectContaining({ data: { status: 'CANCELLED', updated_at: new Date('2026-11-09T00:00:00Z') } }));
+    expect(db.audit_logs.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ after_data: expect.objectContaining({ changeReason: input('cancelled').changeReason, preservedActions: expect.arrayContaining([{ id: actionId, status: 'COMPLETED', completedAt: completedAt.toISOString() }]) }) }) }));
+  });
+  it('allows adding actions to an Active plan with its original strategy and a reason', async () => {
+    db.risk_treatment_plans.findUnique.mockResolvedValue(plan('ACTIVE', 'UNDER_TREATMENT'));
+    const request = input('active');
+    const due = new Date(Date.now() + 86400000).toISOString().slice(0, 10);
+    await expect(riskRegisterRepository.updateTreatmentPlan(planId, actorId, { ...request, targetDate: due, actions: [...request.actions, { title: 'Additional verification', assignedToUserId: actorId, dueDate: due, status: 'pending' }] })).resolves.toMatchObject({ kind: 'updated' });
+    expect(db.risk_treatment_actions.create).toHaveBeenCalled();
+    expect(db.audit_logs.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ after_data: expect.objectContaining({ changeReason: request.changeReason }) }) }));
+  });
   it('blocks pending acceptance before writing actions', async () => {
     db.risk_treatment_plans.findUnique.mockResolvedValue(plan('ACTIVE', 'UNDER_TREATMENT'));
     db.risk_acceptances.count.mockResolvedValue(1);
@@ -96,6 +140,7 @@ describe('treatment plan and Risk status synchronization', () => {
   });
   beforeEach(() => {
     vi.clearAllMocks();
+    db.$queryRaw.mockResolvedValue([{ time: new Date("2026-11-09T00:00:00Z") }]);
     db.risk_acceptances.count.mockResolvedValue(0);
     db.users.findUnique.mockResolvedValue({ role: 'SECURITY_OFFICER' });
     db.users.count.mockResolvedValue(1);

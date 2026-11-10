@@ -1,6 +1,9 @@
+import { createHash } from 'node:crypto';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 const db = vi.hoisted(() => ({
   $queryRaw: vi.fn(),
+  risk_assets: { findMany: vi.fn().mockResolvedValue([]) },
+  control_evidence_links: { findMany: vi.fn().mockResolvedValue([]) },
   users: { findUnique: vi.fn() },
   risk_acceptances: { findUnique: vi.fn(), update: vi.fn() },
   risks: { update: vi.fn() },
@@ -14,6 +17,8 @@ vi.mock('../src/database/prisma.js', () => ({
   },
 }));
 import { riskRegisterRepository } from '../src/modules/risk-assessment/risk-register.repository.js';
+const emptyHash = createHash('sha256').update('[]').digest('hex');
+const contextBasis = { version: 1, assetHash: emptyHash, evidenceHash: emptyHash };
 const now = new Date('2026-10-14T09:00:00Z');
 const acceptance = {
   id: 'request',
@@ -40,7 +45,7 @@ describe('expired acceptance decision', () => {
       decision: 'REJECTED',
       decided_at: now,
     });
-    db.audit_logs.findFirst.mockResolvedValue({ after_data: { assessmentId: 'residual', treatmentPlanId: 'plan', planUpdatedAt: '2026-09-01T00:00:00.000Z', controlBasis: [{
+    db.audit_logs.findFirst.mockResolvedValue({ after_data: { contextBasis, assessmentId: 'residual', treatmentPlanId: 'plan', planUpdatedAt: '2026-09-01T00:00:00.000Z', controlBasis: [{
       controlId: 'control', assessmentId: 'assessment', effectiveness: 80, assessedAt: '2026-09-01T00:00:00.000Z', implementationStatus: 'IMPLEMENTED', linkedEvidenceIds: ['evidence'],
     }] } });
     db.risk_assessments.findFirst.mockResolvedValue({ id: 'residual' });

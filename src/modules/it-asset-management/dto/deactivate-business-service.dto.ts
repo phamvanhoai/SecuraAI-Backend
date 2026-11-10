@@ -8,7 +8,7 @@ export const deactivateBusinessServiceSchema = z
       .trim()
       .transform((value) => value.replace(/\s+/g, ' '))
       .pipe(z.string().min(1).max(255)),
-    reason: z.string().trim().min(1).max(2000),
+    reason: z.string().trim().min(20, "Enter at least 20 characters.").max(2000),
   })
   .strict();
 export type DeactivateBusinessServiceInput = z.infer<typeof deactivateBusinessServiceSchema>;

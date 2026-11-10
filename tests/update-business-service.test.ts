@@ -4,7 +4,7 @@ const mocks = vi.hoisted(() => ({
     $queryRaw: vi.fn(),
     users: { findUnique: vi.fn(), findFirst: vi.fn() },
     business_services: { findUnique: vi.fn(), update: vi.fn() },
-    audit_logs: { create: vi.fn() },
+    audit_logs: { findFirst: vi.fn(), create: vi.fn() },
   },
   transaction: vi.fn(),
 }));

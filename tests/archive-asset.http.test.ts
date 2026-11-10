@@ -18,21 +18,21 @@ app.use(errorHandler);
 describe('archive HTTP contract', () => {
   beforeEach(() => vi.resetAllMocks());
   it('requires authentication', async () => {
-    expect((await request(app).delete(`/assets/${assetId}`).send({ reason: 'Retired' })).status).toBe(401);
+    expect((await request(app).delete(`/assets/${assetId}`).send({ reason: 'Retired after service migration' })).status).toBe(401);
     expect(assetsService.archive).not.toHaveBeenCalled();
   });
-  it.each([{}, { reason: ' ' }, { reason: 'Retired', archivedBy: userId }])('rejects invalid body %j', async (input) => {
+  it.each([{}, { reason: ' ' }, { reason: 'Retired after service migration', archivedBy: userId }])('rejects invalid body %j', async (input) => {
     expect((await request(app).delete(`/assets/${assetId}`).auth(token, { type: 'bearer' }).send(input)).status).toBe(422);
     expect(assetsService.archive).not.toHaveBeenCalled();
   });
   it('uses authenticated actor and trimmed reason and returns 204', async () => {
-    const response = await request(app).delete(`/assets/${assetId}`).auth(token, { type: 'bearer' }).send({ reason: ' Retired ' });
+    const response = await request(app).delete(`/assets/${assetId}`).auth(token, { type: 'bearer' }).send({ reason: ' Retired after service migration ' });
     expect(response.status).toBe(204);
-    expect(assetsService.archive).toHaveBeenCalledWith(userId, assetId, { reason: 'Retired' }, null);
+    expect(assetsService.archive).toHaveBeenCalledWith(userId, assetId, { reason: 'Retired after service migration' }, null);
   });
   it('preserves actionable dependency error', async () => {
     vi.mocked(assetsService.archive).mockRejectedValue(new AppError(409, 'ASSET_HAS_ACTIVE_DEPENDENCIES', 'AST-A depends on this asset'));
-    const response = await request(app).delete(`/assets/${assetId}`).auth(token, { type: 'bearer' }).send({ reason: 'Retired' });
+    const response = await request(app).delete(`/assets/${assetId}`).auth(token, { type: 'bearer' }).send({ reason: 'Retired after service migration' });
     expect(response.status).toBe(409);
     expect(response.body.error.code).toBe('ASSET_HAS_ACTIVE_DEPENDENCIES');
   });

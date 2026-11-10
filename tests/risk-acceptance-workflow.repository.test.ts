@@ -1,7 +1,10 @@
+import { createHash } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 const db = vi.hoisted(() => ({
   $queryRaw: vi.fn(),
+  risk_assets: { findMany: vi.fn().mockResolvedValue([]) },
+  control_evidence_links: { findMany: vi.fn().mockResolvedValue([]) },
   users: { findUnique: vi.fn() },
   risks: { findUnique: vi.fn(), update: vi.fn() },
   risk_assessments: { findFirst: vi.fn(), create: vi.fn() },
@@ -14,6 +17,8 @@ vi.mock('../src/database/prisma.js', () => ({
 }));
 import { riskRegisterRepository } from '../src/modules/risk-assessment/risk-register.repository.js';
 import { residualControlBasis } from '../src/modules/risk-assessment/residual-control-basis.js';
+const emptyHash = createHash('sha256').update('[]').digest('hex');
+const contextBasis = { version: 1, assetHash: emptyHash, evidenceHash: emptyHash };
 const old = new Date('2026-10-01T00:00:00Z');
 const now = new Date('2026-10-14T09:00:00Z');
 const links = [
@@ -91,6 +96,8 @@ const request = {
 };
 beforeEach(() => {
   vi.clearAllMocks();
+  db.risk_assets.findMany.mockReset().mockResolvedValue([]);
+  db.control_evidence_links.findMany.mockReset().mockResolvedValue([]);
   db.$queryRaw.mockResolvedValue([{ time: now }]);
   db.users.findUnique.mockResolvedValue({ role: 'SECURITY_OFFICER', status: 'ACTIVE' });
   db.risks.findUnique.mockResolvedValue(risk);
@@ -116,6 +123,42 @@ beforeEach(() => {
   db.audit_logs.findMany.mockResolvedValue([]);
 });
 describe('acceptance submission', () => {
+  it('blocks overdue review before writing a new residual or acceptance, even with no review opened', async () => {
+    db.risks.findUnique.mockResolvedValue({ ...risk, review_date: new Date('2026-10-13') });
+    await expect(riskRegisterRepository.submitAcceptance('risk', 'owner', input)).resolves.toEqual({ kind: 'review_overdue' });
+    expect(db.risk_assessments.create).not.toHaveBeenCalled();
+    expect(db.risk_acceptances.create).not.toHaveBeenCalled();
+  });
+  it.each(['2026-10-14', '2026-10-15'])('allows submission on/before review day %s', async (reviewDate) => {
+    db.risks.findUnique.mockResolvedValue({ ...risk, review_date: new Date(reviewDate) });
+    await expect(riskRegisterRepository.submitAcceptance('risk', 'owner', input)).resolves.toMatchObject({ kind: 'submitted' });
+  });
+  it('checks overdue again if submission spans midnight in Vietnam', async () => {
+    db.risks.findUnique.mockResolvedValue({ ...risk, review_date: new Date('2026-10-14') });
+    let clockReads = 0;
+    db.$queryRaw.mockImplementation(async (query: TemplateStringsArray) => {
+      if (String(query).includes('clock_timestamp')) {
+        clockReads++;
+        return [{ time: new Date(clockReads === 1 ? '2026-10-14T16:59:59Z' : '2026-10-14T17:00:00Z') }];
+      }
+      return [];
+    });
+    await expect(riskRegisterRepository.submitAcceptance('risk', 'owner', input)).resolves.toEqual({ kind: 'review_overdue' });
+    expect(db.risk_acceptances.create).not.toHaveBeenCalled();
+  });
+  it('captures Asset and Evidence fingerprints in the submitted audit under source locks', async () => {
+    await riskRegisterRepository.submitAcceptance('risk', 'owner', input);
+    expect(db.audit_logs.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
+      action: 'RISK_ACCEPTANCE_SUBMITTED', after_data: expect.objectContaining({ contextBasis }),
+    }) }));
+    expect(db.risk_assets.findMany).toHaveBeenCalledOnce();
+    expect(db.control_evidence_links.findMany).toHaveBeenCalledOnce();
+    const lockQueries = db.$queryRaw.mock.calls.map((call) => String(call[0]));
+    expect(lockQueries[2]).toContain('FOR SHARE OF asset');
+    expect(lockQueries[3]).toContain('FOR SHARE OF evidence');
+    expect(db.$queryRaw.mock.invocationCallOrder[3]).toBeLessThan(db.risks.findUnique.mock.invocationCallOrder[0] ?? 0);
+    expect(db.control_evidence_links.findMany.mock.invocationCallOrder[0]).toBeLessThan(db.risk_acceptances.create.mock.invocationCallOrder[0] ?? 0);
+  });
   it('blocks an open review before any acceptance or assessment writes', async () => {
     db.audit_logs.findMany.mockResolvedValue([{ action: 'RISK_REVIEW_OPENED', occurred_at: old, after_data: { reason: 'Periodic review' } }]);
     expect(await riskRegisterRepository.submitAcceptance('risk', 'owner', input)).toEqual({ kind: 'review_in_progress' });
@@ -231,7 +274,7 @@ describe('acceptance decision', () => {
   });
   it.each(['DRAFT', 'ACTIVE'])('completes only the submitted Accept plan from %s on approval', async (status) => {
     const cost = { costToFix: '100', expectedLoss: '5', currency: 'VND', periodMonths: 12, basis: 'Synthetic comparison of estimated costs.' };
-    db.audit_logs.findFirst.mockResolvedValue({ after_data: { assessmentId: 'residual', treatmentPlanId: 'plan', planUpdatedAt: old.toISOString(), controlBasis: residualControlBasis(links) } });
+    db.audit_logs.findFirst.mockResolvedValue({ after_data: { assessmentId: 'residual', treatmentPlanId: 'plan', planUpdatedAt: old.toISOString(), contextBasis, controlBasis: residualControlBasis(links) } });
     db.risk_treatment_plans.findFirst.mockResolvedValue({ id: 'plan', status, strategy: 'ACCEPT', updated_at: old, acceptance_cost_basis: cost });
     expect(await riskRegisterRepository.decideAcceptance('request', 'approver', { decision: 'approved', reason: 'Approve after independent review.' })).toMatchObject({ kind: 'decided' });
     expect(db.risk_treatment_plans.update).toHaveBeenCalledExactlyOnceWith({ where: { id: 'plan' }, data: { status: 'COMPLETED', updated_at: now } });
@@ -243,18 +286,46 @@ describe('acceptance decision', () => {
     expect(db.risks.update).not.toHaveBeenCalled();
   });
   it.each(['MITIGATE', 'AVOID', 'TRANSFER'])('does not auto-complete a %s plan', async (strategy) => {
-    db.audit_logs.findFirst.mockResolvedValue({ after_data: { assessmentId: 'residual', treatmentPlanId: 'plan', planUpdatedAt: old.toISOString(), controlBasis: residualControlBasis(links) } });
+    db.audit_logs.findFirst.mockResolvedValue({ after_data: { assessmentId: 'residual', treatmentPlanId: 'plan', planUpdatedAt: old.toISOString(), contextBasis, controlBasis: residualControlBasis(links) } });
     db.risk_treatment_plans.findFirst.mockResolvedValue({ id: 'plan', strategy, status: 'ACTIVE', updated_at: old });
     expect(await riskRegisterRepository.decideAcceptance('request', 'approver', { decision: 'approved', reason: 'Approve after independent review.' })).toMatchObject({ kind: 'decided' });
     expect(db.risk_treatment_plans.update).not.toHaveBeenCalled();
   });
   const approve = { decision: 'approved' as const, reason: 'Approved after independent review.' };
+  it('blocks approval when review becomes overdue after submission but still permits rejection', async () => {
+    db.risk_acceptances.findUnique.mockResolvedValue({ ...request, risks: { ...risk, review_date: new Date('2026-10-13') } });
+    await expect(riskRegisterRepository.decideAcceptance('request', 'approver', approve)).resolves.toEqual({ kind: 'review_overdue' });
+    expect(db.risk_acceptances.update).not.toHaveBeenCalled();
+    expect(db.risks.update).not.toHaveBeenCalled();
+    await expect(riskRegisterRepository.decideAcceptance('request', 'approver', { decision: 'rejected', reason: 'Reject because periodic review is overdue.' })).resolves.toMatchObject({ kind: 'decided' });
+  });
+  it.each(['assetHash', 'evidenceHash'] as const)('refuses approval when %s differs from submission', async (field) => {
+    db.audit_logs.findFirst.mockResolvedValue({ after_data: {
+      assessmentId: 'residual', treatmentPlanId: 'plan', planUpdatedAt: old.toISOString(), controlBasis: residualControlBasis(links),
+      contextBasis: { ...contextBasis, [field]: 'f'.repeat(64) },
+    } });
+    await expect(riskRegisterRepository.decideAcceptance('request', 'approver', approve)).resolves.toMatchObject({ kind: 'acceptance_basis_changed' });
+    expect(db.risk_acceptances.update).not.toHaveBeenCalled();
+    expect(db.risks.update).not.toHaveBeenCalled();
+    expect(db.risk_treatment_plans.update).not.toHaveBeenCalled();
+  });
+  it('requires resubmission of a legacy request without an Asset/Evidence snapshot', async () => {
+    db.audit_logs.findFirst.mockResolvedValue({ after_data: { assessmentId: 'residual', treatmentPlanId: 'plan', planUpdatedAt: old.toISOString(), controlBasis: residualControlBasis(links) } });
+    await expect(riskRegisterRepository.decideAcceptance('request', 'approver', approve)).resolves.toMatchObject({ kind: 'acceptance_basis_changed', blockedReason: expect.stringMatching(/no verifiable/) });
+    expect(db.risk_acceptances.update).not.toHaveBeenCalled();
+  });
+  it('still permits rejection when the Asset/Evidence basis cannot be verified', async () => {
+    db.risk_assets.findMany.mockRejectedValueOnce(new Error('Source unavailable'));
+    await expect(riskRegisterRepository.decideAcceptance('request', 'approver', { decision: 'rejected', reason: 'Reject outdated or unverifiable submission.' })).resolves.toMatchObject({ kind: 'decided' });
+    expect(db.risk_assets.findMany).not.toHaveBeenCalled();
+    expect(db.risks.update).not.toHaveBeenCalled();
+  });
   const basis = {
     after_data: {
       assessmentId: 'residual',
       treatmentPlanId: 'plan',
       planUpdatedAt: old.toISOString(),
-      controlBasis: residualControlBasis(links),
+      contextBasis, controlBasis: residualControlBasis(links),
     },
   };
   it('approves the exact submitted basis and preserves justification', async () => {
@@ -262,6 +333,7 @@ describe('acceptance decision', () => {
     expect(
       await riskRegisterRepository.decideAcceptance('request', 'approver', approve),
     ).toMatchObject({ kind: 'decided' });
+    expect(db.$queryRaw.mock.invocationCallOrder[3]).toBeLessThan(db.risk_acceptances.findUnique.mock.invocationCallOrder[1] ?? 0);
     expect(db.risk_acceptances.update.mock.calls[0]?.[0].data).not.toHaveProperty('reason');
     expect(db.audit_logs.create).toHaveBeenCalledWith(
       expect.objectContaining({

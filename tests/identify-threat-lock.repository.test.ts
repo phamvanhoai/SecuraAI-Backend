@@ -12,7 +12,7 @@ it.each(['ACCEPTED', 'CLOSED', 'ARCHIVED'])('blocks new threats on %s under the 
 });
 it('blocks pending acceptance before any threat write', async () => {
   db.risks.findUnique.mockResolvedValue({ id: 'risk', status: 'OPEN', risk_acceptances: [{ id: 'pending' }], risk_threats: [], risk_vulnerabilities: [] });
-  expect(await riskRegisterRepository.identifyThreat('risk', 'officer', input)).toMatchObject({ kind: 'context_locked' });
+  expect(await riskRegisterRepository.identifyThreat('risk', 'officer', input)).toMatchObject({ kind: 'pending_acceptance' });
   expect(db.risk_threats.create).not.toHaveBeenCalled();
 });
 it('reaches normal validation after an Accepted Risk is reopened', async () => {

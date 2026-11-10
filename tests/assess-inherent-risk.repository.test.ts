@@ -26,6 +26,7 @@ const risk = {
   title: 'Database outage',
   status: 'OPEN',
   review_date: null,
+  risk_acceptances: [],
   risk_assessments: [] as {
     id: string;
     inherent_rating: 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL';
@@ -35,6 +36,17 @@ const risk = {
 };
 
 describe('assess inherent risk repository', () => {
+  it.each(['OPEN', 'UNDER_TREATMENT'])('blocks pending acceptance while Risk is %s under the Risk lock', async (status) => {
+    db.risks.findUnique.mockResolvedValue({ ...risk, status, risk_acceptances: [{ id: 'pending' }] });
+    await expect(riskRegisterRepository.assessInherentRisk(risk.id, 'actor-id', input))
+      .resolves.toEqual({ kind: 'pending_acceptance' });
+    expect(db.$queryRaw.mock.calls[0]?.[0].join('')).toContain('FOR UPDATE');
+    expect(db.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(db.risks.findUnique.mock.invocationCallOrder[0] ?? 0);
+    expect(db.risks.findUnique).toHaveBeenCalledWith(expect.objectContaining({ select: expect.objectContaining({
+      risk_acceptances: { where: { decision: 'PENDING' }, select: { id: true }, take: 1 },
+    }) }));
+    expect(db.risk_assessments.create).not.toHaveBeenCalled();
+  });
   beforeEach(() => {
     vi.clearAllMocks();
     db.$queryRaw.mockResolvedValue([{ time: assessedAt }]);
