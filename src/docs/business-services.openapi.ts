@@ -198,8 +198,8 @@ export const businessServicesPaths = {
               additionalProperties: false,
               required: ['name'],
               properties: {
-                name: { type: 'string', minLength: 1, maxLength: 255 },
-                description: { type: 'string', nullable: true, maxLength: 5000 },
+                name: { type: 'string', minLength: 3, maxLength: 100 },
+                description: { type: 'string', nullable: true, maxLength: 2000, description: 'Optional/null/empty; if entered, 20-2000 characters after trimming.' },
                 ownerUserId: { type: 'string', format: 'uuid', nullable: true },
               },
             },
@@ -251,8 +251,8 @@ export const businessServicesPaths = {
               required: ['expectedUpdatedAt'],
               properties: {
                 expectedUpdatedAt: { type: 'string', format: 'date-time' },
-                name: { type: 'string', minLength: 1, maxLength: 255 },
-                description: { type: 'string', nullable: true, maxLength: 5000 },
+                name: { type: 'string', minLength: 3, maxLength: 100 },
+                description: { type: 'string', nullable: true, maxLength: 2000, description: 'Optional/null/empty; if entered, 20-2000 characters after trimming.' },
                 ownerUserId: { type: 'string', format: 'uuid', nullable: true },
               },
               description: 'At least one editable field is required.',

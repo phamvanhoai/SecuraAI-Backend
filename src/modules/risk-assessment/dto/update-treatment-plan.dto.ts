@@ -3,14 +3,14 @@ import { acceptanceCostSchema, validateAcceptanceCost } from './acceptance-cost.
 
 const action = z.object({
   id: z.uuid().optional(),
-  title: z.string().trim().min(3).max(255),
+  title: z.string().trim().min(3).max(100),
   assignedToUserId: z.uuid(),
   dueDate: z.iso.date(),
   status: z.enum(['pending', 'in_progress', 'completed', 'cancelled']),
 });
 export const updateTreatmentPlanParamsSchema = z.object({ treatmentPlanId: z.uuid() });
 export const updateTreatmentPlanBodySchema = z.object({
-  title: z.string().trim().min(3).max(255),
+  title: z.string().trim().min(3).max(100),
   strategy: z.enum(['avoid', 'mitigate', 'transfer', 'accept']),
   ownerUserId: z.uuid(),
   targetDate: z.iso.date(),

@@ -8,7 +8,7 @@ export const assessResidualRiskBodySchema = z
     targetRisk: rating,
     riskAppetite: rating,
     riskTolerance: rating,
-    assessmentReason: z.string().trim().min(10).max(3000),
+    assessmentReason: z.string().trim().min(10).max(2000),
   })
   .strict()
   .refine(

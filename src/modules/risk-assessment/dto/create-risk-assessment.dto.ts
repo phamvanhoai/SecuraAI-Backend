@@ -2,8 +2,8 @@ import { z } from 'zod';
 
 export const createRiskAssessmentBodySchema = z
   .object({
-    title: z.string().trim().min(3).max(255),
-    description: z.string().trim().min(3).max(5000),
+    title: z.string().trim().min(3).max(100),
+    description: z.string().trim().min(20).max(2000),
     ownerUserId: z.uuid(),
     reviewDate: z.iso.date(),
     scope: z.discriminatedUnion('type', [
