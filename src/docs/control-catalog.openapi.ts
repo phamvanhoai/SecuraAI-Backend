@@ -1,5 +1,5 @@
 const fields = {
-  name: { type: 'string', minLength: 3, maxLength: 255 },
+  name: { type: 'string', minLength: 3, maxLength: 100 },
   description: { type: 'string', minLength: 10, maxLength: 5000 },
   ownerUserId: {
     type: 'string',

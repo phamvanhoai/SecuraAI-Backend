@@ -1,0 +1,27 @@
+import { beforeEach, expect, it, vi } from 'vitest';
+import type { Prisma } from '@prisma/client';
+const mocks = vi.hoisted(() => ({ context: vi.fn(), valid: vi.fn(), same: vi.fn() }));
+vi.mock('../src/modules/risk-assessment/acceptance-context-basis.js', () => ({ readAcceptanceContextBasis: mocks.context }));
+vi.mock('../src/modules/risk-assessment/residual-control-basis.js', () => ({ residualControlLinks: {}, validateResidualControls: mocks.valid, sameResidualControlBasis: mocks.same }));
+import { requireTreatmentPlanBasis } from '../src/modules/risk-assessment/treatment-plan-basis.js';
+const at = new Date('2026-11-10T00:00:00Z');
+const residual = { id: 'residual', assessed_at: at, inherent_likelihood: 3, inherent_impact: 3, inherent_rating: 'MEDIUM', residual_rating: 'LOW' };
+const inherent = { ...residual, id: 'inherent', assessed_at: new Date('2026-11-09'), residual_rating: null };
+const db = { risk_assessments: { findFirst: vi.fn() }, risks: { findUnique: vi.fn() }, audit_logs: { findFirst: vi.fn() } };
+const run = () => requireTreatmentPlanBasis(db as unknown as Prisma.TransactionClient, 'risk');
+beforeEach(() => {
+  vi.resetAllMocks();
+  db.risk_assessments.findFirst.mockResolvedValueOnce(residual).mockResolvedValueOnce(inherent);
+  db.risks.findUnique.mockResolvedValue({ risk_threats: [], risk_vulnerabilities: [], risk_assets: [], control_risk_links: [] });
+  db.audit_logs.findFirst.mockResolvedValue({ after_data: { controlBasis: [], contextBasis: { version: 1, assetHash: 'asset', evidenceHash: 'evidence' } } });
+  mocks.context.mockResolvedValue({ version: 1, assetHash: 'asset', evidenceHash: 'evidence' }); mocks.valid.mockReturnValue(null); mocks.same.mockReturnValue(true);
+});
+it('accepts a current verified residual', async () => { await expect(run()).resolves.toEqual(residual); });
+it('blocks missing residual', async () => { db.risk_assessments.findFirst.mockReset().mockResolvedValue(null); await expect(run()).rejects.toMatchObject({ code: 'RESIDUAL_ASSESSMENT_REQUIRED' }); });
+it('blocks newer inherent', async () => { db.risk_assessments.findFirst.mockReset().mockResolvedValueOnce(residual).mockResolvedValueOnce({ ...inherent, assessed_at: new Date('2026-11-11') }); await expect(run()).rejects.toMatchObject({ code: 'RISK_REASSESSMENT_REQUIRED' }); });
+it('blocks changed threat', async () => { db.risks.findUnique.mockResolvedValue({ risk_threats: [{ created_at: new Date('2026-11-11'), updated_at: new Date('2026-11-11') }], risk_vulnerabilities: [], risk_assets: [], control_risk_links: [] }); await expect(run()).rejects.toMatchObject({ code: 'RISK_REASSESSMENT_REQUIRED' }); });
+it.each(['control_assessments_required', 'control_assessments_stale'])('blocks %s', async (reason) => { mocks.valid.mockReturnValue(reason); await expect(run()).rejects.toMatchObject({ code: 'CONTROL_REASSESSMENT_REQUIRED' }); });
+it('blocks a changed control basis', async () => { mocks.same.mockReturnValue(false); await expect(run()).rejects.toMatchObject({ code: 'RESIDUAL_BASIS_CHANGED' }); });
+it('requires a refreshed residual for legacy missing snapshots', async () => { db.audit_logs.findFirst.mockResolvedValue(null); await expect(run()).rejects.toMatchObject({ code: 'RESIDUAL_BASIS_CHANGED' }); });
+it('blocks changed asset context', async () => { mocks.context.mockResolvedValue({ assetHash: 'changed', evidenceHash: 'evidence' }); await expect(run()).rejects.toMatchObject({ code: 'RISK_REASSESSMENT_REQUIRED' }); });
+it('blocks evidence metadata or expiry change', async () => { mocks.context.mockResolvedValue({ assetHash: 'asset', evidenceHash: 'changed' }); await expect(run()).rejects.toMatchObject({ code: 'RESIDUAL_BASIS_CHANGED' }); });

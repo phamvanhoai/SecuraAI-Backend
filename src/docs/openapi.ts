@@ -414,7 +414,7 @@ export const openApiSpec = {
           content: { 'application/json': { schema: createTreatmentPlanOpenApi } },
         },
         description:
-          'Active Security Officer or assigned Risk Owner. Locks selected Risk. OPEN/UNDER_TREATMENT with no pending acceptance or Draft/Active plan. Eligible controls must belong to the Risk; mitigate requires at least one, other strategies allow none. Non-accept strategies require actions. Unique control IDs and action titles, active owners, future dates and action dates within plan date required. Target cannot exceed known residual and is saved as TARGET_DEFINITION without copying inherent/residual. Creation remains Draft and does not approve acceptance. Pending acceptance returns HTTP 409 ACCEPTANCE_PENDING with the shared Risk lock message.',
+          'Active Security Officer or assigned Risk Owner. Locks selected Risk. OPEN/UNDER_TREATMENT with no pending acceptance or Draft/Active plan. Eligible controls must belong to the Risk; mitigate requires at least one, other strategies allow none. Non-accept strategies require actions. Unique control IDs and action titles, active owners, future dates and action dates within plan date required. Target cannot exceed known residual and is saved as TARGET_DEFINITION without copying inherent/residual. Creation remains Draft and does not approve acceptance. All four strategies require a verified residual based on current Inherent, Threat/Vulnerability, Control and Asset/Evidence snapshots. Missing residual returns 409 RESIDUAL_ASSESSMENT_REQUIRED; stale bases return 409 RISK_REASSESSMENT_REQUIRED, CONTROL_REASSESSMENT_REQUIRED or RESIDUAL_BASIS_CHANGED with recovery guidance. Legacy residual without verifiable snapshots must be saved again. Pending acceptance returns HTTP 409 ACCEPTANCE_PENDING with the shared Risk lock message.',
         responses: {
           '201': { description: 'Draft plan with intended target saved' },
           '401': { description: 'Authentication required' },
@@ -581,6 +581,10 @@ export const openApiSpec = {
         tags: ['Risks'],
         summary: 'View the risk register',
         security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'sortBy', in: 'query', schema: { type: 'string', enum: ['riskCode', 'title', 'reviewDate', 'updatedAt', 'createdAt'], default: 'createdAt' } },
+          { name: 'sortOrder', in: 'query', schema: { type: 'string', enum: ['asc', 'desc'], default: 'desc' } },
+        ],
         description:
           'Security Officers and Executives read accessible risks; other actors are ownership-scoped. scope is null for historical unrecorded scope, {type:asset}, or {type:business_service,businessService:{id,name,status}}. assets are persisted risk links, not current service membership.',
         responses: {

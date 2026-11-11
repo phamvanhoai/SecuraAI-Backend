@@ -4,6 +4,8 @@ import { Prisma } from '@prisma/client';
 const assessedAt = new Date('2026-10-12T07:00:00.000Z');
 const db = vi.hoisted(() => ({
   $queryRaw: vi.fn(),
+  risk_assets: { findMany: vi.fn().mockResolvedValue([]) },
+  control_evidence_links: { findMany: vi.fn().mockResolvedValue([]) },
   risks: { findUnique: vi.fn() },
   users: { findUnique: vi.fn(), count: vi.fn() },
   security_controls: { findMany: vi.fn() },
@@ -19,6 +21,9 @@ vi.mock('../src/database/prisma.js', () => ({
   },
 }));
 
+const basisGuard = vi.hoisted(() => vi.fn());
+vi.mock('../src/modules/risk-assessment/treatment-plan-basis.js', () => ({ requireTreatmentPlanBasis: basisGuard }));
+import { AppError } from '../src/common/errors/app-error.js';
 import { riskRegisterRepository } from '../src/modules/risk-assessment/risk-register.repository.js';
 
 const actorId = '11111111-1111-4111-8111-111111111111';
@@ -28,6 +33,14 @@ const controlId = '33333333-3333-4333-8333-333333333333';
 describe('create treatment plan with an overdue Risk review', () => {
   const input = { riskId, title: 'Improve database recovery', strategy: 'mitigate', ownerUserId: actorId, targetDate: '2026-10-30', targetRisk: 'low', controlIds: [controlId], actions: [{ title: 'Test restoration', assignedToUserId: actorId, dueDate: '2026-10-28' }] } as const;
   const request = () => ({ ...input, controlIds: [...input.controlIds], actions: [...input.actions] });
+  it.each(['avoid', 'mitigate', 'transfer', 'accept'] as const)('blocks %s with stale basis before any writes and holds Risk/Control locks', async (strategy) => {
+    basisGuard.mockRejectedValueOnce(new AppError(409, 'RESIDUAL_BASIS_CHANGED', 'Save a new residual assessment.'));
+    await expect(riskRegisterRepository.createTreatmentPlan(actorId, { ...request(), strategy })).rejects.toMatchObject({ code: 'RESIDUAL_BASIS_CHANGED' });
+    expect(db.risk_assessments.create).not.toHaveBeenCalled();
+    expect(db.risk_treatment_plans.create).not.toHaveBeenCalled();
+    expect(db.$queryRaw.mock.calls[0]?.[0].join('')).toContain('FOR UPDATE');
+    expect(db.$queryRaw.mock.calls[1]?.[0].join('')).toContain('FOR SHARE');
+  });
   it.each(['ACCEPTED', 'CLOSED', 'ARCHIVED'])('blocks creation for %s', async (status) => {
     const risk = await db.risks.findUnique();
     db.risks.findUnique.mockResolvedValue({ ...risk, status });
@@ -63,6 +76,7 @@ describe('create treatment plan with an overdue Risk review', () => {
   });
   beforeEach(() => {
     vi.clearAllMocks();
+    basisGuard.mockResolvedValue({ id: "residual", assessed_at: assessedAt, residual_rating: "MEDIUM", risk_appetite: null, risk_tolerance: null });
     db.risk_assessments.findFirst.mockResolvedValue(null);
     db.$queryRaw.mockResolvedValue([{ time: assessedAt }]);
     db.risks.findUnique.mockResolvedValue({
