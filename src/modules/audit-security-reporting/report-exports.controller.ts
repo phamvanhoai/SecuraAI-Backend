@@ -1,12 +1,40 @@
 import type { NextFunction, Request, Response } from 'express';
-import { listExportReportsQuerySchema } from './dto/export-security-reports.dto.js';
+import {
+  exportReportRequestSchema,
+  listExportReportsQuerySchema,
+  revokeExportReportSchema,
+} from './dto/export-security-reports.dto.js';
 import { reportExportsService } from './report-exports.service.js';
+import type { ReportExportAuditContext } from './report-exports.repository.js';
+
+function normalizeClientIp(ip: string | undefined): string | undefined {
+  if (!ip) {
+    return undefined;
+  }
+  if (ip === '::1' || ip === '::ffff:127.0.0.1') {
+    return '127.0.0.1';
+  }
+  if (ip.startsWith('::ffff:')) {
+    return ip.replace('::ffff:', '');
+  }
+  return ip;
+}
+
+function getAuditContext(req: Request): ReportExportAuditContext {
+  const userAgent = req.get('user-agent');
+  const sourceIp = normalizeClientIp(req.ip);
+  return {
+    ...(sourceIp ? { sourceIp } : {}),
+    ...(userAgent ? { userAgent } : {}),
+  };
+}
 
 export const reportExportsController = {
   async exportReport(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = res.locals.authenticatedUserId as string;
-      const data = await reportExportsService.exportReport(userId, req.body);
+      const body = exportReportRequestSchema.parse(req.body);
+      const data = await reportExportsService.exportReport(userId, body, getAuditContext(req));
       res.status(201).json({ success: true, data });
     } catch (err) {
       next(err);
@@ -37,7 +65,11 @@ export const reportExportsController = {
   async downloadReport(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = res.locals.authenticatedUserId as string;
-      const file = await reportExportsService.downloadReport(userId, req.params.id as string);
+      const file = await reportExportsService.downloadReport(
+        userId,
+        req.params.id as string,
+        getAuditContext(req),
+      );
       res.setHeader('Content-Type', file.contentType);
       res.setHeader('Content-Disposition', `attachment; filename="${file.filename}"`);
       res.status(200).send(file.content);
@@ -49,10 +81,12 @@ export const reportExportsController = {
   async revokeExport(req: Request, res: Response, next: NextFunction) {
     try {
       const userId = res.locals.authenticatedUserId as string;
+      const body = revokeExportReportSchema.parse(req.body);
       const data = await reportExportsService.revokeExport(
         userId,
         req.params.id as string,
-        req.body.reason,
+        body.reason,
+        getAuditContext(req),
       );
       res.status(200).json({ success: true, data });
     } catch (err) {

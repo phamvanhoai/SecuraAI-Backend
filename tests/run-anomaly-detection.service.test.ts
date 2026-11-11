@@ -19,26 +19,32 @@ vi.mock('../src/modules/ai-anomaly-detection-alerts/alert-explanation.generator.
 vi.mock('../src/modules/ai-anomaly-detection-alerts/llm-classifier.client.js', () => ({
   requestLlmClassification: vi.fn().mockResolvedValue({ status: 'DISABLED' }),
 }));
-vi.mock('../src/modules/ai-anomaly-detection-alerts/ml-shadow.client.js', async (importOriginal) => {
-  const actual = await importOriginal<typeof MlShadowClient>();
-  return {
-    ...actual,
-    requestMlShadowPrediction: vi.fn().mockResolvedValue({
-      status: 'UNAVAILABLE',
-      reason: 'NETWORK',
-    }),
-  };
-});
+vi.mock(
+  '../src/modules/ai-anomaly-detection-alerts/ml-shadow.client.js',
+  async (importOriginal) => {
+    const actual = await importOriginal<typeof MlShadowClient>();
+    return {
+      ...actual,
+      requestMlShadowPrediction: vi.fn().mockResolvedValue({
+        status: 'UNAVAILABLE',
+        reason: 'NETWORK',
+      }),
+    };
+  },
+);
 
 import { generateStoredAlertExplanation } from '../src/modules/ai-anomaly-detection-alerts/alert-explanation.generator.js';
 import { anomalyDetectionRepository } from '../src/modules/ai-anomaly-detection-alerts/anomaly-detection.repository.js';
 import { anomalyDetectionService } from '../src/modules/ai-anomaly-detection-alerts/anomaly-detection.service.js';
 import { requestLlmClassification } from '../src/modules/ai-anomaly-detection-alerts/llm-classifier.client.js';
 import { requestMlShadowPrediction } from '../src/modules/ai-anomaly-detection-alerts/ml-shadow.client.js';
+import { env } from '../src/config/env.js';
 
 describe('run anomaly detection service', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    env.AI_FUSION_ENABLED = false;
+    env.AI_FUSION_CAN_CREATE_ALERTS = false;
     vi.mocked(anomalyDetectionRepository.findEventContext).mockImplementation(async (event) => ({
       events: Array.from({ length: 20 }, (_, i) => ({
         ...event,
@@ -365,11 +371,13 @@ describe('run anomaly detection service', () => {
 
   it.each([
     ['MALICIOUS', 0.9, true, 'AI_LLM_FINAL', 0.5],
-    ['SUSPICIOUS', 0.5, false, 'AI_REVIEW_PENDING', 1],
+    ['SUSPICIOUS', 0.5, false, 'AI_LLM_FINAL', 1],
     ['BENIGN', 0.1, false, 'AI_LLM_FINAL', 0.5],
   ] as const)(
     'routes an escalated %s LLM verdict safely',
     async (verdict, score, isAnomaly, thresholdSource, threshold) => {
+      env.AI_FUSION_ENABLED = true;
+      env.AI_FUSION_CAN_CREATE_ALERTS = true;
       const event = {
         id: `event-${verdict}`,
         event_source_id: 'source',
@@ -384,25 +392,40 @@ describe('run anomaly detection service', () => {
         event_entity_mappings: [],
       };
       vi.mocked(anomalyDetectionRepository.findDeployedModel).mockResolvedValue({
-        id: 'model', model_name: 'detector', version: '8', parameters: { threshold: 0.67 },
+        id: 'model',
+        model_name: 'detector',
+        version: '8',
+        parameters: { threshold: 0.67 },
       });
-      vi.mocked(anomalyDetectionRepository.findPendingEvents).mockResolvedValue({ events: [event] });
+      vi.mocked(anomalyDetectionRepository.findPendingEvents).mockResolvedValue({
+        events: [event],
+      });
       vi.mocked(requestMlShadowPrediction).mockResolvedValue({
         status: 'PREDICTED',
         prediction: {
-          label: 'MALICIOUS_APT', malicious: true, score: 0.95, threshold: 0.5,
-          escalationThreshold: 0.5, scoreSemantics: 'test', modelVersion: 'v8',
+          label: 'MALICIOUS_APT',
+          malicious: true,
+          score: 0.95,
+          threshold: 0.5,
+          escalationThreshold: 0.5,
+          scoreSemantics: 'test',
+          modelVersion: 'v8',
         },
       });
       vi.mocked(requestLlmClassification).mockResolvedValue({
         status: 'PREDICTED',
         prediction: {
-          verdict, score, malicious: verdict === 'MALICIOUS',
-          category: 'AUTHENTICATION', reason: 'Observed sequence evidence.',
+          verdict,
+          score,
+          malicious: verdict === 'MALICIOUS',
+          category: 'AUTHENTICATION',
+          reason: 'Observed sequence evidence.',
         },
       });
       vi.mocked(anomalyDetectionRepository.persistRun).mockResolvedValue({
-        alertsGrouped: 0, detectionsCreated: 1, alertsCreated: isAnomaly ? 1 : 0,
+        alertsGrouped: 0,
+        detectionsCreated: 1,
+        alertsCreated: isAnomaly ? 1 : 0,
       });
 
       await anomalyDetectionService.runAutomated({ maxEvents: 1 });
@@ -412,6 +435,57 @@ describe('run anomaly detection service', () => {
           detections: [expect.objectContaining({ isAnomaly, thresholdSource, threshold })],
         }),
       );
+      expect(anomalyDetectionRepository.findEventContext).not.toHaveBeenCalled();
     },
   );
+
+  it('does not run or fall back to legacy seven-day rules when AI is unavailable', async () => {
+    env.AI_FUSION_ENABLED = true;
+    env.AI_FUSION_CAN_CREATE_ALERTS = true;
+    const event = {
+      id: 'event-ai-unavailable',
+      event_source_id: 'source',
+      event_family: 'AUTHENTICATION' as const,
+      account_identifier: 'user',
+      source_ip: '10.0.0.10',
+      device_identifier: 'host-1',
+      normalized_payload: {},
+      event_type: 'LOGIN_FAILURE',
+      severity: '8',
+      occurred_at: new Date('2026-11-07T01:00:00Z'),
+      event_entity_mappings: [],
+    };
+    vi.mocked(anomalyDetectionRepository.findDeployedModel).mockResolvedValue({
+      id: 'model',
+      model_name: 'detector',
+      version: '8',
+      parameters: { threshold: 0.67 },
+    });
+    vi.mocked(anomalyDetectionRepository.findPendingEvents).mockResolvedValue({ events: [event] });
+    vi.mocked(requestMlShadowPrediction).mockResolvedValue({
+      status: 'UNAVAILABLE',
+      reason: 'NETWORK',
+    });
+    vi.mocked(anomalyDetectionRepository.persistRun).mockResolvedValue({
+      alertsGrouped: 0,
+      detectionsCreated: 1,
+      alertsCreated: 0,
+    });
+
+    await anomalyDetectionService.runAutomated({ maxEvents: 1 });
+
+    expect(anomalyDetectionRepository.findEventContext).not.toHaveBeenCalled();
+    expect(anomalyDetectionRepository.persistRun).toHaveBeenCalledWith(
+      expect.objectContaining({
+        detections: [],
+        failures: [
+          expect.objectContaining({
+            eventId: event.id,
+            code: 'ML_MODEL_UNAVAILABLE',
+            stage: 'ML_MODEL',
+          }),
+        ],
+      }),
+    );
+  });
 });

@@ -1,5 +1,6 @@
 import { AppError } from '../../common/errors/app-error.js';
 import { eventPipelineStatuses } from '../ai-anomaly-detection-alerts/pipeline-status.service.js';
+import { detectionJobsRepository } from '../ai-anomaly-detection-alerts/detection-jobs.repository.js';
 import { env } from '../../config/env.js';
 import { normalizedEventsRepository } from './normalized-events.repository.js';
 import type {
@@ -175,6 +176,9 @@ export const normalizedEventsService = {
                 status: event._count.anomaly_detections > 0 ? 'PREVIOUSLY_EVALUATED' : 'PENDING',
                 score: null,
                 alertId: null,
+                errorCode: null,
+                errorMessage: null,
+                retryable: false,
               },
             }
           : {}),
@@ -210,6 +214,19 @@ export const normalizedEventsService = {
         totalPages: Math.ceil(total / query.limit) || 1,
       },
     };
+  },
+
+  async retryDetection(_userId: string, id: string): Promise<{ eventId: string; status: 'PENDING' }> {
+    if (!(await normalizedEventsRepository.exists(id)))
+      throw new AppError(404, 'NOT_FOUND', 'Normalized security event not found');
+    const retried = await detectionJobsRepository.retryFailedEvent(id);
+    if (!retried)
+      throw new AppError(
+        409,
+        'DETECTION_NOT_RETRYABLE',
+        'Only failed AI analyses can be retried',
+      );
+    return { eventId: id, status: 'PENDING' };
   },
 
   async getEventDetail(_userId: string, id: string): Promise<NormalizedEventDetailDto> {

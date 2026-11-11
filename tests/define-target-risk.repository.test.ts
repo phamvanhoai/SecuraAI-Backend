@@ -4,7 +4,7 @@ const db = vi.hoisted(() => ({
   risks: { findUnique: vi.fn() },
   risk_assessments: { create: vi.fn() },
   risk_treatment_plans: { update: vi.fn() },
-  audit_logs: { create: vi.fn() },
+  audit_logs: { findFirst: vi.fn(), create: vi.fn() },
 }));
 vi.mock('../src/database/prisma.js', () => ({
   prisma: { $transaction: (operation: (database: typeof db) => Promise<unknown>) => operation(db) },
@@ -76,7 +76,7 @@ describe('define target risk workflow', () => {
   it('blocks pending acceptance', async () => {
     db.risks.findUnique.mockResolvedValue({ ...risk, risk_acceptances: [{ id: 'pending' }] });
     await expect(riskRegisterRepository.defineTargetRisk('risk', 'owner', input)).resolves.toEqual({
-      kind: 'context_locked',
+      kind: 'pending_acceptance',
     });
   });
   it('detects edited threats', async () => {

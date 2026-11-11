@@ -32,7 +32,7 @@ describe('Accept treatment costs', () => {
     const input = { title: base.title, strategy: base.strategy, ownerUserId: id, targetDate: base.targetDate, status: 'active', controlIds: [], actions: [], expectedUpdatedAt: '2026-10-19T00:00:00Z' };
     expect(update.safeParse(input).success).toBe(false);
     expect(update.safeParse({ ...input, acceptanceCost: cost }).success).toBe(true);
-    expect(update.safeParse({ ...input, status: 'cancelled' }).success).toBe(true);
+    expect(update.safeParse({ ...input, status: 'cancelled', changeReason: 'Cancel this legacy plan with its history preserved.' }).success).toBe(true);
     const action = { id, title: 'Old work', assignedToUserId: id, dueDate: '2027-10-01', status: 'cancelled' };
     expect(update.safeParse({ ...input, acceptanceCost: cost, actions: [action] }).success).toBe(true);
     expect(update.safeParse({ ...input, acceptanceCost: cost, actions: [{ ...action, status: 'pending' }] }).success).toBe(false);

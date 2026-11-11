@@ -1,8 +1,8 @@
+import { auditWriter } from '../audit-security-reporting/audit-writer.js';
 import type { Prisma } from '@prisma/client';
 import { prisma } from '../../database/prisma.js';
 import type { SearchSystemLogsQuery } from './dto/search-system-logs.dto.js';
 import type { ExportInvestigationLogsInput } from './dto/export-investigation-logs.dto.js';
-import { createHash, randomUUID } from 'node:crypto';
 import type { ConfigurationHistoryQuery } from './dto/configuration-history.dto.js';
 
 const textSearch = (term: string): Prisma.audit_logsWhereInput => ({
@@ -238,7 +238,7 @@ export const systemLogsRepository = {
           completed_at: generatedAt,
         },
       });
-      const auditId = randomUUID();
+
       const after = {
         exportId,
         format: input.format,
@@ -247,34 +247,19 @@ export const systemLogsRepository = {
         reason: input.reason,
         contentSha256,
       };
-      const previous = await tx.audit_logs.findFirst({
-        orderBy: [{ occurred_at: 'desc' }, { id: 'desc' }],
-        select: { record_hash: true },
-      });
-      await tx.audit_logs.create({
-        data: {
-          id: auditId,
-          actor_type: 'USER',
-          actor_user_id: actorUserId,
+
+      await auditWriter.record(
+        {
+          actorType: 'USER',
+          actorUserId: actorUserId,
           action: 'INVESTIGATION_LOGS_EXPORTED',
-          resource_type: 'REPORT_EXPORT',
-          resource_id: exportId,
+          resourceType: 'REPORT_EXPORT',
+          resourceId: exportId,
           source: 'API',
-          after_data: after,
-          previous_hash: previous?.record_hash ?? null,
-          record_hash: createHash('sha256')
-            .update(
-              JSON.stringify({
-                previousHash: previous?.record_hash ?? null,
-                id: auditId,
-                actorUserId,
-                after,
-                at: generatedAt.toISOString(),
-              }),
-            )
-            .digest('hex'),
+          afterData: after,
         },
-      });
+        tx,
+      );
     });
   },
 };

@@ -1,5 +1,5 @@
+import { auditWriter } from '../audit-security-reporting/audit-writer.js';
 import { Prisma } from '@prisma/client';
-import { createHash, randomUUID } from 'node:crypto';
 import { AppError } from '../../common/errors/app-error.js';
 import type { CreateBusinessServiceInput } from './dto/create-business-service.dto.js';
 import type { UpdateBusinessServiceInput } from './dto/update-business-service.dto.js';
@@ -101,26 +101,21 @@ export const businessServicesRepository = {
             data: { status: 'INACTIVE' },
             select: serviceSelect,
           });
-          const id = randomUUID();
           const before = { status: current.status };
           const after = { status: service.status, reason: input.reason };
-          await tx.audit_logs.create({
-            data: {
-              id,
-              actor_type: 'USER',
-              actor_user_id: userId,
+          await auditWriter.record(
+            {
+              actorType: 'USER',
+              actorUserId: userId,
               action: 'BUSINESS_SERVICE_DEACTIVATED',
-              resource_type: 'BUSINESS_SERVICE',
-              resource_id: serviceId,
+              resourceType: 'BUSINESS_SERVICE',
+              resourceId: serviceId,
               source: 'API',
-              before_data: before,
-              after_data: after,
-              record_hash: createHash('sha256')
-                .update(JSON.stringify({ id, actor: userId, serviceId, before, after }))
-                .digest('hex'),
+              beforeData: before,
+              afterData: after,
             },
-            select: { id: true },
-          });
+            tx,
+          );
           return service;
         },
         { isolationLevel: 'Serializable', maxWait: 5000, timeout: 15000 },
@@ -204,30 +199,25 @@ export const businessServicesRepository = {
           data: { name, description, owner_user_id: ownerId },
           select: serviceSelect,
         });
-        const id = randomUUID();
         const before = {
           name: current.name,
           description: current.description,
           ownerUserId: current.owner_user_id,
         };
         const after = { name, description, ownerUserId: ownerId };
-        await tx.audit_logs.create({
-          data: {
-            id,
-            actor_type: 'USER',
-            actor_user_id: userId,
+        await auditWriter.record(
+          {
+            actorType: 'USER',
+            actorUserId: userId,
             action: 'BUSINESS_SERVICE_UPDATED',
-            resource_type: 'BUSINESS_SERVICE',
-            resource_id: serviceId,
+            resourceType: 'BUSINESS_SERVICE',
+            resourceId: serviceId,
             source: 'API',
-            before_data: before,
-            after_data: after,
-            record_hash: createHash('sha256')
-              .update(JSON.stringify({ id, actor: userId, serviceId, before, after }))
-              .digest('hex'),
+            beforeData: before,
+            afterData: after,
           },
-          select: { id: true },
-        });
+          tx,
+        );
         return item;
       },
       { isolationLevel: 'ReadCommitted', maxWait: 5000, timeout: 15000 },
@@ -298,24 +288,19 @@ export const businessServicesRepository = {
           },
           select: serviceSelect,
         });
-        const id = randomUUID();
         const after = { name: item.name, status: item.status, ownerUserId: ownerId };
-        await tx.audit_logs.create({
-          data: {
-            id,
-            actor_type: 'USER',
-            actor_user_id: userId,
+        await auditWriter.record(
+          {
+            actorType: 'USER',
+            actorUserId: userId,
             action: 'BUSINESS_SERVICE_CREATED',
-            resource_type: 'BUSINESS_SERVICE',
-            resource_id: item.id,
+            resourceType: 'BUSINESS_SERVICE',
+            resourceId: item.id,
             source: 'API',
-            after_data: after,
-            record_hash: createHash('sha256')
-              .update(JSON.stringify({ id, actor: userId, serviceId: item.id, after }))
-              .digest('hex'),
+            afterData: after,
           },
-          select: { id: true },
-        });
+          tx,
+        );
         return item;
       },
       { isolationLevel: 'ReadCommitted', maxWait: 5000, timeout: 15000 },

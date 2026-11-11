@@ -1,7 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { Prisma } from '@prisma/client';
 const mocks = vi.hoisted(() => ({
-  tx: { users: { findUnique: vi.fn() }, assets: { findUnique: vi.fn(), update: vi.fn() }, audit_logs: { create: vi.fn(), count: vi.fn(), findMany: vi.fn() } },
+  tx: { users: { findUnique: vi.fn() }, assets: { findUnique: vi.fn(), update: vi.fn() }, audit_logs: { findFirst: vi.fn(), create: vi.fn(), count: vi.fn(), findMany: vi.fn() } },
   transaction: vi.fn(),
 }));
 vi.mock('../src/database/prisma.js', () => ({ prisma: { $transaction: mocks.transaction } }));
@@ -98,8 +97,9 @@ describe('atomic asset classification', () => {
     mocks.tx.assets.findUnique.mockResolvedValue({ ...current, criticality: null, data_classification: null, classified_at: null });
     await assetsRepository.classify('asset', 'critical', input, 'officer', 'SECURAAI-ASSET-IMPACT-v1');
     expect(mocks.tx.audit_logs.create).toHaveBeenCalledWith({ data: expect.objectContaining({
-      before_data: Prisma.JsonNull, after_data: expect.objectContaining({ confidentialityImpact: 1, dataClassification: 'public' }),
+      after_data: expect.objectContaining({ confidentialityImpact: 1, dataClassification: 'public' }),
     }) });
+    expect(mocks.tx.audit_logs.create.mock.calls[0]?.[0].data.before_data).toBeUndefined();
   });
   it('does not report success if audit fails within the transaction', async () => {
     mocks.tx.audit_logs.create.mockRejectedValue(new Error('audit failure'));

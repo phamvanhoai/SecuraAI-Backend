@@ -47,12 +47,30 @@ export const detectionJobsRepository = {
       available_at=now()+interval '30 seconds'*attempts,lease_token=NULL,lease_until=NULL,error_code='PROCESSING_FAILED',updated_at=now()
       WHERE lease_token=${token}::uuid AND status='PROCESSING'`;
   },
+  async retryFailedEvent(eventId: string) {
+    const rows = await prisma.$queryRaw<Array<{ id: string }>>`
+      UPDATE detection_jobs SET status='PENDING',attempts=0,available_at=now(),
+        lease_token=NULL,lease_until=NULL,error_code=NULL,result=NULL,updated_at=now()
+      WHERE id=(SELECT id FROM detection_jobs
+        WHERE kind='DETECTION' AND event_id=${eventId}::uuid
+          AND engine_version=${pipelineEngine} AND status='FAILED'
+        ORDER BY created_at DESC,id DESC LIMIT 1)
+      RETURNING id`;
+    return rows.length > 0;
+  },
   async statuses(ids: string[]) {
     if (!ids.length) return [];
     return prisma.$queryRaw<
-      Array<{ event_id: string; status: string; result: unknown; alert_id: string | null }>
+      Array<{
+        event_id: string;
+        status: string;
+        result: unknown;
+        error_code: string | null;
+        attempts: number;
+        alert_id: string | null;
+      }>
     >`
-      SELECT DISTINCT ON(j.event_id) j.event_id,j.status,j.result,linked.id AS alert_id FROM detection_jobs j
+      SELECT DISTINCT ON(j.event_id) j.event_id,j.status,j.result,j.error_code,j.attempts,linked.id AS alert_id FROM detection_jobs j
       LEFT JOIN anomaly_detections d ON d.event_id=j.event_id AND d.model_version_id=j.model_version_id AND d.engine_version=j.engine_version
       LEFT JOIN LATERAL (SELECT a.id FROM anomaly_alerts a WHERE a.detection_id=d.id OR EXISTS (
         SELECT 1 FROM anomaly_feature_contributions f WHERE f.detection_id=a.detection_id AND f.feature_name='correlated_detection' AND f.feature_value::jsonb->>'detectionId'=d.id::text)

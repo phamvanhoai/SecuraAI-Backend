@@ -110,7 +110,14 @@ export type MappingOptionsDto = {
 };
 
 export type NormalizedEventItemDto = {
-  detection?: { status: string; score: number | null; alertId: string | null };
+  detection?: {
+    status: string;
+    score: number | null;
+    alertId: string | null;
+    errorCode: string | null;
+    errorMessage: string | null;
+    retryable: boolean;
+  };
   id: string;
   eventSourceId: string;
   eventSourceName: string;

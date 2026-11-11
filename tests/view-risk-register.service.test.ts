@@ -11,6 +11,7 @@ vi.mock('../src/modules/risk-assessment/risk-register.repository.js', () => ({
     findContextHistory: vi.fn().mockResolvedValue([]),
     findTargetHistory: vi.fn().mockResolvedValue([]),
     findAcceptanceAudits: vi.fn().mockResolvedValue([]),
+    getAcceptanceContextBasis: vi.fn().mockResolvedValue({ version: 1, assetHash: 'a'.repeat(64), evidenceHash: 'b'.repeat(64) }),
     getAcceptanceControlLinks: vi.fn().mockResolvedValue([]),
   },
 }));
@@ -77,6 +78,30 @@ const record = {
 };
 
 describe('view risk register service', () => {
+  it('exposes the overdue review instruction to the owner without disabling ongoing Risk work', async () => {
+    const owner = record.users_risks_owner_user_idTousers;
+    vi.mocked(riskRegisterRepository.findActor).mockResolvedValue({ id: owner.id, role: user_role.EMPLOYEE, status: user_status.ACTIVE, user_access_scopes_user_access_scopes_user_idTousers: [] });
+    vi.mocked(riskRegisterRepository.findById).mockResolvedValue({ ...record, review_date: new Date('2020-01-01'), users_risks_created_byTousers: owner,
+      risk_threats: [], risk_vulnerabilities: [], control_risk_links: [], risk_treatment_plans: [], incident_risks: [], risk_acceptances: [],
+    });
+    vi.mocked(riskRegisterRepository.findAcceptanceAudits).mockResolvedValueOnce([]);
+    const result = await riskRegisterService.get(owner.id, record.id);
+    expect(result.acceptanceWorkflow).toMatchObject({ canSubmit: false, canOpenReview: true, blockedReason: 'This Risk is overdue for review. Open and complete Risk Review before submitting an acceptance request.' });
+    vi.mocked(riskRegisterRepository.list).mockResolvedValue([1, [{ ...record, review_date: new Date('2020-01-01') }]]);
+    const register = await riskRegisterService.list(owner.id, query);
+    expect(register.items[0]).toMatchObject({ canAssessResidual: true, canManageTreatmentPlan: true });
+  });
+  it('exposes overdue approval blocking but retains the eligible approver decision action for rejection', async () => {
+    const acceptanceId = '00000000-0000-4000-8000-000000000099';
+    vi.mocked(riskRegisterRepository.findActor).mockResolvedValue({ id: 'approver', role: user_role.SECURITY_OFFICER, status: user_status.ACTIVE, user_access_scopes_user_access_scopes_user_idTousers: [] });
+    vi.mocked(riskRegisterRepository.findById).mockResolvedValue({ ...record, review_date: new Date('2020-01-01'), users_risks_created_byTousers: record.users_risks_owner_user_idTousers,
+      risk_threats: [], risk_vulnerabilities: [], control_risk_links: [], risk_treatment_plans: [], incident_risks: [],
+      risk_acceptances: [{ id: acceptanceId, decision: 'PENDING', reason: 'Demo request', requested_at: now, valid_until: new Date('2099-01-01'), requested_by: record.users_risks_owner_user_idTousers.id, decided_by: null, decided_at: null }],
+    });
+    vi.mocked(riskRegisterRepository.findAcceptanceAudits).mockResolvedValueOnce([]);
+    const result = await riskRegisterService.get('approver', record.id);
+    expect(result.acceptances[0]).toMatchObject({ canDecide: true, approvalBlockedReason: 'This Risk is overdue for review. Reject this request so the Risk Owner can open and complete Risk Review, then submit a new acceptance request.' });
+  });
   beforeEach(() => vi.clearAllMocks());
   it('uses the pending-acceptance scope for an explicitly granted Employee approver', async () => {
     vi.mocked(riskRegisterRepository.findActor).mockResolvedValue({ id: 'approver', role: user_role.EMPLOYEE, status: user_status.ACTIVE, user_access_scopes_user_access_scopes_user_idTousers: [{ id: 'grant' }] });

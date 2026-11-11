@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => ({
     business_services: { findUnique: vi.fn(), update: vi.fn() },
     assets: { count: vi.fn() },
     risks: { count: vi.fn() },
-    audit_logs: { create: vi.fn() },
+    audit_logs: { findFirst: vi.fn(), create: vi.fn() },
   },
   transaction: vi.fn(),
 }));
@@ -46,8 +46,8 @@ beforeEach(() => {
 describe('Deactivate input', () => {
   it('normalizes name whitespace and trims reason', () =>
     expect(
-      schema.parse({ ...input, confirmationName: ' Support  Service ', reason: ' Reason ' }),
-    ).toMatchObject({ confirmationName: 'Support Service', reason: 'Reason' }));
+      schema.parse({ ...input, confirmationName: ' Support  Service ', reason: ' Service retired after migration. ' }),
+    ).toMatchObject({ confirmationName: 'Support Service', reason: 'Service retired after migration.' }));
   it.each([
     { ...input, reason: '' },
     { ...input, reason: '  ' },
@@ -55,7 +55,7 @@ describe('Deactivate input', () => {
     { ...input, confirmationName: '' },
     { ...input, confirmationName: 'a'.repeat(256) },
     { ...input, expectedUpdatedAt: 'yesterday' },
-    { confirmationName: 'Support', reason: 'Reason' },
+    { confirmationName: 'Support', reason: 'Service retired after migration.' },
     { ...input, status: 'INACTIVE' },
     { ...input, ownerUserId: id },
     { ...input, assetIds: [] },

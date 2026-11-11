@@ -1,6 +1,6 @@
+import { auditWriter } from '../audit-security-reporting/audit-writer.js';
 import { Prisma } from '@prisma/client';
 import { responsibilityWhere } from '../user-management-authorization/index.js';
-import { createHash, randomUUID } from 'node:crypto';
 import { prisma } from '../../database/prisma.js';
 import { AppError } from '../../common/errors/app-error.js';
 import type { ListAssetsQuery } from './dto/list-assets.dto.js';
@@ -306,15 +306,23 @@ export const assetsRepository = {
       if (!clock) throw new Error('Database archive timestamp unavailable');
       const at = clock.at;
       await tx.assets.update({ where: { id: assetId }, data: { status: 'ARCHIVED', archived_at: at, archived_by: userId, archive_reason: reason, updated_at: at }, select: { id: true } });
-      const id = randomUUID();
       const before = { status: asset.status, archivedAt: asset.archived_at?.toISOString() ?? null };
       const after = { status: 'ARCHIVED', archivedAt: at.toISOString(), archivedBy: userId, archiveReason: reason };
-      await tx.audit_logs.create({ data: {
-        id, actor_type: 'USER', actor_user_id: userId, action: 'ASSET_ARCHIVED',
-        resource_type: 'ASSET', resource_id: assetId, occurred_at: at, source: 'API',
-        correlation_id: correlationId, before_data: before, after_data: after,
-        record_hash: createHash('sha256').update(JSON.stringify({ id, actor: userId, assetId, at: at.toISOString(), before, after, correlationId })).digest('hex'),
-      } });
+      await auditWriter.record(
+        {
+          actorType: 'USER',
+          actorUserId: userId,
+          action: 'ASSET_ARCHIVED',
+          resourceType: 'ASSET',
+          resourceId: assetId,
+          occurredAt: at,
+          source: 'API',
+          correlationId: correlationId,
+          beforeData: before,
+          afterData: after,
+        },
+        tx,
+      );
       return { kind: 'updated' } as const;
     }, { isolationLevel: 'Serializable', maxWait: 5000, timeout: 15000 });
   },
@@ -366,13 +374,20 @@ export const assetsRepository = {
       const before = current.classified_at === null && current.criticality === null && current.data_classification === null
         ? null : { ...classificationValues(current), assessedBy: current.classified_by, assessedAt: current.classified_at?.toISOString() ?? null };
       const after = { ...next, assessedBy: userId, assessedAt: at.toISOString() };
-      const id = randomUUID();
-      await tx.audit_logs.create({ data: {
-        id, actor_type: 'USER', actor_user_id: userId, action: 'ASSET_CLASSIFICATION_UPDATED',
-        resource_type: 'ASSET', resource_id: assetId, source: 'API', occurred_at: at,
-        before_data: before ?? Prisma.JsonNull, after_data: after,
-        record_hash: createHash('sha256').update(JSON.stringify({ id, userId, assetId, at: at.toISOString(), before, after })).digest('hex'),
-      } });
+      await auditWriter.record(
+        {
+          actorType: 'USER',
+          actorUserId: userId,
+          action: 'ASSET_CLASSIFICATION_UPDATED',
+          resourceType: 'ASSET',
+          resourceId: assetId,
+          source: 'API',
+          occurredAt: at,
+          beforeData: before,
+          afterData: after,
+        },
+        tx,
+      );
       return { kind: 'updated', asset, previous } as const;
     }, { isolationLevel: 'Serializable', maxWait: 5000, timeout: 15000 });
   },
@@ -437,14 +452,21 @@ export const assetsRepository = {
       select: contextSelect,
       });
       const after = contextSnapshot(asset);
-      const id = randomUUID();
       const at = new Date();
-      await tx.audit_logs.create({ data: {
-        id, actor_type: 'USER', actor_user_id: userId, action: 'ASSET_CONTEXT_UPDATED',
-        resource_type: 'ASSET', resource_id: assetId, source: 'API', occurred_at: at,
-        before_data: before, after_data: after,
-        record_hash: createHash('sha256').update(JSON.stringify({ id, userId, assetId, at: at.toISOString(), before, after })).digest('hex'),
-      } });
+      await auditWriter.record(
+        {
+          actorType: 'USER',
+          actorUserId: userId,
+          action: 'ASSET_CONTEXT_UPDATED',
+          resourceType: 'ASSET',
+          resourceId: assetId,
+          source: 'API',
+          occurredAt: at,
+          beforeData: before,
+          afterData: after,
+        },
+        tx,
+      );
       return { kind: 'updated', asset: { id: asset.id, updated_at: asset.updated_at } } as const;
     }, { isolationLevel: 'Serializable', maxWait: 5000, timeout: 15000 });
   },

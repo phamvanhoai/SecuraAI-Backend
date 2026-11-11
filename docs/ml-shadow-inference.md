@@ -1,10 +1,12 @@
 # Experimental ML shadow inference
 
-SecuraAI calls the separately deployed classifier for every evaluated event. With AI decisions disabled, the result remains shadow evidence. With AI decisions enabled, the model performs first-stage triage and only scores reaching the artifact's Validation-selected `escalationThreshold` are sent to the LLM for final review.
+SecuraAI calls the separately deployed classifier for every evaluated event. With AI decisions disabled, the result remains shadow evidence alongside the legacy contextual detector. With both `AI_FUSION_ENABLED` and `AI_FUSION_CAN_CREATE_ALERTS` enabled, the system runs in AI-only decision mode: the model performs first-stage triage and only scores reaching the artifact's Validation-selected `escalationThreshold` are sent to the LLM for final review.
 
-- `empirical-history-v1` remains the only source of the stored detection score, threshold decision, alert and incident behavior.
+- AI-only mode does not query or evaluate the legacy seven-day empirical baseline and cannot fall back to legacy rules for alert creation.
+- Only the past-only 1m/5m/15m/60m context required by ML and LLM is queried, bounded to the preceding 60 minutes.
 - The ML response is stored as an `ml_shadow_prediction` feature contribution with contribution score `0`.
-- Timeout, network, HTTP and response-validation failures are recorded as unavailable and never fail the primary detection run.
+- ML or LLM timeout, network, HTTP and response-validation failures produce a durable `FAILED` job with a stage-specific error code. They never create an alert, fall back to legacy rules, or masquerade as a review-pending security decision. Security Officers may explicitly retry the event.
+- Only an LLM `MALICIOUS` verdict creates or groups an alert. `BENIGN` and `SUSPICIOUS` do not.
 - The classifier score is experimental and is not a calibrated probability.
 
 Enable locally only after starting the FastAPI model service:

@@ -113,7 +113,7 @@ export const businessServicesPaths = {
       security: [{ bearerAuth: [] }],
       summary: 'Deactivate an unused business service',
       description:
-        'Active Security Officer only (business-services.deactivate discovery capability). Requires loaded expectedUpdatedAt, current case-sensitive name (whitespace normalized), and nonblank reason. Blocks Active assets and directly scoped Risks unless Closed/Archived; Accepted is not terminal. Serializable transaction rechecks actor, version, status and usage, sets only status INACTIVE, and writes BUSINESS_SERVICE_DEACTIVATED audit with actor/time/reason atomically. Concurrent link/create/version changes return 409 without automatic retry. Already inactive returns 409; no repeated audit. Retains Archived Asset/terminal Risk links, ownership, metadata, service identity, Risk scopes and snapshots. No deletion, cascading changes, reactivation or new schema. Existing option APIs already disallow new inactive service selection.',
+        'Active Security Officer only (business-services.deactivate discovery capability). Requires loaded expectedUpdatedAt, current case-sensitive name (whitespace normalized), and reason (20-2000 trimmed characters). Blocks Active assets and directly scoped Risks unless Closed/Archived; Accepted is not terminal. Serializable transaction rechecks actor, version, status and usage, sets only status INACTIVE, and writes BUSINESS_SERVICE_DEACTIVATED audit with actor/time/reason atomically. Concurrent link/create/version changes return 409 without automatic retry. Already inactive returns 409; no repeated audit. Retains Archived Asset/terminal Risk links, ownership, metadata, service identity, Risk scopes and snapshots. No deletion, cascading changes, reactivation or new schema. Existing option APIs already disallow new inactive service selection.',
       parameters: [idParameter],
       requestBody: {
         required: true,
@@ -126,7 +126,7 @@ export const businessServicesPaths = {
               properties: {
                 expectedUpdatedAt: { type: 'string', format: 'date-time' },
                 confirmationName: { type: 'string', minLength: 1, maxLength: 255 },
-                reason: { type: 'string', minLength: 1, maxLength: 2000 },
+                reason: { type: 'string', minLength: 20, maxLength: 2000 },
               },
             },
           },
@@ -198,8 +198,8 @@ export const businessServicesPaths = {
               additionalProperties: false,
               required: ['name'],
               properties: {
-                name: { type: 'string', minLength: 1, maxLength: 255 },
-                description: { type: 'string', nullable: true, maxLength: 5000 },
+                name: { type: 'string', minLength: 3, maxLength: 100 },
+                description: { type: 'string', nullable: true, maxLength: 2000, description: 'Optional/null/empty; if entered, 20-2000 characters after trimming.' },
                 ownerUserId: { type: 'string', format: 'uuid', nullable: true },
               },
             },
@@ -251,8 +251,8 @@ export const businessServicesPaths = {
               required: ['expectedUpdatedAt'],
               properties: {
                 expectedUpdatedAt: { type: 'string', format: 'date-time' },
-                name: { type: 'string', minLength: 1, maxLength: 255 },
-                description: { type: 'string', nullable: true, maxLength: 5000 },
+                name: { type: 'string', minLength: 3, maxLength: 100 },
+                description: { type: 'string', nullable: true, maxLength: 2000, description: 'Optional/null/empty; if entered, 20-2000 characters after trimming.' },
                 ownerUserId: { type: 'string', format: 'uuid', nullable: true },
               },
               description: 'At least one editable field is required.',
