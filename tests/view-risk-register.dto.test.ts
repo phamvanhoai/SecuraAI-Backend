@@ -10,7 +10,7 @@ describe('risk register DTOs', () => {
       page: 1,
       limit: 10,
       q: 'access',
-      sortBy: 'updatedAt',
+      sortBy: 'createdAt',
       sortOrder: 'desc',
     });
   });

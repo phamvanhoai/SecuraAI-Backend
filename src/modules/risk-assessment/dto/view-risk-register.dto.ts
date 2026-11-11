@@ -20,7 +20,7 @@ export const listRiskRegisterQuerySchema = z
     assetId: z.uuid().optional(),
     reviewFrom: z.iso.date().optional(),
     reviewTo: z.iso.date().optional(),
-    sortBy: z.enum(['riskCode', 'title', 'reviewDate', 'updatedAt']).default('updatedAt'),
+    sortBy: z.enum(['riskCode', 'title', 'reviewDate', 'updatedAt', 'createdAt']).default('createdAt'),
     sortOrder: z.enum(['asc', 'desc']).default('desc'),
   })
   .refine(({ reviewFrom, reviewTo }) => !reviewFrom || !reviewTo || reviewFrom <= reviewTo, {
