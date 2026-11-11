@@ -308,3 +308,17 @@ describe('Control catalog HTTP', () => {
     ).toBe(422);
   });
 });
+
+ describe("Control name length", () => {
+  const fields = { name: "Demo", description: "Reusable security control description", ownerUserId: null, applicability: "applicable", implementationStatus: "not_implemented" };
+  it.each([3, 100])("accepts %i characters for Create and Edit", (length) => {
+    const input = { ...fields, name: "A".repeat(length) };
+    expect(createControlSchema.safeParse(input).success).toBe(true);
+    expect(editControlSchema.safeParse({ ...input, reason: "Correct control details", expectedUpdatedAt: "2026-10-07T00:00:00Z", expectedRevision: "a".repeat(64) }).success).toBe(true);
+  });
+  it.each([2, 101, 255])("rejects %i characters for Create and Edit", (length) => {
+    const input = { ...fields, name: "A".repeat(length) };
+    expect(createControlSchema.safeParse(input).success).toBe(false);
+    expect(editControlSchema.safeParse({ ...input, reason: "Correct control details", expectedUpdatedAt: "2026-10-07T00:00:00Z", expectedRevision: "a".repeat(64) }).success).toBe(false);
+  });
+});
