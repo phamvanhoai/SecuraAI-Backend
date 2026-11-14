@@ -1,3 +1,4 @@
+import { AppError } from '../src/common/errors/app-error.js';
 import jwt from 'jsonwebtoken';
 import request from 'supertest';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -64,4 +65,20 @@ describe('POST /api/v1/users', () => {
   });
 });
 
-
+it.each(['EMAIL_DELIVERY_FAILED', 'USER_ACTIVATION_FAILED', 'USER_PROVISIONING_CLEANUP_FAILED'])(
+  'returns 503 rather than success for %s',
+  async (code) => {
+    vi.mocked(usersService.createUser).mockRejectedValueOnce(
+      new AppError(503, code, 'Account setup failed'),
+    );
+    const response = await request(app)
+      .post('/api/v1/users')
+      .set('Authorization', 'Bearer ' + token)
+      .send({ email: 'new@example.com', fullName: 'New User', role: 'EXECUTIVE' });
+    expect(response.status).toBe(503);
+    expect(response.body).toMatchObject({
+      success: false,
+      error: { code, message: 'Account setup failed' },
+    });
+  },
+);

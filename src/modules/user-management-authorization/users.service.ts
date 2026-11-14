@@ -179,22 +179,39 @@ export const usersService = {
       role: result.user.role,
       scopes: [
         ...result.scopes.map((scope) => ({
-        id: scope.id,
-        scopeCode: scope.scope_code,
-        targetType: scope.business_service_id
-          ? ('BUSINESS_SERVICE' as const)
-          : scope.asset_id
-            ? ('ASSET' as const)
-            : ('GLOBAL' as const),
-        targetId: scope.business_service_id ?? scope.asset_id,
-        assignedAt: scope.assigned_at,
-        expiresAt: scope.expires_at,
+          id: scope.id,
+          scopeCode: scope.scope_code,
+          targetType: scope.business_service_id
+            ? ('BUSINESS_SERVICE' as const)
+            : scope.asset_id
+              ? ('ASSET' as const)
+              : ('GLOBAL' as const),
+          targetId: scope.business_service_id ?? scope.asset_id,
+          assignedAt: scope.assigned_at,
+          expiresAt: scope.expires_at,
         })),
-        ...(result.user.role === 'EMPLOYEE' ? userAccessScopeCatalog.filter(({ code }) => {
-          const count = code === 'RISK_OWNER' ? result.ownershipSummary.risks : code === 'CONTROL_OWNER' ? result.ownershipSummary.securityControls : code === 'ASSET_OWNER' ? result.ownershipSummary.assets : 0;
-          return count > 0 && !result.scopes.some((scope) => scope.scope_code === code);
-        }).map(({ code }) => ({ id: result.user.id, scopeCode: code, targetType: 'GLOBAL' as const, targetId: null,
-          assignedAt: null, expiresAt: null })) : []),
+        ...(result.user.role === 'EMPLOYEE'
+          ? userAccessScopeCatalog
+              .filter(({ code }) => {
+                const count =
+                  code === 'RISK_OWNER'
+                    ? result.ownershipSummary.risks
+                    : code === 'CONTROL_OWNER'
+                      ? result.ownershipSummary.securityControls
+                      : code === 'ASSET_OWNER'
+                        ? result.ownershipSummary.assets
+                        : 0;
+                return count > 0 && !result.scopes.some((scope) => scope.scope_code === code);
+              })
+              .map(({ code }) => ({
+                id: result.user.id,
+                scopeCode: code,
+                targetType: 'GLOBAL' as const,
+                targetId: null,
+                assignedAt: null,
+                expiresAt: null,
+              }))
+          : []),
       ],
       ownershipSummary: result.ownershipSummary,
     };
@@ -203,7 +220,11 @@ export const usersService = {
     const result = await usersRepository.assignUserAccess(actorUserId, userId, input);
     if (result.kind !== 'updated') {
       if (result.kind === 'ownership_transfer_required') {
-        throw new AppError(409, 'OWNERSHIP_TRANSFER_REQUIRED', 'Transfer owned Risk, Control or Asset records before removing their business responsibility or changing the Employee role');
+        throw new AppError(
+          409,
+          'OWNERSHIP_TRANSFER_REQUIRED',
+          'Transfer owned Risk, Control or Asset records before removing their business responsibility or changing the Employee role',
+        );
       }
       if (result.kind === 'invalid_scope_target') {
         throw new AppError(422, 'INVALID_SCOPE_TARGET', 'One or more scope targets are invalid');
@@ -319,24 +340,57 @@ export const usersService = {
       if (result.kind === 'invalid_department') {
         throw new AppError(422, 'INVALID_DEPARTMENT', 'The selected department is not active');
       }
+      let activeUser;
+      let emailAccepted = false;
       try {
         await usersEmailService.sendAccountCreated({
           email: result.user.email,
           fullName: result.user.full_name,
           temporaryPassword,
         });
+        emailAccepted = true;
+        activeUser = await usersRepository.activateProvisionedUser(
+          result.user.id,
+          passwordHash,
+          actorUserId,
+        );
+        if (!activeUser)
+          throw new AppError(503, 'USER_ACTIVATION_FAILED', 'Could not complete account setup');
       } catch (error: unknown) {
-        await usersRepository.deleteProvisionedUser(result.user.id);
-        if (error instanceof AppError) throw error;
-        throw new AppError(503, 'EMAIL_DELIVERY_FAILED', 'Could not send the account email');
+        const failure =
+          error instanceof AppError
+            ? error
+            : new AppError(
+                503,
+                emailAccepted ? 'USER_ACTIVATION_FAILED' : 'EMAIL_DELIVERY_FAILED',
+                emailAccepted
+                  ? 'The account email was accepted, but account setup could not be completed.'
+                  : 'Could not send the account email. No active account was created.',
+              );
+        try {
+          const removed = await usersRepository.deleteProvisionedUser(
+            result.user.id,
+            passwordHash,
+            actorUserId,
+            failure.code,
+          );
+          if (!removed) throw new Error('Provisioning state changed');
+        } catch {
+          throw new AppError(
+            503,
+            'USER_PROVISIONING_CLEANUP_FAILED',
+            'Account setup failed. An administrator must review the account before retrying.',
+          );
+        }
+        throw failure;
       }
       return {
-        id: result.user.id,
-        email: result.user.email,
-        username: result.user.username,
-        fullName: result.user.full_name,
-        role: result.user.role,
-        status: result.user.status,
+        id: activeUser.id,
+        email: activeUser.email,
+        username: activeUser.username,
+        fullName: activeUser.full_name,
+        role: activeUser.role,
+        status: activeUser.status,
         message: 'User account created. A temporary password was sent by email.',
       };
     } catch (error: unknown) {
@@ -357,19 +411,31 @@ export const usersService = {
       throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
     }
     const permissions = [...capabilitiesForRole(user.role)];
-    const responsibilities = user.role === 'EMPLOYEE'
-      ? new Set((await usersRepository.findEmployeeResponsibilities(userId)).map((item) => item.scope_code))
-      : new Set<string>();
-    if (user.role === 'EMPLOYEE' && (responsibilities.has('ASSET_OWNER') || await usersRepository.hasOwnedAssets(userId))) {
+    const responsibilities =
+      user.role === 'EMPLOYEE'
+        ? new Set(
+            (await usersRepository.findEmployeeResponsibilities(userId)).map(
+              (item) => item.scope_code,
+            ),
+          )
+        : new Set<string>();
+    if (
+      user.role === 'EMPLOYEE' &&
+      (responsibilities.has('ASSET_OWNER') || (await usersRepository.hasOwnedAssets(userId)))
+    ) {
       permissions.push('assets.read');
     }
     if (
       user.role === 'EMPLOYEE' &&
-      (responsibilities.has('CONTROL_OWNER') || user._count.security_controls_security_controls_owner_user_idTousers > 0)
+      (responsibilities.has('CONTROL_OWNER') ||
+        user._count.security_controls_security_controls_owner_user_idTousers > 0)
     ) {
       permissions.push('compliance.assess-controls');
     }
-    if (user.role === 'EMPLOYEE' && (responsibilities.has('RISK_OWNER') || user._count.risks_risks_owner_user_idTousers > 0)) {
+    if (
+      user.role === 'EMPLOYEE' &&
+      (responsibilities.has('RISK_OWNER') || user._count.risks_risks_owner_user_idTousers > 0)
+    ) {
       permissions.push('risks.read', 'risks.review-reassessment', 'risks.update-treatment-plan');
     }
     if (user.role === 'EMPLOYEE' && isRiskAcceptanceApprover(user)) {

@@ -4424,7 +4424,7 @@ export const openApiSpec = {
         tags: ['Users'],
         summary: 'Create a V2 user account',
         description:
-          'Active Admin only. Creates one active account, records an audit event, and emails a generated temporary password. V2 supports one role per account.',
+          'Active Admin only. Creates an inactive provisioning account, emails a generated temporary password, then activates it and records USER_CREATED. Email rejection removes only the matching inactive account and appends USER_CREATION_FAILED without deleting audit history. HTTP 503 reports email/activation or cleanup failure; an uncompleted account is not activated by this flow. V2 supports one role per account.',
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
@@ -4459,7 +4459,7 @@ export const openApiSpec = {
           '403': { description: 'Admin role required' },
           '409': { description: 'Email already exists' },
           '422': { description: 'Invalid request body' },
-          '503': { description: 'Email service unavailable or delivery failed' },
+          '503': { description: 'EMAIL_SERVICE_UNAVAILABLE, EMAIL_DELIVERY_FAILED, USER_ACTIVATION_FAILED, or USER_PROVISIONING_CLEANUP_FAILED (administrator review required)' },
         },
       },
     },
