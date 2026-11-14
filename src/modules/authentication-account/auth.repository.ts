@@ -85,6 +85,7 @@ export const authRepository = {
         data: { user_id: user.id, refresh_token_hash: refreshTokenHash, expires_at: expiresAt },
         select: { id: true },
       });
+      await recordAuthAudit(database, user.id, 'USER_LOGGED_IN');
       return {
         id: user.id,
         role: user.role,
@@ -123,6 +124,7 @@ export const authRepository = {
         data: { last_login_at: new Date() },
         select: { id: true },
       });
+      await recordAuthAudit(database, user.id, 'USER_LOGGED_IN');
       return {
         id: user.id,
         role: user.role,
