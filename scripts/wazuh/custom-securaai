@@ -181,6 +181,76 @@ def extract_source_ip(alert: dict) -> str:
     return ip.replace("::ffff:", "")
 
 
+# ------------------------------------------------------------------------------
+# Event timestamp resolution
+#
+# The Wazuh alert timestamp is authoritative for every real alert. A log line
+# must never be able to choose its own event time, otherwise anyone able to
+# write log content could backdate events to fabricate a "normal" history or
+# move activity outside a detection window.
+#
+# A self-declared "emitted_at" is honoured ONLY when ALL of these hold:
+#   1. The lab opt-in flag file exists on the Wazuh Manager
+#      (SIM_TIMESTAMP_FLAG_FILE). It is absent by default.
+#   2. The alert matched one of the SecuraAI scenario rules (100501-100509).
+#   3. The decoded payload declares sim_type == "securaai".
+#   4. emitted_at is a valid ISO-8601 UTC time within the allowed range
+#      (at most SIM_MAX_BACKDATE_HOURS in the past, at most
+#      SIM_MAX_FUTURE_SKEW_SECONDS in the future).
+# Otherwise the Wazuh timestamp is used and the reason is logged.
+# ------------------------------------------------------------------------------
+SIM_TIMESTAMP_FLAG_FILE = "/var/ossec/etc/securaai-sim-timestamps.enabled"
+SIM_RULE_IDS = {str(rule_id) for rule_id in range(100501, 100510)}
+SIM_MAX_BACKDATE_HOURS = 24
+SIM_MAX_FUTURE_SKEW_SECONDS = 120
+
+
+def is_simulation_alert(data: dict, rule: dict) -> bool:
+    return str(rule.get("id", "")) in SIM_RULE_IDS and data.get("sim_type") == "securaai"
+
+
+def parse_utc_timestamp(value):
+    if not isinstance(value, str) or not value.strip():
+        return None
+    text_value = value.strip()
+    if text_value.endswith("Z"):
+        text_value = text_value[:-1] + "+00:00"
+    try:
+        parsed = datetime.fromisoformat(text_value)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return None
+    return parsed.astimezone(timezone.utc)
+
+
+def resolve_event_timestamp(alert: dict, data: dict, rule: dict):
+    """Return (timestamp, source) where source explains which clock was used."""
+    wazuh_timestamp = alert.get("timestamp") or datetime.now(timezone.utc).isoformat()
+    declared = data.get("emitted_at")
+    if declared is None:
+        return wazuh_timestamp, "WAZUH"
+
+    if not is_simulation_alert(data, rule):
+        log_message(f"Ignored self-declared emitted_at on non-simulation alert (rule {rule.get('id')}).")
+        return wazuh_timestamp, "WAZUH"
+
+    if not os.path.isfile(SIM_TIMESTAMP_FLAG_FILE):
+        return wazuh_timestamp, "WAZUH"
+
+    parsed = parse_utc_timestamp(declared)
+    if parsed is None:
+        log_message(f"Ignored invalid simulation emitted_at value (rule {rule.get('id')}).")
+        return wazuh_timestamp, "WAZUH"
+
+    age_seconds = (datetime.now(timezone.utc) - parsed).total_seconds()
+    if age_seconds > SIM_MAX_BACKDATE_HOURS * 3600 or age_seconds < -SIM_MAX_FUTURE_SKEW_SECONDS:
+        log_message(f"Ignored out-of-range simulation emitted_at (rule {rule.get('id')}).")
+        return wazuh_timestamp, "WAZUH"
+
+    return parsed.isoformat().replace("+00:00", "Z"), "SIMULATION_DECLARED"
+
+
 def normalize_wazuh_alert(alert: dict) -> dict:
     """
     Chuyển đổi Wazuh Alert JSON sang schema SecuraAI Normalized Event cố định:
@@ -208,7 +278,7 @@ def normalize_wazuh_alert(alert: dict) -> dict:
     win_system = data.get("win", {}).get("system", {})
     win_eventdata = data.get("win", {}).get("eventdata", {})
 
-    timestamp = alert.get("timestamp") or datetime.now(timezone.utc).isoformat()
+    timestamp, timestamp_source = resolve_event_timestamp(alert, data, rule)
 
     normalized_payload = {
         "source": {
@@ -257,6 +327,8 @@ def normalize_wazuh_alert(alert: dict) -> dict:
             "destinationIp": win_eventdata.get("destinationIp"),
             "destinationPort": win_eventdata.get("destinationPort"),
             "protocol": win_eventdata.get("protocol"),
+            "timestampSource": timestamp_source,
+            "simulated": is_simulation_alert(data, rule),
         },
     }
 
