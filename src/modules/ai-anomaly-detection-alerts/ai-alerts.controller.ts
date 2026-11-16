@@ -20,6 +20,17 @@ import {
 } from './dto/alert-threshold.dto.js';
 import { configureDetectionThresholdSchema } from './dto/detection-threshold.dto.js';
 import { regenerateAlertExplanationSchema } from './dto/regenerate-alert-explanation.dto.js';
+import { aiAlertRealtimeService } from './ai-alert-realtime.service.js';
+
+export const issueAiAlertRealtimeTicket: RequestHandler = async (_req, res) => {
+  const userId: unknown = res.locals.authenticatedUserId;
+  if (typeof userId !== 'string')
+    throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+  res.status(200).json({
+    success: true,
+    data: await aiAlertRealtimeService.issueTicket(userId),
+  });
+};
 
 export const getDetectionThreshold: RequestHandler = async (_req, res) => {
   const userId: unknown = res.locals.authenticatedUserId;

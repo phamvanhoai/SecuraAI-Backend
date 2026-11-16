@@ -19,6 +19,7 @@ import {
   listModelVersions,
   getDetectionThreshold,
   configureDetectionThreshold,
+  issueAiAlertRealtimeTicket,
 } from './ai-alerts.controller.js';
 import { listAiAlertsQuerySchema } from './dto/list-ai-alerts.dto.js';
 import {
@@ -40,6 +41,7 @@ import { configureDetectionThresholdSchema } from './dto/detection-threshold.dto
 import { regenerateAlertExplanationSchema } from './dto/regenerate-alert-explanation.dto.js';
 
 export const aiAlertsRouter = Router();
+aiAlertsRouter.post('/realtime-ticket', authenticate, asyncHandler(issueAiAlertRealtimeTicket));
 aiAlertsRouter.get(
   '/models',
   authenticate,
