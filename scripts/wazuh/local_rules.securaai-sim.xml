@@ -1,0 +1,73 @@
+<group name="securaai_sim,">
+  <rule id="100500" level="3">
+    <decoded_as>json</decoded_as>
+    <field name="sim_type">^securaai$</field>
+    <description>SecuraAI Windows agent scenario stream</description>
+  </rule>
+
+  <!-- 1. AUTHENTICATION -->
+  <rule id="100501" level="5">
+    <if_sid>100500</if_sid>
+    <field name="sim_event">^AUTH_LOGIN_FAILURE$</field>
+    <description>Windows workstation authentication failed</description>
+    <group>authentication_failed,</group>
+  </rule>
+
+  <rule id="100502" level="3">
+    <if_sid>100500</if_sid>
+    <field name="sim_event">^AUTH_LOGIN_SUCCESS$</field>
+    <description>Windows workstation authentication success</description>
+    <group>authentication_success,</group>
+  </rule>
+
+  <rule id="100503" level="7">
+    <if_sid>100500</if_sid>
+    <field name="sim_event">^AUTH_ACCOUNT_LOCKOUT$</field>
+    <description>Windows user account lockout triggered</description>
+    <group>authentication,</group>
+  </rule>
+
+  <!-- 2. VPN_SSO -->
+  <rule id="100504" level="5">
+    <if_sid>100500</if_sid>
+    <field name="sim_event">^VPN_LOGIN_FAILURE$</field>
+    <description>OpenVPN remote access login failed</description>
+    <group>openvpn,</group>
+  </rule>
+
+  <rule id="100505" level="3">
+    <if_sid>100500</if_sid>
+    <field name="sim_event">^VPN_LOGIN_SUCCESS$</field>
+    <description>OpenVPN remote access login success</description>
+    <group>openvpn,</group>
+  </rule>
+
+  <rule id="100506" level="5">
+    <if_sid>100500</if_sid>
+    <field name="sim_event">^SSO_LOGIN_FAILURE$</field>
+    <description>Keycloak SSO identity login failed</description>
+    <group>keycloak,</group>
+  </rule>
+
+  <rule id="100507" level="3">
+    <if_sid>100500</if_sid>
+    <field name="sim_event">^SSO_LOGIN_SUCCESS$</field>
+    <description>Keycloak SSO identity login success</description>
+    <group>keycloak,</group>
+  </rule>
+
+  <!-- 3. APPLICATION_ACCESS -->
+  <rule id="100508" level="5">
+    <if_sid>100500</if_sid>
+    <field name="sim_event">^APP_ACCESS_DENIED$</field>
+    <description>Enterprise web application access denied</description>
+    <group>web_access_auth,</group>
+  </rule>
+
+  <rule id="100509" level="3">
+    <if_sid>100500</if_sid>
+    <field name="sim_event">^APP_ACCESS_GRANTED$</field>
+    <description>Enterprise web application access granted</description>
+    <group>web_access_auth,</group>
+  </rule>
+</group>
