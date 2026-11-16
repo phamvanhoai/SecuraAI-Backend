@@ -7,8 +7,10 @@ import {
   startAutomatedDetectionWorker,
   stopAutomatedDetectionWorker,
 } from './modules/ai-anomaly-detection-alerts/automated-detection.worker.js';
+import { attachAiAlertRealtimeServer } from './modules/ai-anomaly-detection-alerts/ai-alert-realtime.server.js';
 
 const server = createServer(createApp());
+const aiAlertRealtimeServer = attachAiAlertRealtimeServer(server);
 
 const startServer = async (): Promise<void> => {
   try {
@@ -38,6 +40,7 @@ const startServer = async (): Promise<void> => {
 const shutdown = (signal: string): void => {
   logger.info({ signal }, 'Graceful shutdown started');
   stopAutomatedDetectionWorker();
+  aiAlertRealtimeServer.close();
   server.close(async (error) => {
     await prisma.$disconnect();
     if (error) {
