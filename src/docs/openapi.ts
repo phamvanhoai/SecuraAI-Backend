@@ -2690,7 +2690,7 @@ export const openApiSpec = {
         tags: ['Policy Management'],
         summary: 'Reject a submitted policy draft',
         description:
-          'Records an Admin REJECTED decision with a required reason and moves the submitted V2 policy version to REJECTED. Rejection is final for that version and does not publish it or return it to draft.',
+          'Records an Admin REJECTED decision with a required reason and moves the submitted V2 policy version to REJECTED. Rejection is final for that version and does not publish it or return it to draft. Atomically appends POLICY_REJECTED to audit_logs with the actor, decision time, reason and locked before/after status; audit failure rolls back the decision.',
         security: [{ bearerAuth: [] }],
         parameters: [
           {
@@ -2854,7 +2854,7 @@ export const openApiSpec = {
         tags: ['Policy Management'],
         summary: 'Request revision of a submitted policy draft',
         description:
-          'Records an Admin REVISION_REQUESTED decision with a required comment and returns the submitted version to DRAFT so its Security Officer owner can revise and resubmit it.',
+          'Records an Admin REVISION_REQUESTED decision with a required comment and returns the submitted version to DRAFT so its Security Officer owner can revise and resubmit it. Atomically appends POLICY_REVISION_REQUESTED to audit_logs with the actor, decision time, reason and locked before/after status; audit failure rolls back the decision.',
         security: [{ bearerAuth: [] }],
         parameters: [
           {
@@ -3257,7 +3257,7 @@ export const openApiSpec = {
         tags: ['Policy Management'],
         summary: 'Complete review of a submitted policy draft',
         description:
-          'Records an auditable REVIEWED decision and moves the V2 policy version from IN_REVIEW to WAITING_APPROVAL. Requires an active Admin account.',
+          'Records a REVIEWED decision and moves the V2 policy version from IN_REVIEW to WAITING_APPROVAL. Requires an active Admin account. Atomically appends POLICY_REVIEWED to audit_logs with the actor, decision time and locked before/after status; audit failure rolls back the decision.',
         security: [{ bearerAuth: [] }],
         parameters: [
           {
@@ -3279,6 +3279,25 @@ export const openApiSpec = {
           '403': { description: 'Admin role required' },
           '404': { description: 'Submitted policy draft not found' },
           '409': { description: 'Draft was already reviewed or changed concurrently' },
+          '422': { description: 'Invalid policy or version ID' },
+        },
+      },
+    },
+    '/compliance/policies/{policyId}/versions/{versionId}/approve': {
+      post: {
+        tags: ['Policy Management'],
+        summary: 'Approve a reviewed policy for publication',
+        description: 'Active Admin only. Moves WAITING_APPROVAL to APPROVED and records the APPROVED policy decision. Atomically appends POLICY_APPROVED to audit_logs with the actor, decision time and locked before/after status; audit failure rolls back the decision. Publication is a separate step.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'policyId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+          { name: 'versionId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+        ],
+        responses: {
+          '200': { description: 'Approved policy and decision returned in the success/data envelope' },
+          '401': { description: 'Authentication required' }, '403': { description: 'Admin role required' },
+          '404': { description: 'Submitted policy draft not found' },
+          '409': { description: 'Review required or version changed concurrently' },
           '422': { description: 'Invalid policy or version ID' },
         },
       },
