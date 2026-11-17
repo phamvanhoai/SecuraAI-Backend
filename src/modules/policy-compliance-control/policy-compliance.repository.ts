@@ -1,5 +1,5 @@
-import { Prisma, type policy_version_status } from '@prisma/client';
-import { createHash } from 'node:crypto';
+import { Prisma, type policy_decision_action, type policy_version_status } from '@prisma/client';
+import { createHash, randomUUID } from 'node:crypto';
 import { prisma } from '../../database/prisma.js';
 import { AppError } from '../../common/errors/app-error.js';
 import type { CreatePolicyVersionBody } from './dto/create-policy-version.dto.js';
@@ -181,6 +181,51 @@ const policyVersionHistorySelect = {
 export type PolicyVersionHistoryRecord = Prisma.policy_versionsGetPayload<{
   select: typeof policyVersionHistorySelect;
 }>;
+
+async function lockPolicyDecisionSnapshot(
+  transaction: Prisma.TransactionClient,
+  policyId: string,
+  versionId: string,
+) {
+  // Capture the actual prior status under the same lock as the conditional transition.
+  await transaction.$queryRaw`SELECT id FROM policy_versions WHERE id = ${versionId}::uuid AND policy_id = ${policyId}::uuid FOR UPDATE`;
+  return transaction.policy_versions.findFirst({
+    where: { id: versionId, policy_id: policyId },
+    select: { status: true, version_number: true },
+  });
+}
+
+async function auditPolicyDecision(
+  transaction: Prisma.TransactionClient,
+  version: PolicyReviewRecord,
+  before: { status: policy_version_status; version_number: string },
+  decision: {
+    id: string;
+    action: policy_decision_action;
+    actor_user_id: string;
+    comment: string | null;
+    decided_at: Date;
+  },
+): Promise<void> {
+  const beforeData = {
+    policyId: version.policy_id, versionId: version.id,
+    versionNumber: before.version_number, status: before.status,
+  };
+  const afterData = {
+    policyId: version.policy_id, versionId: version.id,
+    versionNumber: version.version_number, status: version.status,
+    decisionId: decision.id, reason: decision.comment,
+  };
+  const record = {
+    id: randomUUID(), actor_type: 'USER' as const, actor_user_id: decision.actor_user_id,
+    action: `POLICY_${decision.action}`, resource_type: 'POLICY_VERSION', resource_id: version.id,
+    occurred_at: decision.decided_at, source: 'API', before_data: beforeData, after_data: afterData,
+  };
+  // Independent hash, matching existing policy audit writes. No chain-integrity claim.
+  await transaction.audit_logs.create({ data: {
+    ...record, record_hash: createHash('sha256').update(JSON.stringify(record)).digest('hex'),
+  } });
+}
 
 export const policyComplianceRepository = {
   createPolicyVersion(userId: string, policyId: string, input: CreatePolicyVersionBody) {
@@ -470,6 +515,8 @@ export const policyComplianceRepository = {
 
   reviewDraft(policyId: string, versionId: string, actorUserId: string) {
     return prisma.$transaction(async (transaction) => {
+      const before = await lockPolicyDecisionSnapshot(transaction, policyId, versionId);
+      if (!before) return null;
       const updated = await transaction.policy_versions.updateMany({
         where: {
           id: versionId,
@@ -503,6 +550,7 @@ export const policyComplianceRepository = {
         where: { id: versionId },
         select: policyReviewSelect,
       });
+      await auditPolicyDecision(transaction, version, before, decision);
       return { version, decision };
     });
   },
@@ -514,6 +562,8 @@ export const policyComplianceRepository = {
     input: RequestPolicyRevisionBody,
   ) {
     return prisma.$transaction(async (transaction) => {
+      const before = await lockPolicyDecisionSnapshot(transaction, policyId, versionId);
+      if (!before) return null;
       const updated = await transaction.policy_versions.updateMany({
         where: {
           id: versionId,
@@ -548,12 +598,15 @@ export const policyComplianceRepository = {
         where: { id: versionId },
         select: policyReviewSelect,
       });
+      await auditPolicyDecision(transaction, version, before, decision);
       return { version, decision };
     });
   },
 
   approveDraftForPublication(policyId: string, versionId: string, actorUserId: string) {
     return prisma.$transaction(async (transaction) => {
+      const before = await lockPolicyDecisionSnapshot(transaction, policyId, versionId);
+      if (!before) return null;
       const updated = await transaction.policy_versions.updateMany({
         where: {
           id: versionId,
@@ -576,6 +629,7 @@ export const policyComplianceRepository = {
         where: { id: versionId },
         select: policyReviewSelect,
       });
+      await auditPolicyDecision(transaction, version, before, decision);
       return { version, decision };
     });
   },
@@ -803,6 +857,8 @@ export const policyComplianceRepository = {
 
   rejectDraft(policyId: string, versionId: string, actorUserId: string, input: RejectPolicyBody) {
     return prisma.$transaction(async (transaction) => {
+      const before = await lockPolicyDecisionSnapshot(transaction, policyId, versionId);
+      if (!before) return null;
       const updated = await transaction.policy_versions.updateMany({
         where: {
           id: versionId,
@@ -837,6 +893,7 @@ export const policyComplianceRepository = {
         where: { id: versionId },
         select: policyReviewSelect,
       });
+      await auditPolicyDecision(transaction, version, before, decision);
       return { version, decision };
     });
   },
