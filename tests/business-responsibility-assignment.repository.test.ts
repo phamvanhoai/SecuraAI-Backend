@@ -1,7 +1,13 @@
 import { createHash } from 'node:crypto';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 const mocks = vi.hoisted(() => ({
-  users: { findUnique: vi.fn(), update: vi.fn() },
+  users: {
+    findUnique: vi.fn(),
+    update: vi.fn(),
+    create: vi.fn(),
+    updateMany: vi.fn(),
+    deleteMany: vi.fn(),
+  },
   risks: { count: vi.fn() },
   security_controls: { count: vi.fn() },
   assets: { count: vi.fn() },
@@ -71,5 +77,108 @@ describe('business responsibility assignment transaction', () => {
         },
       },
     });
+  });
+});
+
+describe('user provisioning transactions preserve append-only audit history', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    mocks.audit_logs.findFirst.mockResolvedValue({ record_hash: 'previous-audit' });
+  });
+  it('initially creates an inactive account and records provisioning rather than success', async () => {
+    mocks.users.findUnique.mockResolvedValue({ id: actor, status: 'ACTIVE', role: 'ADMIN' });
+    mocks.users.create.mockResolvedValue({
+      id: user,
+      email: 'new@example.com',
+      role: 'EMPLOYEE',
+      status: 'INACTIVE',
+    });
+    await usersRepository.createUser({
+      actorUserId: actor,
+      email: 'new@example.com',
+      fullName: 'New User',
+      username: 'new-user',
+      passwordHash: 'secret-hash',
+      role: 'EMPLOYEE',
+    });
+    expect(mocks.users.create).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: 'INACTIVE' }) }),
+    );
+    expect(mocks.audit_logs.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ action: 'USER_PROVISIONING_STARTED' }),
+      }),
+    );
+    expect(JSON.stringify(mocks.audit_logs.create.mock.calls)).not.toContain('secret-hash');
+  });
+  it('activates only the same inactive provisioning attempt and audits success', async () => {
+    mocks.users.findUnique
+      .mockResolvedValueOnce({ role: 'ADMIN', status: 'ACTIVE' })
+      .mockResolvedValueOnce({
+        id: user,
+        email: 'new@example.com',
+        username: 'new-user',
+        role: 'EMPLOYEE',
+        status: 'ACTIVE',
+      });
+    mocks.users.updateMany.mockResolvedValue({ count: 1 });
+    await usersRepository.activateProvisionedUser(user, 'secret-hash', actor);
+    expect(mocks.users.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: user, status: 'INACTIVE', password_hash: 'secret-hash' },
+      }),
+    );
+    expect(mocks.audit_logs.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: 'USER_CREATED',
+          before_data: { status: 'INACTIVE' },
+        }),
+      }),
+    );
+  });
+  it('removes the inactive account and appends failure without deleting any audit', async () => {
+    mocks.users.deleteMany.mockResolvedValue({ count: 1 });
+    expect(
+      await usersRepository.deleteProvisionedUser(
+        user,
+        'secret-hash',
+        actor,
+        'EMAIL_DELIVERY_FAILED',
+      ),
+    ).toBe(true);
+    expect(mocks.users.deleteMany).toHaveBeenCalledWith({
+      where: { id: user, status: 'INACTIVE', password_hash: 'secret-hash' },
+    });
+    expect(mocks.audit_logs.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          action: 'USER_CREATION_FAILED',
+          outcome: 'FAILURE',
+          error_code: 'EMAIL_DELIVERY_FAILED',
+          after_data: { accountRemoved: true },
+        }),
+      }),
+    );
+    expect(JSON.stringify(mocks.audit_logs.create.mock.calls)).not.toContain('secret-hash');
+  });
+  it('does not delete an active or otherwise changed account', async () => {
+    mocks.users.deleteMany.mockResolvedValue({ count: 0 });
+    expect(
+      await usersRepository.deleteProvisionedUser(
+        user,
+        'secret-hash',
+        actor,
+        'EMAIL_DELIVERY_FAILED',
+      ),
+    ).toBe(false);
+    expect(mocks.audit_logs.create).not.toHaveBeenCalled();
+  });
+  it('propagates audit insertion failure to rollback cleanup', async () => {
+    mocks.users.deleteMany.mockResolvedValue({ count: 1 });
+    mocks.audit_logs.create.mockRejectedValue(new Error('audit unavailable'));
+    await expect(
+      usersRepository.deleteProvisionedUser(user, 'secret-hash', actor, 'EMAIL_DELIVERY_FAILED'),
+    ).rejects.toThrow('audit unavailable');
   });
 });

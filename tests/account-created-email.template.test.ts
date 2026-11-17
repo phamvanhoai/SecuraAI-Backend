@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { renderAccountCreatedEmail } from '../src/modules/user-management-authorization/account-created-email.template.js';
 
 describe('account created email template', () => {
@@ -42,5 +42,47 @@ describe('account created email template', () => {
     });
 
     expect(html).not.toContain('javascript:alert(1)');
+  });
+});
+
+const smtp = vi.hoisted(() => ({ sendMail: vi.fn() }));
+vi.mock('nodemailer', () => ({ default: { createTransport: () => smtp } }));
+vi.mock('../src/config/env.js', () => ({
+  env: {
+    SMTP_HOST: 'smtp.example.test',
+    SMTP_USER: 'sender@example.test',
+    SMTP_PASS: 'test-only',
+    SMTP_PORT: 465,
+    SMTP_SECURE: true,
+    APP_NAME: 'SecuraAI',
+  },
+}));
+import { usersEmailService } from '../src/modules/user-management-authorization/users.email.service.js';
+describe('account email acceptance', () => {
+  beforeEach(() => vi.resetAllMocks());
+  const input = {
+    email: 'recipient@example.test',
+    fullName: 'Test Recipient',
+    temporaryPassword: 'Test-only-A!',
+  };
+  it('succeeds only when SMTP accepts the intended recipient', async () => {
+    smtp.sendMail.mockResolvedValue({ accepted: [input.email], rejected: [] });
+    await expect(usersEmailService.sendAccountCreated(input)).resolves.toBeUndefined();
+  });
+  it('rejects SMTP results with no accepted recipient', async () => {
+    smtp.sendMail.mockResolvedValue({ accepted: [], rejected: [input.email] });
+    await expect(usersEmailService.sendAccountCreated(input)).rejects.toMatchObject({
+      code: 'EMAIL_DELIVERY_FAILED',
+    });
+  });
+  it('does not accept a different recipient as success', async () => {
+    smtp.sendMail.mockResolvedValue({ accepted: ['someone-else@example.test'] });
+    await expect(usersEmailService.sendAccountCreated(input)).rejects.toMatchObject({
+      code: 'EMAIL_DELIVERY_FAILED',
+    });
+  });
+  it('propagates SMTP rejection for provisioning compensation', async () => {
+    smtp.sendMail.mockRejectedValue(new Error('SMTP down'));
+    await expect(usersEmailService.sendAccountCreated(input)).rejects.toThrow('SMTP down');
   });
 });

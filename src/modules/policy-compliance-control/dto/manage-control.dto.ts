@@ -1,6 +1,6 @@
 import { z } from 'zod';
 const fields = {
-  name: z.string().trim().min(3).max(255),
+  name: z.string().trim().min(3).max(100, 'Use at most 100 characters.'),
   description: z.string().trim().min(10).max(5000),
   ownerUserId: z.uuid().nullable(),
   applicability: z.enum(['applicable', 'not_applicable', 'under_review']),

@@ -1,3 +1,4 @@
+import { requireTreatmentPlanBasis } from './treatment-plan-basis.js';
 import { auditWriter } from '../audit-security-reporting/audit-writer.js';
 import { readAcceptanceContextBasis, acceptanceContextBlockedReason, lockAcceptanceContextSources } from './acceptance-context-basis.js';
 import { readAcceptanceCost } from './dto/acceptance-cost.dto.js';
@@ -269,6 +270,7 @@ function whereFor(query: ListRiskRegisterQuery): Prisma.risksWhereInput {
 }
 
 function orderBy(query: ListRiskRegisterQuery): Prisma.risksOrderByWithRelationInput[] {
+  if (query.sortBy === 'createdAt') return [{ created_at: query.sortOrder }, { id: query.sortOrder }];
   if (query.sortBy === 'riskCode') return [{ risk_code: query.sortOrder }, { id: query.sortOrder }];
   if (query.sortBy === 'title') return [{ title: query.sortOrder }, { id: query.sortOrder }];
   if (query.sortBy === 'reviewDate')
@@ -977,6 +979,7 @@ export const riskRegisterRepository = {
         WHERE link.risk_id = ${riskId}::uuid
         ORDER BY control.id FOR SHARE OF control
       `;
+      await lockAcceptanceContextSources(database, riskId);
       const risk = await database.risks.findUnique({
         where: { id: riskId },
         select: {
@@ -1088,15 +1091,9 @@ export const riskRegisterRepository = {
         },
         select: { id: true, assessed_at: true },
       });
-      const controlBasis = risk.control_risk_links.map(({ security_controls: control }) => ({
-        controlId: control.id,
-        assessmentId: control.control_assessments[0]?.id ?? null,
-        effectiveness: control.control_assessments[0]?.effectiveness?.toNumber() ?? null,
-        assessedAt: control.control_assessments[0]?.assessed_at.toISOString() ?? null,
-        implementationStatus: control.implementation_status,
-        linkedEvidenceIds: control.control_evidence_links.map((link) => link.evidence_items.id),
-      }));
-      const auditData = { assessmentId: assessment.id, score, rating, controlBasis };
+      const controlBasis = residualControlBasis(risk.control_risk_links);
+      const contextBasis = await readAcceptanceContextBasis(database, riskId);
+      const auditData = { assessmentId: assessment.id, score, rating, controlBasis, contextBasis };
       await auditWriter.record(
         {
           actorType: 'USER',
@@ -1241,6 +1238,10 @@ export const riskRegisterRepository = {
       .$transaction(
         async (database) => {
           await database.$queryRaw`SELECT id FROM risks WHERE id = ${input.riskId}::uuid FOR UPDATE`;
+          await database.$queryRaw`SELECT control.id FROM security_controls AS control
+            JOIN control_risk_links AS link ON link.control_id = control.id
+            WHERE link.risk_id = ${input.riskId}::uuid ORDER BY control.id FOR SHARE OF control`;
+          await lockAcceptanceContextSources(database, input.riskId);
           const risk = await database.risks.findUnique({
             where: { id: input.riskId },
             select: {
@@ -1289,10 +1290,7 @@ export const riskRegisterRepository = {
           const controls = risk.control_risk_links;
           if (controls.length !== input.controlIds.length)
             return { kind: 'invalid_controls' as const };
-          const latest = await database.risk_assessments.findFirst({
-            where: { risk_id: risk.id, residual_rating: { not: null }, assessment_type: { not: 'TARGET_DEFINITION' } },
-            orderBy: { assessed_at: 'desc' },
-          }) ?? risk.risk_assessments[0];
+          const latest = await requireTreatmentPlanBasis(database, input.riskId);
           const rank = { LOW: 1, MEDIUM: 2, HIGH: 3, CRITICAL: 4 } as const;
           const targetRating = input.targetRisk.toUpperCase() as keyof typeof rank;
           if (latest?.residual_rating && rank[targetRating] > rank[latest.residual_rating])

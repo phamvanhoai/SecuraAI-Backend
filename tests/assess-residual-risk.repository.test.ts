@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 const db = vi.hoisted(() => ({
   $queryRaw: vi.fn(),
+  risk_assets: { findMany: vi.fn().mockResolvedValue([]) },
+  control_evidence_links: { findMany: vi.fn().mockResolvedValue([]) },
   risks: { findUnique: vi.fn() },
   risk_assessments: { findFirst: vi.fn(), create: vi.fn() },
   audit_logs: { findFirst: vi.fn(), create: vi.fn() },

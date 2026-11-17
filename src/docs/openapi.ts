@@ -28,38 +28,88 @@ export const openApiSpec = {
   components: {
     schemas: {
       AssetClassificationSnapshot: {
-        type: 'object', nullable: true,
-        required: ['confidentialityImpact', 'integrityImpact', 'availabilityImpact', 'businessImpact', 'criticality', 'dataClassification', 'rationale', 'dataClassificationBasis', 'methodVersion', 'dataClassificationMethodVersion', 'assessedBy', 'assessedAt'],
+        type: 'object',
+        nullable: true,
+        required: [
+          'confidentialityImpact',
+          'integrityImpact',
+          'availabilityImpact',
+          'businessImpact',
+          'criticality',
+          'dataClassification',
+          'rationale',
+          'dataClassificationBasis',
+          'methodVersion',
+          'dataClassificationMethodVersion',
+          'assessedBy',
+          'assessedAt',
+        ],
         properties: {
           confidentialityImpact: { type: 'integer', minimum: 1, maximum: 5, nullable: true },
           integrityImpact: { type: 'integer', minimum: 1, maximum: 5, nullable: true },
           availabilityImpact: { type: 'integer', minimum: 1, maximum: 5, nullable: true },
           businessImpact: { type: 'integer', minimum: 1, maximum: 5, nullable: true },
-          criticality: { type: 'string', nullable: true }, dataClassification: { type: 'string', nullable: true },
-          rationale: { type: 'string', nullable: true }, dataClassificationBasis: { type: 'string', nullable: true },
-          methodVersion: { type: 'string', nullable: true }, dataClassificationMethodVersion: { type: 'string', nullable: true },
-          assessedBy: { type: 'string', format: 'uuid', nullable: true }, assessedAt: { type: 'string', format: 'date-time', nullable: true },
+          criticality: { type: 'string', nullable: true },
+          dataClassification: { type: 'string', nullable: true },
+          rationale: { type: 'string', nullable: true },
+          dataClassificationBasis: { type: 'string', nullable: true },
+          methodVersion: { type: 'string', nullable: true },
+          dataClassificationMethodVersion: { type: 'string', nullable: true },
+          assessedBy: { type: 'string', format: 'uuid', nullable: true },
+          assessedAt: { type: 'string', format: 'date-time', nullable: true },
         },
       },
       AssetContextSnapshot: {
-        type: 'object', nullable: true, required: ['businessService', 'dependencies', 'eventSources'],
+        type: 'object',
+        nullable: true,
+        required: ['businessService', 'dependencies', 'eventSources'],
         properties: {
-          businessService: { type: 'object', nullable: true, required: ['id', 'name'], properties: { id: { type: 'string', format: 'uuid' }, name: { type: 'string' } } },
-          dependencies: { type: 'array', items: { type: 'object', required: ['id', 'assetCode', 'name'], properties: { id: { type: 'string', format: 'uuid' }, assetCode: { type: 'string' }, name: { type: 'string' } } } },
-          eventSources: { type: 'array', items: { type: 'object', required: ['id', 'name'], properties: { id: { type: 'string', format: 'uuid' }, name: { type: 'string' } } } },
+          businessService: {
+            type: 'object',
+            nullable: true,
+            required: ['id', 'name'],
+            properties: { id: { type: 'string', format: 'uuid' }, name: { type: 'string' } },
+          },
+          dependencies: {
+            type: 'array',
+            items: {
+              type: 'object',
+              required: ['id', 'assetCode', 'name'],
+              properties: {
+                id: { type: 'string', format: 'uuid' },
+                assetCode: { type: 'string' },
+                name: { type: 'string' },
+              },
+            },
+          },
+          eventSources: {
+            type: 'array',
+            items: {
+              type: 'object',
+              required: ['id', 'name'],
+              properties: { id: { type: 'string', format: 'uuid' }, name: { type: 'string' } },
+            },
+          },
         },
       },
       PolicyRevisionRequest: {
-        type: 'object', nullable: true,
-        description: 'Latest saved REVISION_REQUESTED decision for this version, retained after edits. Null if absent. Equal timestamps use descending decision ID. Names reflect current accounts, not historical name snapshots.',
+        type: 'object',
+        nullable: true,
+        description:
+          'Latest saved REVISION_REQUESTED decision for this version, retained after edits. Null if absent. Equal timestamps use descending decision ID. Names reflect current accounts, not historical name snapshots.',
         required: ['id', 'reason', 'requestedAt', 'requestedBy'],
         properties: {
           id: { type: 'string', format: 'uuid' },
           reason: { type: 'string', nullable: true },
           requestedAt: { type: 'string', format: 'date-time' },
-          requestedBy: { type: 'object', required: ['id', 'name'], properties: {
-            id: { type: 'string', format: 'uuid' }, name: { type: 'string' },
-          } },
+          requestedBy: {
+            type: 'object',
+            required: ['id', 'name'],
+            properties: {
+              id: { type: 'string', format: 'uuid' },
+              name: { type: 'string' },
+            },
+          },
         },
       },
     },
@@ -311,17 +361,54 @@ export const openApiSpec = {
     },
     '/risks/{riskId}/review/complete': {
       post: {
-        tags: ['Risks'], summary: 'Complete an open Risk review and schedule the next review', security: [{ bearerAuth: [] }],
-        description: 'Active current Risk Owner only. Serializable completion checks exact Risk revision, opening timestamp, latest residual assessment ID and a residual after opening, current inherent/Asset/context/Controls/Evidence. Pending acceptance blocks completion. Next date must be after today in Vietnam and no later than completion day plus Critical 1, High 3, Medium 6 or Low 12 calendar months (month-end clamped). Earlier future dates allowed. Existing audit_logs store completion snapshot; Risk status and acceptance are unchanged. Detail exposes reviewHistory and canCompleteReview.',
-        parameters: [{ in: 'path', name: 'riskId', required: true, schema: { type: 'string', format: 'uuid' } }],
-        requestBody: { required: true, content: { 'application/json': { schema: { type: 'object', additionalProperties: false,
-          required: ['conclusion', 'nextReviewDate', 'expectedUpdatedAt', 'expectedOpenedAt', 'assessmentId'], properties: {
-            conclusion: { type: 'string', minLength: 10, maxLength: 2000 }, nextReviewDate: { type: 'string', format: 'date' },
-            expectedUpdatedAt: { type: 'string', format: 'date-time' }, expectedOpenedAt: { type: 'string', format: 'date-time' }, assessmentId: { type: 'string', format: 'uuid' },
-          } } } } },
-        responses: { '200': { description: 'Completed: data contains riskId, completedAt, nextReviewDate' },
-          '401': { description: 'Authentication required' }, '403': { description: 'Current Risk Owner required' }, '404': { description: 'Risk not found' },
-          '409': { description: 'Review stale/completed, pending acceptance or assessment requires review' }, '422': { description: 'Invalid conclusion or next deadline' } },
+        tags: ['Risks'],
+        summary: 'Complete an open Risk review and schedule the next review',
+        security: [{ bearerAuth: [] }],
+        description:
+          'Active current Risk Owner only. Serializable completion checks exact Risk revision, opening timestamp, latest residual assessment ID and a residual after opening, current inherent/Asset/context/Controls/Evidence. Pending acceptance blocks completion. Next date must be after today in Vietnam and no later than completion day plus Critical 1, High 3, Medium 6 or Low 12 calendar months (month-end clamped). Earlier future dates allowed. Existing audit_logs store completion snapshot; Risk status and acceptance are unchanged. Detail exposes reviewHistory and canCompleteReview.',
+        parameters: [
+          {
+            in: 'path',
+            name: 'riskId',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                additionalProperties: false,
+                required: [
+                  'conclusion',
+                  'nextReviewDate',
+                  'expectedUpdatedAt',
+                  'expectedOpenedAt',
+                  'assessmentId',
+                ],
+                properties: {
+                  conclusion: { type: 'string', minLength: 10, maxLength: 2000 },
+                  nextReviewDate: { type: 'string', format: 'date' },
+                  expectedUpdatedAt: { type: 'string', format: 'date-time' },
+                  expectedOpenedAt: { type: 'string', format: 'date-time' },
+                  assessmentId: { type: 'string', format: 'uuid' },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'Completed: data contains riskId, completedAt, nextReviewDate' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Current Risk Owner required' },
+          '404': { description: 'Risk not found' },
+          '409': {
+            description: 'Review stale/completed, pending acceptance or assessment requires review',
+          },
+          '422': { description: 'Invalid conclusion or next deadline' },
+        },
       },
     },
     '/risks/{riskId}/review': {
@@ -414,7 +501,7 @@ export const openApiSpec = {
           content: { 'application/json': { schema: createTreatmentPlanOpenApi } },
         },
         description:
-          'Active Security Officer or assigned Risk Owner. Locks selected Risk. OPEN/UNDER_TREATMENT with no pending acceptance or Draft/Active plan. Eligible controls must belong to the Risk; mitigate requires at least one, other strategies allow none. Non-accept strategies require actions. Unique control IDs and action titles, active owners, future dates and action dates within plan date required. Target cannot exceed known residual and is saved as TARGET_DEFINITION without copying inherent/residual. Creation remains Draft and does not approve acceptance. Pending acceptance returns HTTP 409 ACCEPTANCE_PENDING with the shared Risk lock message.',
+          'Active Security Officer or assigned Risk Owner. Locks selected Risk. OPEN/UNDER_TREATMENT with no pending acceptance or Draft/Active plan. Eligible controls must belong to the Risk; mitigate requires at least one, other strategies allow none. Non-accept strategies require actions. Unique control IDs and action titles, active owners, future dates and action dates within plan date required. Target cannot exceed known residual and is saved as TARGET_DEFINITION without copying inherent/residual. Creation remains Draft and does not approve acceptance. All four strategies require a verified residual based on current Inherent, Threat/Vulnerability, Control and Asset/Evidence snapshots. Missing residual returns 409 RESIDUAL_ASSESSMENT_REQUIRED; stale bases return 409 RISK_REASSESSMENT_REQUIRED, CONTROL_REASSESSMENT_REQUIRED or RESIDUAL_BASIS_CHANGED with recovery guidance. Legacy residual without verifiable snapshots must be saved again. Pending acceptance returns HTTP 409 ACCEPTANCE_PENDING with the shared Risk lock message.',
         responses: {
           '201': { description: 'Draft plan with intended target saved' },
           '401': { description: 'Authentication required' },
@@ -506,19 +593,43 @@ export const openApiSpec = {
         tags: ['Risks'],
         summary: 'Assess inherent risk',
         security: [{ bearerAuth: [] }],
-        description: 'Active Security Officer only. Requires OPEN/UNDER_TREATMENT and an asset, threat and vulnerability. Checks pending acceptance inside the transaction holding the Risk row FOR UPDATE lock. Pending acceptance returns HTTP 409 ACCEPTANCE_PENDING without creating an assessment.',
-        parameters: [{ in: 'path', name: 'riskId', required: true, schema: { type: 'string', format: 'uuid' } }],
-        requestBody: { required: true, content: { 'application/json': { schema: {
-          type: 'object', additionalProperties: false, required: ['likelihood', 'impact', 'assessmentReason'],
-          properties: { likelihood: { type: 'integer', minimum: 1, maximum: 5 }, impact: { type: 'integer', minimum: 1, maximum: 5 }, assessmentReason: { type: 'string', minLength: 10, maxLength: 2000 } },
-        } } } },
+        description:
+          'Active Security Officer only. Requires OPEN/UNDER_TREATMENT and an asset, threat and vulnerability. Checks pending acceptance inside the transaction holding the Risk row FOR UPDATE lock. Pending acceptance returns HTTP 409 ACCEPTANCE_PENDING without creating an assessment.',
+        parameters: [
+          {
+            in: 'path',
+            name: 'riskId',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+        ],
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['likelihood', 'impact', 'assessmentReason'],
+                properties: {
+                  likelihood: { type: 'integer', minimum: 1, maximum: 5 },
+                  impact: { type: 'integer', minimum: 1, maximum: 5 },
+                  assessmentReason: { type: 'string', minLength: 10, maxLength: 2000 },
+                },
+              },
+            },
+          },
+        },
         responses: {
           '201': { description: 'Inherent assessment recorded' },
           '401': { description: 'Authentication required' },
           '403': { description: 'Active Security Officer required' },
           '404': { description: 'Risk not found' },
           '409': { description: 'ACCEPTANCE_PENDING or Risk status locked' },
-          '422': { description: 'Invalid input, incomplete context or major rating reduction requires a new detailed reason' },
+          '422': {
+            description:
+              'Invalid input, incomplete context or major rating reduction requires a new detailed reason',
+          },
         },
       },
     },
@@ -581,6 +692,22 @@ export const openApiSpec = {
         tags: ['Risks'],
         summary: 'View the risk register',
         security: [{ bearerAuth: [] }],
+        parameters: [
+          {
+            name: 'sortBy',
+            in: 'query',
+            schema: {
+              type: 'string',
+              enum: ['riskCode', 'title', 'reviewDate', 'updatedAt', 'createdAt'],
+              default: 'createdAt',
+            },
+          },
+          {
+            name: 'sortOrder',
+            in: 'query',
+            schema: { type: 'string', enum: ['asc', 'desc'], default: 'desc' },
+          },
+        ],
         description:
           'Security Officers and Executives read accessible risks; other actors are ownership-scoped. scope is null for historical unrecorded scope, {type:asset}, or {type:business_service,businessService:{id,name,status}}. assets are persisted risk links, not current service membership.',
         responses: {
@@ -657,7 +784,10 @@ export const openApiSpec = {
         description:
           'Returns explicit original scope and recorded assets, assessments, controls, plans and acceptance. Historical scope is null; never inferred from current service membership. vulnerabilityWorkflow exposes canIdentify (actor-scoped), blockedReason and assessmentReviewRequired; vulnerabilities include createdAt. Existing ratings remain historical when review is required.',
         responses: {
-          '200': { description: 'Risk detail including scope, assetClassificationReviewRequired and assetContextReviewRequired (booleans). Classification uses linked asset classified_at; context uses successful ASSET_CONTEXT_UPDATED audit events on linked assets. Only changes strictly after the latest standalone inherent assessment trigger advisories. Missing evidence or no identifiable inherent assessment yield false. Residual and target updates do not clear advisories. Stored ratings and workflow permissions are unchanged.' },
+          '200': {
+            description:
+              'Risk detail including scope, assetClassificationReviewRequired and assetContextReviewRequired (booleans). Classification uses linked asset classified_at; context uses successful ASSET_CONTEXT_UPDATED audit events on linked assets. Only changes strictly after the latest standalone inherent assessment trigger advisories. Missing evidence or no identifiable inherent assessment yield false. Residual and target updates do not clear advisories. Stored ratings and workflow permissions are unchanged.',
+          },
           '401': { description: 'Authentication required' },
           '403': { description: 'Risk access denied' },
           '404': { description: 'Risk not found' },
@@ -668,7 +798,8 @@ export const openApiSpec = {
       get: {
         tags: ['Users'],
         summary: 'List system roles and Employee business responsibilities',
-        description: 'scopeCodes contains RISK_OWNER, CONTROL_OWNER, ASSET_OWNER and AUTHORIZED_APPROVER. These are eligibility labels stored in existing user_access_scopes, not fixed roles. At most one permanent GLOBAL grant for EMPLOYEE is accepted; individual resource ownership remains separate. Legacy AUDIT_VIEW/POLICY_APPROVE are not supported.',
+        description:
+          'scopeCodes contains RISK_OWNER, CONTROL_OWNER, ASSET_OWNER and AUTHORIZED_APPROVER. These are eligibility labels stored in existing user_access_scopes, not fixed roles. At most one permanent GLOBAL grant for EMPLOYEE is accepted; individual resource ownership remains separate. Legacy AUDIT_VIEW/POLICY_APPROVE are not supported.',
         security: [{ bearerAuth: [] }],
         responses: {
           '200': { description: 'Assignment options' },
@@ -681,7 +812,8 @@ export const openApiSpec = {
       get: {
         tags: ['Users'],
         summary: 'View a user role, business responsibilities, and ownership summary',
-        description: 'Existing Employee ownership supplies implicit responsibility eligibility without backfill; assignedAt is null for inferred entries. Transfer all owned records before removing the corresponding responsibility or changing that Employee role (409 OWNERSHIP_TRANSFER_REQUIRED). Grants alone do not expose resource lists without ownership.',
+        description:
+          'Existing Employee ownership supplies implicit responsibility eligibility without backfill; assignedAt is null for inferred entries. Transfer all owned records before removing the corresponding responsibility or changing that Employee role (409 OWNERSHIP_TRANSFER_REQUIRED). Grants alone do not expose resource lists without ownership.',
         security: [{ bearerAuth: [] }],
         parameters: [
           {
@@ -750,8 +882,20 @@ export const openApiSpec = {
             schema: { type: 'integer', minimum: 1, maximum: 100, default: 10 },
           },
           { name: 'q', in: 'query', schema: { type: 'string', maxLength: 100 } },
-          { name: 'sortBy', in: 'query', schema: { type: 'string', enum: ['assetCode', 'name', 'assetType', 'criticality', 'createdAt', 'updatedAt'], default: 'createdAt' } },
-          { name: 'sortOrder', in: 'query', schema: { type: 'string', enum: ['asc', 'desc'], default: 'desc' } },
+          {
+            name: 'sortBy',
+            in: 'query',
+            schema: {
+              type: 'string',
+              enum: ['assetCode', 'name', 'assetType', 'criticality', 'createdAt', 'updatedAt'],
+              default: 'createdAt',
+            },
+          },
+          {
+            name: 'sortOrder',
+            in: 'query',
+            schema: { type: 'string', enum: ['asc', 'desc'], default: 'desc' },
+          },
           { name: 'assetType', in: 'query', schema: { type: 'string', enum: [...assetTypes] } },
           { name: 'criticality', in: 'query', schema: { type: 'string', maxLength: 50 } },
           { name: 'status', in: 'query', schema: { type: 'string', enum: ['active', 'archived'] } },
@@ -780,7 +924,11 @@ export const openApiSpec = {
                   name: { type: 'string', minLength: 3, maxLength: 100 },
                   assetType: { type: 'string', enum: [...assetTypes] },
                   ownerUserId: { type: 'string', format: 'uuid' },
-                  description: { type: 'string', maxLength: 2000, description: 'Optional; empty or 20-2000 characters after trimming.' },
+                  description: {
+                    type: 'string',
+                    maxLength: 2000,
+                    description: 'Optional; empty or 20-2000 characters after trimming.',
+                  },
                   dependencies: { type: 'array', maxItems: 50 },
                   eventSourceIds: {
                     type: 'array',
@@ -885,7 +1033,13 @@ export const openApiSpec = {
                 properties: {
                   name: { type: 'string', minLength: 3, maxLength: 100 },
                   assetType: { type: 'string', enum: [...assetTypes] },
-                  description: { type: 'string', maxLength: 2000, nullable: true, description: 'Null/empty clears the description; otherwise 20-2000 characters after trimming.' },
+                  description: {
+                    type: 'string',
+                    maxLength: 2000,
+                    nullable: true,
+                    description:
+                      'Null/empty clears the description; otherwise 20-2000 characters after trimming.',
+                  },
                 },
               },
             },
@@ -950,31 +1104,86 @@ export const openApiSpec = {
     },
     '/assets/{assetId}/classify-criticality/history': {
       get: {
-        tags: ['IT Asset Management'], summary: 'Read asset classification history',
-        description: 'Paginated ASSET_CLASSIFICATION_UPDATED snapshots, newest first. Active Security Officers or the current Asset Owner may read, including archived assets. Initial classification has null before; legacy classifications retain their known before values without inventing older events. No historical backfill.',
+        tags: ['IT Asset Management'],
+        summary: 'Read asset classification history',
+        description:
+          'Paginated ASSET_CLASSIFICATION_UPDATED snapshots, newest first. Active Security Officers or the current Asset Owner may read, including archived assets. Initial classification has null before; legacy classifications retain their known before values without inventing older events. No historical backfill.',
         security: [{ bearerAuth: [] }],
         parameters: [
-          { name: 'assetId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
-          { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100000, default: 1 } },
-          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 10 } },
+          {
+            name: 'assetId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+          {
+            name: 'page',
+            in: 'query',
+            schema: { type: 'integer', minimum: 1, maximum: 100000, default: 1 },
+          },
+          {
+            name: 'limit',
+            in: 'query',
+            schema: { type: 'integer', minimum: 1, maximum: 100, default: 10 },
+          },
         ],
         responses: {
-          '200': { description: 'Success envelope with classification snapshots and pagination.', content: { 'application/json': { schema: {
-            type: 'object', required: ['success', 'data'], properties: {
-              success: { type: 'boolean', enum: [true] }, data: { type: 'object', required: ['items', 'pagination'], properties: {
-                items: { type: 'array', items: { type: 'object', required: ['id', 'occurredAt', 'actor', 'before', 'after'], properties: {
-                  id: { type: 'string', format: 'uuid' }, occurredAt: { type: 'string', format: 'date-time' },
-                  actor: { type: 'object', nullable: true, required: ['id', 'fullName'], properties: { id: { type: 'string', format: 'uuid' }, fullName: { type: 'string' } } },
-                  before: { $ref: '#/components/schemas/AssetClassificationSnapshot' }, after: { $ref: '#/components/schemas/AssetClassificationSnapshot' },
-                } } },
-                pagination: { type: 'object', required: ['page', 'limit', 'total', 'totalPages'], properties: {
-                  page: { type: 'integer' }, limit: { type: 'integer' }, total: { type: 'integer' }, totalPages: { type: 'integer' },
-                } },
-              } },
+          '200': {
+            description: 'Success envelope with classification snapshots and pagination.',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['success', 'data'],
+                  properties: {
+                    success: { type: 'boolean', enum: [true] },
+                    data: {
+                      type: 'object',
+                      required: ['items', 'pagination'],
+                      properties: {
+                        items: {
+                          type: 'array',
+                          items: {
+                            type: 'object',
+                            required: ['id', 'occurredAt', 'actor', 'before', 'after'],
+                            properties: {
+                              id: { type: 'string', format: 'uuid' },
+                              occurredAt: { type: 'string', format: 'date-time' },
+                              actor: {
+                                type: 'object',
+                                nullable: true,
+                                required: ['id', 'fullName'],
+                                properties: {
+                                  id: { type: 'string', format: 'uuid' },
+                                  fullName: { type: 'string' },
+                                },
+                              },
+                              before: { $ref: '#/components/schemas/AssetClassificationSnapshot' },
+                              after: { $ref: '#/components/schemas/AssetClassificationSnapshot' },
+                            },
+                          },
+                        },
+                        pagination: {
+                          type: 'object',
+                          required: ['page', 'limit', 'total', 'totalPages'],
+                          properties: {
+                            page: { type: 'integer' },
+                            limit: { type: 'integer' },
+                            total: { type: 'integer' },
+                            totalPages: { type: 'integer' },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
             },
-          } } } },
-          '401': { description: 'Authentication required or inactive account' }, '403': { description: 'Security Officer or current Asset Owner required' },
-          '404': { description: 'Asset not found' }, '422': { description: 'Invalid ID or pagination' },
+          },
+          '401': { description: 'Authentication required or inactive account' },
+          '403': { description: 'Security Officer or current Asset Owner required' },
+          '404': { description: 'Asset not found' },
+          '422': { description: 'Invalid ID or pagination' },
         },
       },
     },
@@ -1049,51 +1258,133 @@ export const openApiSpec = {
     },
     '/assets/owner-options': {
       get: {
-        tags: ['Assets'], security: [{ bearerAuth: [] }],
+        tags: ['Assets'],
+        security: [{ bearerAuth: [] }],
         summary: 'Search eligible Asset Owners',
-        description: 'Active Security Officer only. Searches all active users by name or email, case-insensitive. Returns up to 10 matches ordered by name and ID. Assignment still revalidates eligibility.',
+        description:
+          'Active Security Officer only. Searches all active users by name or email, case-insensitive. Returns up to 10 matches ordered by name and ID. Assignment still revalidates eligibility.',
         parameters: [{ name: 'q', in: 'query', schema: { type: 'string', maxLength: 100 } }],
         responses: {
-          '200': { description: 'Owner search results', content: { 'application/json': { schema: {
-            type: 'object', properties: { success: { type: 'boolean' }, data: { type: 'object', properties: {
-              items: { type: 'array', maxItems: 10, items: { type: 'object', required: ['id', 'fullName', 'email'], properties: {
-                id: { type: 'string', format: 'uuid' }, fullName: { type: 'string' }, email: { type: 'string', format: 'email' },
-              } } },
-            } } },
-          } } } },
-          '401': { description: 'Authentication required' }, '403': { description: 'Security Officer required' }, '422': { description: 'Invalid search' },
+          '200': {
+            description: 'Owner search results',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean' },
+                    data: {
+                      type: 'object',
+                      properties: {
+                        items: {
+                          type: 'array',
+                          maxItems: 10,
+                          items: {
+                            type: 'object',
+                            required: ['id', 'fullName', 'email'],
+                            properties: {
+                              id: { type: 'string', format: 'uuid' },
+                              fullName: { type: 'string' },
+                              email: { type: 'string', format: 'email' },
+                            },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer required' },
+          '422': { description: 'Invalid search' },
         },
       },
     },
     '/assets/{assetId}/context/history': {
       get: {
-        tags: ['IT Asset Management'], summary: 'Read asset context change history',
-        description: 'Read-only, newest-first ASSET_CONTEXT_UPDATED audit snapshots. Active Security Officers or the current Asset Owner may read, including archived assets. Historical names/codes are snapshotted. Only changes recorded since tracking was introduced are available; no backfill or fabricated initial entry.',
+        tags: ['IT Asset Management'],
+        summary: 'Read asset context change history',
+        description:
+          'Read-only, newest-first ASSET_CONTEXT_UPDATED audit snapshots. Active Security Officers or the current Asset Owner may read, including archived assets. Historical names/codes are snapshotted. Only changes recorded since tracking was introduced are available; no backfill or fabricated initial entry.',
         security: [{ bearerAuth: [] }],
         parameters: [
-          { name: 'assetId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
-          { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100000, default: 1 } },
-          { name: 'limit', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 100, default: 10 } },
+          {
+            name: 'assetId',
+            in: 'path',
+            required: true,
+            schema: { type: 'string', format: 'uuid' },
+          },
+          {
+            name: 'page',
+            in: 'query',
+            schema: { type: 'integer', minimum: 1, maximum: 100000, default: 1 },
+          },
+          {
+            name: 'limit',
+            in: 'query',
+            schema: { type: 'integer', minimum: 1, maximum: 100, default: 10 },
+          },
         ],
         responses: {
-          '200': { description: 'Success envelope: data.items contains id, occurredAt, actor {id, fullName} or null, before/after snapshots or null; data.pagination contains page, limit, total, totalPages.', content: { 'application/json': { schema: {
-            type: 'object', required: ['success', 'data'], properties: {
-              success: { type: 'boolean', enum: [true] },
-              data: { type: 'object', required: ['items', 'pagination'], properties: {
-                items: { type: 'array', items: { type: 'object', required: ['id', 'occurredAt', 'actor', 'before', 'after'], properties: {
-                  id: { type: 'string', format: 'uuid' }, occurredAt: { type: 'string', format: 'date-time' },
-                  actor: { type: 'object', nullable: true, required: ['id', 'fullName'], properties: { id: { type: 'string', format: 'uuid' }, fullName: { type: 'string' } } },
-                  before: { $ref: '#/components/schemas/AssetContextSnapshot' }, after: { $ref: '#/components/schemas/AssetContextSnapshot' },
-                } } },
-                pagination: { type: 'object', required: ['page', 'limit', 'total', 'totalPages'], properties: {
-                  page: { type: 'integer' }, limit: { type: 'integer' }, total: { type: 'integer' }, totalPages: { type: 'integer' },
-                } },
-              } },
+          '200': {
+            description:
+              'Success envelope: data.items contains id, occurredAt, actor {id, fullName} or null, before/after snapshots or null; data.pagination contains page, limit, total, totalPages.',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  required: ['success', 'data'],
+                  properties: {
+                    success: { type: 'boolean', enum: [true] },
+                    data: {
+                      type: 'object',
+                      required: ['items', 'pagination'],
+                      properties: {
+                        items: {
+                          type: 'array',
+                          items: {
+                            type: 'object',
+                            required: ['id', 'occurredAt', 'actor', 'before', 'after'],
+                            properties: {
+                              id: { type: 'string', format: 'uuid' },
+                              occurredAt: { type: 'string', format: 'date-time' },
+                              actor: {
+                                type: 'object',
+                                nullable: true,
+                                required: ['id', 'fullName'],
+                                properties: {
+                                  id: { type: 'string', format: 'uuid' },
+                                  fullName: { type: 'string' },
+                                },
+                              },
+                              before: { $ref: '#/components/schemas/AssetContextSnapshot' },
+                              after: { $ref: '#/components/schemas/AssetContextSnapshot' },
+                            },
+                          },
+                        },
+                        pagination: {
+                          type: 'object',
+                          required: ['page', 'limit', 'total', 'totalPages'],
+                          properties: {
+                            page: { type: 'integer' },
+                            limit: { type: 'integer' },
+                            total: { type: 'integer' },
+                            totalPages: { type: 'integer' },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
             },
-          } } } },
+          },
           '401': { description: 'Authentication required or inactive account' },
           '403': { description: 'Not a Security Officer or current Asset Owner' },
-          '404': { description: 'Asset not found' }, '422': { description: 'Invalid asset ID or pagination' },
+          '404': { description: 'Asset not found' },
+          '422': { description: 'Invalid asset ID or pagination' },
         },
       },
     },
@@ -2714,7 +3005,7 @@ export const openApiSpec = {
         tags: ['Policy Management'],
         summary: 'Reject a submitted policy draft',
         description:
-          'Records an Admin REJECTED decision with a required reason and moves the submitted V2 policy version to REJECTED. Rejection is final for that version and does not publish it or return it to draft.',
+          'Records an Admin REJECTED decision with a required reason and moves the submitted V2 policy version to REJECTED. Rejection is final for that version and does not publish it or return it to draft. Atomically appends POLICY_REJECTED to audit_logs with the actor, decision time, reason and locked before/after status; audit failure rolls back the decision.',
         security: [{ bearerAuth: [] }],
         parameters: [
           {
@@ -2808,15 +3099,24 @@ export const openApiSpec = {
         })),
         responses: {
           '200': {
-            description: 'Owned draft metadata and content, including latest revisionRequest (null if absent), matching drafts/mine items',
-            content: { 'application/json': { schema: {
-              type: 'object', properties: {
-                success: { type: 'boolean', enum: [true] },
-                data: { type: 'object', properties: {
-                  revisionRequest: { $ref: '#/components/schemas/PolicyRevisionRequest' },
-                } },
+            description:
+              'Owned draft metadata and content, including latest revisionRequest (null if absent), matching drafts/mine items',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', enum: [true] },
+                    data: {
+                      type: 'object',
+                      properties: {
+                        revisionRequest: { $ref: '#/components/schemas/PolicyRevisionRequest' },
+                      },
+                    },
+                  },
+                },
               },
-            } } },
+            },
           },
           '401': { description: 'Authentication required or inactive account' },
           '403': { description: 'Security Officer role required' },
@@ -2864,7 +3164,10 @@ export const openApiSpec = {
           },
         },
         responses: {
-          '200': { description: 'Updated policy draft, including revisionRequest as documented in PolicyRevisionRequest; editing does not clear the saved feedback.' },
+          '200': {
+            description:
+              'Updated policy draft, including revisionRequest as documented in PolicyRevisionRequest; editing does not clear the saved feedback.',
+          },
           '401': { description: 'Authentication required' },
           '403': { description: 'Security Officer role and draft ownership required' },
           '404': { description: 'Policy draft not found' },
@@ -2878,7 +3181,7 @@ export const openApiSpec = {
         tags: ['Policy Management'],
         summary: 'Request revision of a submitted policy draft',
         description:
-          'Records an Admin REVISION_REQUESTED decision with a required comment and returns the submitted version to DRAFT so its Security Officer owner can revise and resubmit it.',
+          'Records an Admin REVISION_REQUESTED decision with a required comment and returns the submitted version to DRAFT so its Security Officer owner can revise and resubmit it. Atomically appends POLICY_REVISION_REQUESTED to audit_logs with the actor, decision time, reason and locked before/after status; audit failure rolls back the decision.',
         security: [{ bearerAuth: [] }],
         parameters: [
           {
@@ -3281,7 +3584,7 @@ export const openApiSpec = {
         tags: ['Policy Management'],
         summary: 'Complete review of a submitted policy draft',
         description:
-          'Records an auditable REVIEWED decision and moves the V2 policy version from IN_REVIEW to WAITING_APPROVAL. Requires an active Admin account.',
+          'Records a REVIEWED decision and moves the V2 policy version from IN_REVIEW to WAITING_APPROVAL. Requires an active Admin account. Atomically appends POLICY_REVIEWED to audit_logs with the actor, decision time and locked before/after status; audit failure rolls back the decision.',
         security: [{ bearerAuth: [] }],
         parameters: [
           {
@@ -3303,6 +3606,25 @@ export const openApiSpec = {
           '403': { description: 'Admin role required' },
           '404': { description: 'Submitted policy draft not found' },
           '409': { description: 'Draft was already reviewed or changed concurrently' },
+          '422': { description: 'Invalid policy or version ID' },
+        },
+      },
+    },
+    '/compliance/policies/{policyId}/versions/{versionId}/approve': {
+      post: {
+        tags: ['Policy Management'],
+        summary: 'Approve a reviewed policy for publication',
+        description: 'Active Admin only. Moves WAITING_APPROVAL to APPROVED and records the APPROVED policy decision. Atomically appends POLICY_APPROVED to audit_logs with the actor, decision time and locked before/after status; audit failure rolls back the decision. Publication is a separate step.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'policyId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+          { name: 'versionId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+        ],
+        responses: {
+          '200': { description: 'Approved policy and decision returned in the success/data envelope' },
+          '401': { description: 'Authentication required' }, '403': { description: 'Admin role required' },
+          '404': { description: 'Submitted policy draft not found' },
+          '409': { description: 'Review required or version changed concurrently' },
           '422': { description: 'Invalid policy or version ID' },
         },
       },
@@ -3542,8 +3864,7 @@ export const openApiSpec = {
         },
         responses: {
           '200': {
-            description:
-              'One pending-event batch completed and persisted',
+            description: 'One pending-event batch completed and persisted',
           },
           '401': { description: 'Authentication required' },
           '403': { description: 'Security Officer role required' },
@@ -3558,7 +3879,7 @@ export const openApiSpec = {
         tags: ['AI Anomaly Detection & Alerts'],
         summary: 'View AI-generated anomaly alerts in near real time',
         description:
-          'Returns a bounded, filterable page of V2 anomaly alerts. Requires an active Security Officer account. Clients may poll using detectedAfter and the returned serverTime watermark.',
+          'Returns a bounded, filterable page of V2 anomaly alerts. Requires an active Security Officer account. Web clients refresh this REST resource after a WebSocket invalidation signal and may use polling as a fallback.',
         security: [{ bearerAuth: [] }],
         parameters: [
           { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
@@ -3596,6 +3917,41 @@ export const openApiSpec = {
           '401': { description: 'Authentication required' },
           '403': { description: 'Security Officer role required' },
           '422': { description: 'Invalid query parameters' },
+        },
+      },
+    },
+    '/ai-alerts/realtime-ticket': {
+      post: {
+        tags: ['AI Anomaly Detection & Alerts'],
+        summary: 'Create a short-lived AI alert WebSocket ticket',
+        description:
+          'Creates a 30-second, AI-alert-realtime-only ticket for an active Security Officer. Supply the ticket as the ticket.<token> WebSocket subprotocol together with securaai-alerts.v1. The WebSocket only signals that alert data changed; clients must reload the authorized REST resources.',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          '200': {
+            description: 'Short-lived ticket and WebSocket path',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: {
+                    success: { type: 'boolean', const: true },
+                    data: {
+                      type: 'object',
+                      required: ['ticket', 'expiresInSeconds', 'path'],
+                      properties: {
+                        ticket: { type: 'string' },
+                        expiresInSeconds: { type: 'integer', example: 30 },
+                        path: { type: 'string', example: '/api/v1/ai-alerts/realtime' },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'Security Officer role required' },
         },
       },
     },
@@ -4014,7 +4370,10 @@ export const openApiSpec = {
           },
         ],
         responses: {
-          '200': { description: 'Detection registry and optional historical evaluation metrics, plus explanationModel { provider: Ollama, model: configured runtime model name, enabled: boolean, purpose: EXPLANATION_ONLY, connectionStatus: NOT_CHECKED }. Enabled is configuration only, not a connectivity guarantee.' },
+          '200': {
+            description:
+              'Detection registry and optional historical evaluation metrics, plus explanationModel { provider: Ollama, model: configured runtime model name, enabled: boolean, purpose: EXPLANATION_ONLY, connectionStatus: NOT_CHECKED }. Enabled is configuration only, not a connectivity guarantee.',
+          },
           '401': { description: 'Authentication required' },
           '403': { description: 'Security Officer role required' },
           '422': { description: 'Invalid query parameters' },
@@ -4199,7 +4558,10 @@ export const openApiSpec = {
         },
         responses: {
           '200': { description: 'Access and refresh token pair' },
-          '401': { description: 'Invalid credentials, ACCOUNT_NOT_FOUND, or ACCOUNT_LOCKED / ACCOUNT_INACTIVE after a correct password' },
+          '401': {
+            description:
+              'Invalid credentials, ACCOUNT_NOT_FOUND, or ACCOUNT_LOCKED / ACCOUNT_INACTIVE after a correct password',
+          },
           '422': { description: 'Invalid request body' },
           '429': { description: 'Too many attempts' },
         },
@@ -4209,24 +4571,38 @@ export const openApiSpec = {
       post: {
         tags: ['Authentication'],
         summary: 'Change password and sign out all devices',
-        description: 'Requires an active authenticated account and the correct current password. Updates the password, revokes all refresh sessions and records PASSWORD_CHANGED atomically. Audit records exclude credentials and token hashes. Previously issued access tokens are rejected on subsequent authenticated requests. All devices must log in again.',
+        description:
+          'Requires an active authenticated account and the correct current password. Updates the password, revokes all refresh sessions and records PASSWORD_CHANGED atomically. Audit records exclude credentials and token hashes. Previously issued access tokens are rejected on subsequent authenticated requests. All devices must log in again.',
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
-          content: { 'application/json': { schema: {
-            type: 'object', additionalProperties: false,
-            required: ['currentPassword', 'newPassword', 'confirmPassword'],
-            properties: {
-              currentPassword: { type: 'string', minLength: 1, maxLength: 128 },
-              newPassword: { type: 'string', minLength: 8, maxLength: 128, description: 'Must contain an uppercase letter and a special character and differ from the current password.' },
-              confirmPassword: { type: 'string', description: 'Must match newPassword.' },
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['currentPassword', 'newPassword', 'confirmPassword'],
+                properties: {
+                  currentPassword: { type: 'string', minLength: 1, maxLength: 128 },
+                  newPassword: {
+                    type: 'string',
+                    minLength: 8,
+                    maxLength: 128,
+                    description:
+                      'Must contain an uppercase letter and a special character and differ from the current password.',
+                  },
+                  confirmPassword: { type: 'string', description: 'Must match newPassword.' },
+                },
+              },
             },
-          } } },
+          },
         },
         responses: {
           '200': { description: 'Password changed; sign in again on all devices' },
           '400': { description: 'Incorrect current password or unchanged password' },
-          '401': { description: 'Authentication required or password changed since token issuance' },
+          '401': {
+            description: 'Authentication required or password changed since token issuance',
+          },
           '409': { description: 'Concurrent password change' },
           '422': { description: 'Invalid password fields or confirmation mismatch' },
           '429': { description: 'Too many attempts' },
@@ -4293,7 +4669,8 @@ export const openApiSpec = {
       post: {
         tags: ['Authentication'],
         summary: 'Revoke a refresh session',
-        description: 'Revokes the matching session and records USER_LOGGED_OUT atomically. Unknown or already revoked sessions remain idempotent and do not create duplicate audit events.',
+        description:
+          'Revokes the matching session and records USER_LOGGED_OUT atomically. Unknown or already revoked sessions remain idempotent and do not create duplicate audit events.',
         security: [],
         requestBody: {
           required: true,
@@ -4420,7 +4797,7 @@ export const openApiSpec = {
         tags: ['Users'],
         summary: 'Create a V2 user account',
         description:
-          'Active Admin only. Creates one active account, records an audit event, and emails a generated temporary password. V2 supports one role per account.',
+          'Active Admin only. Creates an inactive provisioning account, emails a generated temporary password, then activates it and records USER_CREATED. Email rejection removes only the matching inactive account and appends USER_CREATION_FAILED without deleting audit history. HTTP 503 reports email/activation or cleanup failure; an uncompleted account is not activated by this flow. V2 supports one role per account.',
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
@@ -4455,7 +4832,10 @@ export const openApiSpec = {
           '403': { description: 'Admin role required' },
           '409': { description: 'Email already exists' },
           '422': { description: 'Invalid request body' },
-          '503': { description: 'Email service unavailable or delivery failed' },
+          '503': {
+            description:
+              'EMAIL_SERVICE_UNAVAILABLE, EMAIL_DELIVERY_FAILED, USER_ACTIVATION_FAILED, or USER_PROVISIONING_CLEANUP_FAILED (administrator review required)',
+          },
         },
       },
     },
@@ -4605,7 +4985,10 @@ export const openApiSpec = {
           { name: 'sortOrder', in: 'query', schema: { type: 'string', enum: ['asc', 'desc'] } },
         ],
         responses: {
-          '200': { description: 'Paginated login history with summary { successful, failed, accounts } over all matching records, independent of pagination. Accounts counts distinct non-null user IDs; unrecognized login identities are excluded. All query filters and viewer ownership scope apply to totals.' },
+          '200': {
+            description:
+              'Paginated login history with summary { successful, failed, accounts } over all matching records, independent of pagination. Accounts counts distinct non-null user IDs; unrecognized login identities are excluded. All query filters and viewer ownership scope apply to totals.',
+          },
           '401': { description: 'Authentication required' },
           '403': { description: 'A supported login-history role is required' },
           '422': { description: 'Invalid query parameters' },

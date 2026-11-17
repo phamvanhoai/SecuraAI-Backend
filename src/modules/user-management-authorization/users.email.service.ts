@@ -14,6 +14,9 @@ function mailTransporter(): Transporter {
     host: env.SMTP_HOST,
     port: env.SMTP_PORT,
     secure: env.SMTP_SECURE,
+    connectionTimeout: 10_000,
+    greetingTimeout: 10_000,
+    socketTimeout: 20_000,
     auth: { user: env.SMTP_USER, pass: env.SMTP_PASS },
   });
   return transporter;
@@ -26,7 +29,7 @@ export const usersEmailService = {
     temporaryPassword: string;
   }): Promise<void> {
     const subject = `Your ${env.APP_NAME} account is ready`;
-    await mailTransporter().sendMail({
+    const result: unknown = await mailTransporter().sendMail({
       from: env.SMTP_USER,
       to: input.email,
       subject,
@@ -44,5 +47,21 @@ export const usersEmailService = {
         temporaryPassword: input.temporaryPassword,
       }),
     });
+    if (
+      !result ||
+      typeof result !== 'object' ||
+      !('accepted' in result) ||
+      !Array.isArray(result.accepted) ||
+      !result.accepted.some(
+        (address: unknown) =>
+          typeof address === 'string' && address.toLowerCase() === input.email.toLowerCase(),
+      )
+    ) {
+      throw new AppError(
+        503,
+        'EMAIL_DELIVERY_FAILED',
+        'The account email was not accepted by the email server',
+      );
+    }
   },
 };

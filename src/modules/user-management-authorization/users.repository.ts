@@ -488,6 +488,7 @@ export const usersRepository = {
             ? { departments: { connect: { id: input.departmentId } } }
             : {}),
           role: input.role,
+          status: 'INACTIVE',
         },
         select: {
           id: true,
@@ -503,7 +504,7 @@ export const usersRepository = {
         {
           actorUserId: actor.id,
           actorType: 'USER',
-          action: 'USER_CREATED',
+          action: 'USER_PROVISIONING_STARTED',
           resourceType: 'USER',
           resourceId: user.id,
           source: 'API',
@@ -519,12 +520,76 @@ export const usersRepository = {
       return { kind: 'created', user } as const;
     });
   },
-  deleteProvisionedUser(userId: string) {
-    return prisma.$transaction([
-      prisma.audit_logs.deleteMany({
-        where: { resource_type: 'USER', resource_id: userId, action: 'USER_CREATED' },
-      }),
-      prisma.users.delete({ where: { id: userId } }),
-    ]);
+  activateProvisionedUser(userId: string, expectedPasswordHash: string, actorUserId: string) {
+    return prisma.$transaction(async (tx) => {
+      const actor = await tx.users.findUnique({
+        where: { id: actorUserId },
+        select: { role: true, status: true },
+      });
+      if (!actor || actor.role !== 'ADMIN' || actor.status !== 'ACTIVE') return null;
+      const activated = await tx.users.updateMany({
+        where: { id: userId, status: 'INACTIVE', password_hash: expectedPasswordHash },
+        data: { status: 'ACTIVE', updated_at: new Date() },
+      });
+      if (activated.count !== 1) return null;
+      const user = await tx.users.findUnique({
+        where: { id: userId },
+        select: {
+          id: true,
+          email: true,
+          username: true,
+          full_name: true,
+          role: true,
+          status: true,
+        },
+      });
+      if (!user) throw new Error('Provisioned user disappeared during activation');
+      await auditWriter.record(
+        {
+          actorUserId,
+          action: 'USER_CREATED',
+          resourceType: 'USER',
+          resourceId: userId,
+          beforeData: { status: 'INACTIVE' },
+          afterData: {
+            email: user.email,
+            username: user.username,
+            role: user.role,
+            status: user.status,
+            accountEmailAccepted: true,
+          },
+        },
+        tx,
+      );
+      return user;
+    });
+  },
+  deleteProvisionedUser(
+    userId: string,
+    expectedPasswordHash: string,
+    actorUserId: string,
+    errorCode: string,
+  ) {
+    return prisma.$transaction(async (tx) => {
+      // Only remove this attempt's inactive account. Audit records are append-only.
+      const removed = await tx.users.deleteMany({
+        where: { id: userId, status: 'INACTIVE', password_hash: expectedPasswordHash },
+      });
+      if (removed.count !== 1) return false;
+      await auditWriter.record(
+        {
+          actorUserId,
+          action: 'USER_CREATION_FAILED',
+          resourceType: 'USER',
+          resourceId: userId,
+          outcome: 'FAILURE',
+          errorCode,
+          beforeData: { status: 'INACTIVE' },
+          afterData: { accountRemoved: true },
+        },
+        tx,
+      );
+      return true;
+    });
   },
 };

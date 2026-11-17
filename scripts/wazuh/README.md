@@ -164,3 +164,60 @@ docker exec -it <wazuh-manager-container> tail -f /var/ossec/logs/integrations.l
 ```
 
 Contextual detection demo scenarios (PowerShell, raw alert simulation): [docs/wazuh-contextual-demo.md](../../docs/wazuh-contextual-demo.md).
+
+---
+
+## 7. Quản lý & chạy đa kịch bản trên Windows Wazuh Agent (`agent-scenario-manager.ps1`)
+
+Nếu muốn kiểm thử toàn bộ luồng **Windows Wazuh Agent → Wazuh Manager (`local_rules.xml`) → `custom-securaai` → SecuraAI** cho cả 3 Event Families (`AUTHENTICATION`, `APPLICATION_ACCESS`, `VPN_SSO`):
+
+### Bước 1: Khai báo `<localfile>` trên máy Windows Wazuh Agent
+Mở `C:\Program Files (x86)\ossec-agent\ossec.conf` bằng quyền Administrator, thêm vào trong `<ossec_config>`:
+
+```xml
+<localfile>
+  <log_format>json</log_format>
+  <location>C:\ProgramData\securaai-sim\events.log</location>
+</localfile>
+```
+
+Sau đó khởi động lại dịch vụ Agent trên Windows:
+```powershell
+Restart-Service WazuhSvc
+```
+
+### Bước 2: Thêm rule nhận diện trên Wazuh Manager
+Sao chép nội dung file `scripts/wazuh/local_rules.securaai-sim.xml` vào trong `/var/ossec/etc/rules/local_rules.xml` trên container Wazuh Manager rồi khởi động lại Manager:
+
+```bash
+docker restart <wazuh-manager-container>
+```
+
+### Bước 2b: Bật thời gian giả lập (chỉ trong môi trường lab)
+Các kịch bản có baseline lịch sử ghi trường `emitted_at` lùi về quá khứ. Mặc định `custom-securaai` **bỏ qua** `emitted_at` và luôn dùng timestamp của Wazuh. Trường này chỉ được chấp nhận khi đủ cả 4 điều kiện:
+
+1. File cờ `/var/ossec/etc/securaai-sim-timestamps.enabled` tồn tại trên Manager.
+2. Alert khớp rule giả lập 100501–100509.
+3. Payload có `sim_type = securaai`.
+4. `emitted_at` là ISO-8601 có múi giờ, lùi tối đa 24 giờ và không vượt quá 120 giây về tương lai.
+
+```bash
+# Bật (lab):
+docker exec <wazuh-manager-container> sh -c "touch /var/ossec/etc/securaai-sim-timestamps.enabled && chown root:wazuh /var/ossec/etc/securaai-sim-timestamps.enabled && chmod 640 /var/ossec/etc/securaai-sim-timestamps.enabled"
+# Tắt (sau khi demo / môi trường thật):
+docker exec <wazuh-manager-container> rm -f /var/ossec/etc/securaai-sim-timestamps.enabled
+```
+
+Mỗi sự kiện gửi sang SecuraAI có `metadata.timestampSource` (`WAZUH` hoặc `SIMULATION_DECLARED`) và `metadata.simulated` để phân biệt dữ liệu giả lập với dữ liệu thật. Không bật cờ này trên môi trường thật.
+
+### Bước 3: Chạy công cụ quản lý kịch bản
+```powershell
+# Mở Menu tương tác (chọn kịch bản 1..13, chạy bộ AllCore, xem lịch sử run-history.csv):
+.\scripts\wazuh\agent-scenario-manager.ps1
+
+# Hoặc chạy trực tiếp từng kịch bản từ dòng lệnh:
+.\scripts\wazuh\agent-scenario-manager.ps1 -Scenario AppSuccessAfterDenial
+.\scripts\wazuh\agent-scenario-manager.ps1 -Scenario VpnFailureBurst
+.\scripts\wazuh\agent-scenario-manager.ps1 -Scenario AuthMultiAccountSpray
+```
+
