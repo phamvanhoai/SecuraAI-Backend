@@ -3,6 +3,7 @@ import rateLimit from 'express-rate-limit';
 import { validate } from '../../common/middleware/validate.js';
 import { authenticate } from '../../common/middleware/authenticate.js';
 import { asyncHandler } from '../../common/utils/async-handler.js';
+import { env } from '../../config/env.js';
 import {
   changePassword,
   confirmPasswordReset,
@@ -28,7 +29,7 @@ const rateLimitMessage = {
 } as const;
 const credentialLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  limit: 10,
+  limit: env.AUTH_CREDENTIAL_RATE_LIMIT,
   standardHeaders: 'draft-8',
   legacyHeaders: false,
   skipSuccessfulRequests: true,
@@ -36,7 +37,7 @@ const credentialLimiter = rateLimit({
 });
 const sessionLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-  limit: 120,
+  limit: env.AUTH_SESSION_RATE_LIMIT,
   standardHeaders: 'draft-8',
   legacyHeaders: false,
   message: rateLimitMessage,
@@ -49,7 +50,12 @@ const passwordWorkflowLimiter = rateLimit({
   message: rateLimitMessage,
 });
 
-authRouter.post('/login', credentialLimiter, validate({ body: loginBodySchema }), asyncHandler(login));
+authRouter.post(
+  '/login',
+  credentialLimiter,
+  validate({ body: loginBodySchema }),
+  asyncHandler(login),
+);
 authRouter.post(
   '/google',
   credentialLimiter,

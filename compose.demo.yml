@@ -30,6 +30,11 @@ services:
       ML_SHADOW_ENABLED: "true"
       ML_SHADOW_BASE_URL: http://host.docker.internal:8002
       ML_SHADOW_TIMEOUT_MS: "2000"
+      # Demo automation signs in with several isolated role profiles and may
+      # restore an expired session. Production keeps the secure defaults.
+      API_RATE_LIMIT: "10000"
+      AUTH_CREDENTIAL_RATE_LIMIT: "100"
+      AUTH_SESSION_RATE_LIMIT: "2000"
       CORS_ORIGINS: http://localhost:3001
     extra_hosts:
       - "host.docker.internal:host-gateway"
