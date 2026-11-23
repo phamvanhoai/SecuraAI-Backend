@@ -721,7 +721,7 @@ export const openApiSpec = {
         summary: 'Create Risk',
         security: [{ bearerAuth: [] }],
         description:
-          'Active Security Officer required. Persists original scope and linked active assets atomically. Service membership never automatically changes saved risk scope. Active Employee owner and at least one active scope asset are required.',
+          'Active Security Officer required. Review date must be strictly after today in Asia/Ho_Chi_Minh (UTC+7); today and past dates return 422 INVALID_REVIEW_DATE. Persists original scope and linked active assets atomically. Service membership never automatically changes saved risk scope. Active Employee owner and at least one active scope asset are required.',
         requestBody: {
           required: true,
           content: {
