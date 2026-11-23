@@ -1,4 +1,5 @@
 import { AppError } from '../../common/errors/app-error.js';
+import { controlAssessmentReview } from './control-assessment-review.js';
 import { isControlEvidenceUsable } from './control-evidence.rules.js';
 import type {
   AssessControlEffectivenessBody,
@@ -9,7 +10,8 @@ import {
   type ControlEffectivenessRecord,
 } from './control-effectiveness.repository.js';
 
-const map = (item: ControlEffectivenessRecord) => ({
+const map = (item: ControlEffectivenessRecord, bases: Awaited<ReturnType<typeof controlEffectivenessRepository.evidenceBasis>>) => ({
+  ...controlAssessmentReview(item, bases),
   id: item.id,
   controlCode: item.control_code,
   name: item.name,
@@ -33,6 +35,7 @@ const map = (item: ControlEffectivenessRecord) => ({
     })),
   assessments: item.control_assessments.map((value) => ({
     id: value.id,
+    evidenceBasis: bases.get(value.id) ?? null,
     testMethod: value.test_method,
     result: value.result?.toLowerCase() ?? null,
     effectiveness: value.effectiveness?.toNumber() ?? null,
@@ -62,8 +65,9 @@ export const controlEffectivenessService = {
       user.role === 'SECURITY_OFFICER',
       query,
     );
+    const bases = await controlEffectivenessRepository.evidenceBasis(items.map(item => item.id), items.flatMap(item => item.control_assessments.map(value => value.id)));
     return {
-      items: items.map(map),
+      items: items.map(item => map(item, bases)),
       pagination: {
         page: query.page,
         limit: query.limit,

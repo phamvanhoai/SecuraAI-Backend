@@ -4,12 +4,13 @@ const { tx } = vi.hoisted(() => ({
     $queryRaw: vi.fn(),
     users: { findUnique: vi.fn() },
     security_controls: { findUnique: vi.fn(), update: vi.fn() },
-    audit_logs: { create: vi.fn() },
+    audit_logs: { create: vi.fn(), findMany: vi.fn(), findFirst: vi.fn() },
     control_assessments: { create: vi.fn() },
   },
 }));
 vi.mock('../src/database/prisma.js', () => ({
   prisma: {
+    audit_logs: tx.audit_logs,
     $transaction: async (callback: (value: typeof tx) => Promise<unknown>) => callback(tx),
   },
 }));
@@ -21,6 +22,7 @@ const configuration = {
   implementation_status: 'IMPLEMENTED' as const,
 };
 const input = {
+  evidenceIds: [controlId],
   testMethod: 'Verify MFA enforcement',
   result: 'effective' as const,
   effectiveness: 100,
@@ -28,6 +30,7 @@ const input = {
 };
 beforeEach(() => {
   vi.clearAllMocks();
+  tx.audit_logs.findFirst.mockResolvedValue({ record_hash: "a".repeat(64) });
   tx.users.findUnique.mockResolvedValue({ role: 'EMPLOYEE', status: 'ACTIVE' });
   tx.security_controls.findUnique.mockResolvedValue({
     ...configuration,
@@ -35,7 +38,7 @@ beforeEach(() => {
     control_evidence_links: [
       {
         evidence_items: {
-          id: controlId,
+          id: controlId, name: 'Test evidence', source: 'Test report',
           collected_at: new Date('2026-01-01'),
           valid_from: null,
           valid_until: null,
@@ -104,7 +107,7 @@ describe('Assessment versus catalog Edit safety', () => {
       controlEffectivenessRepository.create(
         controlId,
         actor,
-        { ...input, expectedImplementationStatus: 'implemented', implementationStatus: 'planned' },
+        { ...input, expectedImplementationStatus: 'implemented', implementationStatus: 'partially_implemented' },
         configuration,
       ),
     ).rejects.toMatchObject({ code: 'IMPLEMENTATION_REASON_REQUIRED' });
@@ -127,6 +130,8 @@ describe('Assessment versus catalog Edit safety', () => {
       control_evidence_links: [
         {
           evidence_items: {
+            id: controlId,
+            name: 'Test evidence', source: 'Test report',
             collected_at: new Date('2026-01-01'),
             valid_from: null,
             valid_until: null,
@@ -224,4 +229,58 @@ describe('Assessment versus catalog Edit safety', () => {
     ).rejects.toMatchObject({ code: 'CONTROL_EVIDENCE_REQUIRED' });
     expect(tx.control_assessments.create).not.toHaveBeenCalled();
   });
+});
+
+it('preserves only selected Evidence in the assessment audit', async () => {
+  await controlEffectivenessRepository.create(controlId, actor, input, configuration);
+  expect(tx.audit_logs.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
+    after_data: expect.objectContaining({ assessmentId: controlId, evidenceBasis: [{
+      id: controlId, name: 'Test evidence', source: 'Test report', collectedAt: '2026-01-01T00:00:00.000Z', validFrom: null, validUntil: null,
+    }] }),
+  }) }));
+});
+it.each(['unlinked', 'expired'])('rejects selected %s Evidence even when another valid item exists', async kind => {
+  const current = await tx.security_controls.findUnique();
+  tx.security_controls.findUnique.mockResolvedValue({ ...current, control_evidence_links: [
+    ...current.control_evidence_links,
+    ...(kind === 'expired' ? [{ evidence_items: { id: actor, collected_at: new Date('2020-01-01'), valid_from: null, valid_until: new Date('2020-01-02') } }] : []),
+  ] });
+  await expect(controlEffectivenessRepository.create(controlId, actor, { ...input, evidenceIds: [actor] }, configuration)).rejects.toMatchObject({ code: 'CONTROL_EVIDENCE_STALE' });
+  expect(tx.control_assessments.create).not.toHaveBeenCalled();
+  expect(tx.audit_logs.create).not.toHaveBeenCalled();
+});
+
+it('reads the original snapshot from audit without consulting current Evidence links', async () => {
+  const evidenceBasis = [{ id: actor, name: 'Original evidence A', source: 'Original source', collectedAt: '2026-01-01T00:00:00Z', validFrom: null, validUntil: null }];
+  tx.audit_logs.findMany.mockResolvedValue([{ after_data: { assessmentId: controlId, evidenceBasis } }]);
+  const snapshots = await controlEffectivenessRepository.evidenceBasis([controlId], [controlId]);
+  expect(snapshots.get(controlId)).toEqual(evidenceBasis);
+  expect(tx.security_controls.findUnique).not.toHaveBeenCalled();
+});
+it('does not manufacture Evidence snapshots for legacy audits', async () => {
+  tx.audit_logs.findMany.mockResolvedValue([{ after_data: { assessmentId: controlId } }]);
+  expect((await controlEffectivenessRepository.evidenceBasis([controlId], [controlId])).has(controlId)).toBe(false);
+});
+
+it.each(['NOT_APPLICABLE', 'UNDER_REVIEW'])('blocks %s before writes', async applicability => {
+  const current = await tx.security_controls.findUnique();
+  tx.security_controls.findUnique.mockResolvedValue({ ...current, applicability });
+  await expect(controlEffectivenessRepository.create(controlId, actor, input, { ...configuration, applicability: applicability as 'NOT_APPLICABLE' | 'UNDER_REVIEW' })).rejects.toMatchObject({ code: 'CONTROL_NOT_APPLICABLE' });
+  expect(tx.control_assessments.create).not.toHaveBeenCalled();
+  expect(tx.security_controls.update).not.toHaveBeenCalled();
+});
+it.each(['not_implemented', 'planned'] as const)('blocks final %s status before writes', async implementationStatus => {
+  await expect(controlEffectivenessRepository.create(controlId, actor, { ...input, expectedImplementationStatus: 'implemented', implementationStatus, implementationChangeReason: 'Deployment is not yet available.' }, configuration)).rejects.toMatchObject({ code: 'CONTROL_NOT_DEPLOYED' });
+  expect(tx.control_assessments.create).not.toHaveBeenCalled();
+  expect(tx.security_controls.update).not.toHaveBeenCalled();
+});
+
+it('chains assessment audit to the preceding hash using the same transaction', async () => {
+  await controlEffectivenessRepository.create(controlId, actor, input, configuration);
+  expect(tx.audit_logs.findFirst).toHaveBeenCalledWith({ orderBy: [{ occurred_at: 'desc' }, { id: 'desc' }], select: { record_hash: true } });
+  expect(tx.audit_logs.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({
+    previous_hash: 'a'.repeat(64), record_hash: expect.stringMatching(/^[a-f0-9]{64}$/),
+    action: 'CONTROL_EFFECTIVENESS_ASSESSED', actor_user_id: actor,
+    after_data: expect.objectContaining({ assessmentId: controlId, evidenceBasis: expect.any(Array) }),
+  }) }));
 });
