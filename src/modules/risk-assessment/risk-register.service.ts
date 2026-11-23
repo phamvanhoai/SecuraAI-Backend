@@ -3,7 +3,7 @@ import { acceptanceContextBlockedReason } from './acceptance-context-basis.js';
 import { AppError } from '../../common/errors/app-error.js';
 import { isRiskAcceptanceApprover } from '../user-management-authorization/index.js';
 import { currentRiskReview } from './current-risk-review.js';
-import { riskReviewOverdue, OVERDUE_REVIEW_SUBMIT_MESSAGE, OVERDUE_REVIEW_APPROVAL_MESSAGE } from './review-schedule.js';
+import { vietnamDate, riskReviewOverdue, OVERDUE_REVIEW_SUBMIT_MESSAGE, OVERDUE_REVIEW_APPROVAL_MESSAGE } from './review-schedule.js';
 import type { CompleteRiskReview } from './dto/complete-risk-review.dto.js';
 import type { ListRiskRegisterQuery } from './dto/view-risk-register.dto.js';
 import { randomUUID } from 'node:crypto';
@@ -811,8 +811,9 @@ export const riskRegisterService = {
   },
   async create(userId: string, input: CreateRiskAssessmentBody) {
     await requireSecurityOfficer(userId);
-    if (new Date(`${input.reviewDate}T23:59:59.999Z`) <= new Date())
-      throw new AppError(422, 'INVALID_REVIEW_DATE', 'Review date must be in the future');
+    // Review dates are calendar dates: compare against today in Vietnam, not end-of-day UTC.
+    if (input.reviewDate <= vietnamDate(new Date()))
+      throw new AppError(422, 'INVALID_REVIEW_DATE', 'Review date must be after today in Vietnam time (UTC+7)');
     const [owner, scopeAssets] = await Promise.all([
       riskRegisterRepository.findOwner(input.ownerUserId),
       riskRegisterRepository.findScopeAssets(input.scope),
