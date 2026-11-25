@@ -4,7 +4,7 @@ import { assignIncidentHandlerSchema } from '../src/modules/information-security
 const mocks = vi.hoisted(() => ({
   users: { findUnique: vi.fn(), findMany: vi.fn() },
   incidents: { findUnique: vi.fn(), update: vi.fn(), findUniqueOrThrow: vi.fn() },
-  audit_logs: { create: vi.fn(), findMany: vi.fn() },
+  audit_logs: { create: vi.fn(), findMany: vi.fn(), findFirst: vi.fn() },
   $queryRaw: vi.fn(),
 }));
 vi.mock('../src/database/prisma.js', () => ({

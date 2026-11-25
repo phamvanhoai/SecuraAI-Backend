@@ -83,7 +83,7 @@ export const controlCatalogPaths = {
       security,
       parameters: parameter,
       description:
-        'Active Security Officer or assigned Employee Control Owner. Requires usable linked Evidence. Optionally provide implementationStatus and expectedImplementationStatus together; a changed status requires implementationChangeReason. The implementation update, appended assessment and audit are atomic. No existing assessment is overwritten. Result does not automatically change implementation status. Internal scoring policy for new assessments: [0,50) Ineffective; [50,80) Partially effective; [80,100] Effective. An inconsistent result/effectiveness pair is rejected. Historical records remain unchanged.',
+        'Active Security Officer or assigned Employee Control Owner. Requires usable linked Evidence. Optionally provide implementationStatus and expectedImplementationStatus together; a changed status requires implementationChangeReason. The implementation update, appended assessment and audit are atomic. No existing assessment is overwritten. Result does not automatically change implementation status. Internal scoring policy for new assessments: [0,50) Ineffective; [50,80) Partially effective; [80,100] Effective. An inconsistent result/effectiveness pair is rejected. Historical records remain unchanged. List responses include computed reviewRequired/reviewReasons for latest assessments with changed Control configuration, missing/expired/changed selected Evidence or unverifiable legacy snapshots. Adding unrelated Evidence alone does not invalidate an assessment. Operating effectiveness requires APPLICABLE and a resulting PARTIALLY_IMPLEMENTED or IMPLEMENTED status, checked in the same transaction before any writes. Invalid applicability/deployment returns 422 CONTROL_NOT_APPLICABLE/CONTROL_NOT_DEPLOYED. Explicit evidenceIds selection is required: all selected items must remain linked, Active and currently valid under Control/Evidence locks. Evidence metadata snapshots are stored in the existing assessment audit and returned as evidenceBasis, or null for historical assessments without a snapshot. Changed Evidence returns 409 CONTROL_EVIDENCE_STALE.',
       requestBody: {
         required: true,
         content: {
@@ -91,8 +91,9 @@ export const controlCatalogPaths = {
             schema: {
               type: 'object',
               additionalProperties: false,
-              required: ['testMethod', 'result', 'effectiveness', 'notes'],
+              required: ['evidenceIds', 'testMethod', 'result', 'effectiveness', 'notes'],
               properties: {
+                evidenceIds: { type: 'array', minItems: 1, maxItems: 100, uniqueItems: true, items: { type: 'string', format: 'uuid' } },
                 testMethod: { type: 'string', minLength: 3, maxLength: 1000 },
                 result: {
                   type: 'string',

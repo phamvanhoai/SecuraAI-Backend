@@ -18,16 +18,34 @@ export const createApp = () => {
   const app = express();
   app.disable('x-powered-by');
   if (env.TRUST_PROXY) app.set('trust proxy', 1);
-  app.use(pinoHttp({ logger, genReqId: (req, res) => {
-    const incoming = req.headers['x-request-id'];
-    const id = typeof incoming === 'string' && incoming.length <= 128 ? incoming : randomUUID();
-    res.setHeader('x-request-id', id);
-    return id;
-  }}));
+  app.use(
+    pinoHttp({
+      logger,
+      genReqId: (req, res) => {
+        const incoming = req.headers['x-request-id'];
+        const id = typeof incoming === 'string' && incoming.length <= 128 ? incoming : randomUUID();
+        res.setHeader('x-request-id', id);
+        return id;
+      },
+    }),
+  );
   app.use(requestContextMiddleware);
   app.use(helmet(env.SWAGGER_ENABLED ? { contentSecurityPolicy: false } : {}));
-  app.use(cors({ origin: env.corsOrigins, credentials: true, methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'] }));
-  app.use(rateLimit({ windowMs: 15 * 60 * 1000, limit: 300, standardHeaders: 'draft-8', legacyHeaders: false }));
+  app.use(
+    cors({
+      origin: env.corsOrigins,
+      credentials: true,
+      methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+    }),
+  );
+  app.use(
+    rateLimit({
+      windowMs: 15 * 60 * 1000,
+      limit: env.API_RATE_LIMIT,
+      standardHeaders: 'draft-8',
+      legacyHeaders: false,
+    }),
+  );
   app.use(express.json({ limit: '1mb' }));
   app.use(express.urlencoded({ extended: false, limit: '1mb' }));
   app.use(hpp());

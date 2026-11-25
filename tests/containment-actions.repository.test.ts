@@ -3,7 +3,7 @@ const tx = vi.hoisted(() => ({
   users: { findUnique: vi.fn() },
   incidents: { findUnique: vi.fn(), update: vi.fn() },
   incident_actions: { create: vi.fn(), count: vi.fn(), findMany: vi.fn() },
-  audit_logs: { create: vi.fn() },
+  audit_logs: { create: vi.fn(), findFirst: vi.fn() },
   $queryRaw: vi.fn(),
 }));
 vi.mock('../src/database/prisma.js', () => ({

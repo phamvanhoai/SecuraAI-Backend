@@ -3,7 +3,8 @@ import { assessControlEffectivenessBodySchema } from '../src/modules/policy-comp
 describe('assess control effectiveness contract', () => {
   it('requires a baseline and reason only when implementation changes', () => {
     const body = {
-      testMethod: 'Inspect configuration',
+      evidenceIds: ['00000000-0000-4000-8000-000000000001'],
+        testMethod: 'Inspect configuration',
       result: 'effective',
       effectiveness: 90,
       notes: 'Verified deployment through supporting evidence.',
@@ -47,6 +48,7 @@ describe('assess control effectiveness contract', () => {
   ])('accepts boundary %s as %s', (effectiveness, result) => {
     expect(
       assessControlEffectivenessBodySchema.safeParse({
+        evidenceIds: ['00000000-0000-4000-8000-000000000001'],
         testMethod: 'Inspect access logs',
         notes: 'Verified test scope and supporting evidence.',
         effectiveness,
@@ -62,6 +64,7 @@ describe('assess control effectiveness contract', () => {
   ])('rejects mismatch %s and %s', (effectiveness, result) => {
     expect(
       assessControlEffectivenessBodySchema.safeParse({
+        evidenceIds: ['00000000-0000-4000-8000-000000000001'],
         testMethod: 'Inspect access logs',
         notes: 'Verified test scope and supporting evidence.',
         effectiveness,
@@ -72,6 +75,7 @@ describe('assess control effectiveness contract', () => {
   it('rejects excess precision that could round across a result threshold', () => {
     expect(
       assessControlEffectivenessBodySchema.safeParse({
+        evidenceIds: ['00000000-0000-4000-8000-000000000001'],
         testMethod: 'Inspect access logs',
         notes: 'Verified test scope and supporting evidence.',
         effectiveness: 79.999,
@@ -82,6 +86,7 @@ describe('assess control effectiveness contract', () => {
   it('accepts complete testing results', () => {
     expect(
       assessControlEffectivenessBodySchema.safeParse({
+        evidenceIds: ['00000000-0000-4000-8000-000000000001'],
         testMethod: 'Inspect configuration and sample access logs',
         result: 'effective',
         effectiveness: 92,
@@ -92,6 +97,7 @@ describe('assess control effectiveness contract', () => {
   it('rejects invalid effectiveness', () => {
     expect(
       assessControlEffectivenessBodySchema.safeParse({
+        evidenceIds: ['00000000-0000-4000-8000-000000000001'],
         testMethod: 'Test',
         result: 'effective',
         effectiveness: 101,
@@ -99,4 +105,8 @@ describe('assess control effectiveness contract', () => {
       }).success,
     ).toBe(false);
   });
+});
+
+it.each([undefined, [], ['00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000001'], ['invalid']])('rejects missing, empty, duplicate or invalid Evidence selection %j', evidenceIds => {
+  expect(assessControlEffectivenessBodySchema.safeParse({ evidenceIds, testMethod: 'Inspect configuration', result: 'effective', effectiveness: 90, notes: 'Evidence reviewed for the selected scope.' }).success).toBe(false);
 });
