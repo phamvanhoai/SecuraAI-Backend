@@ -203,6 +203,8 @@ export const aiAlertsRepository = {
     });
   },
   findDeployedModelThreshold() {
+    // Find the latest deployed model and return only the fields needed
+    // by the service and the API response.
     return prisma.ai_model_versions.findFirst({
       where: { status: 'DEPLOYED' },
       orderBy: [{ deployed_at: 'desc' }, { created_at: 'desc' }],
@@ -223,7 +225,11 @@ export const aiAlertsRepository = {
     sourceIp?: string | undefined;
     userAgent?: string | undefined;
   }) {
+    // Run the threshold update and audit-log insert as one operation.
+    // If either step fails, Prisma rolls back both changes.
     return prisma.$transaction(async (transaction) => {
+      // Check again that the selected model is still deployed.
+      // This prevents an old request from updating a model that was replaced.
       const model = await transaction.ai_model_versions.findFirst({
         where: { id: input.modelVersionId, status: 'DEPLOYED' },
         select: {
@@ -236,6 +242,9 @@ export const aiAlertsRepository = {
         },
       });
       if (!model) return null;
+
+      // The threshold is stored inside the model parameters JSON.
+      // Keep all other settings and replace only the threshold value.
       const current =
         model.parameters && typeof model.parameters === 'object' && !Array.isArray(model.parameters)
           ? model.parameters
@@ -257,6 +266,9 @@ export const aiAlertsRepository = {
       const resourceType = 'AI_MODEL_VERSION';
       const afterData = { threshold: input.threshold };
       const previousHash = await latestAuditHash(transaction);
+
+      // Record who changed the threshold, when it happened, and the client
+      // information. This provides a history for security review.
       await transaction.audit_logs.create({
         data: {
           actor_user_id: input.actorUserId,

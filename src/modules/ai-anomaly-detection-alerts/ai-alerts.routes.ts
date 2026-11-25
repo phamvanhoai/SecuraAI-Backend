@@ -56,6 +56,11 @@ aiAlertsRouter.post(
 );
 aiAlertsRouter.get('/metrics', authenticate, asyncHandler(getAiAlertMetrics));
 aiAlertsRouter.get('/thresholds', authenticate, asyncHandler(getDetectionThreshold));
+
+// Configure Detection Threshold flow:
+// 1. authenticate verifies the access token and stores the user ID.
+// 2. validate accepts a threshold from 0.5 to 1, including both limits.
+// 3. the controller receives the validated HTTP request.
 aiAlertsRouter.put(
   '/thresholds',
   authenticate,
