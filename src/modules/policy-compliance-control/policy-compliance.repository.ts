@@ -1,5 +1,5 @@
 import { Prisma, type policy_decision_action, type policy_version_status } from '@prisma/client';
-import { createHash, randomUUID } from 'node:crypto';
+import { auditWriter } from '../audit-security-reporting/audit-writer.js';
 import { prisma } from '../../database/prisma.js';
 import { AppError } from '../../common/errors/app-error.js';
 import type { CreatePolicyVersionBody } from './dto/create-policy-version.dto.js';
@@ -216,15 +216,11 @@ async function auditPolicyDecision(
     versionNumber: version.version_number, status: version.status,
     decisionId: decision.id, reason: decision.comment,
   };
-  const record = {
-    id: randomUUID(), actor_type: 'USER' as const, actor_user_id: decision.actor_user_id,
-    action: `POLICY_${decision.action}`, resource_type: 'POLICY_VERSION', resource_id: version.id,
-    occurred_at: decision.decided_at, source: 'API', before_data: beforeData, after_data: afterData,
-  };
-  // Independent hash, matching existing policy audit writes. No chain-integrity claim.
-  await transaction.audit_logs.create({ data: {
-    ...record, record_hash: createHash('sha256').update(JSON.stringify(record)).digest('hex'),
-  } });
+  await auditWriter.record({
+    actorType: 'USER', actorUserId: decision.actor_user_id,
+    action: `POLICY_${decision.action}`, resourceType: 'POLICY_VERSION', resourceId: version.id,
+    occurredAt: decision.decided_at, source: 'API', beforeData, afterData,
+  }, transaction);
 }
 
 export const policyComplianceRepository = {
@@ -314,18 +310,15 @@ export const policyComplianceRepository = {
         versionNumber: version.version_number,
         changeSummary: version.change_summary,
       };
-      await transaction.audit_logs.create({
-        data: {
-          actor_type: 'USER',
-          actor_user_id: userId,
+      await auditWriter.record({
+          actorType: 'USER',
+          actorUserId: userId,
           action: 'POLICY_VERSION_CREATED',
-          resource_type: 'POLICY_VERSION',
-          resource_id: version.id,
+          resourceType: 'POLICY_VERSION',
+          resourceId: version.id,
           source: 'API',
-          after_data: after,
-          record_hash: createHash('sha256').update(JSON.stringify(after)).digest('hex'),
-        },
-      });
+          afterData: after,
+      }, transaction);
       return { policy: updatedPolicy, version };
     });
   },

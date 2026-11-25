@@ -1,5 +1,6 @@
 import type { Prisma } from '@prisma/client';
-import { createHash, randomUUID } from 'node:crypto';
+import { randomUUID } from 'node:crypto';
+import { auditWriter } from '../audit-security-reporting/audit-writer.js';
 import { prisma } from '../../database/prisma.js';
 import { AppError } from '../../common/errors/app-error.js';
 import type { ViewIncidentsQuery } from './dto/view-incidents.dto.js';
@@ -206,25 +207,18 @@ export const incidentsRepository = {
         });
         const status = incident.status;
         await tx.incidents.update({ where: { id: incidentId }, data: { updated_at: at, status } });
-        const id = randomUUID();
         const after = { actionId: action.id, phase: 'CONTAINMENT', ...input, status };
-        await tx.audit_logs.create({
-          data: {
-            id,
-            actor_type: 'USER',
-            actor_user_id: userId,
-            resource_type: 'INCIDENT',
-            resource_id: incidentId,
+        await auditWriter.record({
+            actorType: 'USER',
+            actorUserId: userId,
+            resourceType: 'INCIDENT',
+            resourceId: incidentId,
             action: 'INCIDENT_CONTAINMENT_RECORDED',
             source: 'API',
-            occurred_at: at,
-            before_data: { status: incident.status },
-            after_data: after,
-            record_hash: createHash('sha256')
-              .update(JSON.stringify({ id, userId, incidentId, at, after }))
-              .digest('hex'),
-          },
-        });
+            occurredAt: at,
+            beforeData: { status: incident.status },
+            afterData: after,
+        }, tx);
         return { outcome: 'recorded' as const, action };
       },
       { isolationLevel: 'Serializable' },
@@ -291,25 +285,18 @@ export const incidentsRepository = {
         });
         const status = incident.status;
         await tx.incidents.update({ where: { id: incidentId }, data: { updated_at: at, status } });
-        const id = randomUUID();
         const after = { actionId: action.id, phase: 'ERADICATION', ...input, status };
-        await tx.audit_logs.create({
-          data: {
-            id,
-            actor_type: 'USER',
-            actor_user_id: userId,
-            resource_type: 'INCIDENT',
-            resource_id: incidentId,
+        await auditWriter.record({
+            actorType: 'USER',
+            actorUserId: userId,
+            resourceType: 'INCIDENT',
+            resourceId: incidentId,
             action: 'INCIDENT_ERADICATION_RECORDED',
             source: 'API',
-            occurred_at: at,
-            before_data: { status: incident.status },
-            after_data: after,
-            record_hash: createHash('sha256')
-              .update(JSON.stringify({ id, userId, incidentId, at, after }))
-              .digest('hex'),
-          },
-        });
+            occurredAt: at,
+            beforeData: { status: incident.status },
+            afterData: after,
+        }, tx);
         return { outcome: 'recorded' as const, action };
       },
       { isolationLevel: 'Serializable' },
@@ -372,25 +359,18 @@ export const incidentsRepository = {
         });
         const status = incident.status;
         await tx.incidents.update({ where: { id: incidentId }, data: { updated_at: at, status } });
-        const id = randomUUID();
         const after = { actionId: action.id, phase: 'RECOVERY', ...input, status };
-        await tx.audit_logs.create({
-          data: {
-            id,
-            actor_type: 'USER',
-            actor_user_id: userId,
-            resource_type: 'INCIDENT',
-            resource_id: incidentId,
+        await auditWriter.record({
+            actorType: 'USER',
+            actorUserId: userId,
+            resourceType: 'INCIDENT',
+            resourceId: incidentId,
             action: 'INCIDENT_RECOVERY_RECORDED',
             source: 'API',
-            occurred_at: at,
-            before_data: { status: incident.status },
-            after_data: after,
-            record_hash: createHash('sha256')
-              .update(JSON.stringify({ id, userId, incidentId, at, after }))
-              .digest('hex'),
-          },
-        });
+            occurredAt: at,
+            beforeData: { status: incident.status },
+            afterData: after,
+        }, tx);
         return { outcome: 'recorded' as const, action };
       },
       { isolationLevel: 'Serializable' },
@@ -475,30 +455,23 @@ export const incidentsRepository = {
             updated_at: at,
           },
         });
-        const id = randomUUID();
         const before = { assigneeUserId: current.handler_user_id, status: current.status };
         const after = {
           assigneeUserId: input.assigneeUserId,
           note: input.note,
           status: current.status,
         };
-        await transaction.audit_logs.create({
-          data: {
-            id,
-            actor_type: 'USER',
-            actor_user_id: userId,
+        await auditWriter.record({
+            actorType: 'USER',
+            actorUserId: userId,
             action: 'INCIDENT_HANDLER_ASSIGNED',
-            resource_type: 'INCIDENT',
-            resource_id: incidentId,
-            occurred_at: at,
+            resourceType: 'INCIDENT',
+            resourceId: incidentId,
+            occurredAt: at,
             source: 'API',
-            before_data: before,
-            after_data: after,
-            record_hash: createHash('sha256')
-              .update(JSON.stringify({ id, userId, incidentId, at, before, after }))
-              .digest('hex'),
-          },
-        });
+            beforeData: before,
+            afterData: after,
+        }, transaction);
         const incident = await transaction.incidents.findUniqueOrThrow({
           where: { id: incidentId },
           select: incidentViewSelect,
@@ -600,30 +573,23 @@ export const incidentsRepository = {
           },
         });
         if (changed.count !== 1) return { outcome: 'conflict' as const };
-        const id = randomUUID();
         const before = { severity: current.severity.toLowerCase(), status: current.status };
         const after = {
           severity: input.severity,
           rationale: input.rationale,
           status: current.status,
         };
-        await transaction.audit_logs.create({
-          data: {
-            id,
-            actor_type: 'USER',
-            actor_user_id: userId,
+        await auditWriter.record({
+            actorType: 'USER',
+            actorUserId: userId,
             action: 'INCIDENT_SEVERITY_CLASSIFIED',
-            resource_type: 'INCIDENT',
-            resource_id: incidentId,
-            occurred_at: at,
+            resourceType: 'INCIDENT',
+            resourceId: incidentId,
+            occurredAt: at,
             source: 'API',
-            before_data: before,
-            after_data: after,
-            record_hash: createHash('sha256')
-              .update(JSON.stringify({ id, userId, incidentId, at, before, after }))
-              .digest('hex'),
-          },
-        });
+            beforeData: before,
+            afterData: after,
+        }, transaction);
         const incident = await transaction.incidents.findUniqueOrThrow({
           where: { id: incidentId },
           select: incidentViewSelect,
