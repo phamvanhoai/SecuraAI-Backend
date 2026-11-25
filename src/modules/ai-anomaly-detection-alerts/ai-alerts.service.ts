@@ -145,7 +145,12 @@ export const aiAlertsService = {
     input: ConfigureDetectionThreshold,
     context?: { sourceIp?: string | undefined; userAgent?: string | undefined },
   ) {
+    // Check the business permission before changing any data.
+    // Only an active Security Officer or Executive can manage this threshold.
     await requireThresholdManager(userId);
+
+    // The threshold belongs to the model that is currently deployed.
+    // Do not save a threshold when there is no deployed model.
     const model = await aiAlertsRepository.findDeployedModelThreshold();
     if (!model)
       throw new AppError(
@@ -160,6 +165,10 @@ export const aiAlertsService = {
       sourceIp: context?.sourceIp,
       userAgent: context?.userAgent,
     });
+
+    // The repository checks the model again during the database transaction.
+    // A null result means another request changed the deployed model,
+    // so this request must stop instead of updating the wrong model.
     if (!updated)
       throw new AppError(
         409,

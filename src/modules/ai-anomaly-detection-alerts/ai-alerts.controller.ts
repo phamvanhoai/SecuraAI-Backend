@@ -42,9 +42,14 @@ export const getDetectionThreshold: RequestHandler = async (_req, res) => {
 };
 
 export const configureDetectionThreshold: RequestHandler = async (req, res) => {
+  // authenticate already verified the token and stored the user ID here.
+  // The controller reads it instead of trusting a user ID from the request body.
   const userId: unknown = res.locals.authenticatedUserId;
   if (typeof userId !== 'string')
     throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+
+  // Read the IP address and user agent so the change can be audited.
+  // The service receives the user, validated input, and request information.
   const context = extractClientContext(req);
   const data = await aiAlertsService.configureDetectionThreshold(
     userId,
