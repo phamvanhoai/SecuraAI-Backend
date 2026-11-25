@@ -589,6 +589,7 @@ async function requireThresholdManager(userId: string): Promise<void> {
     throw new AppError(403, 'FORBIDDEN', 'Security Officer or Executive role required');
 }
 
+// Convert the Prisma model record into the response returned to the frontend.
 function detectionThresholdResponse(model: {
   id: string;
   model_name: string;
@@ -597,15 +598,19 @@ function detectionThresholdResponse(model: {
   parameters: Prisma.JsonValue | null;
   deployed_at: Date | null;
 }) {
+  // parameters is a JSON value, so check that it is an object before
+  // reading its threshold. Use an empty object when it has another type.
   const parameters =
     model.parameters && typeof model.parameters === 'object' && !Array.isArray(model.parameters)
       ? model.parameters
       : {};
   return {
+    // Convert database snake_case fields to API camelCase fields.
     modelVersionId: model.id,
     modelName: model.model_name,
     version: model.version,
     status: model.status.toLowerCase(),
+    // Use 0.8 when the saved threshold is missing or is not a number.
     threshold: typeof parameters['threshold'] === 'number' ? parameters['threshold'] : 0.8,
     deployedAt: model.deployed_at,
   };
