@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { requestContextStorage } from '../src/common/middleware/request-context.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Prisma, policy_decision_action, policy_version_status } from '@prisma/client';
 
@@ -6,7 +6,7 @@ const db = vi.hoisted(() => ({
   $queryRaw: vi.fn(),
   policy_versions: { findFirst: vi.fn(), updateMany: vi.fn(), findUniqueOrThrow: vi.fn() },
   policy_decisions: { create: vi.fn() }, policies: { update: vi.fn() },
-  audit_logs: { create: vi.fn<(input: { data: Prisma.audit_logsUncheckedCreateInput }) => Promise<unknown>>() },
+  audit_logs: { findFirst: vi.fn(), create: vi.fn<(input: { data: Prisma.audit_logsUncheckedCreateInput }) => Promise<unknown>>() },
 }));
 const transaction = vi.hoisted(() => vi.fn());
 vi.mock('../src/database/prisma.js', () => ({ prisma: { $transaction: transaction } }));
@@ -34,6 +34,7 @@ const scenarios: Scenario[] = [
 describe.each(scenarios)('$action from $before policy audit', (scenario) => {
   beforeEach(() => {
     vi.resetAllMocks();
+    db.audit_logs.findFirst.mockResolvedValue({ record_hash: 'previous-policy-hash' });
     transaction.mockImplementation(async (fn: (tx: typeof db) => Promise<unknown>) => fn(db));
     db.policy_versions.findFirst.mockResolvedValue({ status: scenario.before, version_number: '2.0' });
     db.policy_versions.updateMany.mockResolvedValue({ count: 1 });
@@ -42,7 +43,7 @@ describe.each(scenarios)('$action from $before policy audit', (scenario) => {
   });
 
   it('saves one audit with the real prior status, actor, decision time and reason in the decision transaction', async () => {
-    await scenario.run();
+    await requestContextStorage.run({ sourceIp: '192.0.2.10', userAgent: 'audit-test', correlationId: 'policy-request' }, scenario.run);
     expect(transaction).toHaveBeenCalledOnce();
     expect(db.$queryRaw).toHaveBeenCalledOnce();
     expect(db.$queryRaw.mock.invocationCallOrder[0]).toBeLessThan(db.policy_versions.findFirst.mock.invocationCallOrder[0] ?? 0);
@@ -58,9 +59,10 @@ describe.each(scenarios)('$action from $before policy audit', (scenario) => {
       after_data: { policyId, versionId, versionNumber: '2.0', status: scenario.after, decisionId, reason: scenario.reason },
     });
     expect(data.record_hash).toMatch(/^[a-f0-9]{64}$/);
-    expect(data.previous_hash).toBeUndefined();
-    const { record_hash: hash, ...payload } = data;
-    expect(hash).toBe(createHash('sha256').update(JSON.stringify(payload)).digest('hex'));
+    expect(data.previous_hash).toBe('previous-policy-hash');
+    expect(data.source_ip).toBe('192.0.2.10');
+    expect(data.user_agent).toBe('audit-test');
+    expect(data.correlation_id).toBe('policy-request');
     expect(data.after_data).not.toHaveProperty('content');
   });
 
