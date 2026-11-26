@@ -15,7 +15,9 @@ export interface StoredAlertExplanationInput {
   eventId: string;
 }
 
+// Build deterministic analyst text when Ollama cannot provide an explanation.
 function fallbackExplanation(input: StoredAlertExplanationInput): string {
+  // Parse one stored evidence feature without trusting malformed JSON.
   const read = (name: string): unknown => {
     try {
       return JSON.parse(
@@ -25,6 +27,7 @@ function fallbackExplanation(input: StoredAlertExplanationInput): string {
       return null;
     }
   };
+  // Read one evidence feature as an object.
   const record = (name: string): Record<string, unknown> => {
     const value = read(name);
     return typeof value === 'object' && value !== null && !Array.isArray(value)
@@ -129,6 +132,7 @@ function fallbackExplanation(input: StoredAlertExplanationInput): string {
   return sections.join('\n\n');
 }
 
+// Convert the validated Ollama JSON structure into stored plain text.
 function formatGeneratedExplanation(explanation: GeneratedAlertExplanation): string {
   const sections = [explanation.summary];
   if (explanation.observations.length > 0) {
@@ -140,10 +144,12 @@ function formatGeneratedExplanation(explanation: GeneratedAlertExplanation): str
   return sections.join('\n');
 }
 
+// Generate explanation text and fall back safely when the optional model fails.
 export async function generateStoredAlertExplanation(
   input: StoredAlertExplanationInput,
   options?: { timeoutMs: number },
 ): Promise<string> {
+  // Ollama writes prose only; fallback text keeps alert creation independent of it.
   if (options && options.timeoutMs <= 0) return fallbackExplanation(input);
   try {
     const generated = await ollamaClient.generateAlertExplanation(input, options);

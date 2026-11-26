@@ -16,7 +16,8 @@ const runLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// Use case: Run Anomaly Detection -> runAnomalyDetection controller.
+// UC 94: authenticate -> limit/validate -> controller -> detection service.
+// The service collects events, builds time windows, scores and saves alerts.
 anomalyDetectionRouter.post(
   '/runs',
   authenticate,

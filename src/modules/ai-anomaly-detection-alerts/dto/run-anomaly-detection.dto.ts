@@ -1,9 +1,9 @@
 import { z } from 'zod';
 
-// Validate the body for a manual detection run.
-// Defaults keep the batch bounded when the client omits these fields.
+// Validate and bound one manual detection batch.
 export const runAnomalyDetectionBodySchema = z
   .object({
+    // Kept for API compatibility; manual runs currently process ALL_PENDING.
     lookbackHours: z.number().int().min(1).max(720).default(24),
     maxEvents: z.number().int().min(1).max(500).default(100),
   })

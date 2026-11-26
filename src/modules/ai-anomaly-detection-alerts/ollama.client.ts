@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { env } from '../../config/env.js';
 
+// Validate the explanation content before it can be stored or returned.
 const generatedExplanationSchema = z.object({
   summary: z.string().trim().min(1).max(2_000),
   observations: z.array(z.string().trim().min(1).max(500)).max(8).default([]),
@@ -13,6 +14,7 @@ const ollamaResponseSchema = z.object({
 
 export type GeneratedAlertExplanation = z.infer<typeof generatedExplanationSchema>;
 
+// Evidence supplied by the detection flow for explanation only.
 export interface AlertExplanationInput {
   anomalyScore: number;
   threshold: number;
@@ -37,6 +39,8 @@ const outputJsonSchema = {
   additionalProperties: false,
 } as const;
 
+// Build a bounded, evidence-only prompt. The prompt tells the model that scores
+// are not attack probabilities and that it must not invent missing facts.
 function buildPrompt(input: AlertExplanationInput): string {
   return [
     'Explain this security anomaly to a SOC analyst using only the supplied evidence.',
@@ -55,12 +59,16 @@ function buildPrompt(input: AlertExplanationInput): string {
 }
 
 export const ollamaClient = {
+  // Ask Ollama to write analyst-readable text. This function cannot change the
+  // detection score, threshold or alert decision.
   async generateAlertExplanation(
     input: AlertExplanationInput,
     options?: { timeoutMs: number },
   ): Promise<GeneratedAlertExplanation | null> {
+    // Explanation generation is optional; callers keep a deterministic fallback.
     if (!env.OLLAMA_ENABLED) return null;
 
+    // Send the evidence prompt to the configured Ollama chat endpoint.
     const endpoint = new URL('/api/chat', `${env.OLLAMA_BASE_URL.replace(/\/$/, '')}/`);
     const response = await fetch(endpoint, {
       method: 'POST',
@@ -89,6 +97,7 @@ export const ollamaClient = {
       throw new Error(`Ollama request failed with status ${response.status}`);
     }
 
+    // Validate both the Ollama envelope and the JSON explanation content.
     const body = ollamaResponseSchema.parse(await response.json());
     return generatedExplanationSchema.parse(JSON.parse(body.message.content) as unknown);
   },

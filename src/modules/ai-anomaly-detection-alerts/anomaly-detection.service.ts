@@ -67,6 +67,7 @@ const parametersSchema = z
   .passthrough();
 let detectionQueue: Promise<void> = Promise.resolve();
 
+// Create the empty rule decision that AI-only mode later replaces with ML/LLM results.
 function createAiOnlyDecision(event: ContextEvent): ContextualDecision {
   const groupKey = createHash('sha256')
     .update(
@@ -111,6 +112,7 @@ function createAiOnlyDecision(event: ContextEvent): ContextualDecision {
   };
 }
 
+// Queue detection runs so two batches do not overlap inside this Node process.
 async function withDetectionLock<T>(operation: () => Promise<T>): Promise<T> {
   const previous = detectionQueue;
   let release = (): void => undefined;
@@ -126,8 +128,7 @@ async function withDetectionLock<T>(operation: () => Promise<T>): Promise<T> {
 }
 
 export const anomalyDetectionService = {
-  // Use case: Run Anomaly Detection. Check the actor and deployed model,
-  // then run one bounded batch while preventing overlapping manual runs.
+  // Authorize UC 94 and run one bounded, non-overlapping manual batch.
   async run(
     userId: string,
     input: RunAnomalyDetectionBody,
@@ -153,6 +154,8 @@ export const anomalyDetectionService = {
       ...(context?.userAgent ? { userAgent: context.userAgent } : {}),
     };
     return withDetectionLock(async () => {
+      // Manual execution currently processes all pending events. lookbackHours
+      // remains in the response contract but is not used as a database filter here.
       const result = await runDetection(
         model,
         { lookbackHours: null, maxEvents: input.maxEvents, eventScope: 'ALL' },
@@ -167,6 +170,8 @@ export const anomalyDetectionService = {
       };
     });
   },
+  // Called by automated-detection.worker.ts, not by an HTTP route.
+  // Process only pending real-time Wazuh events and record SYSTEM as the actor.
   async runAutomated(input: Pick<RunAnomalyDetectionBody, 'maxEvents'>) {
     const model = await anomalyDetectionRepository.findDeployedModel();
     if (!model) return null;
@@ -180,9 +185,9 @@ export const anomalyDetectionService = {
   },
 };
 
-// Internal flow for Run Anomaly Detection:
-// evaluate events -> generate scores -> decide anomalies -> prepare alerts.
-// Generate Anomaly Score and Generate Anomaly Alert do not have separate routes.
+// Batch flow: pending events -> baseline -> 1/5/15/60-minute ML context
+// -> optional LLM review -> final decision -> explanation -> transaction.
+// Evaluate, classify, explain and persist one bounded event batch.
 async function runDetection(
   model: Awaited<ReturnType<typeof anomalyDetectionRepository.findDeployedModel>> & {},
   input: {
@@ -207,6 +212,7 @@ async function runDetection(
   const parameters = parsed.data;
   const since =
     input.lookbackHours === null ? null : new Date(Date.now() - input.lookbackHours * 3_600_000);
+  // Collect at most maxEvents results not processed by this model/engine.
   const batch = await anomalyDetectionRepository.findPendingEvents(
     model.id,
     since,
@@ -221,7 +227,7 @@ async function runDetection(
     // separate 60-second wait for every alert. Explicit regeneration is unchanged.
     const explanationDeadline = Date.now() + 5_000;
     const evaluated: Array<SuccessfulDetection | ProcessingFailure> = [];
-    // Bound DB/LLM concurrency; every event uses its own event-time history including previously evaluated events.
+    // Groups of four limit concurrent DB/AI calls; each result remains independent.
     for (let offset = 0; offset < batch.events.length; offset += 4) {
       evaluated.push(
         ...(await Promise.all(
@@ -272,6 +278,7 @@ async function runDetection(
             let temporalContext: MlTemporalContext | undefined;
             let scoringReady = decision.baselineReady;
             if (env.ML_SHADOW_ENABLED || env.AI_FUSION_ENABLED) {
+              // Convert 60 minutes of history into 1/5/15/60-minute ML features.
               const mlHistory = await anomalyDetectionRepository.findMlTemporalContext(event);
               temporalContext = buildMlTemporalContext(event, mlHistory);
               mlPrediction = await requestMlShadowPrediction(event, {
@@ -306,6 +313,8 @@ async function runDetection(
             const modelEscalated =
               mlPrediction?.status === 'PREDICTED' &&
               mlPrediction.prediction.score >= mlPrediction.prediction.escalationThreshold;
+            // The LLM is a second review only for ML results that reach the
+            // escalation threshold; low-risk ML results stop before this call.
             const llmPrediction =
               env.AI_FUSION_ENABLED && modelEscalated
                 ? await requestLlmClassification(event, temporalContext)
@@ -364,6 +373,7 @@ async function runDetection(
               rank: decision.features.length + 1,
             });
             if (aiOnlyMode) {
+              // In AI-only mode, only an escalated MALICIOUS LLM verdict creates an alert.
               if (mlPrediction?.status !== 'PREDICTED')
                 throw new Error('ML prediction state changed during AI-only evaluation');
               if (!modelEscalated) {
@@ -395,6 +405,7 @@ async function runDetection(
                 }
               }
             }
+            // Related anomalies in one 15-minute bucket reuse an explanation.
             const explanationKey = `${decision.groupKey}:${Math.floor(event.occurred_at.getTime() / (15 * 60_000))}`;
             if (isAnomaly && !explanations.has(explanationKey))
               explanations.set(

@@ -50,8 +50,9 @@ apiRouter.use('/notifications', notificationsRouter);
 apiRouter.use('/system-logs', systemLogsRouter);
 apiRouter.use('/audit', auditRouter);
 
-// Run Detection, Generate Score and Generate Alert.
-// Open anomaly-detection.routes.ts -> runAnomalyDetection.
+// Run Anomaly Detection (UC 94).
+// POST /runs -> pending events -> history windows -> score/decision
+// -> grouped alerts -> detection, evidence and audit records.
 apiRouter.use('/anomaly-detections', anomalyDetectionRouter);
 
 // Alert list/detail/filter, score, features, XAI, model versions,
