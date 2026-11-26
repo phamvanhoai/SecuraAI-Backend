@@ -25,6 +25,7 @@ const riskResponse = (risk: {
   reviewDate: risk.review_date,
 });
 export const incidentRisksService = {
+  // Load risks according to the validated link-state and search filters.
   async options(userId: string, incidentId: string, query: IncidentRiskOptionsQuery) {
     await requireSecurityOfficer(userId);
     const { incident, risks, total } = await incidentRisksRepository.findOptions(incidentId, query);
@@ -49,6 +50,7 @@ export const incidentRisksService = {
       },
     };
   },
+  // Link Incident to Existing Risk after checking the actor, incident and risk.
   async link(userId: string, incidentId: string, input: LinkIncidentRiskInput) {
     await requireSecurityOfficer(userId);
     const [incident, risk] = await Promise.all([

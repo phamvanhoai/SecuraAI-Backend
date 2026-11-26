@@ -114,6 +114,8 @@ export function hashAuditRecord(input: {
 }
 
 export const aiAlertsRepository = {
+  // Claim a NEW alert for one analyst. The transaction prevents two analysts
+  // from starting triage on the same alert at the same time.
   async startTriage(input: { alertId: string; analystUserId: string }) {
     return prisma.$transaction(async (transaction) => {
       const startedAt = new Date();
@@ -381,6 +383,7 @@ export const aiAlertsRepository = {
           [total, assets.map((asset) => ({ asset, configuration: thresholds[asset.id] }))] as const,
       );
   },
+  // Save or update the threshold for one asset and record the actor.
   async setAlertThreshold(assetId: string, userId: string, input: SetAlertThresholdBody) {
     return prisma.$transaction(
       async (transaction) => {
@@ -432,6 +435,7 @@ export const aiAlertsRepository = {
       _count: { _all: true },
     });
   },
+  // Apply the validated filters and pagination in PostgreSQL, not in the client.
   list(query: ListAiAlertsQuery) {
     const statuses = databaseStatuses(query.status);
     const where: Prisma.anomaly_alertsWhereInput = {
@@ -480,6 +484,7 @@ export const aiAlertsRepository = {
       }),
     ]);
   },
+  // Load only the alert, detection and feature evidence needed by the detail response.
   findExplanation(alertId: string) {
     return prisma.anomaly_alerts.findUnique({
       where: { id: alertId },

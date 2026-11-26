@@ -65,6 +65,7 @@ export const incidentControlsRepository = {
     ]);
     return { incident, controls, total };
   },
+  // Insert the many-to-many incident-control relationship.
   link(incidentId: string, controlId: string, linkedBy: string) {
     return prisma.incident_controls.create({
       data: { incident_id: incidentId, control_id: controlId, linked_by: linkedBy },

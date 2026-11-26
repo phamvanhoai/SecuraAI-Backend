@@ -111,6 +111,8 @@ export const riskReassessmentRequestsService = {
       controlWeaknesses: findings.map(findingResponse),
     };
   },
+  // Create Risk Reassessment Request: validate the incident, linked risk,
+  // optional finding, and duplicate-request rules before writing.
   async create(userId: string, incidentId: string, input: CreateRiskReassessmentRequestInput) {
     await requireSecurityOfficer(userId);
     const [incident, riskLink, activeRequest, controlFinding] = await Promise.all([

@@ -93,6 +93,8 @@ function toResponse(alert: AiAlertRecord) {
 }
 
 export const aiAlertsService = {
+  // Start Analyst Triage: require an active Security Officer, then let the
+  // repository assign the alert with a conditional database update.
   async startTriage(userId: string, alertId: string) {
     await requireSecurityOfficer(userId);
     const result = await aiAlertsRepository.startTriage({
@@ -177,6 +179,8 @@ export const aiAlertsService = {
       );
     return detectionThresholdResponse(updated);
   },
+  // View Model Version & Evaluation Metrics: authorize the actor, load the
+  // requested page, then map database fields to the public API response.
   async listModelVersions(userId: string, query: ListModelVersionsQuery) {
     await requireSecurityOfficer(userId);
     const [total, models] = await aiAlertsRepository.listModelVersions(query);
@@ -245,6 +249,8 @@ export const aiAlertsService = {
       },
     };
   },
+  // Set Custom Alert Threshold: validate the actor and delegate the
+  // asset-specific database update to the repository.
   async setAlertThreshold(userId: string, assetId: string, input: SetAlertThresholdBody) {
     await requireSecurityOfficer(userId);
     const result = await aiAlertsRepository.setAlertThreshold(assetId, userId, input);
@@ -279,6 +285,8 @@ export const aiAlertsService = {
       confirmed: count(['CONFIRMED']),
     };
   },
+  // View/Search Alerts: enforce Security Officer access and return one
+  // filtered, paginated page from the repository.
   async list(userId: string, query: ListAiAlertsQuery) {
     const actor = await anomalyDetectionRepository.findActor(userId);
     if (!actor || actor.status !== 'ACTIVE')
@@ -298,6 +306,8 @@ export const aiAlertsService = {
       },
     };
   },
+  // View Alert Detail, Score, Features and XAI: combine the stored detection,
+  // score snapshot, feature evidence and explanation into one response.
   async getExplanation(userId: string, alertId: string) {
     await requireSecurityOfficer(userId);
     const alert = await aiAlertsRepository.findExplanation(alertId);
@@ -420,6 +430,8 @@ export const aiAlertsService = {
       createdAt: generatedAt,
     };
   },
+  // Record analyst feedback with its reason and the model version that
+  // produced the alert. This does not retrain a model.
   async createFeedback(userId: string, alertId: string, input: CreateAiAlertFeedback) {
     await requireSecurityOfficer(userId);
     const alert = await aiAlertsRepository.findForFeedback(alertId);
@@ -451,6 +463,8 @@ export const aiAlertsService = {
       },
     };
   },
+  // Confirm True Positive: the repository rechecks triage status and analyst
+  // ownership before changing the alert and creating its security finding.
   async confirmAsIncident(userId: string, alertId: string, input: ConfirmAiAlert) {
     await requireSecurityOfficer(userId);
     const result = await aiAlertsRepository.confirmAsIncident({
@@ -493,6 +507,8 @@ export const aiAlertsService = {
       },
     };
   },
+  // Dismiss False Positive: only the assigned analyst can complete an alert
+  // that is currently in triage.
   async markFalsePositive(userId: string, alertId: string, input: MarkAiAlertFalsePositive) {
     await requireSecurityOfficer(userId);
     const result = await aiAlertsRepository.markFalsePositive({
@@ -535,6 +551,8 @@ export const aiAlertsService = {
       changed: result.outcome === 'changed',
     };
   },
+  // Need Further Investigation: keep the alert open for follow-up and record
+  // the assigned analyst's reason.
   async markFurtherInvestigation(
     userId: string,
     alertId: string,

@@ -32,6 +32,7 @@ export const issueAiAlertRealtimeTicket: RequestHandler = async (_req, res) => {
   });
 };
 
+// Return the current threshold for the deployed model.
 export const getDetectionThreshold: RequestHandler = async (_req, res) => {
   const userId: unknown = res.locals.authenticatedUserId;
   if (typeof userId !== 'string')
@@ -59,6 +60,7 @@ export const configureDetectionThreshold: RequestHandler = async (req, res) => {
   res.status(200).json({ success: true, data });
 };
 
+// Parse list filters and return the saved asset-specific thresholds.
 export const listAlertThresholds: RequestHandler = async (req, res) => {
   const userId: unknown = res.locals.authenticatedUserId;
   if (typeof userId !== 'string')
@@ -70,6 +72,7 @@ export const listAlertThresholds: RequestHandler = async (req, res) => {
   res.status(200).json({ success: true, data });
 };
 
+// Return active assets that can be selected for a custom threshold.
 export const listAlertThresholdAssetOptions: RequestHandler = async (req, res) => {
   const userId: unknown = res.locals.authenticatedUserId;
   if (typeof userId !== 'string')
@@ -79,6 +82,7 @@ export const listAlertThresholdAssetOptions: RequestHandler = async (req, res) =
   res.status(200).json({ success: true, data });
 };
 
+// Parse the asset ID and threshold body, then call the service to save it.
 export const setAlertThreshold: RequestHandler = async (req, res) => {
   const userId: unknown = res.locals.authenticatedUserId;
   if (typeof userId !== 'string')
@@ -92,6 +96,7 @@ export const setAlertThreshold: RequestHandler = async (req, res) => {
   res.status(200).json({ success: true, data });
 };
 
+// Return one validated, paginated page of model versions and metrics.
 export const listModelVersions: RequestHandler = async (req, res) => {
   const userId: unknown = res.locals.authenticatedUserId;
   if (typeof userId !== 'string')
@@ -103,6 +108,7 @@ export const listModelVersions: RequestHandler = async (req, res) => {
   res.status(200).json({ success: true, data });
 };
 
+// Return one validated, filtered and paginated page of alerts.
 export const listAiAlerts: RequestHandler = async (req, res) => {
   const userId: unknown = res.locals.authenticatedUserId;
   if (typeof userId !== 'string')
@@ -111,6 +117,7 @@ export const listAiAlerts: RequestHandler = async (req, res) => {
   res.status(200).json({ success: true, data });
 };
 
+// Start triage for the selected alert using the authenticated analyst ID.
 export const startAiAlertTriage: RequestHandler = async (req, res) => {
   const userId: unknown = res.locals.authenticatedUserId;
   if (typeof userId !== 'string')
@@ -128,6 +135,7 @@ export const getAiAlertMetrics: RequestHandler = async (_req, res) => {
   res.status(200).json({ success: true, data });
 };
 
+// Return the selected alert's score, feature evidence and stored explanation.
 export const getAiAlertExplanation: RequestHandler = async (req, res) => {
   const userId: unknown = res.locals.authenticatedUserId;
   if (typeof userId !== 'string')
@@ -137,6 +145,7 @@ export const getAiAlertExplanation: RequestHandler = async (req, res) => {
   res.status(200).json({ success: true, data });
 };
 
+// Request a new explanation without changing the stored detection score.
 export const regenerateAiAlertExplanation: RequestHandler = async (req, res) => {
   const userId: unknown = res.locals.authenticatedUserId;
   if (typeof userId !== 'string')
@@ -151,6 +160,7 @@ export const regenerateAiAlertExplanation: RequestHandler = async (req, res) => 
   res.status(200).json({ success: true, data });
 };
 
+// Record validated analyst feedback for the selected alert.
 export const createAiAlertFeedback: RequestHandler = async (req, res) => {
   const userId: unknown = res.locals.authenticatedUserId;
   if (typeof userId !== 'string')
@@ -164,6 +174,7 @@ export const createAiAlertFeedback: RequestHandler = async (req, res) => {
   res.status(201).json({ success: true, data });
 };
 
+// Return the selected alert's paginated feedback history.
 export const listAiAlertFeedback: RequestHandler = async (req, res) => {
   const userId: unknown = res.locals.authenticatedUserId;
   if (typeof userId !== 'string')
@@ -177,6 +188,7 @@ export const listAiAlertFeedback: RequestHandler = async (req, res) => {
   res.status(200).json({ success: true, data });
 };
 
+// Confirm the selected alert using the authenticated analyst and validated comment.
 export const confirmAiAlertAsIncident: RequestHandler = async (req, res) => {
   const userId: unknown = res.locals.authenticatedUserId;
   if (typeof userId !== 'string')
@@ -190,6 +202,7 @@ export const confirmAiAlertAsIncident: RequestHandler = async (req, res) => {
   res.status(200).json({ success: true, data });
 };
 
+// Dismiss the selected alert as a false positive.
 export const markAiAlertFalsePositive: RequestHandler = async (req, res) => {
   const userId: unknown = res.locals.authenticatedUserId;
   if (typeof userId !== 'string')
@@ -203,6 +216,7 @@ export const markAiAlertFalsePositive: RequestHandler = async (req, res) => {
   res.status(200).json({ success: true, data });
 };
 
+// Keep the selected alert open for further investigation.
 export const markAiAlertFurtherInvestigation: RequestHandler = async (req, res) => {
   const userId: unknown = res.locals.authenticatedUserId;
   if (typeof userId !== 'string')

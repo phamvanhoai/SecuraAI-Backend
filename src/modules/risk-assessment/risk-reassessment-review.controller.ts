@@ -13,6 +13,7 @@ function userId(value: unknown) {
   return value;
 }
 
+// Return the reassessment requests visible to the authenticated actor.
 export const listOwnedRiskReassessmentRequests: RequestHandler = async (req, res) => {
   res.status(200).json({
     success: true,
@@ -23,6 +24,7 @@ export const listOwnedRiskReassessmentRequests: RequestHandler = async (req, res
   });
 };
 
+// Parse the request ID and ask the service to start its review.
 export const startRiskReassessmentReview: RequestHandler = async (req, res) => {
   const { requestId } = reviewRiskReassessmentRequestParamsSchema.parse(req.params);
   res.status(200).json({
@@ -33,6 +35,7 @@ export const startRiskReassessmentReview: RequestHandler = async (req, res) => {
     ),
   });
 };
+// Parse the new residual assessment and ask the service to complete the request.
 export const completeRiskReassessment: RequestHandler = async (req, res) => {
   const { requestId } = reviewRiskReassessmentRequestParamsSchema.parse(req.params);
   res
@@ -46,6 +49,7 @@ export const completeRiskReassessment: RequestHandler = async (req, res) => {
       ),
     });
 };
+// Parse the rejection reason and ask the service to reject the request.
 export const rejectRiskReassessmentRequest: RequestHandler = async (req, res) => {
   const { requestId } = reviewRiskReassessmentRequestParamsSchema.parse(req.params);
   res.status(200).json({

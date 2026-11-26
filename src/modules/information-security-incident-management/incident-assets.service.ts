@@ -14,6 +14,7 @@ async function requireSecurityOfficer(userId: string) {
 }
 
 export const incidentAssetsService = {
+  // Load active assets for the link dialog after checking the actor and incident state.
   async options(userId: string, incidentId: string, query: IncidentAssetOptionsQuery) {
     await requireSecurityOfficer(userId);
     const { incident, assets, total } = await incidentAssetsRepository.findOptions(
@@ -46,6 +47,8 @@ export const incidentAssetsService = {
     };
   },
 
+  // Link Incident to Asset: both the incident and asset must exist, and a
+  // closed incident cannot be changed.
   async link(userId: string, incidentId: string, input: LinkIncidentAssetInput) {
     await requireSecurityOfficer(userId);
     const [incident, asset] = await Promise.all([

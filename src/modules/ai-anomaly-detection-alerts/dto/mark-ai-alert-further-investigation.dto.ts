@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+// Require a useful reason before an alert is kept for further investigation.
 export const markAiAlertFurtherInvestigationSchema = z
   .object({
     reason: z

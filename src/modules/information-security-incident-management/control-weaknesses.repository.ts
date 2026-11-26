@@ -80,6 +80,7 @@ export const controlWeaknessesRepository = {
     ]);
     return { items, total };
   },
+  // Insert one control finding with foreign keys to the incident and control.
   create(
     incidentId: string,
     actorId: string,

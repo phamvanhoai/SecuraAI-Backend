@@ -7,12 +7,16 @@ import { runAnomalyDetection } from './anomaly-detection.controller.js';
 import { runAnomalyDetectionBodySchema } from './dto/run-anomaly-detection.dto.js';
 
 export const anomalyDetectionRouter = Router();
+
+// Limit manual runs to five requests per minute for each client.
 const runLimiter = rateLimit({
   windowMs: 60_000,
   limit: 5,
   standardHeaders: 'draft-8',
   legacyHeaders: false,
 });
+
+// Use case: Run Anomaly Detection -> runAnomalyDetection controller.
 anomalyDetectionRouter.post(
   '/runs',
   authenticate,

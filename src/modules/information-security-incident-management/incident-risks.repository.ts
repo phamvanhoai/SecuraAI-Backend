@@ -53,6 +53,7 @@ export const incidentRisksRepository = {
     ]);
     return { incident, risks, total };
   },
+  // Insert the many-to-many incident-risk relationship.
   link(incidentId: string, riskId: string, linkedBy: string) {
     return prisma.incident_risks.create({
       data: { incident_id: incidentId, risk_id: riskId, linked_by: linkedBy },

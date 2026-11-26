@@ -157,6 +157,8 @@ export const anomalyDetectionRepository = {
     });
     return pending !== null;
   },
+  // Save generated scores, feature evidence, alerts and the audit record
+  // in one transaction so a partial detection run is not committed.
   persistRun(input: {
     leaseToken?: string | undefined;
     actor: { type: 'USER'; userId: string } | { type: 'SYSTEM' };

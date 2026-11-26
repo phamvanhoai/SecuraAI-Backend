@@ -28,6 +28,7 @@ const controlResponse = (control: {
 });
 
 export const incidentControlsService = {
+  // Load controls according to the validated link-state and search filters.
   async options(userId: string, incidentId: string, query: IncidentControlOptionsQuery) {
     await requireSecurityOfficer(userId);
     const { incident, controls, total } = await incidentControlsRepository.findOptions(
@@ -55,6 +56,7 @@ export const incidentControlsService = {
       },
     };
   },
+  // Link Incident to Control after checking the actor, incident state and control.
   async link(userId: string, incidentId: string, input: LinkIncidentControlInput) {
     await requireSecurityOfficer(userId);
     const [incident, control] = await Promise.all([
