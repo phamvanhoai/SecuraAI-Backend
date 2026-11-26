@@ -155,6 +155,14 @@ function mapReviewablePolicy(policy: ReviewablePolicyRecord) {
   };
 }
 
+function mapPreviousAcknowledgement(versions: { id: string; version_number: string; policy_acknowledgements: { acknowledged_at: Date }[] }[]) {
+  const previous = versions[0];
+  const acknowledgement = previous?.policy_acknowledgements[0];
+  return previous && acknowledgement
+    ? { versionId: previous.id, versionNumber: previous.version_number, acknowledgedAt: acknowledgement.acknowledged_at }
+    : null;
+}
+
 function mapPolicyReview(version: PolicyReviewRecord) {
   const policy = version.policies_policy_versions_policy_idTopolicies;
   return {
@@ -411,6 +419,8 @@ export const policyComplianceService = {
           effectiveDate: version.published_at,
           publishedAt: version.published_at,
           acknowledgedAt: version.policy_acknowledgements[0]?.acknowledged_at ?? null,
+          changeSummary: version.change_summary,
+          previousAcknowledgement: mapPreviousAcknowledgement(policy.policy_versions_policy_versions_policy_idTopolicies),
         };
       }),
       pagination: {
@@ -449,6 +459,7 @@ export const policyComplianceService = {
         publishedAt: version.published_at,
       },
       acknowledgedAt: version.policy_acknowledgements[0]?.acknowledged_at ?? null,
+      previousAcknowledgement: mapPreviousAcknowledgement(policy.policy_versions_policy_versions_policy_idTopolicies),
     };
   },
 
@@ -465,6 +476,7 @@ export const policyComplianceService = {
     if (!version)
       throw new AppError(404, 'PUBLISHED_POLICY_NOT_FOUND', 'Published policy was not found');
     const acknowledgement = await policyComplianceRepository.createPolicyAcknowledgement(
+      policyId,
       versionId,
       userId,
     );

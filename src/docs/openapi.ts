@@ -2886,7 +2886,7 @@ export const openApiSpec = {
         tags: ['Policy Management'],
         summary: 'List published policies for the current Employee',
         description:
-          'Returns current active V2 policies and their published versions with the Employee reading status.',
+          'All active Employees can read all current active published policies; there is no department/applicability filter. acknowledgedAt refers only to the current version. Each item includes changeSummary and previousAcknowledgement (null, or the latest superseded published version this Employee acknowledged: versionId, versionNumber, acknowledgedAt). Draft/approval work does not change the current publication or its reading status.',
         security: [{ bearerAuth: [] }],
         parameters: [
           { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
@@ -2896,7 +2896,6 @@ export const openApiSpec = {
             schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
           },
           { name: 'q', in: 'query', schema: { type: 'string', minLength: 1, maxLength: 100 } },
-          { name: 'departmentId', in: 'query', schema: { type: 'string', format: 'uuid' } },
           {
             name: 'status',
             in: 'query',
@@ -2916,7 +2915,7 @@ export const openApiSpec = {
         tags: ['Policy Management'],
         summary: 'View a published policy version',
         description:
-          'Returns the content and details of the current published V2 policy version to an active Employee.',
+          'Returns the content and details of the current published V2 policy version to any active Employee. Includes acknowledgedAt for this version and nullable previousAcknowledgement { versionId, versionNumber, acknowledgedAt } for the latest superseded published version this Employee confirmed. Earlier confirmations are retained, never transferred to a new version. A draft replacement is not exposed here.',
         security: [{ bearerAuth: [] }],
         parameters: [
           {
@@ -2946,7 +2945,7 @@ export const openApiSpec = {
         tags: ['Policy Management'],
         summary: 'Acknowledge a published policy version',
         description:
-          'Records that the active Employee has read and understood the current published V2 policy version. Repeated requests return the existing acknowledgement.',
+          'Records an explicit Employee confirmation of reading the current published version. Rechecks active Employee role and current publication inside the acknowledgement transaction using the same policy row lock as publication. Stale requests return 409 POLICY_VERSION_CHANGED and require reading the current version. Repeated confirmations preserve the original timestamp without duplicate audit. A new confirmation appends POLICY_READING_ACKNOWLEDGED through the shared audit writer atomically; audit failure rolls back. Existing version confirmations are retained. No department restriction.',
         security: [{ bearerAuth: [] }],
         parameters: [
           {
@@ -2964,6 +2963,7 @@ export const openApiSpec = {
         ],
         responses: {
           '200': { description: 'Acknowledgement recorded or existing acknowledgement returned' },
+          '409': { description: 'Published version changed; refresh and read the current version before confirming' },
           '401': { description: 'Authentication required' },
           '403': { description: 'Employee role required' },
           '404': { description: 'Current published policy version not found' },

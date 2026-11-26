@@ -1,4 +1,4 @@
-import { Prisma, type policy_decision_action, type policy_version_status } from '@prisma/client';
+import type { Prisma, policy_decision_action, policy_version_status } from '@prisma/client';
 import { auditWriter } from '../audit-security-reporting/audit-writer.js';
 import { prisma } from '../../database/prisma.js';
 import { AppError } from '../../common/errors/app-error.js';
@@ -641,6 +641,8 @@ export const policyComplianceRepository = {
 
   publishApprovedVersion(policyId: string, versionId: string) {
     return prisma.$transaction(async (transaction) => {
+      // Publication and reading confirmation share this lock; the current version cannot change mid-confirmation.
+      await transaction.$queryRaw`SELECT id FROM policies WHERE id = ${policyId}::uuid FOR UPDATE`;
       const policy = await transaction.policies.findFirst({
         where: { id: policyId, status: { in: ['DRAFT', 'ACTIVE'] } },
         select: { current_published_version_id: true },
@@ -738,6 +740,15 @@ export const policyComplianceRepository = {
       policy_code: true,
       title: true,
       description: true,
+      policy_versions_policy_versions_policy_idTopolicies: {
+        where: { status: 'SUPERSEDED', policy_acknowledgements: { some: { user_id: userId } } },
+        orderBy: [{ published_at: 'desc' }, { id: 'desc' }],
+        take: 1,
+        select: {
+          id: true, version_number: true,
+          policy_acknowledgements: { where: { user_id: userId }, take: 1, select: { acknowledged_at: true } },
+        },
+      },
       policy_versions_policies_current_published_version_idTopolicy_versions: {
         select: {
           ...currentPublishedVersionSelect,
@@ -775,7 +786,16 @@ export const policyComplianceRepository = {
         ...currentPublishedVersionSelect,
         policy_id: true,
         policies_policy_versions_policy_idTopolicies: {
-          select: { policy_code: true, title: true, description: true },
+          select: {
+            policy_code: true, title: true, description: true,
+            policy_versions_policy_versions_policy_idTopolicies: {
+              where: { status: 'SUPERSEDED', policy_acknowledgements: { some: { user_id: userId } } },
+              orderBy: [{ published_at: 'desc' }, { id: 'desc' }], take: 1,
+              select: { id: true, version_number: true,
+                policy_acknowledgements: { where: { user_id: userId }, take: 1, select: { acknowledged_at: true } },
+              },
+            },
+          },
         },
         policy_acknowledgements: {
           where: { user_id: userId },
@@ -786,35 +806,40 @@ export const policyComplianceRepository = {
     });
   },
 
-  async createPolicyAcknowledgement(versionId: string, userId: string) {
+  async createPolicyAcknowledgement(policyId: string, versionId: string, userId: string) {
     const uniqueWhere = {
       policy_version_id_user_id: {
         policy_version_id: versionId,
         user_id: userId,
       },
     } as const;
-    const existing = await prisma.policy_acknowledgements.findUnique({
-      where: uniqueWhere,
-      select: { acknowledged_at: true },
-    });
-    if (existing) return { ...existing, alreadyAcknowledged: true };
-
-    try {
-      const created = await prisma.policy_acknowledgements.create({
-        data: { policy_version_id: versionId, user_id: userId },
-        select: { acknowledged_at: true },
-      });
-      return { ...created, alreadyAcknowledged: false };
-    } catch (error) {
-      if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2002') {
-        throw error;
+    return prisma.$transaction(async (transaction) => {
+      await transaction.$queryRaw`SELECT id FROM policies WHERE id = ${policyId}::uuid FOR UPDATE`;
+      await transaction.$queryRaw`SELECT id FROM users WHERE id = ${userId}::uuid FOR SHARE`;
+      const actor = await transaction.users.findUnique({ where: { id: userId }, select: { role: true, status: true } });
+      if (!actor || actor.status !== 'ACTIVE') throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+      if (actor.role !== 'EMPLOYEE') throw new AppError(403, 'FORBIDDEN', 'Employee role required');
+      const policy = await transaction.policies.findUnique({ where: { id: policyId }, select: { status: true, current_published_version_id: true } });
+      const version = await transaction.policy_versions.findFirst({ where: { id: versionId, policy_id: policyId, status: 'PUBLISHED' }, select: { version_number: true } });
+      if (!policy || policy.status !== 'ACTIVE' || policy.current_published_version_id !== versionId || !version) {
+        throw new AppError(409, 'POLICY_VERSION_CHANGED', 'The published policy has changed. Refresh the list and read the current version before confirming.');
       }
-      const acknowledgement = await prisma.policy_acknowledgements.findUniqueOrThrow({
+      const existing = await transaction.policy_acknowledgements.findUnique({
         where: uniqueWhere,
         select: { acknowledged_at: true },
       });
-      return { ...acknowledgement, alreadyAcknowledged: true };
-    }
+      if (existing) return { ...existing, alreadyAcknowledged: true };
+      const created = await transaction.policy_acknowledgements.create({
+        data: { policy_version_id: versionId, user_id: userId },
+        select: { acknowledged_at: true },
+      });
+      await auditWriter.record({ actorType: 'USER', actorUserId: userId,
+        action: 'POLICY_READING_ACKNOWLEDGED', resourceType: 'POLICY_VERSION', resourceId: versionId,
+        occurredAt: created.acknowledged_at, source: 'API',
+        afterData: { policyId, versionId, versionNumber: version.version_number, acknowledgedAt: created.acknowledged_at.toISOString() },
+      }, transaction);
+      return { ...created, alreadyAcknowledged: false };
+    });
   },
 
   listRejectedPolicies(query: RejectedPolicyQuery, ownerUserId?: string) {
