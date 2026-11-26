@@ -8,6 +8,7 @@ import type { ClassifyIncidentSeverity } from './dto/classify-incident-severity.
 import type { AssignIncidentHandler } from './dto/assign-incident-handler.dto.js';
 import type { RecordRecoveryAction } from './dto/record-recovery-action.dto.js';
 import { requireRecordPhase } from './incident-workflow.js';
+import { relatedTitleTerms } from './incident-related.js';
 import type {
   CreateIncidentFromSource,
   IncidentSourceOptionsQuery,
@@ -703,7 +704,86 @@ export const incidentsRepository = {
       if (!actor || actor.status !== 'ACTIVE' || actor.role !== 'SECURITY_OFFICER') {
         throw new AppError(403, 'FORBIDDEN', 'Active Security Officer required');
       }
+      const checkRelated = async (detectedAt: Date): Promise<void> => {
+        const window = 7 * 24 * 60 * 60 * 1000;
+        const records = await transaction.incidents.findMany({
+          where: {
+            OR: [
+              {
+                detected_at: {
+                  gte: new Date(detectedAt.getTime() - window),
+                  lte: new Date(detectedAt.getTime() + window),
+                },
+              },
+              {
+                detected_at: null,
+                created_at: {
+                  gte: new Date(detectedAt.getTime() - window),
+                  lte: new Date(detectedAt.getTime() + window),
+                },
+              },
+            ],
+          },
+          orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+          take: 200,
+          select: {
+            id: true,
+            incident_code: true,
+            title: true,
+            status: true,
+            detected_at: true,
+            created_at: true,
+          },
+        });
+        const items = records
+          .flatMap((record) => {
+            const shared = relatedTitleTerms(input.title, record.title);
+            return shared.length
+              ? [
+                  {
+                    id: record.id,
+                    incidentCode: record.incident_code,
+                    title: record.title,
+                    status: record.status.toLowerCase(),
+                    detectedAt: record.detected_at ?? record.created_at,
+                    reason: `Shared title terms: ${shared.join(', ')}; detection times within 7 days.`,
+                  },
+                ]
+              : [];
+          })
+          .sort((a, b) => Number(a.status === 'closed') - Number(b.status === 'closed'))
+          .slice(0, 5);
+        if (
+          items.length &&
+          (!input.separateReason ||
+            items.some((item) => !input.reviewedIncidentIds?.includes(item.id)))
+        ) {
+          throw new AppError(
+            409,
+            'INCIDENT_RELATED_REVIEW_REQUIRED',
+            'Review potentially related incidents before creating a separate incident.',
+            { items },
+          );
+        }
+      };
+      const recordSeparateDecision = async (incidentId: string): Promise<void> => {
+        if (!input.separateReason) return;
+        await auditWriter.record(
+          {
+            actorUserId: userId,
+            action: 'INCIDENT_CREATED_SEPARATELY',
+            resourceType: 'INCIDENT',
+            resourceId: incidentId,
+            afterData: {
+              reason: input.separateReason,
+              reviewedIncidentIds: input.reviewedIncidentIds ?? [],
+            },
+          },
+          transaction,
+        );
+      };
       if (input.sourceType === 'manual') {
+        await checkRelated(input.detectedAt ?? new Date());
         const incident = await transaction.incidents.create({
           data: {
             incident_code: `INC-${randomUUID().replaceAll('-', '').slice(0, 16).toUpperCase()}`,
@@ -716,6 +796,7 @@ export const incidentsRepository = {
           },
           select: incidentViewSelect,
         });
+        await recordSeparateDecision(incident.id);
         return { outcome: 'created' as const, incident };
       }
       const finding = await transaction.security_findings.findFirst({
@@ -735,6 +816,8 @@ export const incidentsRepository = {
       if (finding.incidents) {
         return { outcome: 'already_converted' as const, incident: finding.incidents };
       }
+
+      await checkRelated(input.detectedAt ?? finding.identified_at);
 
       const claimed = await transaction.security_findings.updateMany({
         where: { id: finding.id, status: { not: 'CONVERTED_TO_INCIDENT' }, incidents: null },
@@ -757,6 +840,7 @@ export const incidentsRepository = {
         },
         select: incidentViewSelect,
       });
+      await recordSeparateDecision(incident.id);
       return { outcome: 'created' as const, incident };
     });
   },
