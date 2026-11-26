@@ -3,6 +3,7 @@ import { env } from '../../config/env.js';
 import type { DetectionEvent } from './anomaly-detection.repository.js';
 import type { MlTemporalContext } from './ml-shadow.client.js';
 
+// Validate the structured final-review content returned by the LLM.
 const resultSchema = z.object({
   verdict: z.string().transform((value) => value.trim().toUpperCase()).pipe(
     z.enum(['BENIGN', 'SUSPICIOUS', 'MALICIOUS']),
@@ -54,6 +55,8 @@ const outputSchema = {
   additionalProperties: false,
 } as const;
 
+// Prefer the original Wazuh event when it is preserved in normalized metadata.
+// Fall back to the normalized payload when the raw event is unavailable.
 function rawPayload(event: DetectionEvent): unknown {
   const payload = event.normalized_payload;
   if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) return payload;
@@ -62,6 +65,8 @@ function rawPayload(event: DetectionEvent): unknown {
   return (metadata as Record<string, unknown>)['rawWazuhEvent'] ?? payload;
 }
 
+// Accept plain JSON or a JSON Markdown fence, then return untrusted parsed data
+// for resultSchema to validate.
 function parseContent(content: string): unknown {
   const trimmed = content.trim();
   const withoutFence = trimmed.startsWith('```')
@@ -70,6 +75,8 @@ function parseContent(content: string): unknown {
   return JSON.parse(withoutFence) as unknown;
 }
 
+// Send an event to the final LLM review stage only when every required feature
+// flag is enabled. This function returns a verdict; it does not write alerts.
 export async function requestLlmClassification(
   event: DetectionEvent,
   temporalContext?: MlTemporalContext,
@@ -79,7 +86,10 @@ export async function requestLlmClassification(
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), env.OLLAMA_TIMEOUT_MS);
   try {
+    // Foundation-Sec is served through the configured Ollama-compatible chat API.
     const endpoint = new URL('/api/chat', `${env.OLLAMA_BASE_URL.replace(/\/$/, '')}/`);
+
+    // Send only the event evidence needed for final review and cap its size.
     const evidence = JSON.stringify({
       eventFamily: event.event_family,
       eventType: event.event_type,
@@ -112,6 +122,8 @@ export async function requestLlmClassification(
       }),
     });
     if (!response.ok) return { status: 'UNAVAILABLE', reason: 'HTTP_ERROR' };
+    // Validate the outer Ollama response, parse its JSON message, then validate
+    // the final verdict before the detection service can use it.
     const body = responseSchema.parse(await response.json());
     const parsed = resultSchema.parse(parseContent(body.message.content));
     return {
