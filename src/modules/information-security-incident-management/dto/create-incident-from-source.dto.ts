@@ -11,6 +11,8 @@ const incidentDetailsSchema = z.object({
   description: z.string().trim().min(20).max(10_000),
   severity: z.enum(['low', 'medium', 'high', 'critical']),
   detectedAt: z.coerce.date().optional(),
+  separateReason: z.string().trim().min(10).max(2000).optional(),
+  reviewedIncidentIds: z.array(z.string().uuid()).max(5).optional(),
 });
 
 export const createIncidentFromSourceSchema = z.discriminatedUnion('sourceType', [

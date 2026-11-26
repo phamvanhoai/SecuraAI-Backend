@@ -1881,7 +1881,7 @@ export const openApiSpec = {
         tags: ['Incident Management'],
         summary: 'Create an incident manually or from a confirmed source',
         description:
-          'Only an active Security Officer can create a V2 incident, either manually when no suitable alert/finding is available, or from an eligible confirmed alert/security finding. Source-backed incidents retain a unique finding link. Executive/Admin/Employee accounts cannot create incidents. This is not a general incident-report intake endpoint.',
+          'Only an active Security Officer can create a V2 incident manually or from a confirmed source. Both modes check up to 200 newest incidents with detection times within seven days (creation time fallback), returning at most five title-based suggestions. A 409 INCIDENT_RELATED_REVIEW_REQUIRED includes error.details.items with id, incidentCode, title, status, detectedAt and reason. Retry with separateReason and all suggested reviewedIncidentIds to create separately; the reason is audited atomically. These bounded suggestions are not exhaustive deduplication or asset/account correlation. Source-backed incidents retain a unique finding link. Executive/Admin/Employee cannot create incidents.',
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
@@ -1894,6 +1894,12 @@ export const openApiSpec = {
                     required: ['sourceType', 'sourceId', 'title', 'description', 'severity'],
                     properties: {
                       sourceType: { type: 'string', enum: ['alert', 'finding'] },
+                      separateReason: { type: 'string', minLength: 10, maxLength: 2000 },
+                      reviewedIncidentIds: {
+                        type: 'array',
+                        maxItems: 5,
+                        items: { type: 'string', format: 'uuid' },
+                      },
                       sourceId: { type: 'string', format: 'uuid' },
                       title: { type: 'string', minLength: 5, maxLength: 255 },
                       description: { type: 'string', minLength: 20, maxLength: 10000 },
@@ -1906,6 +1912,12 @@ export const openApiSpec = {
                     required: ['sourceType', 'title', 'description', 'severity'],
                     properties: {
                       sourceType: { type: 'string', enum: ['manual'] },
+                      separateReason: { type: 'string', minLength: 10, maxLength: 2000 },
+                      reviewedIncidentIds: {
+                        type: 'array',
+                        maxItems: 5,
+                        items: { type: 'string', format: 'uuid' },
+                      },
                       title: { type: 'string', minLength: 5, maxLength: 255 },
                       description: { type: 'string', minLength: 20, maxLength: 10000 },
                       severity: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] },
@@ -1923,7 +1935,8 @@ export const openApiSpec = {
           '403': { description: 'Security Officer role required' },
           '404': { description: 'Source alert or finding not found' },
           '409': {
-            description: 'Source is unconfirmed, already converted, or changed concurrently',
+            description:
+              'Related incident review required (INCIDENT_RELATED_REVIEW_REQUIRED with error.details.items), or source unconfirmed, already converted, or changed concurrently',
           },
           '422': { description: 'Invalid incident details' },
         },
