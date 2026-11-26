@@ -1,3 +1,8 @@
+/**
+ * Layer: Controller / HTTP Adapter (Event Ingestion - Event Sources)
+ * Purpose: Translates validated HTTP requests into service calls and formats standard { success, data } responses.
+ * Flow: Route -> Controller -> Service -> HTTP Response
+ */
 import type { RequestHandler } from 'express';
 import { AppError } from '../../common/errors/app-error.js';
 import { createEventSourceSchema } from './dto/create-event-source.dto.js';
@@ -20,6 +25,7 @@ import {
 import { eventSourcesService } from './event-sources.service.js';
 import { eventImportService } from './event-import.service.js';
 
+/** Ensures the request has a valid authenticated user ID populated by the auth middleware. */
 function authenticatedUserId(value: unknown): string {
   if (typeof value !== 'string') {
     throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
@@ -27,6 +33,7 @@ function authenticatedUserId(value: unknown): string {
   return value;
 }
 
+/** HTTP handler for POST /api/v1/event-sources: registers a new event source configuration. */
 export const createEventSource: RequestHandler = async (req, res) => {
   const userId = authenticatedUserId(res.locals.authenticatedUserId);
   const input = createEventSourceSchema.parse(req.body);
@@ -34,6 +41,11 @@ export const createEventSource: RequestHandler = async (req, res) => {
   res.status(201).json({ success: true, data });
 };
 
+/**
+ * HTTP handler for GET /api/v1/event-sources.
+ * Extracts the authenticated user ID, parses the validated query params for strict typing,
+ * delegates pagination/filtering to the service layer, and returns the standard envelope.
+ */
 export const listEventSources: RequestHandler = async (req, res) => {
   const userId = authenticatedUserId(res.locals.authenticatedUserId);
   const query = listEventSourcesQuerySchema.parse(req.query);
@@ -41,6 +53,7 @@ export const listEventSources: RequestHandler = async (req, res) => {
   res.status(200).json({ success: true, data });
 };
 
+/** HTTP handler for GET /api/v1/event-sources/:id: fetches full source details, creator, API keys, and ingestion stats. */
 export const getEventSourceDetail: RequestHandler = async (req, res) => {
   const userId = authenticatedUserId(res.locals.authenticatedUserId);
   const params = eventSourceIdParamsSchema.parse(req.params);
@@ -48,6 +61,7 @@ export const getEventSourceDetail: RequestHandler = async (req, res) => {
   res.status(200).json({ success: true, data });
 };
 
+/** HTTP handler for PUT/PATCH /api/v1/event-sources/:id: updates source configuration or status. */
 export const updateEventSource: RequestHandler = async (req, res) => {
   const userId = authenticatedUserId(res.locals.authenticatedUserId);
   const params = updateEventSourceParamsSchema.parse(req.params);
@@ -56,6 +70,7 @@ export const updateEventSource: RequestHandler = async (req, res) => {
   res.status(200).json({ success: true, data });
 };
 
+/** HTTP handler for POST /api/v1/event-sources/test-connection: tests connectivity using ad-hoc connection settings. */
 export const testEventSourceConnection: RequestHandler = async (req, res) => {
   const userId = authenticatedUserId(res.locals.authenticatedUserId);
   const input = testEventSourceConnectionSchema.parse(req.body);
@@ -63,6 +78,7 @@ export const testEventSourceConnection: RequestHandler = async (req, res) => {
   res.status(200).json({ success: true, data });
 };
 
+/** HTTP handler for POST /api/v1/event-sources/:id/test-connection: tests connectivity for an existing saved source. */
 export const testEventSourceConnectionById: RequestHandler = async (req, res) => {
   const userId = authenticatedUserId(res.locals.authenticatedUserId);
   const params = eventSourceIdParamsSchema.parse(req.params);
@@ -71,6 +87,7 @@ export const testEventSourceConnectionById: RequestHandler = async (req, res) =>
   res.status(200).json({ success: true, data });
 };
 
+/** HTTP handler for POST /api/v1/event-sources/:id/import: imports a batch of normalized events for a source. */
 export const importNormalizedEvents: RequestHandler = async (req, res) => {
   const userId = authenticatedUserId(res.locals.authenticatedUserId);
   const params = eventSourceIdParamsSchema.parse(req.params);
@@ -79,6 +96,7 @@ export const importNormalizedEvents: RequestHandler = async (req, res) => {
   res.status(200).json({ success: true, data });
 };
 
+/** HTTP handler for GET /api/v1/event-sources/batches/:batchId: retrieves summary details for an ingestion batch. */
 export const getBatchDetail: RequestHandler = async (req, res) => {
   authenticatedUserId(res.locals.authenticatedUserId);
   const params = batchIdParamSchema.parse(req.params);
@@ -86,6 +104,7 @@ export const getBatchDetail: RequestHandler = async (req, res) => {
   res.status(200).json({ success: true, data });
 };
 
+/** HTTP handler for GET /api/v1/event-sources/batches/:batchId/invalid-events: lists invalid records from an import batch. */
 export const getBatchInvalidEvents: RequestHandler = async (req, res) => {
   authenticatedUserId(res.locals.authenticatedUserId);
   const params = batchIdParamSchema.parse(req.params);
@@ -94,6 +113,7 @@ export const getBatchInvalidEvents: RequestHandler = async (req, res) => {
   res.status(200).json({ success: true, data });
 };
 
+/** HTTP handler for GET /api/v1/event-sources/:id/batches: lists historical ingestion batches for a specific source. */
 export const getSourceBatches: RequestHandler = async (req, res) => {
   authenticatedUserId(res.locals.authenticatedUserId);
   const params = eventSourceIdParamsSchema.parse(req.params);

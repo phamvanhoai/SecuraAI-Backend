@@ -6,6 +6,7 @@ import {
   type CandidateAsset,
 } from './event-auto-mapping.repository.js';
 
+// Define an input event that needs to be mapped
 export interface EventForAutoMapping {
   id: string;
   accountIdentifier?: string | null | undefined;
@@ -14,6 +15,7 @@ export interface EventForAutoMapping {
   destinationIp?: string | null | undefined;
 }
 
+// Correctly defining a single-row structure will result in an entry being written to the `event_entity_mappings` table.
 export interface EntityMappingEntry {
   event_id: string;
   user_id: string | null;
@@ -27,17 +29,20 @@ export interface EntityMappingEntry {
   mapped_at: Date;
 }
 
+// Combine 3 lists of candidates from the database into a single object.
 export interface AutoMappingCandidates {
   users: CandidateUser[];
   monitoredAccounts: CandidateMonitoredAccount[];
   assets: CandidateAsset[];
 }
 
+// The returned result package consists of a Map that stores the state keyed by event.id, and an array.
 export interface AutoMappingBatchResult {
   mappingStatusMap: Map<string, 'MAPPED' | 'PARTIALLY_MAPPED' | 'UNMAPPED'>;
-  mappingsToCreate: EntityMappingEntry[];
+  mappingsToCreate: EntityMappingEntry[]; // Contains lines ready for database insertion.
 }
 
+// Initialize & Upload Candidate List
 export const eventAutoMappingService = {
   async resolveAutoMappings(
     events: EventForAutoMapping[],
@@ -134,6 +139,7 @@ export const eventAutoMappingService = {
           } else {
             // Substring: device identifier contains asset code (e.g. "DEMO-AST-VPN01-Agent")
             const codeSubstringAsset = candidates.assets.find(
+              // Device name containing an assetCode (provided the code is at least 4 characters long)
               (a) => a.assetCode.length >= 4 && deviceLower.includes(a.assetCode.toLowerCase()),
             );
             if (codeSubstringAsset) {

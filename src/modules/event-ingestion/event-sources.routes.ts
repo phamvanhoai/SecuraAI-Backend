@@ -1,3 +1,8 @@
+/**
+ * Layer: Route (Event Ingestion - Event Sources)
+ * Purpose: Maps /api/v1/event-sources HTTP endpoints and wires auth, RBAC, and Zod validation middleware.
+ * Flow: Express Router -> Middleware (authenticate, authorizeRoles, validate) -> Controller
+ */
 import { Router } from 'express';
 import { authenticate } from '../../common/middleware/authenticate.js';
 import { authorizeRoles } from '../../common/middleware/authorize-roles.js';
@@ -85,6 +90,9 @@ eventSourcesRouter.get(
   asyncHandler(getSourceBatches),
 );
 
+// List configured event sources (paginated, filterable, sortable).
+// Pipeline: JWT auth -> RBAC (ADMIN / SECURITY_OFFICER) -> Zod query validation -> controller.
+// Registered before '/:id' so static routes are never shadowed by path parameters.
 eventSourcesRouter.get(
   '/',
   authenticate,

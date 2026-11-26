@@ -25,7 +25,7 @@ export const wazuhIngestionRepository = {
       select: { id: true, name: true, status: true, source_type: true },
     });
   },
-
+  // Find the WAZUH source that is ACTIVE and was created earliest.
   async ensureDefaultWazuhSource(adminUserId?: string) {
     const active = await prisma.event_sources.findFirst({
       where: { source_type: 'WAZUH', status: 'ACTIVE' },
@@ -57,6 +57,7 @@ export const wazuhIngestionRepository = {
     }
 
     if (!creatorId) {
+      // Find a user to serve as the "creator" (created_by)
       const anyUser = await prisma.users.findFirst({
         where: { status: 'ACTIVE' },
         select: { id: true },
@@ -67,7 +68,7 @@ export const wazuhIngestionRepository = {
     if (!creatorId) {
       throw new Error('Cannot initialize Wazuh event source: No active system user found.');
     }
-
+    // The system has no existing WAZUH source -> automatically create a default source
     return prisma.event_sources.create({
       data: {
         name: 'Wazuh SIEM Ingestion (Default)',
@@ -130,8 +131,8 @@ export const wazuhIngestionRepository = {
       }
     }
 
+    //  Generate UUIDs and automatically match Users/Assets
     const eventId = randomUUID();
-
     const autoMappingResult = await eventAutoMappingService.resolveAutoMappings([
       {
         id: eventId,
@@ -143,6 +144,7 @@ export const wazuhIngestionRepository = {
 
     const mappingStatus = autoMappingResult.mappingStatusMap.get(eventId) ?? 'UNMAPPED';
 
+    // Writing to 2 tables simultaneously within a single transaction
     return prisma.$transaction(async (tx) => {
       const created = await tx.normalized_events.create({
         data: {

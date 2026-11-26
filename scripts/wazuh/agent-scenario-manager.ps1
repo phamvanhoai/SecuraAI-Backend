@@ -1,3 +1,9 @@
+<#
+  Purpose: End-to-end Wazuh Windows Agent scenario simulator for SecuraAI.
+  Flow: Writes JSON simulation events (or triggers native Windows 4625 events)
+        -> Wazuh Agent (WazuhSvc) -> Wazuh Manager (local_rules.xml)
+        -> custom-securaai -> SecuraAI Backend -> AI Anomaly Detection.
+#>
 [CmdletBinding()]
 param(
     [ValidateSet(
@@ -33,26 +39,33 @@ param(
     [int]$MaxDelayMs = 450
 )
 
+# Stop immediately if any unexpected error occurs; normalize Min/Max delay bounds
 $ErrorActionPreference = 'Stop'
 if ($MaxDelayMs -lt $MinDelayMs) {
     $MaxDelayMs = $MinDelayMs
 }
 
+# Output files: events.log (watched by Wazuh Agent) and run-history.csv (audit log of test runs).
+# UTF-8 without BOM ($false) is required so Wazuh's JSON decoder can parse every line cleanly.
 $LogPath = Join-Path $LogDirectory 'events.log'
 $HistoryPath = Join-Path $LogDirectory 'run-history.csv'
 $Utf8NoBom = New-Object System.Text.UTF8Encoding($false)
 
+# Prepares the simulation folder and files on disk.
+# If the current Windows user cannot write to C:\ProgramData\securaai-sim, it requests UAC once to grant Modify access.
 function Ensure-SimEnvironment {
     if (-not (Test-Path -LiteralPath $LogDirectory)) {
         [void](New-Item -ItemType Directory -Force -Path $LogDirectory)
     }
     try {
+        # Verify write permission by creating an empty file or opening it for append
         if (-not (Test-Path -LiteralPath $LogPath)) {
             [IO.File]::WriteAllText($LogPath, '', $Utf8NoBom)
         } else {
             [IO.File]::AppendAllText($LogPath, '', $Utf8NoBom)
         }
     } catch [System.UnauthorizedAccessException] {
+        # Grant built-in Users group (*S-1-5-32-545) Modify permission so future runs do not require Admin
         Write-Host "Dang cap quyen ghi thu muc $LogDirectory cho user hien tai (chi can 1 lan)..." -ForegroundColor Yellow
         Start-Process icacls.exe -Verb RunAs -ArgumentList "`"$LogDirectory`" /grant *S-1-5-32-545:(OI)(CI)M /T /Q" -Wait
     }
@@ -62,10 +75,13 @@ function Ensure-SimEnvironment {
     }
 }
 
+# Returns a randomized pause (ms) between log writes so Wazuh Agent reads lines in chronological order.
 function Get-RandomDelayMs {
     return Get-Random -Minimum $MinDelayMs -Maximum ($MaxDelayMs + 1)
 }
 
+# Writes one JSON simulation line into events.log for Wazuh Agent to pick up.
+# `sim_type = "securaai"` and `sim_event` are matched by local_rules.xml (rules 100500-100509) on Wazuh Manager.
 function Write-SimEvent {
     param(
         [Parameter(Mandatory = $true)][string]$SimEvent,
@@ -77,12 +93,14 @@ function Write-SimEvent {
         [int]$CustomDelayMs = -1
     )
 
+    # Use explicit backdated time for baseline history, or current UTC time for live attack events
     $emittedAt = if ($OccurredAtUtc) {
         $OccurredAtUtc
     } else {
         [DateTimeOffset]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ss.fff'Z'")
     }
 
+    # Build compact single-line JSON payload (Wazuh json decoder requires one JSON object per line)
     $payload = [ordered]@{
         sim_type   = 'securaai'
         sim_event  = $SimEvent
@@ -99,12 +117,15 @@ function Write-SimEvent {
 
     $jsonLine = ($payload | ConvertTo-Json -Compress)
     [IO.File]::AppendAllText($LogPath, $jsonLine + "`n", $Utf8NoBom)
+
+    # Sleep briefly so events do not arrive in the exact same millisecond or flood the agent buffer
     $sleepMs = if ($CustomDelayMs -ge 0) { $CustomDelayMs } else { Get-RandomDelayMs }
     if ($sleepMs -gt 0) {
         Start-Sleep -Milliseconds $sleepMs
     }
 }
 
+# Returns the failure event name that pairs with a success event (used to add realistic typos to baseline history).
 function Get-CounterpartFailureEvent {
     param([string]$SuccessSimEvent)
     switch ($SuccessSimEvent) {
@@ -116,6 +137,9 @@ function Get-CounterpartFailureEvent {
     }
 }
 
+# Builds a realistic past activity history for a test account before running the main scenario.
+# Why: SecuraAI's empirical-history-v1 model requires >= 20 historical time windows for a READY baseline.
+# By backdating `emitted_at` (7-19 mins apart), we create hours of history in just a few seconds.
 function Write-AccountBaseline {
     param(
         [Parameter(Mandatory = $true)][string]$SuccessSimEvent,
@@ -131,6 +155,7 @@ function Write-AccountBaseline {
         return 0
     }
 
+    # Default to 22-34 windows (safely above the 20-window minimum) unless a scenario specifies WindowCount
     $actualWindows = if ($WindowCount -gt 0) { $WindowCount } else { Get-Random -Minimum 22 -Maximum 35 }
     $failSimEvent = Get-CounterpartFailureEvent -SuccessSimEvent $SuccessSimEvent
     $emittedTotal = 0
@@ -138,15 +163,18 @@ function Write-AccountBaseline {
 
     Write-Host "  -> Khoi tao $actualWindows cua so lich su tu nhien (co nhieu loi le te nhu nguoi dung that)..." -ForegroundColor DarkGray
     $nowUtc = [DateTimeOffset]::UtcNow
+    # Start 15 minutes in the past and walk backward so baseline events stay separated from the live test window
     $cursorMinutesAgo = 15
 
     for ($i = 1; $i -le $actualWindows; $i++) {
         $stepMinutes = Get-Random -Minimum 7 -Maximum 19
         $cursorMinutesAgo += $stepMinutes
         $rawTime = $nowUtc.AddMinutes(-$cursorMinutesAgo)
+        # Round down to the start of the minute so each iteration lands in a distinct 1-minute bucket
         $floorSeconds = [int64]([Math]::Floor($rawTime.ToUnixTimeSeconds() / 60.0) * 60)
         $windowBaseTime = [DateTimeOffset]::FromUnixTimeSeconds($floorSeconds)
 
+        # ~22% of historical windows include 1-3 benign failed attempts (simulating normal human password typos)
         if (-not $CleanOnly -and $failSimEvent -and ((Get-Random -Minimum 1 -Maximum 101) -le 22)) {
             $noisyWindows++
             $benignFails = if ((Get-Random -Minimum 1 -Maximum 101) -le 75) { 1 } else { Get-Random -Minimum 2 -Maximum 4 }
@@ -157,16 +185,19 @@ function Write-AccountBaseline {
             }
         }
 
+        # Every baseline window ends with a normal successful login/access event
         $tSuccess = $windowBaseTime.AddSeconds(25).ToString("yyyy-MM-ddTHH:mm:ss.fff'Z'")
         Write-SimEvent -SimEvent $SuccessSimEvent -Actor $Actor -Ip $Ip -AppId $AppId -AppName $AppName -OccurredAtUtc $tSuccess -CustomDelayMs 55
         $emittedTotal++
     }
 
     Write-Host "     (Da tao $emittedTotal su kien lich su tren $actualWindows cua so, trong do co $noisyWindows cua so co 1-3 loi nham lan)" -ForegroundColor DarkGray
+    # Brief pause so Wazuh flushes all baseline history before the live attack/normal events begin
     Start-Sleep -Milliseconds 1500
     return $emittedTotal
 }
 
+# Saves each scenario run (generated user, IP, event count, and expected AI result) into run-history.csv for verification.
 function Record-RunHistory {
     param(
         [string]$RunId,
@@ -185,14 +216,21 @@ function Record-RunHistory {
     [IO.File]::AppendAllText($HistoryPath, $row, $Utf8NoBom)
 }
 
+# Runs a single test scenario (or the AllCore batch):
+# - Normal cases (TN): should score below threshold and raise NO alerts
+# - Attack bursts (TP): should match contextual rules and trigger AI alerts
+# - Limitation cases (FN): demonstrate known model boundaries (Password Spray & Cold-Start)
+# - Native/Randomized cases: trigger real Windows Event 4625 or randomized threshold stress tests
 function Invoke-SimScenario {
     param([Parameter(Mandatory = $true)][string]$ScenarioName)
 
     Ensure-SimEnvironment
+    # Unique timestamp+random tag ensures each test run gets isolated usernames (clean baseline per run)
     $tag = (Get-Date).ToString('MMdd-HHmmss') + '-' + (Get-Random -Minimum 100 -Maximum 999)
     $runId = "sim-$tag"
 
     switch ($ScenarioName) {
+        # --- AUTHENTICATION scenarios ---
         'AuthNormal' {
             $user = if ($Username) { $Username } else { "nv.ketoan.$tag" }
             $ip = if ($SourceIp) { $SourceIp } else { '10.20.10.15' }
@@ -248,6 +286,7 @@ function Invoke-SimScenario {
             Record-RunHistory $runId $ScenarioName 'AUTHENTICATION' ($baseCount + 6) $user $ip '-' $expected
         }
 
+        # --- APPLICATION_ACCESS scenarios ---
         'AppNormal' {
             $user = if ($Username) { $Username } else { "portal.staff.$tag" }
             $ip = if ($SourceIp) { $SourceIp } else { '10.20.20.12' }
@@ -289,6 +328,7 @@ function Invoke-SimScenario {
             Record-RunHistory $runId $ScenarioName 'APPLICATION_ACCESS' ($baseCount + 11) $user $ip $appId $expected
         }
 
+        # --- VPN_SSO scenarios ---
         'VpnNormal' {
             $user = if ($Username) { $Username } else { "remote.dev.$tag" }
             $ip = if ($SourceIp) { $SourceIp } else { '10.20.30.18' }
@@ -331,6 +371,7 @@ function Invoke-SimScenario {
             Record-RunHistory $runId $ScenarioName 'VPN_SSO' ($baseCount + 1) $user $newIp '-' $expected
         }
 
+        # --- Real OS Event (non-JSON): triggers genuine Windows Security Event ID 4625 via local SMB ---
         'WinNativeAuthFail' {
             $user = if ($Username) { $Username } else { "winlab_$($tag.Replace('-', ''))" }
             Write-Host "`n[1/1] Triggering 6 real Windows Security Event 4625 logons via local loopback for [$user]..." -ForegroundColor Cyan
@@ -342,6 +383,7 @@ function Invoke-SimScenario {
             Record-RunHistory $runId $ScenarioName 'AUTHENTICATION (Win4625)' 6 $user '127.0.0.1' '-' $expected
         }
 
+        # --- Randomized & Cold-Start evaluation scenarios ---
         'AppAuditScanProfile' {
             $user = if ($Username) { $Username } else { "audit.scanner.$tag" }
             $ip = if ($SourceIp) { $SourceIp } else { "10.20.40.$(Get-Random -Minimum 10 -Maximum 250)" }
@@ -457,6 +499,7 @@ function Invoke-SimScenario {
     Write-Host "History  : $HistoryPath"
 }
 
+# Reads run-history.csv and prints the 15 latest test runs so you can look up generated usernames in SecuraAI UI.
 function Show-SimHistory {
     Ensure-SimEnvironment
     $rows = Import-Csv -LiteralPath $HistoryPath
@@ -468,6 +511,10 @@ function Show-SimHistory {
     $rows | Select-Object -Last 15 | Format-Table RunId, StartedAtLocal, Scenario, EventFamily, EventsEmitted, Principal, SourceIp -AutoSize
 }
 
+# Verifies Windows Wazuh Agent setup and auto-configures ossec.conf if needed:
+# 1. Checks log file & WazuhSvc status
+# 2. Checks if ossec.conf already watches C:\ProgramData\securaai-sim\events.log
+# 3. If missing, elevates to Administrator once, backs up ossec.conf (.securaai.bak), adds <localfile>, and restarts WazuhSvc
 function Check-AgentStatus {
     param([switch]$AutoConfigure)
     Ensure-SimEnvironment
@@ -487,12 +534,14 @@ function Check-AgentStatus {
             Write-Host "3. ossec.conf localfile: Da khai bao $LogPath (OK)" -ForegroundColor Green
         } else {
             Write-Host "3. ossec.conf localfile: CHUA co $LogPath trong $agentConf -> Dang tu dong cau hinh..." -ForegroundColor Yellow
+            # Modifying Program Files requires Administrator rights; relaunch only the setup step elevated
             $currentPrincipal = New-Object Security.Principal.WindowsPrincipal([Security.Principal.WindowsIdentity]::GetCurrent())
             if (-not $currentPrincipal.IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)) {
                 $argList = "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`" -Scenario SetupAgent"
                 Start-Process powershell.exe -Verb RunAs -ArgumentList $argList -Wait
                 return
             }
+            # Always keep a backup before editing ossec.conf
             $backupPath = "$agentConf.securaai.bak"
             [IO.File]::WriteAllText($backupPath, $content, $Utf8NoBom)
             $localfileBlock = "`r`n  <!-- SecuraAI Scenario Simulator Stream -->`r`n  <localfile>`r`n    <log_format>json</log_format>`r`n    <location>$LogPath</location>`r`n  </localfile>`r`n</ossec_config>"
@@ -507,16 +556,20 @@ function Check-AgentStatus {
     }
 }
 
+# --- Entry points ---
+# 1. Direct setup mode (-Scenario SetupAgent): configure Wazuh Agent and exit
 if ($Scenario -eq 'SetupAgent') {
     Check-AgentStatus -AutoConfigure
     return
 }
 
+# 2. CLI direct mode (-Scenario <Name>): run one scenario without opening the interactive menu
 if ($Scenario -ne 'Menu') {
     Invoke-SimScenario -ScenarioName $Scenario
     return
 }
 
+# 3. Default interactive menu loop
 while ($true) {
     Write-Host "`n==================================================================" -ForegroundColor DarkCyan
     Write-Host "   SECURAAI - WAZUH WINDOWS AGENT SCENARIO MANAGER (3 FAMILIES)" -ForegroundColor Cyan

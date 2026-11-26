@@ -13,6 +13,8 @@ function record(value: unknown): JsonRecord {
     : {};
 }
 
+// When multiple candidates are passed in order of priority (e.g., `text(a, b, c)`).
+// It selects the first one that contains valid text (or a valid number) and applies `.trim()` to it; if all are empty, it returns `undefined`.
 function text(...values: unknown[]): string | undefined {
   for (const value of values) {
     if (typeof value === 'string' && value.trim()) return value.trim();
@@ -21,12 +23,14 @@ function text(...values: unknown[]): string | undefined {
   return undefined;
 }
 
+// Convert an integer or a string consisting entirely of digits (such as "401" or "443") into a number type.
 function integer(value: unknown): number | undefined {
   if (typeof value === 'number' && Number.isInteger(value)) return value;
   if (typeof value === 'string' && /^\d+$/.test(value)) return Number(value);
   return undefined;
 }
 
+// Perform a quick check to see if the JSON object is normalized (i.e., `source.type === 'WAZUH'` and it contains an `eventFamily`).
 function isNormalized(input: WazuhIngestInput): input is WazuhEventIngestInput {
   return 'source' in input && record(input.source).type === 'WAZUH' && 'eventFamily' in input;
 }

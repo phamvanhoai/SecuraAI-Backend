@@ -13,6 +13,7 @@ type HttpResponse = {
   rawText: string;
 };
 
+// URL normalization
 function formatEndpointUrl(endpoint: string): URL {
   const trimmed = endpoint.trim();
   const withProtocol =
@@ -32,17 +33,18 @@ function requestHttp(
     timeoutMs: number;
   },
 ): Promise<HttpResponse> {
+  // Select http or https based on the URL
   const isHttps = url.protocol === 'https:';
   const transport = isHttps ? https : http;
 
   const agent = isHttps
     ? new https.Agent({
-        rejectUnauthorized: options.rejectUnauthorized !== false,
-        keepAlive: false,
-      })
+      rejectUnauthorized: options.rejectUnauthorized !== false,
+      keepAlive: false,
+    })
     : new http.Agent({
-        keepAlive: false,
-      });
+      keepAlive: false,
+    });
 
   return new Promise<HttpResponse>((resolve, reject) => {
     const req = transport.request(
@@ -58,6 +60,7 @@ function requestHttp(
         timeout: options.timeoutMs,
       },
       (res) => {
+        // Maximum download size limit of 2MB
         const chunks: Buffer[] = [];
         let bytes = 0;
         const maxBytes = 2 * 1024 * 1024; // 2MB
@@ -70,6 +73,7 @@ function requestHttp(
         });
 
         res.on('end', () => {
+          // Merging data and attempting to read JSON
           const rawText = Buffer.concat(chunks).toString('utf-8');
           let parsed: unknown = null;
           try {
@@ -145,6 +149,7 @@ export const wazuhConnectionTester = {
     const baseUrl = `${parsedUrl.origin}${parsedUrl.pathname.replace(/\/+$/, '')}`;
 
     // Step 1: Authenticate with HTTP Basic Auth to get JWT
+    // Base64-encode the pair wazuh-wui:123456 according to the HTTP Basic Auth standard
     const basicAuth = Buffer.from(`${username}:${password}`).toString('base64');
     let authRes: HttpResponse;
 

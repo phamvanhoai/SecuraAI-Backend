@@ -1,11 +1,13 @@
 import { prisma } from '../../database/prisma.js';
 
+// Information for a user (employee)
 export interface CandidateUser {
   id: string;
   email: string;
   fullName: string | null;
 }
 
+// Information for 1 monitoring account (e.g., VPN account, service account)
 export interface CandidateMonitoredAccount {
   id: string;
   accountIdentifier: string;
@@ -14,6 +16,7 @@ export interface CandidateMonitoredAccount {
   assetId: string | null;
 }
 
+// Information 1: IT Assets (Servers, Laptops, Firewalls, etc.)
 export interface CandidateAsset {
   id: string;
   name: string;
@@ -29,6 +32,7 @@ export const eventAutoMappingRepository = {
     assets: CandidateAsset[];
   }> {
     const [users, monitoredAccounts, assets] = await Promise.all([
+      // Get the list of ACTIVE employees
       prisma.users.findMany({
         where: { status: 'ACTIVE' },
         select: {
@@ -37,6 +41,7 @@ export const eventAutoMappingRepository = {
           full_name: true,
         },
       }),
+      // Get the list of ACTIVE monitored accounts
       prisma.monitored_accounts.findMany({
         where: { status: 'ACTIVE' },
         select: {
@@ -47,6 +52,7 @@ export const eventAutoMappingRepository = {
           asset_id: true,
         },
       }),
+      // Get the list of ACTIVE IT Assets
       prisma.assets.findMany({
         where: { status: 'ACTIVE' },
         select: {
