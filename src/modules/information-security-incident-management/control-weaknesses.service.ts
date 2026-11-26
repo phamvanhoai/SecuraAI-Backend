@@ -80,6 +80,8 @@ export const controlWeaknessesService = {
       })),
     };
   },
+  // Record Control Weakness from Incident: require a linked control, an open
+  // incident, and no duplicate open weakness for the same control.
   async record(userId: string, incidentId: string, input: RecordControlWeaknessInput) {
     await requireSecurityOfficer(userId);
     const [incident, link, existing] = await Promise.all([

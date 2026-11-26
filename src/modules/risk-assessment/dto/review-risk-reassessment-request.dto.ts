@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+// Validate pagination, search and status filters for the actor's request list.
 export const listOwnedReassessmentRequestsQuerySchema = z
   .object({
     page: z.coerce.number().int().min(1).default(1),
@@ -11,12 +12,15 @@ export const listOwnedReassessmentRequestsQuerySchema = z
   })
   .strict();
 
+// Validate :requestId for review, completion and rejection routes.
 export const reviewRiskReassessmentRequestParamsSchema = z.object({ requestId: z.uuid() }).strict();
 
+// Require an explanation when rejecting a reassessment request.
 export const rejectRiskReassessmentRequestBodySchema = z
   .object({ reason: z.string().trim().min(20).max(2000) })
   .strict();
 
+// Validate the residual assessment and treatment-plan update submitted at completion.
 export const completeRiskReassessmentBodySchema = z
   .object({
     residualLikelihood: z.number().int().min(1).max(5),

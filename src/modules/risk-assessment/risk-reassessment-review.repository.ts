@@ -120,6 +120,7 @@ export const riskReassessmentReviewRepository = {
       select: requestSelect,
     });
   },
+  // Change PENDING to UNDER_REVIEW only when the database state still matches.
   async startReview(requestId: string, userId: string) {
     const result = await prisma.risk_reassessment_requests.updateMany({
       where: {
@@ -149,6 +150,7 @@ export const riskReassessmentReviewRepository = {
     });
     return result.count === 0 ? null : { reviewedAt };
   },
+  // Save the residual assessment and complete the request in one transaction.
   async complete(requestId: string, actorId: string, input: CompleteRiskReassessmentInput) {
     return prisma.$transaction(async (database) => {
       const request = await database.risk_reassessment_requests.findUnique({

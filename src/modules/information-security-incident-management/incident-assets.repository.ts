@@ -64,6 +64,7 @@ export const incidentAssetsRepository = {
     return { incident, assets, total };
   },
 
+  // Insert the many-to-many incident-asset relationship and return its summary.
   link(incidentId: string, assetId: string, linkedBy: string) {
     return prisma.incident_assets.create({
       data: { incident_id: incidentId, asset_id: assetId, linked_by: linkedBy },

@@ -126,6 +126,8 @@ async function withDetectionLock<T>(operation: () => Promise<T>): Promise<T> {
 }
 
 export const anomalyDetectionService = {
+  // Use case: Run Anomaly Detection. Check the actor and deployed model,
+  // then run one bounded batch while preventing overlapping manual runs.
   async run(
     userId: string,
     input: RunAnomalyDetectionBody,
@@ -178,6 +180,9 @@ export const anomalyDetectionService = {
   },
 };
 
+// Internal flow for Run Anomaly Detection:
+// evaluate events -> generate scores -> decide anomalies -> prepare alerts.
+// Generate Anomaly Score and Generate Anomaly Alert do not have separate routes.
 async function runDetection(
   model: Awaited<ReturnType<typeof anomalyDetectionRepository.findDeployedModel>> & {},
   input: {

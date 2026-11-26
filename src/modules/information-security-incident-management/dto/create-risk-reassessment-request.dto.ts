@@ -1,7 +1,9 @@
 import { z } from 'zod';
 
+// Validate the incident selected for request history, options or creation.
 export const riskReassessmentRequestParamsSchema = z.object({ incidentId: z.uuid() }).strict();
 
+// Validate bounded pagination for request history.
 export const riskReassessmentRequestHistoryQuerySchema = z
   .object({
     page: z.coerce.number().int().min(1).default(1),
@@ -9,6 +11,7 @@ export const riskReassessmentRequestHistoryQuerySchema = z
   })
   .strict();
 
+// Validate the linked risk, optional finding and reason for a new request.
 export const createRiskReassessmentRequestBodySchema = z
   .object({
     riskId: z.uuid(),

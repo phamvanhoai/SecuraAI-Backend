@@ -11,6 +11,7 @@ function authenticatedUserId(value: unknown): string {
   if (typeof value !== 'string') throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
   return value;
 }
+// Return validated risk options for the selected incident.
 export const getIncidentRiskOptions: RequestHandler = async (req, res) => {
   const { incidentId } = incidentRiskParamsSchema.parse(req.params);
   const data = await incidentRisksService.options(
@@ -20,6 +21,7 @@ export const getIncidentRiskOptions: RequestHandler = async (req, res) => {
   );
   res.status(200).json({ success: true, data });
 };
+// Parse both IDs and ask the service to remove the incident-risk link.
 export const unlinkIncidentRisk: RequestHandler = async (req, res) => {
   const { incidentId, riskId } = incidentRiskLinkParamsSchema.parse(req.params);
   await incidentRisksService.unlink(
@@ -29,6 +31,7 @@ export const unlinkIncidentRisk: RequestHandler = async (req, res) => {
   );
   res.status(204).send();
 };
+// Parse the incident and risk input, then ask the service to create the link.
 export const linkIncidentRisk: RequestHandler = async (req, res) => {
   const { incidentId } = incidentRiskParamsSchema.parse(req.params);
   const data = await incidentRisksService.link(

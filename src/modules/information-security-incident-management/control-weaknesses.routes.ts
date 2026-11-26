@@ -13,18 +13,24 @@ import {
   recordControlWeaknessBodySchema,
 } from './dto/record-control-weakness.dto.js';
 export const controlWeaknessesRouter = Router();
+
+// Supporting route: view weaknesses already recorded for the incident.
 controlWeaknessesRouter.get(
   '/:incidentId/control-weaknesses',
   authenticate,
   validate({ params: controlWeaknessParamsSchema, query: controlWeaknessHistoryQuerySchema }),
   asyncHandler(listControlWeaknessHistory),
 );
+
+// Supporting route: load controls that can be recorded as weaknesses.
 controlWeaknessesRouter.get(
   '/:incidentId/control-weaknesses/options',
   authenticate,
   validate({ params: controlWeaknessParamsSchema }),
   asyncHandler(getControlWeaknessOptions),
 );
+
+// Use case: Record Control Weakness from Incident -> recordControlWeakness.
 controlWeaknessesRouter.post(
   '/:incidentId/control-weaknesses',
   authenticate,

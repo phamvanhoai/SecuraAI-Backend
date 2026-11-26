@@ -1,5 +1,7 @@
 import { z } from 'zod';
 
+// Validate and normalize query parameters for the alert list.
+// z.coerce converts URL strings such as "1" into numbers.
 export const listAiAlertsQuerySchema = z
   .object({
     page: z.coerce.number().int().min(1).default(1),

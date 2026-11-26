@@ -125,6 +125,7 @@ export const riskReassessmentRequestsRepository = {
     ]);
     return { incident, riskLinks, findings };
   },
+  // Insert one request with foreign keys to its incident, risk and optional finding.
   create(
     incidentId: string,
     requestedBy: string,
