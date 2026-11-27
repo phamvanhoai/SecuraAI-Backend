@@ -3,10 +3,12 @@ import { AppError } from '../../common/errors/app-error.js';
 import { incidentDetailParamsSchema } from './dto/view-incidents.dto.js';
 import { closeIncidentSchema } from './dto/close-incident.dto.js';
 import { incidentClosureService } from './incident-closure.service.js';
+// Parse request inputs and pass the authenticated user to the user service flow.
 function user(value: unknown): string {
   if (typeof value !== 'string') throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
   return value;
 }
+// Parse request inputs and pass the authenticated user to the getIncidentClosure service flow.
 export const getIncidentClosure: RequestHandler = async (req, res) => {
   const { incidentId } = incidentDetailParamsSchema.parse(req.params);
   res.json({
@@ -14,6 +16,7 @@ export const getIncidentClosure: RequestHandler = async (req, res) => {
     data: await incidentClosureService.current(user(res.locals.authenticatedUserId), incidentId),
   });
 };
+// Parse request inputs and pass the authenticated user to the closeIncident service flow.
 export const closeIncident: RequestHandler = async (req, res) => {
   const { incidentId } = incidentDetailParamsSchema.parse(req.params);
   res.json({

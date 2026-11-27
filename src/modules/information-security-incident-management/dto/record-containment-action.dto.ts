@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+// Validate request data for record containment action.
 export const recordContainmentActionSchema = z
   .object({
     description: z.string().trim().min(10).max(4000),
@@ -8,6 +9,7 @@ export const recordContainmentActionSchema = z
   .strict();
 export type RecordContainmentAction = z.infer<typeof recordContainmentActionSchema>;
 
+// Validate request data for containment history query.
 export const containmentHistoryQuerySchema = z
   .object({
     page: z.coerce.number().int().min(1).max(100000).default(1),

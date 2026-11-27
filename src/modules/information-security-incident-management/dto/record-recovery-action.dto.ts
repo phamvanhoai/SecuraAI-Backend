@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+// Validate request data for record recovery action.
 export const recordRecoveryActionSchema = z
   .object({
     description: z.string().trim().min(10).max(4000),
@@ -8,6 +9,7 @@ export const recordRecoveryActionSchema = z
   .strict();
 export type RecordRecoveryAction = z.infer<typeof recordRecoveryActionSchema>;
 
+// Validate request data for recovery history query.
 export const recoveryHistoryQuerySchema = z
   .object({
     page: z.coerce.number().int().min(1).max(100000).default(1),

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+// Validate request data for assign incident handler.
 export const assignIncidentHandlerSchema = z
   .object({
     assigneeUserId: z.uuid(),

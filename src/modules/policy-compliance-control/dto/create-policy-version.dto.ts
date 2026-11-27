@@ -1,6 +1,8 @@
 import { z } from 'zod';
 
+// Validate request data for create policy version params.
 export const createPolicyVersionParamsSchema = z.object({ policyId: z.uuid() });
+// Validate request data for create policy version body.
 export const createPolicyVersionBodySchema = z
   .object({
     title: z.string().trim().min(3).max(255).optional(),

@@ -1,9 +1,11 @@
 import { z } from 'zod';
 
+// Validate request data for edit policy draft params.
 export const editPolicyDraftParamsSchema = z
   .object({ policyId: z.uuid(), versionId: z.uuid() })
   .strict();
 
+// Validate request data for edit policy draft body.
 export const editPolicyDraftBodySchema = z
   .object({
     title: z.string().trim().min(3).max(255).optional(),

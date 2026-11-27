@@ -3,6 +3,7 @@ import { AppError } from '../../common/errors/app-error.js';
 import { analysisSnapshotSchema, type SaveIncidentAnalysis } from './dto/incident-analysis.dto.js';
 import { incidentAnalysisRepository, type AnalysisRecord } from './incident-analysis.repository.js';
 
+// Require an active account with incident viewing access.
 async function requireViewer(userId: string) {
   const actor = await incidentAnalysisRepository.findActor(userId);
   if (!actor || actor.status !== 'ACTIVE')
@@ -11,6 +12,7 @@ async function requireViewer(userId: string) {
     throw new AppError(403, 'FORBIDDEN', 'Incident viewing permission required');
   return actor;
 }
+// Map Analysis database fields into the API response.
 function mapAnalysis(record: AnalysisRecord) {
   return {
     id: record.id,
@@ -24,6 +26,7 @@ function mapAnalysis(record: AnalysisRecord) {
   };
 }
 export const incidentAnalysisService = {
+  // Read current workflow data and calculate the permitted UI actions.
   async current(userId: string, incidentId: string) {
     const actor = await requireViewer(userId);
     const incident = await incidentAnalysisRepository.findIncident(incidentId);
@@ -41,6 +44,7 @@ export const incidentAnalysisService = {
             : 'Findings can be saved when the incident reaches Lessons learned.',
     };
   },
+  // Read paginated audit snapshots for this incident workflow.
   async history(userId: string, incidentId: string, query: { page: number; limit: number }) {
     await requireViewer(userId);
     if (!(await incidentAnalysisRepository.findIncident(incidentId)))
@@ -65,6 +69,7 @@ export const incidentAnalysisService = {
       pagination: { ...query, total, totalPages: Math.ceil(total / query.limit) },
     };
   },
+  // Save analysis in Lessons learned with revision checks and an atomic audit.
   async save(userId: string, incidentId: string, input: SaveIncidentAnalysis) {
     const actor = await requireViewer(userId);
     if (actor.role !== 'SECURITY_OFFICER')

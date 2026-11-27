@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+// Validate request data for list policy drafts query.
 export const listPolicyDraftsQuerySchema = z
   .object({
     page: z.coerce.number().int().min(1).default(1),

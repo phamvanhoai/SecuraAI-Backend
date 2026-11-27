@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+// Validate request data for create policy draft body.
 export const createPolicyDraftBodySchema = z
   .object({
     policyCode: z

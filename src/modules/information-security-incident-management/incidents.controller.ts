@@ -1,5 +1,6 @@
 import type { RequestHandler } from 'express';
 import { incidentProgressSchema, phaseHistoryQuerySchema } from './dto/incident-progress.dto.js';
+// Parse request inputs and pass the authenticated user to the updateIncidentPhase service flow.
 export const updateIncidentPhase: RequestHandler = async (req, res) => {
   const { incidentId } = incidentDetailParamsSchema.parse(req.params);
   const data = await incidentsService.updatePhase(
@@ -9,6 +10,7 @@ export const updateIncidentPhase: RequestHandler = async (req, res) => {
   );
   res.json({ success: true, data });
 };
+// Parse request inputs and pass the authenticated user to the getIncidentPhaseHistory service flow.
 export const getIncidentPhaseHistory: RequestHandler = async (req, res) => {
   const { incidentId } = incidentDetailParamsSchema.parse(req.params);
   const data = await incidentsService.phaseHistory(
@@ -22,6 +24,7 @@ import {
   recordContainmentActionSchema,
   containmentHistoryQuerySchema,
 } from './dto/record-containment-action.dto.js';
+// Parse request inputs and pass the authenticated user to the recordContainmentAction service flow.
 export const recordContainmentAction: RequestHandler = async (req, res) => {
   const { incidentId } = incidentDetailParamsSchema.parse(req.params);
   const data = await incidentsService.recordContainment(
@@ -31,6 +34,7 @@ export const recordContainmentAction: RequestHandler = async (req, res) => {
   );
   res.status(201).json({ success: true, data });
 };
+// Parse request inputs and pass the authenticated user to the getContainmentHistory service flow.
 export const getContainmentHistory: RequestHandler = async (req, res) => {
   const { incidentId } = incidentDetailParamsSchema.parse(req.params);
   const data = await incidentsService.containmentHistory(
@@ -44,6 +48,7 @@ import {
   recordEradicationActionSchema,
   eradicationHistoryQuerySchema,
 } from './dto/record-eradication-action.dto.js';
+// Parse request inputs and pass the authenticated user to the recordEradicationAction service flow.
 export const recordEradicationAction: RequestHandler = async (req, res) => {
   const { incidentId } = incidentDetailParamsSchema.parse(req.params);
   const data = await incidentsService.recordEradication(
@@ -53,6 +58,7 @@ export const recordEradicationAction: RequestHandler = async (req, res) => {
   );
   res.status(201).json({ success: true, data });
 };
+// Parse request inputs and pass the authenticated user to the getEradicationHistory service flow.
 export const getEradicationHistory: RequestHandler = async (req, res) => {
   const { incidentId } = incidentDetailParamsSchema.parse(req.params);
   const data = await incidentsService.eradicationHistory(
@@ -66,6 +72,7 @@ import {
   recordRecoveryActionSchema,
   recoveryHistoryQuerySchema,
 } from './dto/record-recovery-action.dto.js';
+// Parse request inputs and pass the authenticated user to the recordRecoveryAction service flow.
 export const recordRecoveryAction: RequestHandler = async (req, res) => {
   const { incidentId } = incidentDetailParamsSchema.parse(req.params);
   const data = await incidentsService.recordRecovery(
@@ -75,6 +82,7 @@ export const recordRecoveryAction: RequestHandler = async (req, res) => {
   );
   res.status(201).json({ success: true, data });
 };
+// Parse request inputs and pass the authenticated user to the getRecoveryHistory service flow.
 export const getRecoveryHistory: RequestHandler = async (req, res) => {
   const { incidentId } = incidentDetailParamsSchema.parse(req.params);
   const data = await incidentsService.recoveryHistory(
@@ -86,12 +94,14 @@ export const getRecoveryHistory: RequestHandler = async (req, res) => {
 };
 import { assignIncidentHandlerSchema } from './dto/assign-incident-handler.dto.js';
 
+// Parse request inputs and pass the authenticated user to the listIncidentAssignmentOptions service flow.
 export const listIncidentAssignmentOptions: RequestHandler = async (_req, res) => {
   const data = await incidentsService.assignmentOptions(
     authenticatedUserId(res.locals.authenticatedUserId),
   );
   res.status(200).json({ success: true, data });
 };
+// Parse request inputs and pass the authenticated user to the assignIncidentHandler service flow.
 export const assignIncidentHandler: RequestHandler = async (req, res) => {
   const { incidentId } = incidentDetailParamsSchema.parse(req.params);
   const data = await incidentsService.assignHandler(
@@ -113,6 +123,7 @@ import {
   classificationHistoryQuerySchema,
 } from './dto/classify-incident-severity.dto.js';
 
+// Parse request inputs and pass the authenticated user to the getClassificationHistory service flow.
 export const getClassificationHistory: RequestHandler = async (req, res) => {
   const { incidentId } = incidentDetailParamsSchema.parse(req.params);
   const data = await incidentsService.classificationHistory(
@@ -123,6 +134,7 @@ export const getClassificationHistory: RequestHandler = async (req, res) => {
   res.status(200).json({ success: true, data });
 };
 
+// Parse request inputs and pass the authenticated user to the getAssignmentHistory service flow.
 export const getAssignmentHistory: RequestHandler = async (req, res) => {
   const { incidentId } = incidentDetailParamsSchema.parse(req.params);
   const data = await incidentsService.assignmentHistory(
@@ -133,6 +145,7 @@ export const getAssignmentHistory: RequestHandler = async (req, res) => {
   res.status(200).json({ success: true, data });
 };
 
+// Parse request inputs and pass the authenticated user to the classifyIncidentSeverity service flow.
 export const classifyIncidentSeverity: RequestHandler = async (req, res) => {
   const { incidentId } = incidentDetailParamsSchema.parse(req.params);
   const data = await incidentsService.classifySeverity(
@@ -143,11 +156,13 @@ export const classifyIncidentSeverity: RequestHandler = async (req, res) => {
   res.status(200).json({ success: true, data });
 };
 
+// Parse request inputs and pass the authenticated user to the authenticatedUserId service flow.
 function authenticatedUserId(value: unknown): string {
   if (typeof value !== 'string') throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
   return value;
 }
 
+// Parse request inputs and pass the authenticated user to the listIncidents service flow.
 export const listIncidents: RequestHandler = async (req, res) => {
   const data = await incidentsService.list(
     authenticatedUserId(res.locals.authenticatedUserId),
@@ -156,6 +171,7 @@ export const listIncidents: RequestHandler = async (req, res) => {
   res.status(200).json({ success: true, data });
 };
 
+// Parse request inputs and pass the authenticated user to the listMyIncidents service flow.
 export const listMyIncidents: RequestHandler = async (req, res) => {
   const data = await incidentsService.listMine(
     authenticatedUserId(res.locals.authenticatedUserId),
@@ -164,6 +180,7 @@ export const listMyIncidents: RequestHandler = async (req, res) => {
   res.status(200).json({ success: true, data });
 };
 
+// Parse request inputs and pass the authenticated user to the getIncidentDetail service flow.
 export const getIncidentDetail: RequestHandler = async (req, res) => {
   const { incidentId } = incidentDetailParamsSchema.parse(req.params);
   const data = await incidentsService.detail(
@@ -173,6 +190,7 @@ export const getIncidentDetail: RequestHandler = async (req, res) => {
   res.status(200).json({ success: true, data });
 };
 
+// Parse request inputs and pass the authenticated user to the listIncidentSourceOptions service flow.
 export const listIncidentSourceOptions: RequestHandler = async (req, res) => {
   const data = await incidentsService.listSourceOptions(
     authenticatedUserId(res.locals.authenticatedUserId),
@@ -181,6 +199,7 @@ export const listIncidentSourceOptions: RequestHandler = async (req, res) => {
   res.status(200).json({ success: true, data });
 };
 
+// Parse request inputs and pass the authenticated user to the createIncidentFromSource service flow.
 export const createIncidentFromSource: RequestHandler = async (req, res) => {
   const data = await incidentsService.createFromSource(
     authenticatedUserId(res.locals.authenticatedUserId),

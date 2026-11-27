@@ -102,12 +102,14 @@ import {
 } from './dto/define-policy-applicability.dto.js';
 
 export const policyComplianceRouter = Router();
+// createPolicyVersion: authenticate -> validate request -> controller -> service.
 policyComplianceRouter.post(
   '/policies/:policyId/versions',
   authenticate,
   validate({ params: createPolicyVersionParamsSchema, body: createPolicyVersionBodySchema }),
   asyncHandler(createPolicyVersion),
 );
+// getOwnPolicyDraft: authenticate -> validate request -> controller -> service.
 policyComplianceRouter.get(
   '/controls/:controlId/evidence',
   authenticate,
@@ -142,6 +144,7 @@ policyComplianceRouter.post(
   validate({ params: controlParamsSchema }),
   asyncHandler(uploadControlEvidence),
 );
+// getPolicyApplicability: authenticate -> validate request -> controller -> service.
 policyComplianceRouter.get(
   '/evidence/:evidenceId/download',
   authenticate,
@@ -184,30 +187,35 @@ policyComplianceRouter.get(
   validate({ params: policyApplicabilityParamsSchema }),
   asyncHandler(getPolicyApplicability),
 );
+// definePolicyApplicability: authenticate -> validate request -> controller -> service.
 policyComplianceRouter.put(
   '/policies/:policyId/versions/:versionId/applicability',
   authenticate,
   validate({ params: policyApplicabilityParamsSchema, body: definePolicyApplicabilityBodySchema }),
   asyncHandler(definePolicyApplicability),
 );
+// listPolicyVersionHistory: authenticate -> validate request -> controller -> service.
 policyComplianceRouter.get(
   '/policies/version-history',
   authenticate,
   validate({ query: policyVersionHistoryQuerySchema }),
   asyncHandler(listPolicyVersionHistory),
 );
+// getPolicyVersionHistory: authenticate -> validate request -> controller -> service.
 policyComplianceRouter.get(
   '/policies/:policyId/versions/:versionId/history',
   authenticate,
   validate({ params: policyVersionHistoryParamsSchema }),
   asyncHandler(getPolicyVersionHistory),
 );
+// createPolicyDraft: authenticate -> validate request -> controller -> service.
 policyComplianceRouter.post(
   '/policies',
   authenticate,
   validate({ body: createPolicyDraftBodySchema }),
   asyncHandler(createPolicyDraft),
 );
+// listOwnedPublishedPolicies: authenticate -> validate request -> controller -> service.
 policyComplianceRouter.get(
   '/control-assessments',
   authenticate,
@@ -223,11 +231,13 @@ policyComplianceRouter.post(
   }),
   asyncHandler(assessControlEffectiveness),
 );
+// listEmployeePublishedPolicies: authenticate -> validate request -> controller -> service.
 policyComplianceRouter.get(
   '/policies/published/mine',
   authenticate,
   asyncHandler(listOwnedPublishedPolicies),
 );
+// getEmployeePublishedPolicy: authenticate -> validate request -> controller -> service.
 policyComplianceRouter.get(
   '/policies/acknowledgements/mine',
   authenticate,
@@ -240,72 +250,84 @@ policyComplianceRouter.get(
   validate({ params: publishedPolicyParamsSchema }),
   asyncHandler(getEmployeePublishedPolicy),
 );
+// acknowledgeEmployeePublishedPolicy: authenticate -> validate request -> controller -> service.
 policyComplianceRouter.post(
   '/policies/:policyId/versions/:versionId/acknowledgements',
   authenticate,
   validate({ params: publishedPolicyParamsSchema }),
   asyncHandler(acknowledgeEmployeePublishedPolicy),
 );
+// listRejectedPolicies: authenticate -> validate request -> controller -> service.
 policyComplianceRouter.get(
   '/policies/rejected',
   authenticate,
   validate({ query: rejectedPolicyQuerySchema }),
   asyncHandler(listRejectedPolicies),
 );
+// rejectPolicy: authenticate -> validate request -> controller -> service.
 policyComplianceRouter.post(
   '/policies/:policyId/versions/:versionId/reject',
   authenticate,
   validate({ params: rejectPolicyParamsSchema, body: rejectPolicyBodySchema }),
   asyncHandler(rejectPolicy),
 );
+// approvePolicyForPublication: authenticate -> validate request -> controller -> service.
 policyComplianceRouter.post(
   '/policies/:policyId/versions/:versionId/approve',
   authenticate,
   validate({ params: approvePolicyForPublicationParamsSchema }),
   asyncHandler(approvePolicyForPublication),
 );
+// editPolicyDraft: authenticate -> validate request -> controller -> service.
 policyComplianceRouter.patch(
   '/policies/:policyId/drafts/:versionId',
   authenticate,
   validate({ params: editPolicyDraftParamsSchema, body: editPolicyDraftBodySchema }),
   asyncHandler(editPolicyDraft),
 );
+// requestPolicyRevision: authenticate -> validate request -> controller -> service.
 policyComplianceRouter.post(
   '/policies/:policyId/versions/:versionId/revision-requests',
   authenticate,
   validate({ params: requestPolicyRevisionParamsSchema, body: requestPolicyRevisionBodySchema }),
   asyncHandler(requestPolicyRevision),
 );
+// submitPolicyForReview: authenticate -> validate request -> controller -> service.
 policyComplianceRouter.post(
   '/policies/:policyId/versions/:versionId/submit',
   authenticate,
   validate({ params: submitPolicyForReviewParamsSchema }),
   asyncHandler(submitPolicyForReview),
 );
+// listOwnPolicyDrafts: authenticate -> validate request -> controller -> service.
 policyComplianceRouter.get(
   '/policies/drafts/mine',
   authenticate,
   validate({ query: listPolicyDraftsQuerySchema }),
   asyncHandler(listOwnPolicyDrafts),
 );
+// listReviewablePolicyDrafts: authenticate -> validate request -> controller -> service.
 policyComplianceRouter.get(
   '/policies/drafts/reviewable',
   authenticate,
   validate({ query: reviewablePolicyDraftQuerySchema }),
   asyncHandler(listReviewablePolicyDrafts),
 );
+// getPolicyDraftReview: authenticate -> validate request -> controller -> service.
 policyComplianceRouter.get(
   '/policies/:policyId/versions/:versionId/review',
   authenticate,
   validate({ params: policyDraftReviewParamsSchema }),
   asyncHandler(getPolicyDraftReview),
 );
+// publishPolicyVersion: authenticate -> validate request -> controller -> service.
 policyComplianceRouter.post(
   '/policies/:policyId/versions/:versionId/publish',
   authenticate,
   validate({ params: approvePolicyForPublicationParamsSchema }),
   asyncHandler(publishPolicyVersion),
 );
+// reviewPolicy: authenticate -> validate request -> controller -> service.
 policyComplianceRouter.post(
   '/policies/:policyId/versions/:versionId/review',
   authenticate,

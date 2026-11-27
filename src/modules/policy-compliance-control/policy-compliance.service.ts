@@ -20,6 +20,7 @@ import {
   type PolicyVersionHistoryRecord,
 } from './policy-compliance.repository.js';
 
+// Map PolicyVersionHistory database fields into the API response.
 function mapPolicyVersionHistory(version: PolicyVersionHistoryRecord) {
   const policy = version.policies_policy_versions_policy_idTopolicies;
   return {
@@ -40,6 +41,7 @@ function mapPolicyVersionHistory(version: PolicyVersionHistoryRecord) {
   };
 }
 
+// Map RejectedPolicy database fields into the API response.
 function mapRejectedPolicy(decision: RejectedPolicyDecisionRecord) {
   const version = decision.policy_versions;
   const policy = version.policies_policy_versions_policy_idTopolicies;
@@ -63,6 +65,7 @@ function mapRejectedPolicy(decision: RejectedPolicyDecisionRecord) {
   };
 }
 
+// Map the submitted version and parent policy into the submission response.
 function toSubmittedDraft(version: PolicyDraftForSubmission) {
   const policy = version.policies_policy_versions_policy_idTopolicies;
   return {
@@ -82,6 +85,7 @@ function toSubmittedDraft(version: PolicyDraftForSubmission) {
   };
 }
 
+// Map OwnedPolicyDraft database fields into the API response.
 function mapOwnedPolicyDraft(draft: OwnedPolicyDraftRecord) {
   const policy = draft.policies_policy_versions_policy_idTopolicies;
   const revision = draft.policy_decisions[0];
@@ -114,6 +118,7 @@ function mapOwnedPolicyDraft(draft: OwnedPolicyDraftRecord) {
   };
 }
 
+// Require a currently active Admin account for policy decisions.
 async function requireActiveAdmin(userId: string): Promise<void> {
   const actor = await policyComplianceRepository.findActor(userId);
   if (!actor || actor.status !== 'ACTIVE') {
@@ -124,6 +129,7 @@ async function requireActiveAdmin(userId: string): Promise<void> {
   }
 }
 
+// Restrict policy history to active Admins and Security Officers.
 async function requirePolicyHistoryViewer(userId: string): Promise<void> {
   const actor = await policyComplianceRepository.findActor(userId);
   if (!actor || actor.status !== 'ACTIVE') {
@@ -134,6 +140,7 @@ async function requirePolicyHistoryViewer(userId: string): Promise<void> {
   }
 }
 
+// Map ReviewablePolicy database fields into the API response.
 function mapReviewablePolicy(policy: ReviewablePolicyRecord) {
   const version = policy.policy_versions_policy_versions_policy_idTopolicies[0];
   if (!version) throw new Error('Reviewable policy has no submitted version');
@@ -155,6 +162,7 @@ function mapReviewablePolicy(policy: ReviewablePolicyRecord) {
   };
 }
 
+// Map the selected superseded version previously acknowledged by this Employee.
 function mapPreviousAcknowledgement(versions: { id: string; version_number: string; policy_acknowledgements: { acknowledged_at: Date }[] }[]) {
   const previous = versions[0];
   const acknowledgement = previous?.policy_acknowledgements[0];
@@ -163,6 +171,7 @@ function mapPreviousAcknowledgement(versions: { id: string; version_number: stri
     : null;
 }
 
+// Map PolicyReview database fields into the API response.
 function mapPolicyReview(version: PolicyReviewRecord) {
   const policy = version.policies_policy_versions_policy_idTopolicies;
   return {
@@ -187,6 +196,7 @@ function mapPolicyReview(version: PolicyReviewRecord) {
 }
 
 export const policyComplianceService = {
+  // Read version applicability and department options for the author or policy owner.
   async getApplicability(userId: string, policyId: string, versionId: string) {
     const actor = await policyComplianceRepository.findActor(userId);
     if (!actor || actor.status !== 'ACTIVE')
@@ -226,6 +236,7 @@ export const policyComplianceService = {
     };
   },
 
+  // Require an editable draft and active selected departments before saving applicability.
   async defineApplicability(
     userId: string,
     policyId: string,
@@ -251,6 +262,7 @@ export const policyComplianceService = {
     await policyComplianceRepository.upsertApplicability(versionId, userId, input);
     return this.getApplicability(userId, policyId, versionId);
   },
+  // List published and superseded versions for authorized history viewers.
   async listPolicyVersionHistory(userId: string, query: PolicyVersionHistoryQuery) {
     await requirePolicyHistoryViewer(userId);
     const [total, versions] = await policyComplianceRepository.listPolicyVersionHistory(query);
@@ -266,6 +278,7 @@ export const policyComplianceService = {
     };
   },
 
+  // Read the content and metadata of one published or superseded version.
   async getPolicyVersionHistory(userId: string, policyId: string, versionId: string) {
     await requirePolicyHistoryViewer(userId);
     const version = await policyComplianceRepository.findPolicyVersionHistory(policyId, versionId);
@@ -293,6 +306,7 @@ export const policyComplianceService = {
     };
   },
 
+  // Create the next draft while preserving the current published version.
   async createPolicyVersion(userId: string, policyId: string, input: CreatePolicyVersionBody) {
     const actor = await policyComplianceRepository.findActor(userId);
     if (!actor || actor.status !== 'ACTIVE')
@@ -335,6 +349,7 @@ export const policyComplianceService = {
     }
   },
 
+  // Create the policy and its first draft version for the authenticated Security Officer.
   async createPolicyDraft(userId: string, input: CreatePolicyDraftBody) {
     const actor = await policyComplianceRepository.findActor(userId);
     if (!actor || actor.status !== 'ACTIVE')
@@ -369,6 +384,7 @@ export const policyComplianceService = {
     }
   },
 
+  // Read owned publications and whether another version is already in progress.
   async listOwnedPublishedPolicies(userId: string) {
     const actor = await policyComplianceRepository.findActor(userId);
     if (!actor || actor.status !== 'ACTIVE')
@@ -395,6 +411,7 @@ export const policyComplianceService = {
     });
   },
 
+  // Read current publications with this Employee's version-specific acknowledgements.
   async listPublishedPoliciesForEmployee(userId: string, query: PublishedPolicyListQuery) {
     const actor = await policyComplianceRepository.findActor(userId);
     if (!actor || actor.status !== 'ACTIVE')
@@ -432,6 +449,7 @@ export const policyComplianceService = {
     };
   },
 
+  // Read the current publication and this Employee's acknowledgement context.
   async getPublishedPolicyForEmployee(userId: string, policyId: string, versionId: string) {
     const actor = await policyComplianceRepository.findActor(userId);
     if (!actor || actor.status !== 'ACTIVE')
@@ -463,6 +481,7 @@ export const policyComplianceService = {
     };
   },
 
+  // Validate Employee access before confirming the selected published version.
   async acknowledgePublishedPolicy(userId: string, policyId: string, versionId: string) {
     const actor = await policyComplianceRepository.findActor(userId);
     if (!actor || actor.status !== 'ACTIVE')
@@ -488,6 +507,7 @@ export const policyComplianceService = {
     };
   },
 
+  // List rejection decisions within the actor's policy ownership scope.
   async listRejectedPolicies(userId: string, query: RejectedPolicyQuery) {
     const actor = await policyComplianceRepository.findActor(userId);
     if (!actor || actor.status !== 'ACTIVE') {
@@ -511,6 +531,7 @@ export const policyComplianceService = {
     };
   },
 
+  // Require an active Admin before recording a rejection reason.
   async rejectPolicy(userId: string, policyId: string, versionId: string, input: RejectPolicyBody) {
     await requireActiveAdmin(userId);
     const version = await policyComplianceRepository.findReviewableDraft(policyId, versionId);
@@ -537,6 +558,7 @@ export const policyComplianceService = {
     };
   },
 
+  // Require completed Admin review before allowing publication approval.
   async approveForPublication(userId: string, policyId: string, versionId: string) {
     await requireActiveAdmin(userId);
     const version = await policyComplianceRepository.findReviewableDraft(policyId, versionId);
@@ -571,6 +593,7 @@ export const policyComplianceService = {
     };
   },
 
+  // Require an active Admin and an approved version before publication.
   async publishPolicyVersion(userId: string, policyId: string, versionId: string) {
     await requireActiveAdmin(userId);
     const version = await policyComplianceRepository.findPolicyVersionForPublication(
@@ -598,6 +621,7 @@ export const policyComplianceService = {
     };
   },
 
+  // Require IN_REVIEW before recording completion of the Admin review.
   async reviewPolicy(userId: string, policyId: string, versionId: string) {
     await requireActiveAdmin(userId);
     const version = await policyComplianceRepository.findReviewableDraft(policyId, versionId);
@@ -627,6 +651,7 @@ export const policyComplianceService = {
     };
   },
 
+  // Read one draft within the current Security Officer ownership scope.
   async getOwnDraft(userId: string, policyId: string, versionId: string) {
     const actor = await policyComplianceRepository.findActor(userId);
     if (!actor || actor.status !== 'ACTIVE')
@@ -638,6 +663,7 @@ export const policyComplianceService = {
     return mapOwnedPolicyDraft(draft);
   },
 
+  // Check draft ownership and status before applying editable fields.
   async editOwnDraft(
     userId: string,
     policyId: string,
@@ -688,6 +714,7 @@ export const policyComplianceService = {
     }
   },
 
+  // Require an active Admin before returning a submitted version for revision.
   async requestRevision(
     userId: string,
     policyId: string,
@@ -723,6 +750,7 @@ export const policyComplianceService = {
       },
     };
   },
+  // Require an owned draft with applicability before submitting it for Admin review.
   async submitForReview(userId: string, policyId: string, versionId: string) {
     const actor = await policyComplianceRepository.findActor(userId);
     if (!actor || actor.status !== 'ACTIVE')
@@ -755,6 +783,7 @@ export const policyComplianceService = {
       );
     return toSubmittedDraft(submitted);
   },
+  // List authored drafts within the current policy ownership scope.
   async listOwnDrafts(userId: string, query: ListPolicyDraftsQuery) {
     const actor = await policyComplianceRepository.findActor(userId);
     if (!actor || actor.status !== 'ACTIVE')
@@ -772,6 +801,7 @@ export const policyComplianceService = {
       },
     };
   },
+  // List submitted policies eligible for the Admin review workspace.
   async listReviewableDrafts(userId: string, query: ReviewablePolicyDraftQuery) {
     await requireActiveAdmin(userId);
     const [total, policies] = await policyComplianceRepository.listReviewableDrafts(query);
@@ -786,6 +816,7 @@ export const policyComplianceService = {
     };
   },
 
+  // Require an active Admin before returning a submitted version.
   async getReviewableDraft(userId: string, policyId: string, versionId: string) {
     await requireActiveAdmin(userId);
     const version = await policyComplianceRepository.findReviewableDraft(policyId, versionId);

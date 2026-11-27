@@ -117,6 +117,7 @@ export type IncidentDetailRecord = Omit<
   assignment_at?: Date | null;
 };
 
+// Attach assignment timestamps from recorded handler audit history.
 async function withAssignmentTimes<T extends { id: string; handler_user_id: string | null }>(
   records: T[],
 ) {
@@ -147,6 +148,7 @@ async function withAssignmentTimes<T extends { id: string; handler_user_id: stri
 }
 
 export const incidentsRepository = {
+  // Read paginated actions restricted to the CONTAINMENT phase.
   containmentHistory(incidentId: string, page: number, limit: number) {
     const where = { incident_id: incidentId, phase: 'CONTAINMENT' as const };
     return prisma.$transaction([
@@ -166,6 +168,7 @@ export const incidentsRepository = {
       }),
     ]);
   },
+  // Record a completed containment action without advancing the incident phase.
   recordContainment(
     userId: string,
     incidentId: string,
@@ -225,6 +228,7 @@ export const incidentsRepository = {
       { isolationLevel: 'Serializable' },
     );
   },
+  // Read paginated actions restricted to the ERADICATION phase.
   eradicationHistory(incidentId: string, page: number, limit: number) {
     const where = { incident_id: incidentId, phase: 'ERADICATION' as const };
     return prisma.$transaction([
@@ -244,6 +248,7 @@ export const incidentsRepository = {
       }),
     ]);
   },
+  // Record a completed eradication action without advancing the incident phase.
   recordEradication(
     userId: string,
     incidentId: string,
@@ -303,6 +308,7 @@ export const incidentsRepository = {
       { isolationLevel: 'Serializable' },
     );
   },
+  // Read paginated actions restricted to the RECOVERY phase.
   recoveryHistory(incidentId: string, page: number, limit: number) {
     const where = { incident_id: incidentId, phase: 'RECOVERY' as const };
     return prisma.$transaction([
@@ -322,6 +328,7 @@ export const incidentsRepository = {
       }),
     ]);
   },
+  // Record a completed recovery action without advancing the incident phase.
   recordRecovery(userId: string, incidentId: string, input: RecordRecoveryAction) {
     return prisma.$transaction(
       async (tx) => {
@@ -377,6 +384,7 @@ export const incidentsRepository = {
       { isolationLevel: 'Serializable' },
     );
   },
+  // Read paginated handler changes for the incident.
   assignmentHistory(incidentId: string, page: number, limit: number) {
     const where = {
       resource_type: 'INCIDENT',
@@ -401,12 +409,14 @@ export const incidentsRepository = {
       }),
     ]);
   },
+  // Resolve handler display names in one batch for assignment history.
   handlerNames(ids: string[]) {
     return prisma.users.findMany({
       where: { id: { in: ids } },
       select: { id: true, full_name: true },
     });
   },
+  // Return active Security Officers eligible to handle incidents.
   assignmentOptions() {
     return prisma.users.findMany({
       where: { role: 'SECURITY_OFFICER', status: 'ACTIVE' },
@@ -414,6 +424,7 @@ export const incidentsRepository = {
       select: { id: true, full_name: true, email: true },
     });
   },
+  // Validate the handler and revision before saving an audited assignment.
   assignHandler(userId: string, incidentId: string, input: AssignIncidentHandler) {
     return prisma.$transaction(
       async (transaction) => {
@@ -482,6 +493,7 @@ export const incidentsRepository = {
       { isolationLevel: 'Serializable' },
     );
   },
+  // Read paginated severity-classification history for the incident.
   classificationHistory(incidentId: string, page: number, limit: number) {
     const where = {
       resource_type: 'INCIDENT',
@@ -506,6 +518,7 @@ export const incidentsRepository = {
       }),
     ]);
   },
+  // Collect severity-classification metadata for a batch of incident IDs.
   async classificationMetadata(incidentIds: string[]) {
     const where = {
       resource_type: 'INCIDENT',
@@ -542,6 +555,7 @@ export const incidentsRepository = {
     };
   },
 
+  // Classify an incident with a rationale and stale-state checks.
   classifySeverity(userId: string, incidentId: string, input: ClassifyIncidentSeverity) {
     return prisma.$transaction(
       async (transaction) => {
@@ -600,6 +614,7 @@ export const incidentsRepository = {
       { isolationLevel: 'Serializable' },
     );
   },
+  // Read only the actor fields needed for authorization.
   findActor(userId: string) {
     return prisma.users.findUnique({
       where: { id: userId },
@@ -607,6 +622,7 @@ export const incidentsRepository = {
     });
   },
 
+  // Read a filtered incident page and enrich its selected metadata.
   async list(query: ViewIncidentsQuery) {
     const where: Prisma.incidentsWhereInput = {
       ...(query.search
@@ -637,6 +653,7 @@ export const incidentsRepository = {
     return [total, await withAssignmentTimes(records)] as const;
   },
 
+  // Read a paginated incident list restricted to its creator.
   async listCreatedBy(userId: string, query: ViewIncidentsQuery) {
     const where: Prisma.incidentsWhereInput = { created_by: userId };
     const [total, records] = await prisma.$transaction([
@@ -652,6 +669,7 @@ export const incidentsRepository = {
     return [total, await withAssignmentTimes(records)] as const;
   },
 
+  // Read one incident with the selected investigation relationships.
   async findById(incidentId: string): Promise<IncidentDetailRecord | null> {
     const record = await prisma.incidents.findUnique({
       where: { id: incidentId },
@@ -661,6 +679,7 @@ export const incidentsRepository = {
     return (await withAssignmentTimes([record]))[0] ?? null;
   },
 
+  // List confirmed finding sources available for incident creation.
   listSourceOptions(query: IncidentSourceOptionsQuery) {
     const where: Prisma.security_findingsWhereInput = {
       incidents: null,
@@ -695,6 +714,7 @@ export const incidentsRepository = {
     ]);
   },
 
+  // Create an OPEN incident manually or claim a confirmed finding before conversion.
   createFromSource(userId: string, input: CreateIncidentFromSource) {
     return prisma.$transaction(async (transaction) => {
       const actor = await transaction.users.findUnique({
