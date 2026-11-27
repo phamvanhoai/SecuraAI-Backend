@@ -17,8 +17,6 @@ export const uploadControlEvidenceFile: RequestHandler = (req, res, next) => {
         new AppError(413, 'EVIDENCE_FILE_TOO_LARGE', 'Evidence files may not exceed 10 MB'),
       );
     }
-    return next(
-      new AppError(422, 'INVALID_EVIDENCE_UPLOAD', 'The evidence upload is invalid'),
-    );
+    return next(new AppError(422, 'INVALID_EVIDENCE_UPLOAD', 'The evidence upload is invalid'));
   });
 };

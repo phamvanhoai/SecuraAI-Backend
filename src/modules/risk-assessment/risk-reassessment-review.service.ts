@@ -16,9 +16,16 @@ const mapRequest = (
   requestedAt: request.requested_at,
   reviewedAt: request.reviewed_at,
   reviewComment: request.review_comment,
-  canReject: role === 'EMPLOYEE' && request.risks.owner_user_id === userId && ['PENDING', 'UNDER_REVIEW'].includes(request.status),
-  canReview: role === 'EMPLOYEE' && request.risks.owner_user_id === userId && request.status === 'PENDING',
-  canReassess: request.status === 'UNDER_REVIEW' && (role === 'SECURITY_OFFICER' || (role === 'EMPLOYEE' && request.risks.owner_user_id === userId)),
+  canReject:
+    role === 'EMPLOYEE' &&
+    request.risks.owner_user_id === userId &&
+    ['PENDING', 'UNDER_REVIEW'].includes(request.status),
+  canReview:
+    role === 'EMPLOYEE' && request.risks.owner_user_id === userId && request.status === 'PENDING',
+  canReassess:
+    request.status === 'UNDER_REVIEW' &&
+    (role === 'SECURITY_OFFICER' ||
+      (role === 'EMPLOYEE' && request.risks.owner_user_id === userId)),
   risk: {
     id: request.risks.id,
     riskCode: request.risks.risk_code,

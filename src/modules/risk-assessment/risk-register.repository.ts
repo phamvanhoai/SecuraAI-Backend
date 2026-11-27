@@ -1,14 +1,27 @@
 import { requireTreatmentPlanBasis } from './treatment-plan-basis.js';
 import { auditWriter } from '../audit-security-reporting/audit-writer.js';
-import { readAcceptanceContextBasis, acceptanceContextBlockedReason, lockAcceptanceContextSources } from './acceptance-context-basis.js';
+import {
+  readAcceptanceContextBasis,
+  acceptanceContextBlockedReason,
+  lockAcceptanceContextSources,
+} from './acceptance-context-basis.js';
 import { readAcceptanceCost } from './dto/acceptance-cost.dto.js';
 import { currentRiskReview } from './current-risk-review.js';
 import { reviewDeadline, vietnamDate, riskReviewOverdue } from './review-schedule.js';
 import type { CompleteRiskReview } from './dto/complete-risk-review.dto.js';
-import { responsibilityWhere, approverGrantSelect, isRiskAcceptanceApprover } from '../user-management-authorization/index.js';
+import {
+  responsibilityWhere,
+  approverGrantSelect,
+  isRiskAcceptanceApprover,
+} from '../user-management-authorization/index.js';
 import { Prisma, type risk_status, type treatment_status } from '@prisma/client';
 import { assessmentRequiresReview, vulnerabilityBlockedReason } from './vulnerability-workflow.js';
-import { residualControlLinks, residualControlBasis, sameResidualControlBasis, validateResidualControls } from './residual-control-basis.js';
+import {
+  residualControlLinks,
+  residualControlBasis,
+  sameResidualControlBasis,
+  validateResidualControls,
+} from './residual-control-basis.js';
 import { prisma } from '../../database/prisma.js';
 import { AppError } from '../../common/errors/app-error.js';
 import type { ListRiskRegisterQuery } from './dto/view-risk-register.dto.js';
@@ -108,7 +121,14 @@ const detailSelect = {
   risk_assets: {
     select: {
       assets: {
-        select: { id: true, asset_code: true, name: true, status: true, criticality: true, classified_at: true },
+        select: {
+          id: true,
+          asset_code: true,
+          name: true,
+          status: true,
+          criticality: true,
+          classified_at: true,
+        },
       },
     },
   },
@@ -270,7 +290,8 @@ function whereFor(query: ListRiskRegisterQuery): Prisma.risksWhereInput {
 }
 
 function orderBy(query: ListRiskRegisterQuery): Prisma.risksOrderByWithRelationInput[] {
-  if (query.sortBy === 'createdAt') return [{ created_at: query.sortOrder }, { id: query.sortOrder }];
+  if (query.sortBy === 'createdAt')
+    return [{ created_at: query.sortOrder }, { id: query.sortOrder }];
   if (query.sortBy === 'riskCode') return [{ risk_code: query.sortOrder }, { id: query.sortOrder }];
   if (query.sortBy === 'title') return [{ title: query.sortOrder }, { id: query.sortOrder }];
   if (query.sortBy === 'reviewDate')
@@ -286,7 +307,25 @@ export const riskRegisterRepository = {
     });
   },
   list(query: ListRiskRegisterQuery, approverId?: string) {
-    const where = { ...whereFor(query), ...(approverId ? { AND: [{ OR: [{ owner_user_id: approverId }, { risk_acceptances: { some: { decision: "PENDING" as const, requested_by: { not: approverId } } } }] }] } : {}) };
+    const where = {
+      ...whereFor(query),
+      ...(approverId
+        ? {
+            AND: [
+              {
+                OR: [
+                  { owner_user_id: approverId },
+                  {
+                    risk_acceptances: {
+                      some: { decision: 'PENDING' as const, requested_by: { not: approverId } },
+                    },
+                  },
+                ],
+              },
+            ],
+          }
+        : {}),
+    };
     return Promise.all([
       prisma.risks.count({ where }),
       prisma.risks.findMany({
@@ -304,16 +343,25 @@ export const riskRegisterRepository = {
   },
   findTargetHistory(riskId: string) {
     return prisma.audit_logs.findMany({
-      where: { resource_id: riskId, resource_type: 'RISK', action: 'RISK_TARGET_DEFINED', outcome: 'SUCCESS' },
-      orderBy: [{ occurred_at: 'desc' }, { id: 'desc' }], take: 100,
+      where: {
+        resource_id: riskId,
+        resource_type: 'RISK',
+        action: 'RISK_TARGET_DEFINED',
+        outcome: 'SUCCESS',
+      },
+      orderBy: [{ occurred_at: 'desc' }, { id: 'desc' }],
+      take: 100,
       select: { after_data: true },
     });
   },
   findAssetContextChange(assetIds: string[], assessedAt: Date) {
     return prisma.audit_logs.findFirst({
       where: {
-        resource_type: 'ASSET', resource_id: { in: assetIds },
-        action: 'ASSET_CONTEXT_UPDATED', outcome: 'SUCCESS', occurred_at: { gt: assessedAt },
+        resource_type: 'ASSET',
+        resource_id: { in: assetIds },
+        action: 'ASSET_CONTEXT_UPDATED',
+        outcome: 'SUCCESS',
+        occurred_at: { gt: assessedAt },
       },
       select: { id: true },
     });
@@ -398,11 +446,19 @@ export const riskRegisterRepository = {
         async (database) => {
           await database.$queryRaw`SELECT id FROM users WHERE id = ${input.ownerUserId}::uuid FOR SHARE`;
           const owner = await database.users.findFirst({
-            where: { id: input.ownerUserId, role: 'EMPLOYEE', AND: [responsibilityWhere('RISK_OWNER', false)] },
+            where: {
+              id: input.ownerUserId,
+              role: 'EMPLOYEE',
+              AND: [responsibilityWhere('RISK_OWNER', false)],
+            },
             select: { id: true },
           });
           if (!owner)
-            throw new AppError(422, 'INVALID_RISK_OWNER', 'Select an active Employee with Risk Owner responsibility');
+            throw new AppError(
+              422,
+              'INVALID_RISK_OWNER',
+              'Select an active Employee with Risk Owner responsibility',
+            );
           if (input.scope.type === 'business_service') {
             const service = await database.business_services.findFirst({
               where: { id: input.scope.businessServiceId, status: 'ACTIVE' },
@@ -501,7 +557,10 @@ export const riskRegisterRepository = {
         });
         if (!risk) return { kind: 'risk_not_found' as const };
         if (risk.risk_acceptances.length) return { kind: 'pending_acceptance' as const };
-        const blockedReason = vulnerabilityBlockedReason(risk.status, risk.risk_acceptances.length > 0);
+        const blockedReason = vulnerabilityBlockedReason(
+          risk.status,
+          risk.risk_acceptances.length > 0,
+        );
         if (blockedReason) return { kind: 'context_locked' as const, blockedReason };
         if (risk.risk_threats.length) return { kind: 'duplicate' as const };
         if (risk.risk_vulnerabilities.length !== input.vulnerabilityIds.length)
@@ -1024,9 +1083,18 @@ export const riskRegisterRepository = {
                   applicability: true,
                   updated_at: true,
                   control_evidence_links: {
-                    select: { linked_at: true, evidence_items: { select: {
-                      id: true, status: true, collected_at: true, valid_from: true, valid_until: true,
-                    } } },
+                    select: {
+                      linked_at: true,
+                      evidence_items: {
+                        select: {
+                          id: true,
+                          status: true,
+                          collected_at: true,
+                          valid_from: true,
+                          valid_until: true,
+                        },
+                      },
+                    },
                   },
                   control_assessments: {
                     where: { effectiveness: { not: null } },
@@ -1047,7 +1115,12 @@ export const riskRegisterRepository = {
         return { kind: 'context_locked' as const };
       const inherent = risk.risk_assessments[0];
       if (!inherent) return { kind: 'inherent_required' as const };
-      if (assessmentRequiresReview(inherent.assessed_at, [...risk.risk_vulnerabilities, ...risk.risk_threats]))
+      if (
+        assessmentRequiresReview(inherent.assessed_at, [
+          ...risk.risk_vulnerabilities,
+          ...risk.risk_threats,
+        ])
+      )
         return { kind: 'context_changed' as const };
       const establishedThresholds = await database.risk_assessments.findFirst({
         where: { risk_id: riskId, risk_appetite: { not: null }, risk_tolerance: { not: null } },
@@ -1055,12 +1128,17 @@ export const riskRegisterRepository = {
         select: { risk_appetite: true, risk_tolerance: true },
       });
       if (
-        (establishedThresholds?.risk_appetite && establishedThresholds.risk_appetite.toLowerCase() !== input.riskAppetite) ||
-        (establishedThresholds?.risk_tolerance && establishedThresholds.risk_tolerance.toLowerCase() !== input.riskTolerance)
-      ) return { kind: 'thresholds_changed' as const };
+        (establishedThresholds?.risk_appetite &&
+          establishedThresholds.risk_appetite.toLowerCase() !== input.riskAppetite) ||
+        (establishedThresholds?.risk_tolerance &&
+          establishedThresholds.risk_tolerance.toLowerCase() !== input.riskTolerance)
+      )
+        return { kind: 'thresholds_changed' as const };
       const controlsBlocked = validateResidualControls(risk.control_risk_links);
-      if (controlsBlocked === 'control_assessments_required') return { kind: 'control_assessments_required' as const };
-      if (controlsBlocked === 'control_assessments_stale') return { kind: 'control_assessments_stale' as const };
+      if (controlsBlocked === 'control_assessments_required')
+        return { kind: 'control_assessments_required' as const };
+      if (controlsBlocked === 'control_assessments_stale')
+        return { kind: 'control_assessments_stale' as const };
       const values = risk.control_risk_links.map(
         ({ security_controls }) =>
           security_controls.control_assessments[0]?.effectiveness?.toNumber() ?? 0,
@@ -1144,7 +1222,12 @@ export const riskRegisterRepository = {
         return { kind: 'context_locked' as const };
       const current = risk.risk_assessments[0];
       if (!current) return { kind: 'residual_required' as const };
-      if (assessmentRequiresReview(current.assessed_at, [...risk.risk_vulnerabilities, ...risk.risk_threats]))
+      if (
+        assessmentRequiresReview(current.assessed_at, [
+          ...risk.risk_vulnerabilities,
+          ...risk.risk_threats,
+        ])
+      )
         return { kind: 'context_changed' as const };
       const plan = risk.risk_treatment_plans[0];
       if (!plan) return { kind: 'plan_required' as const };
@@ -1173,10 +1256,15 @@ export const riskRegisterRepository = {
         data: { source_assessment_id: assessment.id },
       });
       const targetData = {
-        assessmentId: assessment.id, treatmentPlanId: plan.id, treatmentPlanTitle: plan.title,
-        residualAssessmentId: current.id, residualAssessedAt: current.assessed_at.toISOString(),
-        residualRating: current.residual_rating, targetRisk: target,
-        riskAppetite: current.risk_appetite, riskTolerance: current.risk_tolerance,
+        assessmentId: assessment.id,
+        treatmentPlanId: plan.id,
+        treatmentPlanTitle: plan.title,
+        residualAssessmentId: current.id,
+        residualAssessedAt: current.assessed_at.toISOString(),
+        residualRating: current.residual_rating,
+        targetRisk: target,
+        riskAppetite: current.risk_appetite,
+        riskTolerance: current.risk_tolerance,
       };
       await auditWriter.record(
         {
@@ -1251,14 +1339,21 @@ export const riskRegisterRepository = {
               status: true,
               risk_acceptances: { where: { decision: 'PENDING' }, select: { id: true }, take: 1 },
               review_date: true,
-              risk_assessments: { where: { assessment_type: { not: 'TARGET_DEFINITION' } }, orderBy: { assessed_at: 'desc' }, take: 1 },
+              risk_assessments: {
+                where: { assessment_type: { not: 'TARGET_DEFINITION' } },
+                orderBy: { assessed_at: 'desc' },
+                take: 1,
+              },
               risk_treatment_plans: {
                 where: { status: { in: ['DRAFT', 'ACTIVE'] } },
                 select: { id: true },
                 take: 1,
               },
               control_risk_links: {
-                where: { control_id: { in: input.controlIds }, security_controls: { applicability: { not: 'NOT_APPLICABLE' } } },
+                where: {
+                  control_id: { in: input.controlIds },
+                  security_controls: { applicability: { not: 'NOT_APPLICABLE' } },
+                },
                 select: { control_id: true },
               },
             },
@@ -1343,11 +1438,20 @@ export const riskRegisterRepository = {
               created_at: true,
             },
           });
-          const auditData = { assessmentId: source.id, treatmentPlanId: plan.id, treatmentPlanTitle: plan.title,
+          const auditData = {
+            assessmentId: source.id,
+            treatmentPlanId: plan.id,
+            treatmentPlanTitle: plan.title,
             residualAssessmentId: latest?.residual_rating ? latest.id : null,
             residualAssessedAt: latest?.residual_rating ? latest.assessed_at.toISOString() : null,
-            residualRating: latest?.residual_rating ?? null, targetRisk: targetRating,
-            strategy: input.strategy, acceptanceCost: input.acceptanceCost ?? null, ownerUserId: input.ownerUserId, controlIds: input.controlIds, actions: input.actions };
+            residualRating: latest?.residual_rating ?? null,
+            targetRisk: targetRating,
+            strategy: input.strategy,
+            acceptanceCost: input.acceptanceCost ?? null,
+            ownerUserId: input.ownerUserId,
+            controlIds: input.controlIds,
+            actions: input.actions,
+          };
           await auditWriter.record(
             {
               actorType: 'USER',
@@ -1380,7 +1484,10 @@ export const riskRegisterRepository = {
   updateTreatmentPlan(planId: string, actorId: string, input: UpdateTreatmentPlanBody) {
     return prisma.$transaction(
       async (database) => {
-        const target = await database.risk_treatment_plans.findUnique({ where: { id: planId }, select: { risk_id: true } });
+        const target = await database.risk_treatment_plans.findUnique({
+          where: { id: planId },
+          select: { risk_id: true },
+        });
         if (!target) return { kind: 'not_found' as const };
         await database.$queryRaw`SELECT id FROM risks WHERE id = ${target.risk_id}::uuid FOR UPDATE`;
         await database.$queryRaw`SELECT id FROM risk_treatment_plans WHERE id = ${planId}::uuid FOR UPDATE`;
@@ -1410,37 +1517,85 @@ export const riskRegisterRepository = {
           return { kind: 'forbidden' as const };
         if (plan.updated_at.toISOString() !== input.expectedUpdatedAt)
           return { kind: 'conflict' as const };
-        if (await database.risk_acceptances.count({ where: { risk_id: plan.risks.id, decision: 'PENDING' } }))
+        if (
+          await database.risk_acceptances.count({
+            where: { risk_id: plan.risks.id, decision: 'PENDING' },
+          })
+        )
           return { kind: 'pending_acceptance' as const };
         if (plan.status === 'ACTIVE' && input.strategy.toUpperCase() !== plan.strategy)
           return { kind: 'active_strategy_locked' as const };
-        if ((plan.status === 'ACTIVE' || input.status === 'cancelled') &&
-            (!input.changeReason || input.changeReason.trim().length < 10))
+        if (
+          (plan.status === 'ACTIVE' || input.status === 'cancelled') &&
+          (!input.changeReason || input.changeReason.trim().length < 10)
+        )
           return { kind: 'change_reason_required' as const };
         if (input.status === 'cancelled') {
           const cancelledAt = await contextWriteTime(database);
           const updated = await database.risk_treatment_plans.update({
-            where: { id: planId }, data: { status: 'CANCELLED', updated_at: cancelledAt },
+            where: { id: planId },
+            data: { status: 'CANCELLED', updated_at: cancelledAt },
             include: {
               risk_treatment_actions: { orderBy: { created_at: 'asc' } },
-              risk_treatment_plan_controls: { include: { security_controls: true }, orderBy: { linked_at: 'asc' } },
+              risk_treatment_plan_controls: {
+                include: { security_controls: true },
+                orderBy: { linked_at: 'asc' },
+              },
             },
           });
           let riskStatus = plan.risks.status;
-          if (riskStatus === 'UNDER_TREATMENT' &&
-              await database.risk_treatment_plans.count({ where: { risk_id: plan.risks.id, status: 'ACTIVE' } }) === 0) {
-            const risk = await database.risks.update({ where: { id: plan.risks.id }, data: { status: 'OPEN', updated_at: cancelledAt }, select: { status: true } });
+          if (
+            riskStatus === 'UNDER_TREATMENT' &&
+            (await database.risk_treatment_plans.count({
+              where: { risk_id: plan.risks.id, status: 'ACTIVE' },
+            })) === 0
+          ) {
+            const risk = await database.risks.update({
+              where: { id: plan.risks.id },
+              data: { status: 'OPEN', updated_at: cancelledAt },
+              select: { status: true },
+            });
             riskStatus = risk.status;
           }
-          await auditWriter.record({ actorType: 'USER', actorUserId: actorId,
-            action: 'RISK_TREATMENT_PLAN_UPDATED', resourceType: 'RISK', resourceId: plan.risks.id, source: 'API', occurredAt: cancelledAt,
-            beforeData: { planId, title: plan.title, strategy: plan.strategy, status: plan.status },
-            afterData: { planId, title: plan.title, strategy: plan.strategy, status: 'CANCELLED', changeReason: input.changeReason?.trim(),
-              cancelledBy: actorId, cancelledAt: cancelledAt.toISOString(), preservedActions: plan.risk_treatment_actions.map((item) => ({ id: item.id, status: item.status, completedAt: item.completed_at?.toISOString() ?? null })) },
-          }, database);
+          await auditWriter.record(
+            {
+              actorType: 'USER',
+              actorUserId: actorId,
+              action: 'RISK_TREATMENT_PLAN_UPDATED',
+              resourceType: 'RISK',
+              resourceId: plan.risks.id,
+              source: 'API',
+              occurredAt: cancelledAt,
+              beforeData: {
+                planId,
+                title: plan.title,
+                strategy: plan.strategy,
+                status: plan.status,
+              },
+              afterData: {
+                planId,
+                title: plan.title,
+                strategy: plan.strategy,
+                status: 'CANCELLED',
+                changeReason: input.changeReason?.trim(),
+                cancelledBy: actorId,
+                cancelledAt: cancelledAt.toISOString(),
+                preservedActions: plan.risk_treatment_actions.map((item) => ({
+                  id: item.id,
+                  status: item.status,
+                  completedAt: item.completed_at?.toISOString() ?? null,
+                })),
+              },
+            },
+            database,
+          );
           return { kind: 'updated' as const, updated, riskCode: plan.risks.risk_code, riskStatus };
         }
-        if (input.status === 'completed' && input.strategy !== 'accept' && !input.actions.some((item) => item.status === 'completed'))
+        if (
+          input.status === 'completed' &&
+          input.strategy !== 'accept' &&
+          !input.actions.some((item) => item.status === 'completed')
+        )
           return { kind: 'no_completed_actions' as const };
         if (
           input.status === 'completed' &&
@@ -1456,18 +1611,29 @@ export const riskRegisterRepository = {
         )
           return { kind: 'invalid_users' as const };
         const existing = new Map(plan.risk_treatment_actions.map((item) => [item.id, item]));
-        if (input.targetDate < plan.created_at.toISOString().slice(0, 10) || input.actions.some((item) => {
-          const prior = item.id ? existing.get(item.id) : undefined;
-          return item.dueDate < (prior?.created_at ?? new Date()).toISOString().slice(0, 10);
-        })) return { kind: 'invalid_dates' as const };
-        if (input.actions.some((item) => {
-          const prior = item.id ? existing.get(item.id) : undefined;
-          if (!prior) return false;
-          if (['COMPLETED', 'CANCELLED'].includes(prior.status))
-            return item.status.toUpperCase() !== prior.status || item.title !== prior.action_description ||
-              item.assignedToUserId !== prior.owner_user_id || item.dueDate !== prior.due_date?.toISOString().slice(0, 10);
-          return prior.status === 'IN_PROGRESS' && item.status === 'pending';
-        })) return { kind: 'invalid_action_transition' as const };
+        if (
+          input.targetDate < plan.created_at.toISOString().slice(0, 10) ||
+          input.actions.some((item) => {
+            const prior = item.id ? existing.get(item.id) : undefined;
+            return item.dueDate < (prior?.created_at ?? new Date()).toISOString().slice(0, 10);
+          })
+        )
+          return { kind: 'invalid_dates' as const };
+        if (
+          input.actions.some((item) => {
+            const prior = item.id ? existing.get(item.id) : undefined;
+            if (!prior) return false;
+            if (['COMPLETED', 'CANCELLED'].includes(prior.status))
+              return (
+                item.status.toUpperCase() !== prior.status ||
+                item.title !== prior.action_description ||
+                item.assignedToUserId !== prior.owner_user_id ||
+                item.dueDate !== prior.due_date?.toISOString().slice(0, 10)
+              );
+            return prior.status === 'IN_PROGRESS' && item.status === 'pending';
+          })
+        )
+          return { kind: 'invalid_action_transition' as const };
         if (input.actions.some((item) => item.id && !existing.has(item.id)))
           return { kind: 'invalid_actions' as const };
         const riskControls = await database.control_risk_links.count({
@@ -1499,7 +1665,10 @@ export const riskRegisterRepository = {
             due_date: new Date(`${item.dueDate}T00:00:00.000Z`),
             status: item.status.toUpperCase() as
               'PENDING' | 'IN_PROGRESS' | 'COMPLETED' | 'CANCELLED',
-            completed_at: item.status === 'completed' ? (item.id ? existing.get(item.id)?.completed_at : null) ?? new Date() : null,
+            completed_at:
+              item.status === 'completed'
+                ? ((item.id ? existing.get(item.id)?.completed_at : null) ?? new Date())
+                : null,
             updated_at: new Date(),
           };
           if (item.id)
@@ -1546,10 +1715,34 @@ export const riskRegisterRepository = {
           });
           riskStatus = risk.status;
         }
-        const before = { title: plan.title, status: plan.status, strategy: plan.strategy, acceptanceCost: readAcceptanceCost(plan.acceptance_cost_basis), ownerUserId: plan.owner_user_id, targetDate: plan.target_completion_date?.toISOString() ?? null,
+        const before = {
+          title: plan.title,
+          status: plan.status,
+          strategy: plan.strategy,
+          acceptanceCost: readAcceptanceCost(plan.acceptance_cost_basis),
+          ownerUserId: plan.owner_user_id,
+          targetDate: plan.target_completion_date?.toISOString() ?? null,
           controls: plan.risk_treatment_plan_controls.map((item) => item.control_id),
-          actions: plan.risk_treatment_actions.map((item) => ({ id: item.id, title: item.action_description, status: item.status, ownerUserId: item.owner_user_id, dueDate: item.due_date?.toISOString() ?? null, completedAt: item.completed_at?.toISOString() ?? null })) };
-        const after = { ...input, actions: updated.risk_treatment_actions.map((item) => ({ id: item.id, title: item.action_description, status: item.status, ownerUserId: item.owner_user_id, dueDate: item.due_date?.toISOString() ?? null, completedAt: item.completed_at?.toISOString() ?? null })) };
+          actions: plan.risk_treatment_actions.map((item) => ({
+            id: item.id,
+            title: item.action_description,
+            status: item.status,
+            ownerUserId: item.owner_user_id,
+            dueDate: item.due_date?.toISOString() ?? null,
+            completedAt: item.completed_at?.toISOString() ?? null,
+          })),
+        };
+        const after = {
+          ...input,
+          actions: updated.risk_treatment_actions.map((item) => ({
+            id: item.id,
+            title: item.action_description,
+            status: item.status,
+            ownerUserId: item.owner_user_id,
+            dueDate: item.due_date?.toISOString() ?? null,
+            completedAt: item.completed_at?.toISOString() ?? null,
+          })),
+        };
         await auditWriter.record(
           {
             actorType: 'USER',
@@ -1580,7 +1773,10 @@ export const riskRegisterRepository = {
         await database.$queryRaw`SELECT control.id FROM security_controls AS control
           JOIN control_risk_links AS link ON link.control_id = control.id
           WHERE link.risk_id = ${riskId}::uuid ORDER BY control.id FOR SHARE OF control`;
-        const actor = await database.users.findUnique({ where: { id: actorId }, select: { status: true } });
+        const actor = await database.users.findUnique({
+          where: { id: actorId },
+          select: { status: true },
+        });
         if (actor?.status !== 'ACTIVE') return { kind: 'not_owner' as const };
         await lockAcceptanceContextSources(database, riskId);
         const risk = await database.risks.findUnique({
@@ -1596,7 +1792,11 @@ export const riskRegisterRepository = {
             risk_vulnerabilities: {
               select: { created_at: true, updated_at: true },
             },
-            risk_assessments: { where: { assessment_type: { not: 'TARGET_DEFINITION' } }, orderBy: { assessed_at: 'desc' }, take: 1 },
+            risk_assessments: {
+              where: { assessment_type: { not: 'TARGET_DEFINITION' } },
+              orderBy: { assessed_at: 'desc' },
+              take: 1,
+            },
             risk_treatment_plans: {
               where: {
                 id: input.treatmentPlanId,
@@ -1620,18 +1820,32 @@ export const riskRegisterRepository = {
         if (!['OPEN', 'UNDER_TREATMENT'].includes(risk.status))
           return { kind: 'context_locked' as const };
         const reviewEvents = await database.audit_logs.findMany({
-          where: { resource_type: 'RISK', resource_id: riskId, outcome: 'SUCCESS',
-            action: { in: ['RISK_REVIEW_OPENED', 'RISK_REVIEW_COMPLETED', 'RISK_ACCEPTANCE_DECIDED'] } },
+          where: {
+            resource_type: 'RISK',
+            resource_id: riskId,
+            outcome: 'SUCCESS',
+            action: {
+              in: ['RISK_REVIEW_OPENED', 'RISK_REVIEW_COMPLETED', 'RISK_ACCEPTANCE_DECIDED'],
+            },
+          },
           select: { action: true, occurred_at: true, after_data: true },
           orderBy: [{ occurred_at: 'desc' }, { id: 'desc' }],
         });
         if (currentRiskReview(reviewEvents)) return { kind: 'review_in_progress' as const };
         const submissionTime = await contextWriteTime(database);
-        if (riskReviewOverdue(risk.review_date, submissionTime)) return { kind: 'review_overdue' as const };
+        if (riskReviewOverdue(risk.review_date, submissionTime))
+          return { kind: 'review_overdue' as const };
         if (!risk.risk_treatment_plans[0]) return { kind: 'invalid_plan' as const };
         const selectedPlan = risk.risk_treatment_plans[0];
-        if (selectedPlan.strategy === 'ACCEPT' && !readAcceptanceCost(selectedPlan.acceptance_cost_basis)) return { kind: 'acceptance_cost_required' as const };
-        if (input.treatmentPlanStatus && selectedPlan.status.toLowerCase() !== input.treatmentPlanStatus)
+        if (
+          selectedPlan.strategy === 'ACCEPT' &&
+          !readAcceptanceCost(selectedPlan.acceptance_cost_basis)
+        )
+          return { kind: 'acceptance_cost_required' as const };
+        if (
+          input.treatmentPlanStatus &&
+          selectedPlan.status.toLowerCase() !== input.treatmentPlanStatus
+        )
           return { kind: 'invalid_plan_status' as const };
         if (
           selectedPlan.status === 'COMPLETED' &&
@@ -1640,36 +1854,63 @@ export const riskRegisterRepository = {
           )
         )
           return { kind: 'incomplete_actions' as const };
-        if (selectedPlan.status === 'COMPLETED' && selectedPlan.strategy !== 'ACCEPT' &&
-            !selectedPlan.risk_treatment_actions.some((item) => item.status === 'COMPLETED'))
+        if (
+          selectedPlan.status === 'COMPLETED' &&
+          selectedPlan.strategy !== 'ACCEPT' &&
+          !selectedPlan.risk_treatment_actions.some((item) => item.status === 'COMPLETED')
+        )
           return { kind: 'no_completed_actions' as const };
         if (risk.risk_acceptances[0]) return { kind: 'pending_exists' as const };
         const latest = risk.risk_assessments[0];
         if (
           !latest?.residual_rating ||
-          assessmentRequiresReview(latest.assessed_at, [...risk.risk_vulnerabilities, ...risk.risk_threats])
+          assessmentRequiresReview(latest.assessed_at, [
+            ...risk.risk_vulnerabilities,
+            ...risk.risk_threats,
+          ])
         )
           return { kind: 'context_changed' as const };
-        const openedReview = await database.audit_logs.findFirst({ where: { resource_type: 'RISK', resource_id: riskId, action: 'RISK_REVIEW_OPENED' }, orderBy: { occurred_at: 'desc' }, select: { occurred_at: true } });
-        if (openedReview && latest.assessed_at <= openedReview.occurred_at) return { kind: 'context_changed' as const };
+        const openedReview = await database.audit_logs.findFirst({
+          where: { resource_type: 'RISK', resource_id: riskId, action: 'RISK_REVIEW_OPENED' },
+          orderBy: { occurred_at: 'desc' },
+          select: { occurred_at: true },
+        });
+        if (openedReview && latest.assessed_at <= openedReview.occurred_at)
+          return { kind: 'context_changed' as const };
         const inherent = await database.risk_assessments.findFirst({
-          where: { risk_id: riskId, inherent_rating: { not: null }, inherent_likelihood: { not: null }, inherent_impact: { not: null },
-            OR: [{ residual_rating: null }, { assessment_type: 'INCIDENT_REASSESSMENT' }] },
+          where: {
+            risk_id: riskId,
+            inherent_rating: { not: null },
+            inherent_likelihood: { not: null },
+            inherent_impact: { not: null },
+            OR: [{ residual_rating: null }, { assessment_type: 'INCIDENT_REASSESSMENT' }],
+          },
           orderBy: { assessed_at: 'desc' },
         });
-        if (!inherent || assessmentRequiresReview(inherent.assessed_at, [...risk.risk_vulnerabilities, ...risk.risk_threats]))
+        if (
+          !inherent ||
+          assessmentRequiresReview(inherent.assessed_at, [
+            ...risk.risk_vulnerabilities,
+            ...risk.risk_threats,
+          ])
+        )
           return { kind: 'context_changed' as const };
         const controlsBlocked = validateResidualControls(risk.control_risk_links);
-        if (controlsBlocked === 'control_assessments_required') return { kind: 'control_assessments_required' as const };
-        if (controlsBlocked === 'control_assessments_stale') return { kind: 'control_assessments_stale' as const };
+        if (controlsBlocked === 'control_assessments_required')
+          return { kind: 'control_assessments_required' as const };
+        if (controlsBlocked === 'control_assessments_stale')
+          return { kind: 'control_assessments_stale' as const };
         const controlBasis = residualControlBasis(risk.control_risk_links);
         const contextBasis = await readAcceptanceContextBasis(database, riskId);
-        const controlEffectiveness = controlBasis.reduce((sum, item) => sum + (item.effectiveness ?? 0), 0) / controlBasis.length;
+        const controlEffectiveness =
+          controlBasis.reduce((sum, item) => sum + (item.effectiveness ?? 0), 0) /
+          controlBasis.length;
         const score = input.residualLikelihood * input.residualImpact;
         const rating =
           score <= 4 ? 'LOW' : score <= 9 ? 'MEDIUM' : score <= 16 ? 'HIGH' : 'CRITICAL';
         const assessedAt = await contextWriteTime(database);
-        if (riskReviewOverdue(risk.review_date, assessedAt)) return { kind: 'review_overdue' as const };
+        if (riskReviewOverdue(risk.review_date, assessedAt))
+          return { kind: 'review_overdue' as const };
         const assessment = await database.risk_assessments.create({
           data: {
             risk_id: riskId,
@@ -1701,12 +1942,20 @@ export const riskRegisterRepository = {
           },
           select: { id: true, decision: true, requested_at: true, valid_until: true },
         });
-        const auditData = { acceptanceId: acceptance.id, assessmentId: assessment.id,
-          inherentAssessmentId: inherent.id, treatmentPlanId: selectedPlan.id,
-          planUpdatedAt: selectedPlan.updated_at.toISOString(), controlBasis, contextBasis,
+        const auditData = {
+          acceptanceId: acceptance.id,
+          assessmentId: assessment.id,
+          inherentAssessmentId: inherent.id,
+          treatmentPlanId: selectedPlan.id,
+          planUpdatedAt: selectedPlan.updated_at.toISOString(),
+          controlBasis,
+          contextBasis,
           acceptanceCost: readAcceptanceCost(selectedPlan.acceptance_cost_basis),
-          acceptanceReason: input.acceptanceReason, residualScore: score, residualRating: rating,
-          validUntil: input.validUntil };
+          acceptanceReason: input.acceptanceReason,
+          residualScore: score,
+          residualRating: rating,
+          validUntil: input.validUntil,
+        };
         await auditWriter.record(
           {
             actorType: 'USER',
@@ -1740,8 +1989,7 @@ export const riskRegisterRepository = {
           where: { id: actorId },
           select: { role: true, status: true, ...approverGrantSelect },
         });
-        if (!actor || !isRiskAcceptanceApprover(actor))
-          return { kind: 'forbidden' as const };
+        if (!actor || !isRiskAcceptanceApprover(actor)) return { kind: 'forbidden' as const };
         const target = await database.risk_acceptances.findUnique({
           where: { id: acceptanceId },
           select: { risk_id: true },
@@ -1751,10 +1999,14 @@ export const riskRegisterRepository = {
         await database.$queryRaw`SELECT control.id FROM security_controls AS control
           JOIN control_risk_links AS link ON link.control_id = control.id
           WHERE link.risk_id = ${target.risk_id}::uuid ORDER BY control.id FOR SHARE OF control`;
-        const currentActor = await database.users.findUnique({ where: { id: actorId }, select: { role: true, status: true, ...approverGrantSelect } });
+        const currentActor = await database.users.findUnique({
+          where: { id: actorId },
+          select: { role: true, status: true, ...approverGrantSelect },
+        });
         if (!currentActor || !isRiskAcceptanceApprover(currentActor))
           return { kind: 'forbidden' as const };
-        if (input.decision === 'approved') await lockAcceptanceContextSources(database, target.risk_id);
+        if (input.decision === 'approved')
+          await lockAcceptanceContextSources(database, target.risk_id);
         const acceptance = await database.risk_acceptances.findUnique({
           where: { id: acceptanceId },
           include: {
@@ -1776,47 +2028,100 @@ export const riskRegisterRepository = {
         });
         if (!acceptance) return { kind: 'not_found' as const };
         if (acceptance.decision !== 'PENDING') return { kind: 'already_decided' as const };
-        if (acceptance.requested_by === actorId || acceptance.risks.owner_user_id === actorId) return { kind: 'self_approval' as const };
+        if (acceptance.requested_by === actorId || acceptance.risks.owner_user_id === actorId)
+          return { kind: 'self_approval' as const };
         const decidedAt = await contextWriteTime(database);
-        if (input.decision === 'approved' && riskReviewOverdue(acceptance.risks.review_date, decidedAt))
-          return { kind: 'review_overdue' as const };
-        if (
-          input.decision === 'approved' && acceptance.valid_until &&
-          acceptance.valid_until.toISOString().slice(0, 10) < decidedAt.toISOString().slice(0, 10)
-        ) return { kind: 'expired' as const };
         if (
           input.decision === 'approved' &&
-          (!['OPEN', 'UNDER_TREATMENT'].includes(acceptance.risks.status) || acceptance.risks.owner_user_id !== acceptance.requested_by ||
-            assessmentRequiresReview(
-              acceptance.requested_at,
-              [...acceptance.risks.risk_vulnerabilities, ...acceptance.risks.risk_threats],
-            ))
+          riskReviewOverdue(acceptance.risks.review_date, decidedAt)
+        )
+          return { kind: 'review_overdue' as const };
+        if (
+          input.decision === 'approved' &&
+          acceptance.valid_until &&
+          acceptance.valid_until.toISOString().slice(0, 10) < decidedAt.toISOString().slice(0, 10)
+        )
+          return { kind: 'expired' as const };
+        if (
+          input.decision === 'approved' &&
+          (!['OPEN', 'UNDER_TREATMENT'].includes(acceptance.risks.status) ||
+            acceptance.risks.owner_user_id !== acceptance.requested_by ||
+            assessmentRequiresReview(acceptance.requested_at, [
+              ...acceptance.risks.risk_vulnerabilities,
+              ...acceptance.risks.risk_threats,
+            ]))
         )
           return { kind: 'context_changed' as const };
         let completedAcceptPlanId: string | null = null;
         if (input.decision === 'approved') {
-          const controlsBlocked = validateResidualControls(acceptance.risks.control_risk_links, decidedAt);
-          if (controlsBlocked === 'control_assessments_required') return { kind: 'control_assessments_required' as const };
-          if (controlsBlocked === 'control_assessments_stale') return { kind: 'control_assessments_stale' as const };
-          const submitted = await database.audit_logs.findFirst({ where: {
-            action: 'RISK_ACCEPTANCE_SUBMITTED', resource_type: 'RISK', resource_id: acceptance.risk_id,
-            after_data: { path: ['acceptanceId'], equals: acceptanceId },
-          }, orderBy: { occurred_at: 'desc' }, select: { after_data: true } });
+          const controlsBlocked = validateResidualControls(
+            acceptance.risks.control_risk_links,
+            decidedAt,
+          );
+          if (controlsBlocked === 'control_assessments_required')
+            return { kind: 'control_assessments_required' as const };
+          if (controlsBlocked === 'control_assessments_stale')
+            return { kind: 'control_assessments_stale' as const };
+          const submitted = await database.audit_logs.findFirst({
+            where: {
+              action: 'RISK_ACCEPTANCE_SUBMITTED',
+              resource_type: 'RISK',
+              resource_id: acceptance.risk_id,
+              after_data: { path: ['acceptanceId'], equals: acceptanceId },
+            },
+            orderBy: { occurred_at: 'desc' },
+            select: { after_data: true },
+          });
           const basis = submitted?.after_data;
-          if (!basis || typeof basis !== 'object' || Array.isArray(basis) ||
-              typeof basis.assessmentId !== 'string' || typeof basis.treatmentPlanId !== 'string' ||
-              typeof basis.planUpdatedAt !== 'string' ||
-              !sameResidualControlBasis(basis.controlBasis, acceptance.risks.control_risk_links))
+          if (
+            !basis ||
+            typeof basis !== 'object' ||
+            Array.isArray(basis) ||
+            typeof basis.assessmentId !== 'string' ||
+            typeof basis.treatmentPlanId !== 'string' ||
+            typeof basis.planUpdatedAt !== 'string' ||
+            !sameResidualControlBasis(basis.controlBasis, acceptance.risks.control_risk_links)
+          )
             return { kind: 'context_changed' as const };
           const [currentAssessment, currentPlan] = await Promise.all([
-            database.risk_assessments.findFirst({ where: { risk_id: acceptance.risk_id, assessment_type: { not: 'TARGET_DEFINITION' } }, orderBy: { assessed_at: 'desc' }, select: { id: true } }),
-            database.risk_treatment_plans.findFirst({ where: { id: basis.treatmentPlanId, risk_id: acceptance.risk_id, status: { in: ['DRAFT', 'ACTIVE', 'COMPLETED'] } }, select: { id: true, status: true, updated_at: true, strategy: true, acceptance_cost_basis: true } }),
+            database.risk_assessments.findFirst({
+              where: { risk_id: acceptance.risk_id, assessment_type: { not: 'TARGET_DEFINITION' } },
+              orderBy: { assessed_at: 'desc' },
+              select: { id: true },
+            }),
+            database.risk_treatment_plans.findFirst({
+              where: {
+                id: basis.treatmentPlanId,
+                risk_id: acceptance.risk_id,
+                status: { in: ['DRAFT', 'ACTIVE', 'COMPLETED'] },
+              },
+              select: {
+                id: true,
+                status: true,
+                updated_at: true,
+                strategy: true,
+                acceptance_cost_basis: true,
+              },
+            }),
           ]);
-          if (currentPlan?.strategy === 'ACCEPT' && !readAcceptanceCost(currentPlan.acceptance_cost_basis)) return { kind: 'context_changed' as const };
-          if (currentAssessment?.id !== basis.assessmentId || currentPlan?.updated_at.toISOString() !== basis.planUpdatedAt)
+          if (
+            currentPlan?.strategy === 'ACCEPT' &&
+            !readAcceptanceCost(currentPlan.acceptance_cost_basis)
+          )
             return { kind: 'context_changed' as const };
-          const currentContextBasis = await readAcceptanceContextBasis(database, acceptance.risk_id);
-          const changedBasisReason = acceptanceContextBlockedReason(basis.contextBasis, currentContextBasis);
+          if (
+            currentAssessment?.id !== basis.assessmentId ||
+            currentPlan?.updated_at.toISOString() !== basis.planUpdatedAt
+          )
+            return { kind: 'context_changed' as const };
+          const currentContextBasis = await readAcceptanceContextBasis(
+            database,
+            acceptance.risk_id,
+          );
+          const changedBasisReason = acceptanceContextBlockedReason(
+            basis.contextBasis,
+            currentContextBasis,
+          );
           if (changedBasisReason)
             return { kind: 'acceptance_basis_changed' as const, blockedReason: changedBasisReason };
           if (currentPlan?.strategy === 'ACCEPT' && currentPlan.status !== 'COMPLETED') {
@@ -1826,7 +2131,13 @@ export const riskRegisterRepository = {
             });
             completedAcceptPlanId = basis.treatmentPlanId;
             const before = { planId: basis.treatmentPlanId, status: currentPlan.status };
-            const after = { planId: basis.treatmentPlanId, status: 'COMPLETED', acceptanceId, reason: 'Accept proposal completed by independent acceptance approval; no remediation actions were performed.' };
+            const after = {
+              planId: basis.treatmentPlanId,
+              status: 'COMPLETED',
+              acceptanceId,
+              reason:
+                'Accept proposal completed by independent acceptance approval; no remediation actions were performed.',
+            };
             await auditWriter.record(
               {
                 actorType: 'USER',
@@ -1848,8 +2159,14 @@ export const riskRegisterRepository = {
           where: { id: acceptanceId },
           data: { decision, decided_by: actorId, decided_at: decidedAt },
         });
-        const auditData = { acceptanceId, decision, decisionReason: input.reason, completedAcceptPlanId,
-          requestReason: acceptance.reason, validUntil: acceptance.valid_until?.toISOString() ?? null };
+        const auditData = {
+          acceptanceId,
+          decision,
+          decisionReason: input.reason,
+          completedAcceptPlanId,
+          requestReason: acceptance.reason,
+          validUntil: acceptance.valid_until?.toISOString() ?? null,
+        };
         await auditWriter.record(
           {
             actorType: 'USER',
@@ -1875,20 +2192,41 @@ export const riskRegisterRepository = {
     );
   },
   findAcceptanceAudits(riskId: string) {
-    return prisma.audit_logs.findMany({ where: { resource_type: 'RISK', resource_id: riskId, outcome: 'SUCCESS',
-      action: { in: ['RISK_ACCEPTANCE_SUBMITTED', 'RISK_ACCEPTANCE_DECIDED', 'RISK_REVIEW_OPENED', 'RISK_REVIEW_COMPLETED'] } },
-      select: { action: true, after_data: true, occurred_at: true }, orderBy: [{ occurred_at: 'desc' }, { id: 'desc' }] });
+    return prisma.audit_logs.findMany({
+      where: {
+        resource_type: 'RISK',
+        resource_id: riskId,
+        outcome: 'SUCCESS',
+        action: {
+          in: [
+            'RISK_ACCEPTANCE_SUBMITTED',
+            'RISK_ACCEPTANCE_DECIDED',
+            'RISK_REVIEW_OPENED',
+            'RISK_REVIEW_COMPLETED',
+          ],
+        },
+      },
+      select: { action: true, after_data: true, occurred_at: true },
+      orderBy: [{ occurred_at: 'desc' }, { id: 'desc' }],
+    });
   },
   findReviewEvents(riskIds: string[]) {
     return prisma.audit_logs.findMany({
-      where: { resource_type: 'RISK', resource_id: { in: riskIds }, outcome: 'SUCCESS',
-        action: { in: ['RISK_REVIEW_OPENED', 'RISK_REVIEW_COMPLETED', 'RISK_ACCEPTANCE_DECIDED'] } },
+      where: {
+        resource_type: 'RISK',
+        resource_id: { in: riskIds },
+        outcome: 'SUCCESS',
+        action: { in: ['RISK_REVIEW_OPENED', 'RISK_REVIEW_COMPLETED', 'RISK_ACCEPTANCE_DECIDED'] },
+      },
       select: { resource_id: true, action: true, occurred_at: true, after_data: true },
       orderBy: [{ occurred_at: 'desc' }, { id: 'desc' }],
     });
   },
   getAcceptanceControlLinks(riskId: string) {
-    return prisma.control_risk_links.findMany({ ...residualControlLinks, where: { risk_id: riskId } });
+    return prisma.control_risk_links.findMany({
+      ...residualControlLinks,
+      where: { risk_id: riskId },
+    });
   },
   getAcceptanceContextBasis(riskId: string) {
     return readAcceptanceContextBasis(prisma, riskId);
@@ -1896,27 +2234,64 @@ export const riskRegisterRepository = {
   openAcceptanceReview(riskId: string, actorId: string, input: OpenRiskReviewBody) {
     return prisma.$transaction(async (database) => {
       await database.$queryRaw`SELECT id FROM risks WHERE id = ${riskId}::uuid FOR UPDATE`;
-      const actor = await database.users.findUnique({ where: { id: actorId }, select: { status: true, full_name: true } });
-      const risk = await database.risks.findUnique({ where: { id: riskId }, select: {
-        id: true, owner_user_id: true, status: true, updated_at: true, review_date: true,
-        risk_acceptances: { where: { decision: 'PENDING' }, select: { id: true }, take: 1 },
-        risk_treatment_plans: { where: { status: 'ACTIVE' }, select: { id: true }, take: 1 },
-      } });
+      const actor = await database.users.findUnique({
+        where: { id: actorId },
+        select: { status: true, full_name: true },
+      });
+      const risk = await database.risks.findUnique({
+        where: { id: riskId },
+        select: {
+          id: true,
+          owner_user_id: true,
+          status: true,
+          updated_at: true,
+          review_date: true,
+          risk_acceptances: { where: { decision: 'PENDING' }, select: { id: true }, take: 1 },
+          risk_treatment_plans: { where: { status: 'ACTIVE' }, select: { id: true }, take: 1 },
+        },
+      });
       if (!risk) return { kind: 'not_found' as const };
-      if (actor?.status !== 'ACTIVE' || risk.owner_user_id !== actorId) return { kind: 'not_owner' as const };
-      if (!['OPEN', 'UNDER_TREATMENT', 'ACCEPTED'].includes(risk.status) || risk.risk_acceptances.length) return { kind: 'context_locked' as const };
-      if (risk.updated_at.toISOString() !== input.expectedUpdatedAt) return { kind: 'stale' as const };
+      if (actor?.status !== 'ACTIVE' || risk.owner_user_id !== actorId)
+        return { kind: 'not_owner' as const };
+      if (
+        !['OPEN', 'UNDER_TREATMENT', 'ACCEPTED'].includes(risk.status) ||
+        risk.risk_acceptances.length
+      )
+        return { kind: 'context_locked' as const };
+      if (risk.updated_at.toISOString() !== input.expectedUpdatedAt)
+        return { kind: 'stale' as const };
       const events = await database.audit_logs.findMany({
-        where: { resource_type: 'RISK', resource_id: riskId, outcome: 'SUCCESS',
-          action: { in: ['RISK_REVIEW_OPENED', 'RISK_REVIEW_COMPLETED', 'RISK_ACCEPTANCE_DECIDED'] } },
-        select: { action: true, occurred_at: true, after_data: true }, orderBy: [{ occurred_at: 'desc' }, { id: 'desc' }],
+        where: {
+          resource_type: 'RISK',
+          resource_id: riskId,
+          outcome: 'SUCCESS',
+          action: {
+            in: ['RISK_REVIEW_OPENED', 'RISK_REVIEW_COMPLETED', 'RISK_ACCEPTANCE_DECIDED'],
+          },
+        },
+        select: { action: true, occurred_at: true, after_data: true },
+        orderBy: [{ occurred_at: 'desc' }, { id: 'desc' }],
       });
       if (currentRiskReview(events)) return { kind: 'review_already_open' as const };
       const now = await contextWriteTime(database);
-      const status = risk.status === 'ACCEPTED' ? (risk.risk_treatment_plans.length ? 'UNDER_TREATMENT' : 'OPEN') : risk.status;
-      const updated = await database.risks.update({ where: { id: riskId }, data: { status, updated_at: now }, select: { id: true, status: true, updated_at: true } });
-      const after = { status, reason: input.reason, openedBy: actorId, openedByName: actor.full_name,
-        previousReviewDate: risk.review_date?.toISOString() ?? null };
+      const status =
+        risk.status === 'ACCEPTED'
+          ? risk.risk_treatment_plans.length
+            ? 'UNDER_TREATMENT'
+            : 'OPEN'
+          : risk.status;
+      const updated = await database.risks.update({
+        where: { id: riskId },
+        data: { status, updated_at: now },
+        select: { id: true, status: true, updated_at: true },
+      });
+      const after = {
+        status,
+        reason: input.reason,
+        openedBy: actorId,
+        openedByName: actor.full_name,
+        previousReviewDate: risk.review_date?.toISOString() ?? null,
+      };
       await auditWriter.record(
         {
           actorType: 'USER',
@@ -1935,69 +2310,179 @@ export const riskRegisterRepository = {
     });
   },
   completeReview(riskId: string, actorId: string, input: CompleteRiskReview) {
-    return prisma.$transaction(async (tx) => {
-      await tx.$queryRaw`SELECT id FROM risks WHERE id = ${riskId}::uuid FOR UPDATE`;
-      const actor = await tx.users.findUnique({ where: { id: actorId }, select: { status: true, full_name: true } });
-      if (actor?.status !== 'ACTIVE') throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
-      const risk = await tx.risks.findUnique({ where: { id: riskId }, select: {
-        id: true, status: true, owner_user_id: true, updated_at: true, review_date: true,
-        risk_acceptances: { where: { decision: 'PENDING' }, select: { id: true }, take: 1 },
-        risk_assessments: { where: { assessment_type: { not: 'TARGET_DEFINITION' } }, orderBy: { assessed_at: 'desc' }, take: 1 },
-        risk_threats: { select: { created_at: true, updated_at: true } },
-        risk_vulnerabilities: { select: { created_at: true, updated_at: true } },
-        risk_assets: { select: { assets: { select: { id: true, classified_at: true } } } },
-        control_risk_links: residualControlLinks,
-      } });
-      if (!risk) throw new AppError(404, 'RISK_NOT_FOUND', 'Risk not found');
-      if (risk.owner_user_id !== actorId) throw new AppError(403, 'RISK_OWNER_REQUIRED', 'Only the assigned Risk Owner may complete review');
-      if (!['OPEN', 'UNDER_TREATMENT'].includes(risk.status) || risk.risk_acceptances.length)
-        throw new AppError(409, 'RISK_CONTEXT_LOCKED', 'Resolve pending acceptance and review an open or under-treatment Risk');
-      const events = await tx.audit_logs.findMany({ where: { resource_type: 'RISK', resource_id: riskId, outcome: 'SUCCESS',
-        action: { in: ['RISK_REVIEW_OPENED', 'RISK_REVIEW_COMPLETED', 'RISK_ACCEPTANCE_DECIDED'] } },
-        select: { action: true, after_data: true, occurred_at: true }, orderBy: [{ occurred_at: 'desc' }, { id: 'desc' }] });
-      const review = currentRiskReview(events);
-      if (!review || review.openedAt.toISOString() !== input.expectedOpenedAt || risk.updated_at.toISOString() !== input.expectedUpdatedAt)
-        throw new AppError(409, 'RISK_REVIEW_CHANGED', 'Review changed or already completed. Refresh the Risk.');
-      const assessment = risk.risk_assessments[0];
-      if (!assessment?.residual_rating || assessment.id !== input.assessmentId || assessment.assessed_at <= review.openedAt ||
-          assessmentRequiresReview(assessment.assessed_at, [...risk.risk_threats, ...risk.risk_vulnerabilities]))
-        throw new AppError(409, 'RISK_REASSESSMENT_REQUIRED', 'Save a current residual assessment after opening review');
-      const inherent = await tx.risk_assessments.findFirst({ where: { risk_id: riskId, inherent_rating: { not: null }, residual_rating: null, assessment_type: { not: 'TARGET_DEFINITION' } }, orderBy: { assessed_at: 'desc' } });
-      if (!inherent || inherent.assessed_at > assessment.assessed_at ||
-          assessmentRequiresReview(inherent.assessed_at, [...risk.risk_threats, ...risk.risk_vulnerabilities]) ||
-          risk.risk_assets.some(({ assets }) => assets.classified_at && assets.classified_at > inherent.assessed_at) ||
-          await tx.audit_logs.findFirst({ where: { resource_type: 'ASSET', resource_id: { in: risk.risk_assets.map(({ assets }) => assets.id) },
-            action: 'ASSET_CONTEXT_UPDATED', outcome: 'SUCCESS', occurred_at: { gt: inherent.assessed_at } }, select: { id: true } }))
-        throw new AppError(409, 'RISK_REASSESSMENT_REQUIRED', 'Review changed Asset/context and reassess inherent then residual risk');
-      if (validateResidualControls(risk.control_risk_links) || risk.control_risk_links.some(({ security_controls }) =>
-        security_controls.control_assessments[0] && security_controls.control_assessments[0].assessed_at > assessment.assessed_at))
-        throw new AppError(409, 'CONTROL_REASSESSMENT_REQUIRED', 'Review current Controls/Evidence and save a new residual assessment before completing');
-      const now = await contextWriteTime(tx);
-      const today = vietnamDate(now);
-      const maximum = reviewDeadline(today, assessment.residual_rating);
-      if (input.nextReviewDate <= today || input.nextReviewDate > maximum)
-        throw new AppError(422, 'INVALID_REVIEW_DATE', `Next review date must be after ${today} and no later than ${maximum} (Vietnam time)`);
-      const after = { openedAt: review.openedAt.toISOString(), openedBy: review.openedBy, openedByName: review.openedByName,
-        openingReason: review.reason, previousReviewDate: review.previousReviewDate,
-        completedBy: actorId, completedByName: actor.full_name, conclusion: input.conclusion,
-        assessmentId: assessment.id, residualRating: assessment.residual_rating.toLowerCase(),
-        nextReviewDate: input.nextReviewDate, recommendedReviewDate: maximum, methodologyVersion: 'SECURAAI-REVIEW-CYCLE-v1' };
-      await tx.risks.update({ where: { id: riskId }, data: { review_date: new Date(`${input.nextReviewDate}T00:00:00Z`), updated_at: now } });
-      await auditWriter.record(
-        {
-          actorType: 'USER',
-          actorUserId: actorId,
-          action: 'RISK_REVIEW_COMPLETED',
-          resourceType: 'RISK',
-          resourceId: riskId,
-          source: 'API',
-          occurredAt: now,
-          beforeData: { reviewDate: risk.review_date?.toISOString() ?? null },
-          afterData: after,
-        },
-        tx,
-      );
-      return { riskId, completedAt: now, nextReviewDate: input.nextReviewDate };
-    }, { isolationLevel: 'Serializable', maxWait: 5000, timeout: 15000 });
+    return prisma.$transaction(
+      async (tx) => {
+        await tx.$queryRaw`SELECT id FROM risks WHERE id = ${riskId}::uuid FOR UPDATE`;
+        const actor = await tx.users.findUnique({
+          where: { id: actorId },
+          select: { status: true, full_name: true },
+        });
+        if (actor?.status !== 'ACTIVE')
+          throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+        const risk = await tx.risks.findUnique({
+          where: { id: riskId },
+          select: {
+            id: true,
+            status: true,
+            owner_user_id: true,
+            updated_at: true,
+            review_date: true,
+            risk_acceptances: { where: { decision: 'PENDING' }, select: { id: true }, take: 1 },
+            risk_assessments: {
+              where: { assessment_type: { not: 'TARGET_DEFINITION' } },
+              orderBy: { assessed_at: 'desc' },
+              take: 1,
+            },
+            risk_threats: { select: { created_at: true, updated_at: true } },
+            risk_vulnerabilities: { select: { created_at: true, updated_at: true } },
+            risk_assets: { select: { assets: { select: { id: true, classified_at: true } } } },
+            control_risk_links: residualControlLinks,
+          },
+        });
+        if (!risk) throw new AppError(404, 'RISK_NOT_FOUND', 'Risk not found');
+        if (risk.owner_user_id !== actorId)
+          throw new AppError(
+            403,
+            'RISK_OWNER_REQUIRED',
+            'Only the assigned Risk Owner may complete review',
+          );
+        if (!['OPEN', 'UNDER_TREATMENT'].includes(risk.status) || risk.risk_acceptances.length)
+          throw new AppError(
+            409,
+            'RISK_CONTEXT_LOCKED',
+            'Resolve pending acceptance and review an open or under-treatment Risk',
+          );
+        const events = await tx.audit_logs.findMany({
+          where: {
+            resource_type: 'RISK',
+            resource_id: riskId,
+            outcome: 'SUCCESS',
+            action: {
+              in: ['RISK_REVIEW_OPENED', 'RISK_REVIEW_COMPLETED', 'RISK_ACCEPTANCE_DECIDED'],
+            },
+          },
+          select: { action: true, after_data: true, occurred_at: true },
+          orderBy: [{ occurred_at: 'desc' }, { id: 'desc' }],
+        });
+        const review = currentRiskReview(events);
+        if (
+          !review ||
+          review.openedAt.toISOString() !== input.expectedOpenedAt ||
+          risk.updated_at.toISOString() !== input.expectedUpdatedAt
+        )
+          throw new AppError(
+            409,
+            'RISK_REVIEW_CHANGED',
+            'Review changed or already completed. Refresh the Risk.',
+          );
+        const assessment = risk.risk_assessments[0];
+        if (
+          !assessment?.residual_rating ||
+          assessment.id !== input.assessmentId ||
+          assessment.assessed_at <= review.openedAt ||
+          assessmentRequiresReview(assessment.assessed_at, [
+            ...risk.risk_threats,
+            ...risk.risk_vulnerabilities,
+          ])
+        )
+          throw new AppError(
+            409,
+            'RISK_REASSESSMENT_REQUIRED',
+            'Save a current residual assessment after opening review',
+          );
+        const inherent = await tx.risk_assessments.findFirst({
+          where: {
+            risk_id: riskId,
+            inherent_rating: { not: null },
+            residual_rating: null,
+            assessment_type: { not: 'TARGET_DEFINITION' },
+          },
+          orderBy: { assessed_at: 'desc' },
+        });
+        if (
+          !inherent ||
+          inherent.assessed_at > assessment.assessed_at ||
+          assessmentRequiresReview(inherent.assessed_at, [
+            ...risk.risk_threats,
+            ...risk.risk_vulnerabilities,
+          ]) ||
+          risk.risk_assets.some(
+            ({ assets }) => assets.classified_at && assets.classified_at > inherent.assessed_at,
+          ) ||
+          (await tx.audit_logs.findFirst({
+            where: {
+              resource_type: 'ASSET',
+              resource_id: { in: risk.risk_assets.map(({ assets }) => assets.id) },
+              action: 'ASSET_CONTEXT_UPDATED',
+              outcome: 'SUCCESS',
+              occurred_at: { gt: inherent.assessed_at },
+            },
+            select: { id: true },
+          }))
+        )
+          throw new AppError(
+            409,
+            'RISK_REASSESSMENT_REQUIRED',
+            'Review changed Asset/context and reassess inherent then residual risk',
+          );
+        if (
+          validateResidualControls(risk.control_risk_links) ||
+          risk.control_risk_links.some(
+            ({ security_controls }) =>
+              security_controls.control_assessments[0] &&
+              security_controls.control_assessments[0].assessed_at > assessment.assessed_at,
+          )
+        )
+          throw new AppError(
+            409,
+            'CONTROL_REASSESSMENT_REQUIRED',
+            'Review current Controls/Evidence and save a new residual assessment before completing',
+          );
+        const now = await contextWriteTime(tx);
+        const today = vietnamDate(now);
+        const maximum = reviewDeadline(today, assessment.residual_rating);
+        if (input.nextReviewDate <= today || input.nextReviewDate > maximum)
+          throw new AppError(
+            422,
+            'INVALID_REVIEW_DATE',
+            `Next review date must be after ${today} and no later than ${maximum} (Vietnam time)`,
+          );
+        const after = {
+          openedAt: review.openedAt.toISOString(),
+          openedBy: review.openedBy,
+          openedByName: review.openedByName,
+          openingReason: review.reason,
+          previousReviewDate: review.previousReviewDate,
+          completedBy: actorId,
+          completedByName: actor.full_name,
+          conclusion: input.conclusion,
+          assessmentId: assessment.id,
+          residualRating: assessment.residual_rating.toLowerCase(),
+          nextReviewDate: input.nextReviewDate,
+          recommendedReviewDate: maximum,
+          methodologyVersion: 'SECURAAI-REVIEW-CYCLE-v1',
+        };
+        await tx.risks.update({
+          where: { id: riskId },
+          data: { review_date: new Date(`${input.nextReviewDate}T00:00:00Z`), updated_at: now },
+        });
+        await auditWriter.record(
+          {
+            actorType: 'USER',
+            actorUserId: actorId,
+            action: 'RISK_REVIEW_COMPLETED',
+            resourceType: 'RISK',
+            resourceId: riskId,
+            source: 'API',
+            occurredAt: now,
+            beforeData: { reviewDate: risk.review_date?.toISOString() ?? null },
+            afterData: after,
+          },
+          tx,
+        );
+        return { riskId, completedAt: now, nextReviewDate: input.nextReviewDate };
+      },
+      { isolationLevel: 'Serializable', maxWait: 5000, timeout: 15000 },
+    );
   },
 };

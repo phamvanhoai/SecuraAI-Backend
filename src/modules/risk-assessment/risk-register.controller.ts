@@ -32,9 +32,21 @@ import {
   defineTargetRiskBodySchema,
   defineTargetRiskParamsSchema,
 } from './dto/define-target-risk.dto.js';
-import { createTreatmentPlanBodySchema, treatmentPlanOptionsQuerySchema } from './dto/create-treatment-plan.dto.js';
-import { updateTreatmentPlanBodySchema, updateTreatmentPlanParamsSchema } from './dto/update-treatment-plan.dto.js';
-import { decideRiskAcceptanceBodySchema, decideRiskAcceptanceParamsSchema, submitRiskAcceptanceBodySchema, submitRiskAcceptanceParamsSchema, openRiskReviewBodySchema } from './dto/risk-acceptance.dto.js';
+import {
+  createTreatmentPlanBodySchema,
+  treatmentPlanOptionsQuerySchema,
+} from './dto/create-treatment-plan.dto.js';
+import {
+  updateTreatmentPlanBodySchema,
+  updateTreatmentPlanParamsSchema,
+} from './dto/update-treatment-plan.dto.js';
+import {
+  decideRiskAcceptanceBodySchema,
+  decideRiskAcceptanceParamsSchema,
+  submitRiskAcceptanceBodySchema,
+  submitRiskAcceptanceParamsSchema,
+  openRiskReviewBodySchema,
+} from './dto/risk-acceptance.dto.js';
 
 function userId(value: unknown): string {
   if (typeof value !== 'string') throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
@@ -106,7 +118,11 @@ export const updateVulnerability: RequestHandler = async (req, res) => {
 };
 export const getVulnerabilityControlOptions: RequestHandler = async (req, res) => {
   const { riskId } = identifyVulnerabilityParamsSchema.parse(req.params);
-  const data = await riskRegisterService.vulnerabilityControlOptions(userId(res.locals.authenticatedUserId), riskId, vulnerabilityControlOptionsQuerySchema.parse(req.query));
+  const data = await riskRegisterService.vulnerabilityControlOptions(
+    userId(res.locals.authenticatedUserId),
+    riskId,
+    vulnerabilityControlOptionsQuerySchema.parse(req.query),
+  );
   res.status(200).json({ success: true, data });
 };
 export const assessInherentRisk: RequestHandler = async (req, res) => {
@@ -137,23 +153,61 @@ export const defineTargetRisk: RequestHandler = async (req, res) => {
   res.status(201).json({ success: true, data });
 };
 export const getTreatmentPlanOptions: RequestHandler = async (req, res) => {
-  const data = await riskRegisterService.treatmentPlanOptions(userId(res.locals.authenticatedUserId), treatmentPlanOptionsQuerySchema.parse(req.query));
+  const data = await riskRegisterService.treatmentPlanOptions(
+    userId(res.locals.authenticatedUserId),
+    treatmentPlanOptionsQuerySchema.parse(req.query),
+  );
   res.status(200).json({ success: true, data });
 };
 export const createTreatmentPlan: RequestHandler = async (req, res) => {
-  const data = await riskRegisterService.createTreatmentPlan(userId(res.locals.authenticatedUserId), createTreatmentPlanBodySchema.parse(req.body));
+  const data = await riskRegisterService.createTreatmentPlan(
+    userId(res.locals.authenticatedUserId),
+    createTreatmentPlanBodySchema.parse(req.body),
+  );
   res.status(201).json({ success: true, data });
 };
 export const updateTreatmentPlan: RequestHandler = async (req, res) => {
   const { treatmentPlanId } = updateTreatmentPlanParamsSchema.parse(req.params);
-  const data = await riskRegisterService.updateTreatmentPlan(userId(res.locals.authenticatedUserId), treatmentPlanId, updateTreatmentPlanBodySchema.parse(req.body));
+  const data = await riskRegisterService.updateTreatmentPlan(
+    userId(res.locals.authenticatedUserId),
+    treatmentPlanId,
+    updateTreatmentPlanBodySchema.parse(req.body),
+  );
   res.status(200).json({ success: true, data });
 };
-export const submitRiskAcceptance: RequestHandler = async (req, res) => { const { riskId } = submitRiskAcceptanceParamsSchema.parse(req.params); const data = await riskRegisterService.submitAcceptance(userId(res.locals.authenticatedUserId), riskId, submitRiskAcceptanceBodySchema.parse(req.body)); res.status(201).json({ success: true, data }); };
-export const decideRiskAcceptance: RequestHandler = async (req, res) => { const { acceptanceId } = decideRiskAcceptanceParamsSchema.parse(req.params); const data = await riskRegisterService.decideAcceptance(userId(res.locals.authenticatedUserId), acceptanceId, decideRiskAcceptanceBodySchema.parse(req.body)); res.status(200).json({ success: true, data }); };
-export const openRiskAcceptanceReview: RequestHandler = async (req, res) => { const { riskId } = submitRiskAcceptanceParamsSchema.parse(req.params); const data = await riskRegisterService.openAcceptanceReview(userId(res.locals.authenticatedUserId), riskId, openRiskReviewBodySchema.parse(req.body)); res.status(200).json({ success: true, data }); };
+export const submitRiskAcceptance: RequestHandler = async (req, res) => {
+  const { riskId } = submitRiskAcceptanceParamsSchema.parse(req.params);
+  const data = await riskRegisterService.submitAcceptance(
+    userId(res.locals.authenticatedUserId),
+    riskId,
+    submitRiskAcceptanceBodySchema.parse(req.body),
+  );
+  res.status(201).json({ success: true, data });
+};
+export const decideRiskAcceptance: RequestHandler = async (req, res) => {
+  const { acceptanceId } = decideRiskAcceptanceParamsSchema.parse(req.params);
+  const data = await riskRegisterService.decideAcceptance(
+    userId(res.locals.authenticatedUserId),
+    acceptanceId,
+    decideRiskAcceptanceBodySchema.parse(req.body),
+  );
+  res.status(200).json({ success: true, data });
+};
+export const openRiskAcceptanceReview: RequestHandler = async (req, res) => {
+  const { riskId } = submitRiskAcceptanceParamsSchema.parse(req.params);
+  const data = await riskRegisterService.openAcceptanceReview(
+    userId(res.locals.authenticatedUserId),
+    riskId,
+    openRiskReviewBodySchema.parse(req.body),
+  );
+  res.status(200).json({ success: true, data });
+};
 export const completeRiskReview: RequestHandler = async (req, res) => {
   const { riskId } = submitRiskAcceptanceParamsSchema.parse(req.params);
-  const data = await riskRegisterService.completeReview(userId(res.locals.authenticatedUserId), riskId, completeRiskReviewSchema.parse(req.body));
+  const data = await riskRegisterService.completeReview(
+    userId(res.locals.authenticatedUserId),
+    riskId,
+    completeRiskReviewSchema.parse(req.body),
+  );
   res.status(200).json({ success: true, data });
 };

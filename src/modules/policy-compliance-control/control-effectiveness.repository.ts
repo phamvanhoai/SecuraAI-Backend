@@ -84,16 +84,23 @@ export const controlEffectivenessRepository = {
   async evidenceBasis(controlIds: string[], assessmentIds: string[]) {
     if (!assessmentIds.length) return new Map<string, z.infer<typeof evidenceBasisSchema>>();
     const rows = await prisma.audit_logs.findMany({
-      where: { resource_type: 'SECURITY_CONTROL', resource_id: { in: controlIds },
+      where: {
+        resource_type: 'SECURITY_CONTROL',
+        resource_id: { in: controlIds },
         action: { in: ['CONTROL_IMPLEMENTATION_ASSESSED', 'CONTROL_EFFECTIVENESS_ASSESSED'] },
-        OR: assessmentIds.map(id => ({ after_data: { path: ['assessmentId'], equals: id } })) },
+        OR: assessmentIds.map((id) => ({ after_data: { path: ['assessmentId'], equals: id } })),
+      },
       orderBy: [{ occurred_at: 'desc' }, { id: 'desc' }],
-      take: assessmentIds.length, select: { after_data: true },
+      take: assessmentIds.length,
+      select: { after_data: true },
     });
     const result = new Map<string, z.infer<typeof evidenceBasisSchema>>();
     for (const row of rows) {
-      const parsed = z.object({ assessmentId: z.string(), evidenceBasis: evidenceBasisSchema }).safeParse(row.after_data);
-      if (parsed.success && !result.has(parsed.data.assessmentId)) result.set(parsed.data.assessmentId, parsed.data.evidenceBasis);
+      const parsed = z
+        .object({ assessmentId: z.string(), evidenceBasis: evidenceBasisSchema })
+        .safeParse(row.after_data);
+      if (parsed.success && !result.has(parsed.data.assessmentId))
+        result.set(parsed.data.assessmentId, parsed.data.evidenceBasis);
     }
     return result;
   },
@@ -163,17 +170,28 @@ export const controlEffectivenessRepository = {
             'Implementation status changed. Close and reopen Assess Control before saving',
           );
         const selectedEvidence = control.control_evidence_links
-          .filter(link => input.evidenceIds.includes(link.evidence_items.id))
-          .map(link => link.evidence_items);
-        if (selectedEvidence.length !== input.evidenceIds.length || !selectedEvidence.length ||
-            selectedEvidence.some(item => !isControlEvidenceUsable(item, new Date())))
-          throw new AppError(409, 'CONTROL_EVIDENCE_STALE', 'Selected Evidence is no longer linked or valid. Reopen Assess Control and select current Evidence.');
-        const evidenceBasis = selectedEvidence.map(item => ({
-          id: item.id, name: item.name, source: item.source,
-          collectedAt: item.collected_at.toISOString(),
-          validFrom: item.valid_from?.toISOString() ?? null,
-          validUntil: item.valid_until?.toISOString() ?? null,
-        })).sort((a, b) => a.id.localeCompare(b.id));
+          .filter((link) => input.evidenceIds.includes(link.evidence_items.id))
+          .map((link) => link.evidence_items);
+        if (
+          selectedEvidence.length !== input.evidenceIds.length ||
+          !selectedEvidence.length ||
+          selectedEvidence.some((item) => !isControlEvidenceUsable(item, new Date()))
+        )
+          throw new AppError(
+            409,
+            'CONTROL_EVIDENCE_STALE',
+            'Selected Evidence is no longer linked or valid. Reopen Assess Control and select current Evidence.',
+          );
+        const evidenceBasis = selectedEvidence
+          .map((item) => ({
+            id: item.id,
+            name: item.name,
+            source: item.source,
+            collectedAt: item.collected_at.toISOString(),
+            validFrom: item.valid_from?.toISOString() ?? null,
+            validUntil: item.valid_until?.toISOString() ?? null,
+          }))
+          .sort((a, b) => a.id.localeCompare(b.id));
         const nextStatus = input.implementationStatus
           ? (
               {
@@ -185,9 +203,17 @@ export const controlEffectivenessRepository = {
             )[input.implementationStatus]
           : control.implementation_status;
         if (control.applicability !== 'APPLICABLE')
-          throw new AppError(422, 'CONTROL_NOT_APPLICABLE', 'Only Applicable controls can be assessed for operating effectiveness. Update applicability and reopen Assess Control.');
+          throw new AppError(
+            422,
+            'CONTROL_NOT_APPLICABLE',
+            'Only Applicable controls can be assessed for operating effectiveness. Update applicability and reopen Assess Control.',
+          );
         if (nextStatus !== 'PARTIALLY_IMPLEMENTED' && nextStatus !== 'IMPLEMENTED')
-          throw new AppError(422, 'CONTROL_NOT_DEPLOYED', 'Operating effectiveness requires Partially implemented or Implemented status. Record actual deployment progress before saving.');
+          throw new AppError(
+            422,
+            'CONTROL_NOT_DEPLOYED',
+            'Operating effectiveness requires Partially implemented or Implemented status. Record actual deployment progress before saving.',
+          );
         const changed = nextStatus !== control.implementation_status;
         if (
           changed &&
@@ -223,16 +249,19 @@ export const controlEffectivenessRepository = {
           result: input.result,
           effectiveness: input.effectiveness,
         };
-        await auditWriter.record({
-          actorType: 'USER',
-          actorUserId: actorId,
-          source: 'API',
-          action: changed ? 'CONTROL_IMPLEMENTATION_ASSESSED' : 'CONTROL_EFFECTIVENESS_ASSESSED',
-          resourceType: 'SECURITY_CONTROL',
-          resourceId: controlId,
-          beforeData: { implementationStatus: control.implementation_status },
-          afterData: after,
-        }, tx);
+        await auditWriter.record(
+          {
+            actorType: 'USER',
+            actorUserId: actorId,
+            source: 'API',
+            action: changed ? 'CONTROL_IMPLEMENTATION_ASSESSED' : 'CONTROL_EFFECTIVENESS_ASSESSED',
+            resourceType: 'SECURITY_CONTROL',
+            resourceId: controlId,
+            beforeData: { implementationStatus: control.implementation_status },
+            afterData: after,
+          },
+          tx,
+        );
         return assessment;
       },
       { maxWait: 5000, timeout: 15000 },
@@ -243,7 +272,13 @@ export type ControlEffectivenessRecord = Prisma.security_controlsGetPayload<{
   select: typeof controlSelect;
 }>;
 
-const evidenceBasisSchema = z.array(z.object({
-  id: z.string(), name: z.string(), source: z.string(), collectedAt: z.string(),
-  validFrom: z.string().nullable(), validUntil: z.string().nullable(),
-}));
+const evidenceBasisSchema = z.array(
+  z.object({
+    id: z.string(),
+    name: z.string(),
+    source: z.string(),
+    collectedAt: z.string(),
+    validFrom: z.string().nullable(),
+    validUntil: z.string().nullable(),
+  }),
+);

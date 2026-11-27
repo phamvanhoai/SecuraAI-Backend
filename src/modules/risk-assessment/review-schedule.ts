@@ -1,5 +1,10 @@
 export function vietnamDate(now: Date): string {
-  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit', day: '2-digit' }).format(now);
+  return new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Ho_Chi_Minh',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).format(now);
 }
 export const OVERDUE_REVIEW_SUBMIT_MESSAGE =
   'This Risk is overdue for review. Open and complete Risk Review before submitting an acceptance request.';

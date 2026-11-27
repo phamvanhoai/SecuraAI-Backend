@@ -343,7 +343,10 @@ export const controlEvidenceRepository = {
       async (tx) => {
         const context = await access(tx, actorId, controlId, true);
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${input.requestId}))`;
-        const previous = await tx.evidence_items.findUnique({ where: { id: input.requestId }, select });
+        const previous = await tx.evidence_items.findUnique({
+          where: { id: input.requestId },
+          select,
+        });
         if (previous) {
           const linked = await tx.control_evidence_links.findUnique({
             where: { control_id_evidence_id: { control_id: controlId, evidence_id: previous.id } },
@@ -367,7 +370,11 @@ export const controlEvidenceRepository = {
         const collectedAt = new Date(input.collectedAt);
         const validUntil = input.validUntil ? new Date(input.validUntil) : null;
         if (collectedAt > now)
-          throw new AppError(422, 'EVIDENCE_FUTURE_COLLECTION', 'Collection time cannot be in the future');
+          throw new AppError(
+            422,
+            'EVIDENCE_FUTURE_COLLECTION',
+            'Collection time cannot be in the future',
+          );
         if (validUntil && (validUntil <= now || validUntil <= collectedAt))
           throw new AppError(
             422,
@@ -376,7 +383,12 @@ export const controlEvidenceRepository = {
           );
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${input.sha256}))`;
         const duplicate = await tx.evidence_items.findFirst({
-          where: { AND: [visible(context), { evidence_type: 'UPLOADED_FILE', integrity_hash: input.sha256 }] },
+          where: {
+            AND: [
+              visible(context),
+              { evidence_type: 'UPLOADED_FILE', integrity_hash: input.sha256 },
+            ],
+          },
           select: { id: true },
         });
         if (duplicate)
@@ -423,7 +435,10 @@ export const controlEvidenceRepository = {
   getUploadedFile(actorId: string, evidenceId: string) {
     return prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM public.users WHERE id = ${actorId}::uuid FOR SHARE`;
-      const actor = await tx.users.findUnique({ where: { id: actorId }, select: { role: true, status: true } });
+      const actor = await tx.users.findUnique({
+        where: { id: actorId },
+        select: { role: true, status: true },
+      });
       if (!actor || actor.status !== 'ACTIVE')
         throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
       const item = await tx.evidence_items.findFirst({
@@ -436,7 +451,11 @@ export const controlEvidenceRepository = {
               ? {
                   OR: [
                     { owner_user_id: actorId },
-                    { control_evidence_links: { some: { security_controls: { owner_user_id: actorId } } } },
+                    {
+                      control_evidence_links: {
+                        some: { security_controls: { owner_user_id: actorId } },
+                      },
+                    },
                   ],
                 }
               : { id: '__not_accessible__' }),
@@ -450,7 +469,11 @@ export const controlEvidenceRepository = {
         },
       });
       if (!item?.storage_uri || !item.original_file_name || !item.mime_type || !item.integrity_hash)
-        throw new AppError(404, 'EVIDENCE_FILE_NOT_FOUND', 'Evidence file not found or not accessible');
+        throw new AppError(
+          404,
+          'EVIDENCE_FILE_NOT_FOUND',
+          'Evidence file not found or not accessible',
+        );
       return {
         id: item.id,
         storageKey: item.storage_uri,
@@ -476,7 +499,15 @@ export const controlEvidenceRepository = {
         source: 'API',
         after_data: after,
         record_hash: createHash('sha256')
-          .update(JSON.stringify({ id, actor: actorId, action: 'CONTROL_EVIDENCE_FILE_DOWNLOADED', at: at.toISOString(), after }))
+          .update(
+            JSON.stringify({
+              id,
+              actor: actorId,
+              action: 'CONTROL_EVIDENCE_FILE_DOWNLOADED',
+              at: at.toISOString(),
+              after,
+            }),
+          )
           .digest('hex'),
       },
     });
@@ -522,7 +553,12 @@ export const controlEvidenceRepository = {
           where: { control_id_evidence_id: { control_id: controlId, evidence_id: evidenceId } },
           select: { evidence_id: true },
         });
-        if (!link) throw new AppError(404, 'EVIDENCE_LINK_NOT_FOUND', 'Evidence is not linked to this Control');
+        if (!link)
+          throw new AppError(
+            404,
+            'EVIDENCE_LINK_NOT_FOUND',
+            'Evidence is not linked to this Control',
+          );
         await tx.control_evidence_links.delete({
           where: { control_id_evidence_id: { control_id: controlId, evidence_id: evidenceId } },
         });

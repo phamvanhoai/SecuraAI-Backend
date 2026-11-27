@@ -16,7 +16,10 @@ export const createBusinessServiceSchema = z
       .string()
       .trim()
       .max(2000)
-      .refine((value) => value.length === 0 || value.length >= 20, "Enter at least 20 characters or leave blank.")
+      .refine(
+        (value) => value.length === 0 || value.length >= 20,
+        'Enter at least 20 characters or leave blank.',
+      )
       .refine((value) => !value.includes('\u0000'), 'Invalid control characters')
       .nullable()
       .optional(),
