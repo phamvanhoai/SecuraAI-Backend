@@ -6,7 +6,7 @@ export interface StoredAlertExplanationInput {
   threshold: number;
   suggestedRiskLevel: string | null;
   detectedAt: Date;
-  featureContributions: Array<{
+  evidence: Array<{
     featureName: string;
     featureValue: string | null;
     rank: number | null;

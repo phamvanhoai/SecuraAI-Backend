@@ -20,7 +20,7 @@ export interface AlertExplanationInput {
   threshold: number;
   suggestedRiskLevel: string | null;
   detectedAt: Date;
-  featureContributions: Array<{
+  evidence: Array<{
     featureName: string;
     featureValue: string | null;
     rank: number | null;
@@ -51,7 +51,7 @@ function buildPrompt(input: AlertExplanationInput): string {
       threshold: input.threshold,
       suggestedRiskLevel: input.suggestedRiskLevel,
       detectedAt: input.detectedAt.toISOString(),
-      featureContributions: input.featureContributions,
+      evidence: input.evidence,
     })}`,
   ].join('\n');
 }

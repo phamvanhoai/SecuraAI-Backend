@@ -401,7 +401,7 @@ export const aiAlertsService = {
       threshold: currentThreshold,
       suggestedRiskLevel: alert.severity?.toLowerCase() ?? null,
       detectedAt: detection.detected_at,
-      featureContributions: contributions,
+      evidence: contributions,
       eventId: detection.normalized_events.id,
     });
     const replaced = await aiAlertsRepository.replaceExplanation({

@@ -77,6 +77,7 @@ function createAiDecision(event: ContextEvent): {
       ]),
     )
     .digest('hex');
+  // Return the group key and the first evidence item for this event.
   return {
     groupKey,
     features: [
@@ -125,6 +126,7 @@ export const anomalyDetectionService = {
         'NO_DEPLOYED_MODEL',
         'Deploy an anomaly detection model before running detection',
       );
+    // Record who started the manual run and its request information.
     const audit = {
       actor: { type: 'USER' as const, userId },
       ...(correlationId ? { correlationId } : {}),
@@ -132,12 +134,14 @@ export const anomalyDetectionService = {
       ...(context?.userAgent ? { userAgent: context.userAgent } : {}),
     };
     return withDetectionLock(async () => {
+      // Manual detection can process pending events from every source.
       const result = await runDetection(
         model,
         { maxEvents: input.maxEvents, eventScope: 'ALL' },
         audit,
       );
       const hasMore = await anomalyDetectionRepository.hasPendingEvents(model.id);
+      // Add manual-run scope and whether another batch is still available.
       return {
         ...result,
         scope: 'ALL_PENDING' as const,
@@ -151,6 +155,7 @@ export const anomalyDetectionService = {
     const model = await anomalyDetectionRepository.findDeployedModel();
     if (!model) return null;
     return withDetectionLock(() =>
+      // Automated detection processes only pending real-time Wazuh events.
       runDetection(
         model,
         { maxEvents: input.maxEvents, eventScope: 'WAZUH_REALTIME' },
@@ -220,6 +225,7 @@ async function runDetection(
             });
             if (mlPrediction.status !== 'PREDICTED') {
               const reason = mlPrediction.reason;
+              // Return an ML failure for this event so the job can be retried.
               return {
                 eventId: event.id,
                 processingFailure: {
@@ -251,6 +257,7 @@ async function runDetection(
               ? await requestLlmClassification(event, temporalContext)
               : null;
             if (llmPrediction) {
+              // Store the complete LLM response as detection evidence.
               decision.features.push({
                 featureName: 'llm_security_classification',
                 featureValue: JSON.stringify(llmPrediction),
@@ -260,6 +267,7 @@ async function runDetection(
             if (modelEscalated && (!llmPrediction || llmPrediction.status !== 'PREDICTED')) {
               const reason =
                 llmPrediction?.status === 'UNAVAILABLE' ? llmPrediction.reason : 'DISABLED';
+              // Return an LLM failure instead of creating an incomplete decision.
               return {
                 eventId: event.id,
                 processingFailure: {
@@ -299,13 +307,14 @@ async function runDetection(
             if (isAnomaly && !explanations.has(explanationKey))
               explanations.set(
                 explanationKey,
+                // Generate one explanation from the final score and stored evidence.
                 generateStoredAlertExplanation(
                   {
                     anomalyScore: score,
                     threshold,
                     suggestedRiskLevel: detectionSeverity(score).toLowerCase(),
                     detectedAt,
-                    featureContributions: decision.features,
+                    evidence: decision.features,
                     eventId: event.id,
                   },
                   {
@@ -315,7 +324,9 @@ async function runDetection(
                   },
                 ),
               );
+            // Only a MALICIOUS event waits for its stored explanation.
             const explanationText = isAnomaly ? await explanations.get(explanationKey) : undefined;
+            // Return the completed detection result for database persistence.
             return {
               id: randomUUID(),
               eventId: event.id,
@@ -327,6 +338,7 @@ async function runDetection(
               occurredAt: event.occurred_at,
               features: decision.features,
               groupKey: decision.groupKey,
+              // Add explanation fields only when explanation text exists.
               ...(explanationText ? { explanationText, explanationGeneratedAt: detectedAt } : {}),
             };
           }),
@@ -339,6 +351,7 @@ async function runDetection(
     const detections = evaluated.filter(
       (item): item is SuccessfulDetection => !('processingFailure' in item),
     );
+    // Summarize the complete batch for the API response and audit record.
     const summary = {
       modelVersionId: model.id,
       modelName: model.model_name,
@@ -353,6 +366,7 @@ async function runDetection(
       ).length,
     } satisfies Prisma.InputJsonObject;
     if (evaluated.length === 0) {
+      // Return an empty successful result when no pending event was found.
       return {
         ...summary,
         detectionsCreated: 0,
@@ -361,17 +375,19 @@ async function runDetection(
         completedAt: new Date().toISOString(),
       };
     }
+    // Save successful detections, failures, alerts and audit data atomically.
     const persisted = await anomalyDetectionRepository.persistRun({
       actor: audit.actor,
       modelVersionId: model.id,
-      leaseToken: batch.leaseToken,
-      ...(audit.correlationId ? { correlationId: audit.correlationId } : {}),
+      leaseToken: batch.leaseToken, //Automated worker get job = token
+      ...(audit.correlationId ? { correlationId: audit.correlationId } : {}), // link with auditlog
       detections,
       failures,
       summary,
       sourceIp: audit.sourceIp,
       userAgent: audit.userAgent,
     });
+    // Combine the batch summary with the database persistence result.
     return {
       ...summary,
       ...persisted,
