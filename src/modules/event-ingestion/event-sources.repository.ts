@@ -1,3 +1,8 @@
+/**
+ * Layer: Repository / Data Access (Event Ingestion - Event Sources)
+ * Purpose: Encapsulates all Prisma queries, safe column whitelists, parameterized filters, and allow-listed sorting.
+ * Flow: Service -> Repository -> Prisma -> PostgreSQL
+ */
 import type { event_family, event_source_status, ingestion_method, Prisma } from '@prisma/client';
 import { prisma } from '../../database/prisma.js';
 
@@ -48,6 +53,7 @@ export type FindEventSourcesOptions = {
   sortOrder?: 'asc' | 'desc' | undefined;
 };
 
+// Explicit column whitelist to avoid over-fetching and prevent accidental exposure of related secrets (e.g., API keys)
 const eventSourceSelect = {
   id: true,
   name: true,
@@ -67,6 +73,11 @@ const eventSourceSelect = {
   },
 } as const;
 
+/**
+ * Builds a parameterized Prisma WHERE clause from optional list filters.
+ * Supports exact status matching, case-insensitive sourceType matching,
+ * and case-insensitive substring search (q) across name, source_type, and description.
+ */
 function buildWhere(
   options: Pick<FindEventSourcesOptions, 'q' | 'sourceType' | 'status'>,
 ): Prisma.event_sourcesWhereInput {
@@ -87,6 +98,10 @@ function buildWhere(
   return where;
 }
 
+/**
+ * Maps allow-listed camelCase API sort keys to snake_case database columns.
+ * Falls back to updated_at so arbitrary column names can never be injected.
+ */
 function buildOrderBy(
   sortBy?: string,
   sortOrder: 'asc' | 'desc' = 'desc',
@@ -107,6 +122,7 @@ function buildOrderBy(
 }
 
 export const eventSourcesRepository = {
+  /** Looks up the acting user's role and account status for authorization checks. */
   findActor(userId: string) {
     return prisma.users.findUnique({
       where: { id: userId },
@@ -114,6 +130,7 @@ export const eventSourcesRepository = {
     });
   },
 
+  /** Finds an event source by case-insensitive trimmed name to enforce uniqueness. */
   findByName(name: string) {
     return prisma.event_sources.findFirst({
       where: {
@@ -126,6 +143,7 @@ export const eventSourcesRepository = {
     });
   },
 
+  /** Inserts a new event source together with its associated event_source_families rows. */
   async create(data: CreateEventSourceData): Promise<EventSourceRecord> {
     return prisma.event_sources.create({
       data: {
@@ -147,6 +165,7 @@ export const eventSourcesRepository = {
     });
   },
 
+  /** Fetches a single page of event sources matching the active filters and sort order. */
   async findMany(options: FindEventSourcesOptions): Promise<EventSourceRecord[]> {
     const where = buildWhere(options);
     const orderBy = buildOrderBy(options.sortBy, options.sortOrder);
@@ -160,6 +179,7 @@ export const eventSourcesRepository = {
     });
   },
 
+  /** Counts total event sources matching the active filters for pagination metadata. */
   async count(
     options: Pick<FindEventSourcesOptions, 'q' | 'sourceType' | 'status'>,
   ): Promise<number> {
@@ -167,6 +187,7 @@ export const eventSourcesRepository = {
     return prisma.event_sources.count({ where });
   },
 
+  /** Fetches a single event source by ID with creator profile, API keys metadata, and ingestion counts. */
   findById(id: string) {
     return prisma.event_sources.findUnique({
       where: { id },
@@ -209,6 +230,7 @@ export const eventSourcesRepository = {
     });
   },
 
+  /** Updates an event source; replaces event_source_families atomically inside a transaction when provided. */
   async update(id: string, data: UpdateEventSourceData): Promise<EventSourceRecord> {
     if (data.eventFamilies !== undefined) {
       return prisma.$transaction(async (tx) => {

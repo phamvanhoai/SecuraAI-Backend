@@ -1,3 +1,8 @@
+/**
+ * Layer: Service / Business Logic (Event Ingestion - Event Sources)
+ * Purpose: Enforces domain rules, service-level RBAC guards, pagination math, and DB-to-DTO response mapping.
+ * Flow: Controller -> Service -> Repository -> Prisma
+ */
 import { AppError } from '../../common/errors/app-error.js';
 import type { CreateEventSourceInput, EventSourceResponseDto } from './dto/create-event-source.dto.js';
 import type {
@@ -17,6 +22,10 @@ import {
   type EventSourceRecord,
 } from './event-sources.repository.js';
 
+/**
+ * Maps a snake_case Prisma event_sources record to the public camelCase API DTO
+ * and flattens the joined event_source_families rows into a plain string array.
+ */
 function toEventSourceResponse(record: EventSourceRecord): EventSourceResponseDto {
   return {
     id: record.id,
@@ -34,6 +43,10 @@ function toEventSourceResponse(record: EventSourceRecord): EventSourceResponseDt
   };
 }
 
+/**
+ * Defense-in-depth authorization guard at the service layer.
+ * Ensures the caller is an ACTIVE ADMIN or SECURITY_OFFICER even if invoked outside HTTP middleware.
+ */
 async function requireAuthorizedActor(userId: string): Promise<{ id: string; role: string; status: string }> {
   const actor = await eventSourcesRepository.findActor(userId);
   if (!actor || actor.status !== 'ACTIVE') {
@@ -46,6 +59,7 @@ async function requireAuthorizedActor(userId: string): Promise<{ id: string; rol
 }
 
 export const eventSourcesService = {
+  /** Registers a new event source after verifying actor permissions and name uniqueness. */
   async registerEventSource(
     userId: string,
     input: CreateEventSourceInput,
@@ -72,6 +86,10 @@ export const eventSourcesService = {
     return toEventSourceResponse(created);
   },
 
+  /**
+   * Returns a paginated, filtered, and sorted list of configured event sources.
+   * Runs the page query and total count in parallel to minimize database round-trip latency.
+   */
   async listEventSources(
     userId: string,
     query: ListEventSourcesQuery,
@@ -81,6 +99,7 @@ export const eventSourcesService = {
     const { page, limit, q, sourceType, status, sortBy, sortOrder } = query;
     const skip = (page - 1) * limit;
 
+    // Fetch matching page items and total count concurrently using the same filter criteria
     const [records, total] = await Promise.all([
       eventSourcesRepository.findMany({
         skip,
@@ -98,6 +117,7 @@ export const eventSourcesService = {
       }),
     ]);
 
+    // Guarantee totalPages is at least 1 so empty result sets still have a valid pagination ceiling
     const totalPages = Math.max(1, Math.ceil(total / limit));
 
     return {
@@ -111,6 +131,7 @@ export const eventSourcesService = {
     };
   },
 
+  /** Fetches detailed information for a single event source including creator, masked API keys, and ingestion metrics. */
   async getEventSourceDetail(
     userId: string,
     id: string,
@@ -153,6 +174,7 @@ export const eventSourcesService = {
     };
   },
 
+  /** Updates an event source; enforces ADMIN-only status toggles, unique name checks, and API endpoint requirements. */
   async updateEventSource(
     userId: string,
     id: string,
@@ -188,6 +210,7 @@ export const eventSourcesService = {
     return toEventSourceResponse(updated);
   },
 
+  /** Runs a live connectivity diagnostic against an unsaved event source endpoint. */
   async testConnection(
     userId: string,
     input: TestEventSourceConnectionInput,
@@ -196,6 +219,7 @@ export const eventSourcesService = {
     return wazuhConnectionTester.testConnection(input);
   },
 
+  /** Runs a live connectivity diagnostic using the stored endpoint of an existing event source. */
   async testConnectionById(
     userId: string,
     id: string,

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { EVENT_FAMILIES } from './create-event-source.dto.js';
 
+// Import event item schema
 export const importEventItemSchema = z.object({
   externalEventId: z.string().trim().max(255).optional().nullable(),
   eventFamily: z.enum(EVENT_FAMILIES),

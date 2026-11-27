@@ -90,7 +90,7 @@ function safeEqual(a: string, b: string): boolean {
   const right = createHash('sha256').update(b).digest();
   return timingSafeEqual(left, right);
 }
-
+// Check the signature secret key stored in the database (storedHash) with the key provided by the client (suppliedSecret).
 async function verifySecretHash(storedHash: string, suppliedSecret: string): Promise<boolean> {
   // 1. Support Argon2id hash verification
   if (storedHash.startsWith('$argon2')) {

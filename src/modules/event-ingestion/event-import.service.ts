@@ -8,7 +8,14 @@ import {
   type InvalidEventRecord,
 } from './dto/import-events.dto.js';
 
+// Event import service
 export const eventImportService = {
+  /**
+   * Validates and imports a batch of normalized events from an uploaded file payload.
+   * Ensures the target source is ACTIVE, validates every record individually so valid
+   * events are stored in normalized_events while invalid ones are recorded in invalid_events,
+   * and returns the batch execution summary.
+   */
   async importNormalizedEvents(
     eventSourceId: string,
     body: ImportEventsBody,
@@ -18,7 +25,7 @@ export const eventImportService = {
     if (!eventSource) {
       throw new AppError(404, 'NOT_FOUND', 'Event source not found');
     }
-
+    // Check if event source is active
     if (eventSource.status !== 'ACTIVE') {
       throw new AppError(
         400,
@@ -144,6 +151,7 @@ export const eventImportService = {
     };
   },
 
+  /** Fetches summary metadata and record counts for a specific ingestion batch. */
   async getBatchDetail(batchId: string) {
     const batch = await eventImportRepository.findBatchById(batchId);
     if (!batch) {
@@ -170,6 +178,7 @@ export const eventImportService = {
     };
   },
 
+  /** Returns paginated invalid event records rejected during a batch import, with errorCode/text filtering. */
   async getBatchInvalidEvents(
     batchId: string,
     params: { page: number; limit: number; errorCode?: string | undefined; q?: string | undefined },
@@ -205,6 +214,7 @@ export const eventImportService = {
     };
   },
 
+  /** Lists historical file-import batches for a given event source, sorted newest first. */
   async getSourceBatches(sourceId: string, params: { page: number; limit: number }) {
     const eventSource = await eventSourcesRepository.findById(sourceId);
     if (!eventSource) {
@@ -242,6 +252,7 @@ export const eventImportService = {
   },
 };
 
+/** Infers the SecuraAI eventFamily (VPN_SSO, APPLICATION_ACCESS, or AUTHENTICATION) from an eventType string. */
 export function detectEventFamilyFromType(eventType: string): string | undefined {
   if (!eventType) return undefined;
   const upper = eventType.toUpperCase();

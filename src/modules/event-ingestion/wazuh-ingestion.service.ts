@@ -8,7 +8,7 @@ import { requestAutomatedDetection } from '../ai-anomaly-detection-alerts/automa
 import { normalizeWazuhEvent } from './wazuh-event.normalizer.js';
 
 type ResolvedSource = { id: string; status: string };
-
+// Resolve target source
 async function resolveTargetSource(apiKeyEventSourceId: string | null): Promise<ResolvedSource> {
   if (apiKeyEventSourceId) {
     // The API key is bound to a specific source: events can only be written to that source.
