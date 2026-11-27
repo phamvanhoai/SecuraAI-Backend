@@ -13,6 +13,13 @@ export { normalizeWazuhEvent } from './wazuh-event.normalizer.js';
 export { eventGovernanceRouter } from './event-governance.routes.js';
 export { eventGovernanceService } from './event-governance.service.js';
 export { eventGovernanceRepository } from './event-governance.repository.js';
+export { eventRetentionPurgeService } from './event-retention-purge.service.js';
+export { eventRetentionPurgeRepository } from './event-retention-purge.repository.js';
+export {
+  startAutomatedRetentionPurgeWorker,
+  stopAutomatedRetentionPurgeWorker,
+  isAutomatedRetentionPurgeWorkerActive,
+} from './event-retention-purge.worker.js';
 export { eventAutoMappingService } from './event-auto-mapping.service.js';
 export { eventAutoMappingRepository } from './event-auto-mapping.repository.js';
 export * from './dto/create-event-source.dto.js';
@@ -24,4 +31,5 @@ export * from './dto/wazuh-event-ingest.dto.js';
 export * from './dto/import-events.dto.js';
 export * from './dto/list-normalized-events.dto.js';
 export * from './dto/event-governance-policy.dto.js';
+export * from './dto/retention-purge.dto.js';
 
