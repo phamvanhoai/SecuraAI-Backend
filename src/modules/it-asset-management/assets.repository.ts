@@ -538,26 +538,47 @@ export const assetsRepository = {
     // Start from each displayed candidate and find a path back to the edited asset.
     // A per-path visited array terminates safely even with historical cycles.
     const cycles = await prisma.$queryRaw<Array<{ candidate_id: string; path: string[] }>>(Prisma.sql`
+      -- A is the asset being edited. Check if each choice B can lead back to A.
+      -- Keep the starting choice, current asset and visited IDs for each path.
       WITH RECURSIVE reachable(candidate_id, id, visited) AS (
+        -- Start a separate path at each choice B. The first visited list is [B].
         SELECT id, id, ARRAY[id]
+        -- Turn the displayed choice IDs into rows.
         FROM unnest(ARRAY[${Prisma.join(items.map(item => item.id))}]::uuid[]) AS start(id)
+        -- Keep the starting rows and add the next steps below.
         UNION ALL
+        -- Keep the same starting choice and move to its next dependency.
         SELECT reachable.candidate_id, dependency.depends_on_asset_id,
+          -- Add the next asset ID to this path, for example [B] becomes [B, C].
           reachable.visited || dependency.depends_on_asset_id
+        -- Read saved dependency links.
         FROM public.asset_dependencies AS dependency
+        -- Find links that start at the asset we are currently checking.
         JOIN reachable ON dependency.asset_id = reachable.id
+        -- Stop going further after reaching A.
         WHERE reachable.id <> ${assetId}::uuid
+          -- Do not visit an ID twice on the same path, so old cycles cannot loop forever.
           AND NOT dependency.depends_on_asset_id = ANY(reachable.visited)
+      -- Keep paths that reached A. These choices would create a cycle.
       ), found AS (
+        -- Keep one path for each blocked choice.
         SELECT DISTINCT ON (candidate_id) candidate_id,
+          -- Add A at the start: [B, C, A] becomes [A, B, C, A].
           ARRAY[${assetId}::uuid] || visited AS ids
+        -- Only keep paths whose current asset is A.
         FROM reachable WHERE id = ${assetId}::uuid
+        -- Choose the shortest found path for each choice.
         ORDER BY candidate_id, cardinality(visited), visited
       )
+      -- Return the blocked choice ID and a readable cycle path.
       SELECT candidate_id, ARRAY(
+        -- Show asset codes and names instead of raw IDs.
         SELECT asset.asset_code || ' — ' || asset.name
+        -- Turn the path IDs into rows and remember their positions.
         FROM unnest(found.ids) WITH ORDINALITY AS step(id, position)
+        -- Find the asset details for each ID in the path.
         JOIN public.assets AS asset ON asset.id = step.id
+        -- Keep the original path order: A -> B -> C -> A.
         ORDER BY step.position
       ) AS path FROM found
     `);
@@ -571,26 +592,32 @@ export const assetsRepository = {
     }));
   },
   linkContext(assetId: string, input: LinkAssetContextInput, userId: string) {
+    // Save links and history together. If a write fails, undo all changes.
     return prisma.$transaction(
+      // tx is the Prisma client for this transaction.
       async (tx) => {
+        // Check again that the user is an active Security Officer.
         const actor = await tx.users.findUnique({
           where: { id: userId },
           select: { role: true, status: true },
         });
         if (!actor || actor.status !== 'ACTIVE' || actor.role !== 'SECURITY_OFFICER')
           return { kind: 'forbidden' } as const;
+        // Read the current links. Only an active asset can be changed.
         const current = await tx.assets.findUnique({
           where: { id: assetId },
           select: contextSelect,
         });
         if (!current) return { kind: 'not_found' } as const;
         if (current.status !== 'ACTIVE') return { kind: 'archived' } as const;
+        // Compare saved IDs with the requested IDs to find new links.
         const oldDependencies = current.asset_dependencies_asset_dependencies_asset_idToassets.map(
           (link) => link.depends_on_asset_id,
         );
         const oldSources = current.asset_event_sources.map((link) => link.event_source_id);
         const addedDependencies = input.dependencyIds.filter((id) => !oldDependencies.includes(id));
         const addedSources = input.eventSourceIds.filter((id) => !oldSources.includes(id));
+        // New links must point to active records. Existing links may be kept.
         if (
           input.businessServiceId &&
           input.businessServiceId !== current.business_service_id &&
@@ -614,32 +641,55 @@ export const assetsRepository = {
           })) !== addedSources.length
         )
           return { kind: 'invalid_source' } as const;
-        // Track visited nodes per path so pre-existing cycles terminate safely.
+        // Follow dependencies from each selected asset back to the asset being edited.
+        // Example: adding A -> B is blocked if B already leads to A through C.
+        // Remember visited assets on each path so old cycles cannot cause an endless loop.
+        // The query returns one cycle, using asset codes and names in path order.
         if (input.dependencyIds.length) {
           const [cycle] = await tx.$queryRaw<
             Array<{ has_cycle: boolean; path: string[] }>
           >(Prisma.sql`
+          -- A is the asset being edited. The user wants A to depend on B.
+          -- Follow saved links from B. Reaching A means a cycle: A -> B -> C -> A.
           WITH RECURSIVE reachable(id, visited) AS (
+            -- Start at each selected dependency B, with a visited list [B].
+            -- unnest turns the selected UUID array into rows.
             SELECT id, ARRAY[id] FROM unnest(ARRAY[${Prisma.join(input.dependencyIds)}]::uuid[]) AS start(id)
+            -- Keep the starting rows and add each next step.
             UNION ALL
+            -- Move to the next dependency and add its ID to the path.
             SELECT dependency.depends_on_asset_id, reachable.visited || dependency.depends_on_asset_id
+            -- Read saved links, such as B -> C and C -> A.
             FROM public.asset_dependencies AS dependency
+            -- Find links starting at the asset currently being checked.
             JOIN reachable ON dependency.asset_id = reachable.id
+            -- After reaching A, keep that path but do not follow more links from A.
             WHERE reachable.id <> ${assetId}::uuid
+              -- Skip IDs already on this path to avoid an endless loop.
               AND NOT dependency.depends_on_asset_id = ANY(reachable.visited)
+          -- Find a path that returned to A.
           ), found AS (
+            -- Add A to the front: [B, C, A] becomes [A, B, C, A].
             SELECT ARRAY[${assetId}::uuid] || visited AS ids
+            -- One cycle is enough to reject this save. No matching row means no cycle found.
             FROM reachable WHERE id = ${assetId}::uuid LIMIT 1
           )
+          -- Return a cycle flag and the path to show in the error message.
           SELECT true AS has_cycle, ARRAY(
+            -- Replace raw IDs with asset codes and names.
             SELECT asset.asset_code || ' — ' || asset.name
+            -- Make one row per path step and remember the step number.
             FROM unnest(found.ids) WITH ORDINALITY AS step(id, position)
+            -- Read the asset details for each path step.
             JOIN public.assets AS asset ON asset.id = step.id
+            -- Keep the steps in path order: A -> B -> C -> A.
             ORDER BY step.position
           ) AS path FROM found
         `);
+          // Stop before saving if the selected links would create a cycle.
           if (cycle?.has_cycle) return { kind: 'cycle', path: cycle.path ?? [] } as const;
         }
+        // No link changes means no write or new history. ID order does not matter.
         if (
           current.business_service_id === input.businessServiceId &&
           sameIds(oldDependencies, input.dependencyIds) &&
@@ -650,17 +700,21 @@ export const assetsRepository = {
             asset: { id: current.id, updated_at: current.updated_at },
           } as const;
         }
+        // Keep the old context for the before/after history.
         const before = contextSnapshot(current);
+        // Save the service and change only the links that were added or removed.
         const asset = await tx.assets.update({
           where: { id: assetId },
           data: {
             business_service_id: input.businessServiceId,
             asset_dependencies_asset_dependencies_asset_idToassets: {
+              // Remove links, not the assets. Keep links that are still selected.
               deleteMany: { depends_on_asset_id: { notIn: input.dependencyIds } },
               create: addedDependencies.map((id) => ({
                 assets_asset_dependencies_depends_on_asset_idToassets: { connect: { id } },
               })),
             },
+            // Remove or add source links without deleting the event sources.
             asset_event_sources: {
               deleteMany: { event_source_id: { notIn: input.eventSourceIds } },
               create: addedSources.map((id) => ({ event_source_id: id })),
@@ -670,6 +724,7 @@ export const assetsRepository = {
         });
         const after = contextSnapshot(asset);
         const at = new Date();
+        // Record who changed the links and the old/new context using the same tx.
         await auditWriter.record(
           {
             actorType: 'USER',
@@ -686,6 +741,7 @@ export const assetsRepository = {
         );
         return { kind: 'updated', asset: { id: asset.id, updated_at: asset.updated_at } } as const;
       },
+      // Detect conflicting changes; wait up to 5 seconds and run for up to 15 seconds.
       { isolationLevel: 'Serializable', maxWait: 5000, timeout: 15000 },
     );
   },
