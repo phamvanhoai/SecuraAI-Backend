@@ -11,12 +11,12 @@ describe('atomic archive', () => {
     vi.resetAllMocks();
     mocks.transaction.mockImplementation(async (callback: (tx: typeof mocks.tx) => Promise<unknown>) => callback(mocks.tx));
     mocks.tx.users.findUnique.mockResolvedValue({ role: 'SECURITY_OFFICER', status: 'ACTIVE' });
-    mocks.tx.assets.findUnique.mockResolvedValue({ status: 'ACTIVE', archived_at: null });
+    mocks.tx.assets.findUnique.mockResolvedValue({ asset_code: 'AST-TEST', status: 'ACTIVE', archived_at: null });
     mocks.tx.asset_dependencies.count.mockResolvedValue(0);
     mocks.tx.audit_logs.findFirst.mockResolvedValue({ record_hash: 'previous-asset-hash' });
     mocks.tx.$queryRaw.mockResolvedValue([{ at: new Date('2026-10-02T00:00:00Z') }]);
   });
-  const archive = () => assetsRepository.archive('asset', 'officer', 'Retired', 'request');
+  const archive = () => assetsRepository.archive('asset', 'officer', 'Retired', 'request', 'AST-TEST');
   it('writes metadata and audit together in a serializable transaction', async () => {
     expect(await archive()).toEqual({ kind: 'updated' });
     const expectedHash = createHash('sha256').update(JSON.stringify({
@@ -32,6 +32,16 @@ describe('atomic archive', () => {
     expect(mocks.tx.assets.update).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ status: 'ARCHIVED', archived_by: 'officer', archive_reason: 'Retired', archived_at: expect.any(Date) }) }));
     expect(mocks.tx.audit_logs.create).toHaveBeenCalledWith(expect.objectContaining({ data: expect.objectContaining({ actor_user_id: 'officer', action: 'ASSET_ARCHIVED', resource_id: 'asset', correlation_id: 'request', previous_hash: 'previous-asset-hash', record_hash: expect.stringMatching(/^[a-f0-9]{64}$/), after_data: expect.objectContaining({ archiveReason: 'Retired' }) }) }));
   });
+  it('rejects a wrong confirmation before any write', async () => {
+    expect(await assetsRepository.archive('asset', 'officer', 'Retired', null, 'WRONG')).toEqual({ kind: 'confirmation_mismatch' });
+    expect(mocks.tx.assets.update).not.toHaveBeenCalled();
+    expect(mocks.tx.audit_logs.create).not.toHaveBeenCalled();
+  });
+  it('rejects a wrong confirmation code before any write', async () => {
+    expect(await assetsRepository.archive('asset', 'officer', 'Retired', null, 'AST-WRONG')).toEqual({ kind: 'confirmation_mismatch' });
+    expect(mocks.tx.assets.update).not.toHaveBeenCalled();
+    expect(mocks.tx.audit_logs.create).not.toHaveBeenCalled();
+  });
   it('checks incoming active dependencies and preserves links', async () => {
     mocks.tx.asset_dependencies.count.mockResolvedValue(1);
     mocks.tx.asset_dependencies.findMany.mockResolvedValue([]);
@@ -41,7 +51,7 @@ describe('atomic archive', () => {
     expect(mocks.tx.audit_logs.create).not.toHaveBeenCalled();
   });
   it('rechecks asset status', async () => {
-    mocks.tx.assets.findUnique.mockResolvedValue({ status: 'ARCHIVED', archived_at: new Date() });
+    mocks.tx.assets.findUnique.mockResolvedValue({ asset_code: 'AST-TEST', status: 'ARCHIVED', archived_at: new Date() });
     expect(await archive()).toEqual({ kind: 'archived' });
     expect(mocks.tx.assets.update).not.toHaveBeenCalled();
   });

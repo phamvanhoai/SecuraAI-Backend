@@ -216,34 +216,14 @@ export const assetsRepository = {
       }),
     ]);
   },
-  async validateCreateReferences(input: {
-    ownerUserId?: string;
-    businessServiceId?: string;
-    dependencyIds: string[];
-    eventSourceIds: string[];
-  }) {
-    const [owner, service, dependencies, sources] = await Promise.all([
-      input.ownerUserId
-        ? prisma.users.findFirst({
-            where: { id: input.ownerUserId, AND: [responsibilityWhere('ASSET_OWNER', false)] },
-            select: { id: true },
-          })
-        : null,
-      input.businessServiceId
-        ? prisma.business_services.findFirst({
-            where: { id: input.businessServiceId, status: 'ACTIVE' },
-            select: { id: true },
-          })
-        : null,
-      prisma.assets.count({ where: { id: { in: input.dependencyIds }, status: 'ACTIVE' } }),
-      prisma.event_sources.count({ where: { id: { in: input.eventSourceIds }, status: 'ACTIVE' } }),
-    ]);
-    return {
-      ownerValid: !input.ownerUserId || Boolean(owner),
-      serviceValid: !input.businessServiceId || Boolean(service),
-      dependenciesValid: dependencies === input.dependencyIds.length,
-      eventSourcesValid: sources === input.eventSourceIds.length,
-    };
+  async validateCreateReferences(input: { ownerUserId?: string }) {
+    const owner = input.ownerUserId
+      ? await prisma.users.findFirst({
+          where: { id: input.ownerUserId, AND: [responsibilityWhere('ASSET_OWNER', false)] },
+          select: { id: true },
+        })
+      : null;
+    return { ownerValid: !input.ownerUserId || Boolean(owner) };
   },
   create(actorUserId: string, assetCode: string, input: CreateAssetInput) {
     return prisma.$transaction(async (tx) => {
@@ -263,18 +243,6 @@ export const assetsRepository = {
         ...(input.description ? { description: input.description } : {}),
         ...(input.ownerUserId ? { owner_user_id: input.ownerUserId } : {}),
         business_service_id: null,
-        asset_dependencies_asset_dependencies_asset_idToassets: {
-          create: input.dependencies.map((dependency) => ({
-            assets_asset_dependencies_depends_on_asset_idToassets: {
-              connect: { id: dependency.assetId },
-            },
-            ...(dependency.type ? { dependency_type: dependency.type } : {}),
-            ...(dependency.description ? { description: dependency.description } : {}),
-          })),
-        },
-        asset_event_sources: {
-          create: input.eventSourceIds.map((eventSourceId) => ({ event_source_id: eventSourceId })),
-        },
       },
       select,
     });
@@ -285,12 +253,14 @@ export const assetsRepository = {
       name: input.name, asset_type: input.assetType, description: input.description,
     }, select });
   },
-  archive(assetId: string, userId: string, reason: string, correlationId: string | null) {
+  archive(assetId: string, userId: string, reason: string, correlationId: string | null, confirmationCode: string) {
     return prisma.$transaction(async (tx) => {
       const actor = await tx.users.findUnique({ where: { id: userId }, select: { role: true, status: true } });
       if (!actor || actor.status !== 'ACTIVE' || actor.role !== 'SECURITY_OFFICER') return { kind: 'forbidden' } as const;
-      const asset = await tx.assets.findUnique({ where: { id: assetId }, select: { status: true, archived_at: true } });
+      await tx.$queryRaw`SELECT id FROM public.assets WHERE id = ${assetId}::uuid FOR UPDATE`;
+      const asset = await tx.assets.findUnique({ where: { id: assetId }, select: { asset_code: true, status: true, archived_at: true } });
       if (!asset) return { kind: 'not_found' } as const;
+      if (confirmationCode.trim() !== asset.asset_code) return { kind: 'confirmation_mismatch' } as const;
       if (asset.status !== 'ACTIVE') return { kind: 'archived' } as const;
       const dependencyWhere = { depends_on_asset_id: assetId, assets_asset_dependencies_asset_idToassets: { status: 'ACTIVE' as const } };
       const count = await tx.asset_dependencies.count({ where: dependencyWhere });

@@ -111,12 +111,12 @@ export const assetsService = {
       classifiedAt: updated.classified_at,
     };
   },
-  async assignOwner(userId: string, assetId: string, input: AssignAssetOwnerInput) { const actor = await activeActor(userId); if (actor.role !== 'SECURITY_OFFICER') throw new AppError(403, 'FORBIDDEN', 'Security Officer role required'); const item = await assetsRepository.findById(assetId); if (!item) throw new AppError(404, 'ASSET_NOT_FOUND', 'Asset not found'); if (item.status === 'ARCHIVED') throw new AppError(409, 'ASSET_ARCHIVED', 'Archived assets cannot be reassigned'); if (item.owner_user_id === input.ownerUserId) return { assetId, previousOwner: person(item.users_assets_owner_user_idTousers), owner: person(item.users_assets_owner_user_idTousers), changed: false, assignedAt: null }; if (input.ownerUserId) { const references = await assetsRepository.validateCreateReferences({ ownerUserId: input.ownerUserId, dependencyIds: [], eventSourceIds: [] }); if (!references.ownerValid) throw new AppError(422, 'INVALID_ASSET_OWNER', 'Selected asset owner is unavailable'); } const updated = await assetsRepository.assignOwner(assetId, input.ownerUserId); return { assetId, previousOwner: person(item.users_assets_owner_user_idTousers), owner: person(updated.users_assets_owner_user_idTousers), changed: true, assignedAt: updated.updated_at }; },
+  async assignOwner(userId: string, assetId: string, input: AssignAssetOwnerInput) { const actor = await activeActor(userId); if (actor.role !== 'SECURITY_OFFICER') throw new AppError(403, 'FORBIDDEN', 'Security Officer role required'); const item = await assetsRepository.findById(assetId); if (!item) throw new AppError(404, 'ASSET_NOT_FOUND', 'Asset not found'); if (item.status === 'ARCHIVED') throw new AppError(409, 'ASSET_ARCHIVED', 'Archived assets cannot be reassigned'); if (item.owner_user_id === input.ownerUserId) return { assetId, previousOwner: person(item.users_assets_owner_user_idTousers), owner: person(item.users_assets_owner_user_idTousers), changed: false, assignedAt: null }; if (input.ownerUserId) { const references = await assetsRepository.validateCreateReferences({ ownerUserId: input.ownerUserId }); if (!references.ownerValid) throw new AppError(422, 'INVALID_ASSET_OWNER', 'Selected asset owner is unavailable'); } const updated = await assetsRepository.assignOwner(assetId, input.ownerUserId); return { assetId, previousOwner: person(item.users_assets_owner_user_idTousers), owner: person(updated.users_assets_owner_user_idTousers), changed: true, assignedAt: updated.updated_at }; },
   async archive(userId: string, assetId: string, input: ArchiveAssetInput, correlationId: string | null = null) {
     const actor = await activeActor(userId);
     if (actor.role !== 'SECURITY_OFFICER') throw new AppError(403, 'FORBIDDEN', 'Security Officer role required');
     let result;
-    try { result = await assetsRepository.archive(assetId, userId, input.reason, correlationId); }
+    try { result = await assetsRepository.archive(assetId, userId, input.reason, correlationId, input.confirmationCode); }
     catch (error: unknown) {
       if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2034') throw new AppError(409, 'ASSET_ARCHIVE_CONFLICT', 'Asset or dependencies changed concurrently. Reload and try again.');
       if (typeof error === 'object' && error !== null && 'code' in error && error.code === 'P2028') throw new AppError(503, 'ASSET_ARCHIVE_UNAVAILABLE', 'Archiving could not complete in time. Please try again.');
@@ -124,6 +124,7 @@ export const assetsService = {
     }
     if (result.kind === 'forbidden') throw new AppError(403, 'FORBIDDEN', 'Active Security Officer required');
     if (result.kind === 'not_found') throw new AppError(404, 'ASSET_NOT_FOUND', 'Asset not found');
+    if (result.kind === 'confirmation_mismatch') throw new AppError(422, 'ASSET_CONFIRMATION_MISMATCH', 'Asset code does not match. Enter the exact asset code to confirm archive.');
     if (result.kind === 'archived') throw new AppError(409, 'ASSET_ALREADY_ARCHIVED', 'Asset is already archived. Reload the list.');
     if (result.kind === 'dependencies') {
       const names = result.dependencies.map((link) => `${link.assets_asset_dependencies_asset_idToassets.asset_code} — ${link.assets_asset_dependencies_asset_idToassets.name}`).join('; ');
@@ -167,25 +168,9 @@ export const assetsService = {
       throw new AppError(403, 'FORBIDDEN', 'Security Officer role required');
     const references = await assetsRepository.validateCreateReferences({
       ...(input.ownerUserId ? { ownerUserId: input.ownerUserId } : {}),
-      dependencyIds: input.dependencies.map((item) => item.assetId),
-      eventSourceIds: input.eventSourceIds,
     });
     if (!references.ownerValid)
       throw new AppError(422, 'INVALID_ASSET_OWNER', 'Selected asset owner is unavailable');
-    if (!references.serviceValid)
-      throw new AppError(
-        422,
-        'INVALID_BUSINESS_SERVICE',
-        'Selected business service is unavailable',
-      );
-    if (!references.dependenciesValid)
-      throw new AppError(
-        422,
-        'INVALID_ASSET_DEPENDENCY',
-        'One or more dependencies are unavailable',
-      );
-    if (!references.eventSourcesValid)
-      throw new AppError(422, 'INVALID_EVENT_SOURCE', 'One or more event sources are unavailable');
     try {
       const item = await assetsRepository.create(userId, generateAssetCode(), input);
       return {
