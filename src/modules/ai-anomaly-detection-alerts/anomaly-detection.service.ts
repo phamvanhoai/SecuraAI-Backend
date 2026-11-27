@@ -22,6 +22,8 @@ import {
 } from './ml-shadow.client.js';
 import { requestLlmClassification } from './llm-classifier.client.js';
 
+// Represent one event that could not complete the required ML or LLM stage.
+// The batch keeps this result so the failure can be reported and retried.
 type ProcessingFailure = {
   eventId: string;
   processingFailure: {
@@ -31,6 +33,8 @@ type ProcessingFailure = {
   };
 };
 
+// Represent one event that completed detection and is ready to be persisted.
+// It contains the final score, applied threshold, evidence and alert-group key.
 type SuccessfulDetection = {
   id: string;
   eventId: string;
@@ -46,17 +50,12 @@ type SuccessfulDetection = {
   explanationGeneratedAt?: Date;
 };
 
+// Validate the deployed model parameters before any event is processed.
+// Defaults keep older model records compatible with the current detection flow.
 const parametersSchema = z
   .object({
     threshold: z.number().min(0.5).max(1).default(0.8),
     detectionPolicy: detectionPolicySchema.default(() => detectionPolicySchema.parse({})),
-    weights: z
-      .object({
-        severity: z.number().min(0).max(1),
-        rarity: z.number().min(0).max(1),
-        offHours: z.number().min(0).max(1),
-      })
-      .default({ severity: 0.45, rarity: 0.35, offHours: 0.2 }),
     assetThresholds: z
       .record(
         z.string(),
@@ -65,6 +64,8 @@ const parametersSchema = z
       .default({}),
   })
   .passthrough();
+
+// Hold the last in-process detection run so later runs wait for it to finish.
 let detectionQueue: Promise<void> = Promise.resolve();
 
 // Create the empty rule decision that AI-only mode later replaces with ML/LLM results.
@@ -115,6 +116,7 @@ function createAiOnlyDecision(event: ContextEvent): ContextualDecision {
 // Queue detection runs so two batches do not overlap inside this Node process.
 async function withDetectionLock<T>(operation: () => Promise<T>): Promise<T> {
   const previous = detectionQueue;
+  // This callback releases the next queued detection batch.
   let release = (): void => undefined;
   detectionQueue = new Promise<void>((resolve) => {
     release = resolve;
@@ -128,7 +130,7 @@ async function withDetectionLock<T>(operation: () => Promise<T>): Promise<T> {
 }
 
 export const anomalyDetectionService = {
-  // Authorize UC 94 and run one bounded, non-overlapping manual batch.
+  // Authorize Run Anomaly Detection and execute one bounded manual batch.
   async run(
     userId: string,
     input: RunAnomalyDetectionBody,
@@ -154,17 +156,14 @@ export const anomalyDetectionService = {
       ...(context?.userAgent ? { userAgent: context.userAgent } : {}),
     };
     return withDetectionLock(async () => {
-      // Manual execution currently processes all pending events. lookbackHours
-      // remains in the response contract but is not used as a database filter here.
       const result = await runDetection(
         model,
-        { lookbackHours: null, maxEvents: input.maxEvents, eventScope: 'ALL' },
+        { maxEvents: input.maxEvents, eventScope: 'ALL' },
         audit,
       );
       const hasMore = await anomalyDetectionRepository.hasPendingEvents(model.id);
       return {
         ...result,
-        lookbackHours: input.lookbackHours,
         scope: 'ALL_PENDING' as const,
         hasMore,
       };
@@ -178,7 +177,7 @@ export const anomalyDetectionService = {
     return withDetectionLock(() =>
       runDetection(
         model,
-        { lookbackHours: null, maxEvents: input.maxEvents, eventScope: 'WAZUH_REALTIME' },
+        { maxEvents: input.maxEvents, eventScope: 'WAZUH_REALTIME' },
         { actor: { type: 'SYSTEM' } },
       ),
     );
@@ -191,7 +190,6 @@ export const anomalyDetectionService = {
 async function runDetection(
   model: Awaited<ReturnType<typeof anomalyDetectionRepository.findDeployedModel>> & {},
   input: {
-    lookbackHours: number | null;
     maxEvents: number;
     eventScope: 'ALL' | 'WAZUH_REALTIME';
   },
@@ -210,12 +208,9 @@ async function runDetection(
       'The deployed detection configuration is invalid. Check its timezone, working hours and rule thresholds.',
     );
   const parameters = parsed.data;
-  const since =
-    input.lookbackHours === null ? null : new Date(Date.now() - input.lookbackHours * 3_600_000);
   // Collect at most maxEvents results not processed by this model/engine.
   const batch = await anomalyDetectionRepository.findPendingEvents(
     model.id,
-    since,
     input.maxEvents,
     input.eventScope,
   );
@@ -232,6 +227,8 @@ async function runDetection(
       evaluated.push(
         ...(await Promise.all(
           batch.events.slice(offset, offset + 4).map(async (event) => {
+            // Use case: Generate Anomaly Score.
+            // Build the event's historical decision before optional AI review.
             let decision: ContextualDecision;
             if (aiOnlyMode) {
               decision = createAiOnlyDecision(event);
@@ -242,7 +239,6 @@ async function runDetection(
                 context.events,
                 context.truncated,
                 parameters.detectionPolicy,
-                parameters.weights,
               );
               if (!decision.baselineReady && env.DETECTION_PIPELINE_ENABLED) {
                 const peers = await anomalyDetectionRepository.findPeerContext(event);
@@ -251,11 +247,12 @@ async function runDetection(
                   peers.events,
                   peers.truncated,
                   parameters.detectionPolicy,
-                  parameters.weights,
                   true,
                 );
               }
             }
+            // Start with the statistical score and select the model-level or
+            // asset-specific threshold that applies to this event.
             let score = decision.score;
             const assetId = event.event_entity_mappings[0]?.asset_id;
             const customThreshold = assetId ? parameters.assetThresholds[assetId] : undefined;
@@ -405,6 +402,8 @@ async function runDetection(
                 }
               }
             }
+            // The generated score, threshold and readiness state are now final.
+            // Generate Anomaly Alert uses isAnomaly in the next part of this flow.
             // Related anomalies in one 15-minute bucket reuse an explanation.
             const explanationKey = `${decision.groupKey}:${Math.floor(event.occurred_at.getTime() / (15 * 60_000))}`;
             if (isAnomaly && !explanations.has(explanationKey))
@@ -454,13 +453,7 @@ async function runDetection(
       modelVersionId: model.id,
       modelName: model.model_name,
       modelVersion: model.version,
-      lookbackHours: input.lookbackHours,
-      scope:
-        input.eventScope === 'WAZUH_REALTIME'
-          ? 'WAZUH_REALTIME'
-          : input.lookbackHours === null
-            ? 'ALL_PENDING'
-            : 'LOOKBACK_WINDOW',
+      scope: input.eventScope === 'WAZUH_REALTIME' ? 'WAZUH_REALTIME' : 'ALL_PENDING',
       eventsEvaluated: evaluated.length,
       processingFailures: failures.length,
       anomaliesDetected: detections.filter((item) => item.isAnomaly).length,

@@ -39,7 +39,6 @@ describe('POST /api/v1/anomaly-detections/runs', () => {
       modelVersionId: '00000000-0000-4000-8000-000000000001',
       modelName: 'detector',
       modelVersion: '2',
-      lookbackHours: 24,
       scope: 'ALL_PENDING',
       hasMore: false,
       eventsEvaluated: 1,
@@ -53,12 +52,12 @@ describe('POST /api/v1/anomaly-detections/runs', () => {
     const response = await request(app)
       .post('/api/v1/anomaly-detections/runs')
       .set('Authorization', `Bearer ${token}`)
-      .send({ lookbackHours: 24, maxEvents: 100 });
+      .send({ maxEvents: 100 });
     expect(response.status).toBe(200);
     expect(response.body.data).toMatchObject({ eventsEvaluated: 1, alertsCreated: 1 });
     expect(anomalyDetectionService.run).toHaveBeenCalledWith(
       userId,
-      { lookbackHours: 24, maxEvents: 100 },
+      { maxEvents: 100 },
       expect.any(String),
       expect.objectContaining({
         sourceIp: expect.any(String),

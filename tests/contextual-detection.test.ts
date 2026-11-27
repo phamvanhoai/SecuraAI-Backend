@@ -38,7 +38,7 @@ describe('contextual detection rules v1', () => {
       account_identifier: `peer-${i % 5}`,
     }));
     expect(evaluateContext(target, peers, false, policy).baselineReady).toBe(false);
-    const fallback = evaluateContext(target, peers, false, policy, undefined, true);
+    const fallback = evaluateContext(target, peers, false, policy, true);
     expect(fallback.baselineReady).toBe(true);
     expect(fallback.score).toBeGreaterThan(0.9);
     expect(
@@ -47,7 +47,6 @@ describe('contextual detection rules v1', () => {
         peers.map((p) => ({ ...p, account_identifier: 'one-peer' })),
         false,
         policy,
-        undefined,
         true,
       ).baselineReady,
     ).toBe(false);
@@ -57,7 +56,6 @@ describe('contextual detection rules v1', () => {
         peers,
         false,
         policy,
-        undefined,
         true,
       ).baselineReady,
     ).toBe(false);

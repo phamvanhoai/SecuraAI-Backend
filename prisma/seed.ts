@@ -68,7 +68,6 @@ async function seedAnomalyDetectionDemo(transaction: Prisma.TransactionClient): 
     update: {
       parameters: {
         threshold: 0.7,
-        weights: { severity: 0.45, rarity: 0.35, offHours: 0.2 },
       },
     },
     create: {
@@ -79,7 +78,6 @@ async function seedAnomalyDetectionDemo(transaction: Prisma.TransactionClient): 
       status: 'EVALUATED',
       parameters: {
         threshold: 0.7,
-        weights: { severity: 0.45, rarity: 0.35, offHours: 0.2 },
       },
     },
   });

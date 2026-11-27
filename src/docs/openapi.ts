@@ -3854,15 +3854,6 @@ export const openApiSpec = {
                 type: 'object',
                 additionalProperties: false,
                 properties: {
-                  lookbackHours: {
-                    type: 'integer',
-                    minimum: 1,
-                    maximum: 720,
-                    default: 24,
-                    deprecated: true,
-                    description:
-                      'Retained for client compatibility. Manual recovery now processes all pending events regardless of age.',
-                  },
                   maxEvents: {
                     type: 'integer',
                     minimum: 1,
