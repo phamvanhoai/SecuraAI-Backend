@@ -16,6 +16,7 @@ import {
 
 export const incidentAssetsRouter = Router();
 
+// Supporting route for Link Incident to Asset: load linkable assets.
 incidentAssetsRouter.get(
   '/:incidentId/assets/options',
   authenticate,
@@ -23,6 +24,7 @@ incidentAssetsRouter.get(
   asyncHandler(getIncidentAssetOptions),
 );
 
+// Use case: Link Incident to Asset -> linkIncidentAsset.
 incidentAssetsRouter.post(
   '/:incidentId/assets',
   authenticate,
@@ -30,6 +32,7 @@ incidentAssetsRouter.post(
   asyncHandler(linkIncidentAsset),
 );
 
+// Supporting action: remove an existing incident-asset link.
 incidentAssetsRouter.delete(
   '/:incidentId/assets/:assetId',
   authenticate,

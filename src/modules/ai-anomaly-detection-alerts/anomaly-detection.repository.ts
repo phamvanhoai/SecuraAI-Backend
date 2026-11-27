@@ -30,6 +30,7 @@ export type DetectionEvent = Prisma.normalized_eventsGetPayload<{ select: typeof
 export type PendingEventScope = 'ALL' | 'WAZUH_REALTIME';
 
 export const anomalyDetectionRepository = {
+  // Load peer history when an entity-specific baseline is not ready.
   async findPeerContext(event: DetectionEvent) {
     const events = await prisma.normalized_events.findMany({
       where: {
@@ -46,6 +47,7 @@ export const anomalyDetectionRepository = {
     });
     return { events: events.slice(0, 5000), truncated: events.length > 5000 };
   },
+  // Load the event's own account/source history for baseline scoring.
   async findEventContext(event: DetectionEvent) {
     if (!event.account_identifier && !event.source_ip) return { events: [], truncated: false };
     const events = await prisma.normalized_events.findMany({
@@ -65,6 +67,7 @@ export const anomalyDetectionRepository = {
     });
     return { events: events.slice(0, 5000), truncated: events.length > 5000 };
   },
+  // Load 60 past minutes; the ML client derives the 1/5/15/60-minute windows.
   async findMlTemporalContext(event: DetectionEvent) {
     if (!event.account_identifier && !event.source_ip) return [];
     return prisma.normalized_events.findMany({
@@ -85,12 +88,14 @@ export const anomalyDetectionRepository = {
       take: 5001,
     });
   },
+  // Load the authenticated account fields required by service authorization.
   findActor(userId: string) {
     return prisma.users.findUnique({
       where: { id: userId },
       select: { id: true, role: true, status: true },
     });
   },
+  // Load the newest deployed model and its detection parameters.
   findDeployedModel() {
     return prisma.ai_model_versions.findFirst({
       where: { status: 'DEPLOYED' },
@@ -98,9 +103,9 @@ export const anomalyDetectionRepository = {
       select: { id: true, model_name: true, version: true, parameters: true },
     });
   },
+  // Claim/query at most `take` events not processed by this model/engine.
   async findPendingEvents(
     modelVersionId: string,
-    since: Date | null,
     take: number,
     scope: PendingEventScope,
   ) {
@@ -115,7 +120,6 @@ export const anomalyDetectionRepository = {
       });
       return { events, leaseToken: claim.token };
     }
-    const timeWindow = since ? { occurred_at: { gte: since } } : {};
     const sourceScope: Prisma.normalized_eventsWhereInput =
       scope === 'WAZUH_REALTIME'
         ? {
@@ -125,7 +129,6 @@ export const anomalyDetectionRepository = {
         : {};
     const events = await prisma.normalized_events.findMany({
       where: {
-        ...timeWindow,
         ...sourceScope,
         anomaly_detections: {
           none: { model_version_id: modelVersionId, engine_version: engineVersion },
@@ -137,6 +140,7 @@ export const anomalyDetectionRepository = {
     });
     return { events };
   },
+  // Check whether another batch remains after the current run finishes.
   async hasPendingEvents(modelVersionId: string) {
     if (env.DETECTION_PIPELINE_ENABLED) {
       const rows = await prisma.$queryRaw<{ pending: boolean }[]>`SELECT EXISTS (
@@ -157,6 +161,7 @@ export const anomalyDetectionRepository = {
     });
     return pending !== null;
   },
+  // Atomically save detections, evidence, grouped alerts, jobs and audit data.
   persistRun(input: {
     leaseToken?: string | undefined;
     actor: { type: 'USER'; userId: string } | { type: 'SYSTEM' };
@@ -193,6 +198,8 @@ export const anomalyDetectionRepository = {
         // Serializes duplicate runs across worker processes, not only this Node instance.
         // Cast PostgreSQL's void result so Prisma can deserialize the acquired lock.
         await transaction.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${input.modelVersionId}, 0))::text AS locked`;
+        // Store the Generate Anomaly Score result and the threshold used for
+        // each event. Scores are immutable; skipDuplicates makes retries idempotent.
         const created = input.detections.length
           ? await transaction.anomaly_detections.createMany({
               data: input.detections.map((item) => ({
@@ -247,6 +254,7 @@ export const anomalyDetectionRepository = {
         const lockedAlerts = new Set<string>();
         const groupedEvidence: Prisma.anomaly_feature_contributionsCreateManyInput[] = [];
         const persistedAnomalyIds = new Set(persistedAnomalies.map((item) => item.id));
+        // Correlated anomalies within 15 minutes join an existing open alert.
         for (const { id } of input.detections
           .filter((item) => persistedAnomalyIds.has(item.id))
           .sort(
@@ -296,6 +304,7 @@ export const anomalyDetectionRepository = {
             else lockedAlerts.add(existing.detection_id);
           }
           if (existing) {
+            // Stronger grouped evidence raises alert severity without rewriting detections.
             const original = await transaction.anomaly_detections.findUniqueOrThrow({
               where: { id: existing.detection_id },
               select: {
@@ -379,6 +388,7 @@ export const anomalyDetectionRepository = {
             alertsGrouped += 1;
             continue;
           }
+          // No open group exists, so this detection starts a new alert.
           await transaction.anomaly_alerts.create({
             data: {
               detection_id: id,
@@ -419,6 +429,7 @@ export const anomalyDetectionRepository = {
             SELECT 'EXPLANATION',a.id,${input.modelVersionId}::uuid,${pipelineEngine} FROM anomaly_alerts a JOIN anomaly_detections d ON d.id=a.detection_id
             WHERE d.id IN (${Prisma.join(input.detections.map((d) => Prisma.sql`${d.id}::uuid`))}) ON CONFLICT DO NOTHING`;
         }
+        // Append the run summary to the hash-linked audit chain.
         const previous = await transaction.audit_logs.findFirst({
           orderBy: [{ occurred_at: 'desc' }, { id: 'desc' }],
           select: { record_hash: true },

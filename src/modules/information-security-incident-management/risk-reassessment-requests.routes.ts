@@ -14,6 +14,8 @@ import {
 } from './dto/create-risk-reassessment-request.dto.js';
 
 export const riskReassessmentRequestsRouter = Router();
+
+// Supporting route: view requests already created from the incident.
 riskReassessmentRequestsRouter.get(
   '/:incidentId/risk-reassessment-requests',
   authenticate,
@@ -23,12 +25,16 @@ riskReassessmentRequestsRouter.get(
   }),
   asyncHandler(listRiskReassessmentRequestHistory),
 );
+
+// Supporting route: load risks and findings allowed by the current code.
 riskReassessmentRequestsRouter.get(
   '/:incidentId/risk-reassessment-requests/options',
   authenticate,
   validate({ params: riskReassessmentRequestParamsSchema }),
   asyncHandler(getRiskReassessmentRequestOptions),
 );
+
+// Use case: Create Risk Reassessment Request -> createRiskReassessmentRequest.
 riskReassessmentRequestsRouter.post(
   '/:incidentId/risk-reassessment-requests',
   authenticate,

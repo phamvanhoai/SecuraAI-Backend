@@ -52,11 +52,13 @@ export interface ContextualDecision {
   groupKey: string;
 }
 
+// Narrow an unknown payload value to a readable object.
 function object(value: unknown): Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : {};
 }
+// Extract a stable application identifier from supported payload shapes.
 function application(event: ContextEvent): string | null {
   const payload = object(event.normalized_payload);
   const metadata = object(payload.metadata);
@@ -71,6 +73,7 @@ function application(event: ContextEvent): string | null {
     metadata.application;
   return typeof value === 'string' && value.trim() ? value.trim().slice(0, 255) : null;
 }
+// Identify failure event types for each supported event family.
 const failure = (event: ContextEvent): boolean =>
   (event.event_family === 'AUTHENTICATION'
     ? ['LOGIN_FAILURE', 'LOGIN_FAILED']
@@ -80,6 +83,7 @@ const failure = (event: ContextEvent): boolean =>
         ? ['ACCESS_DENIED']
         : []
   ).includes(event.event_type.toUpperCase());
+// Identify successful event types for each supported event family.
 const success = (event: ContextEvent): boolean =>
   (event.event_family === 'AUTHENTICATION'
     ? ['LOGIN_SUCCESS']
@@ -89,6 +93,7 @@ const success = (event: ContextEvent): boolean =>
         ? ['APPLICATION_LOGIN', 'ACCESS_GRANTED']
         : []
   ).includes(event.event_type.toUpperCase());
+// Normalize VPN and SSO into separate comparison protocols.
 const protocol = (event: ContextEvent): string =>
   event.event_type.toUpperCase().startsWith('SSO_')
     ? 'SSO'
@@ -96,13 +101,12 @@ const protocol = (event: ContextEvent): string =>
       ? 'VPN'
       : event.event_family;
 
-/** History must be from this source and contain no events later than the evaluated event. */
+/** Generate Anomaly Score from past-only history and return its supporting evidence. */
 export function evaluateContext(
   event: ContextEvent,
   history: readonly ContextEvent[],
   truncated: boolean,
   policy: DetectionPolicy,
-  weights = { severity: 0.45, rarity: 0.35, offHours: 0.2 },
   peer = false,
 ): ContextualDecision {
   const time = event.occurred_at.getTime();
@@ -119,13 +123,17 @@ export function evaluateContext(
       item.occurred_at.getTime() >= time - policy.windowMinutes * 60_000 &&
       item.event_family === event.event_family,
   );
+  // Check whether a historical event belongs to the same account.
   const sameActor = (item: ContextEvent) =>
     Boolean(event.account_identifier && item.account_identifier === event.account_identifier);
+  // Check whether a historical event used the same source IP.
   const sameIp = (item: ContextEvent) =>
     Boolean(event.source_ip && item.source_ip === event.source_ip);
+  // Prefer account identity, falling back to source IP when no account exists.
   const samePrincipal = (item: ContextEvent) =>
     event.account_identifier ? sameActor(item) : sameIp(item);
   const app = application(event);
+  // Keep application-access comparisons inside the same application.
   const sameApplication = (item: ContextEvent) => application(item) === app;
   const related = window.filter(
     (item) =>
@@ -176,6 +184,7 @@ export function evaluateContext(
       : event.event_family === 'VPN_SSO'
         ? policy.vpnFailures
         : policy.authenticationFailures;
+  // Convert an event timestamp to the configured local-hour value.
   const hourOf = (date: Date) =>
     Number(
       new Intl.DateTimeFormat('en-GB', {
@@ -184,6 +193,7 @@ export function evaluateContext(
         hourCycle: 'h23',
       }).format(date),
     );
+  // Map database event fields to the statistical baseline input.
   const observation = (item: ContextEvent) => ({
     id: item.id,
     principal: item.account_identifier ?? item.source_ip,
@@ -305,7 +315,6 @@ export function evaluateContext(
     ['detection_group', key, 0],
     ['engine_version', 'contextual-rules-v1', 0],
     ['policy_snapshot', policy, 0],
-    ['legacy_weights_ignored', weights, 0],
   ];
   return {
     score,
@@ -324,6 +333,7 @@ export function evaluateContext(
 }
 
 export function detectionSeverity(score: number): 'LOW' | 'MEDIUM' | 'HIGH' | 'CRITICAL' {
+  // Map the final score to the severity stored on a new alert.
   if (score >= 0.9) return 'CRITICAL';
   if (score >= 0.75) return 'HIGH';
   if (score >= 0.5) return 'MEDIUM';

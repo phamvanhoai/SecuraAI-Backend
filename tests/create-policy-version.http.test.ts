@@ -6,7 +6,7 @@ const db = vi.hoisted(() => ({
   users: { findUnique: vi.fn() },
   policies: { findUnique: vi.fn(), update: vi.fn() },
   policy_versions: { findFirst: vi.fn(), findUnique: vi.fn(), create: vi.fn() },
-  audit_logs: { create: vi.fn() },
+  audit_logs: { create: vi.fn(), findFirst: vi.fn() },
   $queryRaw: vi.fn(),
 }));
 vi.mock('../src/database/prisma.js', () => ({

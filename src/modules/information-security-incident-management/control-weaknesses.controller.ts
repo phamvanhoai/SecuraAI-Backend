@@ -6,10 +6,12 @@ import {
   recordControlWeaknessBodySchema,
 } from './dto/record-control-weakness.dto.js';
 import { controlWeaknessesService } from './control-weaknesses.service.js';
+// Read the trusted user ID placed in response locals by authenticate.
 function userId(value: unknown) {
   if (typeof value !== 'string') throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
   return value;
 }
+// Return paginated control weaknesses already recorded for the incident.
 export const listControlWeaknessHistory: RequestHandler = async (req, res) => {
   const { incidentId } = controlWeaknessParamsSchema.parse(req.params);
   res.status(200).json({
@@ -21,6 +23,7 @@ export const listControlWeaknessHistory: RequestHandler = async (req, res) => {
     ),
   });
 };
+// Return linked controls that can be selected for a weakness record.
 export const getControlWeaknessOptions: RequestHandler = async (req, res) => {
   const { incidentId } = controlWeaknessParamsSchema.parse(req.params);
   res.status(200).json({
@@ -31,6 +34,7 @@ export const getControlWeaknessOptions: RequestHandler = async (req, res) => {
     ),
   });
 };
+// Parse the incident and weakness body, then ask the service to record it.
 export const recordControlWeakness: RequestHandler = async (req, res) => {
   const { incidentId } = controlWeaknessParamsSchema.parse(req.params);
   res.status(201).json({

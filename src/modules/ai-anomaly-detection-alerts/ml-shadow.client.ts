@@ -3,6 +3,7 @@ import { env } from '../../config/env.js';
 import type { DetectionEvent } from './anomaly-detection.repository.js';
 import type { ContextEvent } from './contextual-detection.js';
 
+// Validate the response returned by the separately deployed trained-model API.
 const responseSchema = z
   .object({
     label: z.enum(['BENIGN', 'MALICIOUS_APT']),
@@ -21,6 +22,8 @@ export type MlShadowResult =
   | { status: 'UNAVAILABLE'; reason: 'TIMEOUT' | 'NETWORK' | 'INVALID_RESPONSE' | 'HTTP_ERROR' };
 
 type JsonRecord = Record<string, unknown>;
+
+// Rolling event-time statistics sent with the current normalized event.
 export interface MlTemporalContext {
   events1m: number;
   failures1m: number;
@@ -38,27 +41,33 @@ export interface MlTemporalContext {
   failures60m: number;
 }
 
+// Narrow untrusted JSON to an object or return an empty object.
 function record(value: unknown): JsonRecord {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
     ? (value as JsonRecord)
     : {};
 }
 
+// Keep a non-empty string for the model payload.
 function stringValue(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() ? value : undefined;
 }
 
+// Convert a safe numeric value into the integer expected by the model.
 function integerValue(value: unknown): number | undefined {
   if (typeof value === 'number' && Number.isInteger(value)) return value;
   if (typeof value === 'string' && /^\d+$/.test(value)) return Number(value);
   return undefined;
 }
 
+// Convert boolean-like presence data into a model feature.
 function booleanPresence(value: unknown): boolean {
   if (typeof value === 'boolean') return value;
   return typeof value === 'string' && value.trim().length > 0;
 }
 
+// Build past-only 1/5/15/60-minute context for the same source and event family.
+// The current event is counted, but future events and unrelated sources are excluded.
 export function buildMlTemporalContext(
   event: DetectionEvent,
   history: readonly ContextEvent[],
@@ -85,6 +94,7 @@ export function buildMlTemporalContext(
     'APPLICATION_ACCESS_DENIED',
   ]);
   const context = [...prior, event];
+  // Count events and failures inside one requested rolling-time window.
   const summary = (minutes: number) => {
     const items = eligible.filter(
       (item) => item.occurred_at.getTime() >= time - minutes * 60_000,
@@ -122,6 +132,8 @@ export function buildMlTemporalContext(
   };
 }
 
+// Convert the normalized database event and temporal context into the
+// camelCase JSON contract expected by POST /v1/predict in Train-Model.
 export function buildMlPredictionPayload(
   event: DetectionEvent,
   temporal?: MlTemporalContext,
@@ -181,6 +193,8 @@ export function buildMlPredictionPayload(
   };
 }
 
+// Generate Anomaly Score: send one event and its temporal features to the
+// self-trained model, then validate the returned score and escalation threshold.
 export async function requestMlShadowPrediction(
   event: DetectionEvent,
   options: { baseUrl?: string; timeoutMs?: number; temporalContext?: MlTemporalContext } = {},
@@ -191,6 +205,7 @@ export async function requestMlShadowPrediction(
     options.timeoutMs ?? env.ML_SHADOW_TIMEOUT_MS,
   );
   try {
+    // ML_SHADOW_BASE_URL points to the separate Train-Model FastAPI service.
     const response = await fetch(`${options.baseUrl ?? env.ML_SHADOW_BASE_URL}/v1/predict`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
@@ -198,6 +213,7 @@ export async function requestMlShadowPrediction(
       signal: controller.signal,
     });
     if (!response.ok) return { status: 'UNAVAILABLE', reason: 'HTTP_ERROR' };
+    // Never trust an external model response until it passes the Zod schema.
     const parsed = responseSchema.safeParse(await response.json());
     return parsed.success
       ? { status: 'PREDICTED', prediction: parsed.data }

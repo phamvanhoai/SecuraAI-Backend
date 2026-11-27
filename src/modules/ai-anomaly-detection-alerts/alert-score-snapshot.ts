@@ -14,7 +14,7 @@ const snapshotSchema = z.object({
   ),
 });
 
-/** A peak is a read projection; original detections and their scores remain immutable. */
+/** Read the strongest grouped score without changing immutable detections. */
 export function peakSnapshot(
   features: readonly { feature_name: string; feature_value: string | null }[],
   originalScore: number,

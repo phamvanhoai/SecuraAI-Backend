@@ -2,18 +2,21 @@ import { prisma } from '../../database/prisma.js';
 import type { IncidentControlOptionsQuery } from './dto/link-incident-control.dto.js';
 
 export const incidentControlsRepository = {
+  // Load the account fields required for service authorization.
   findActor(userId: string) {
     return prisma.users.findUnique({
       where: { id: userId },
       select: { role: true, status: true },
     });
   },
+  // Load the incident state before listing or changing control links.
   findIncident(incidentId: string) {
     return prisma.incidents.findUnique({
       where: { id: incidentId },
       select: { id: true, incident_code: true, title: true, status: true },
     });
   },
+  // Confirm that the selected security control exists.
   findControl(controlId: string) {
     return prisma.security_controls.findUnique({
       where: { id: controlId },
@@ -26,6 +29,7 @@ export const incidentControlsRepository = {
       },
     });
   },
+  // Query controls and mark which ones are already linked to the incident.
   async findOptions(incidentId: string, query: IncidentControlOptionsQuery) {
     const relationshipFilter =
       query.scope === 'linked'
@@ -65,6 +69,7 @@ export const incidentControlsRepository = {
     ]);
     return { incident, controls, total };
   },
+  // Insert the many-to-many incident-control relationship.
   link(incidentId: string, controlId: string, linkedBy: string) {
     return prisma.incident_controls.create({
       data: { incident_id: incidentId, control_id: controlId, linked_by: linkedBy },
@@ -83,6 +88,7 @@ export const incidentControlsRepository = {
       },
     });
   },
+  // Remove one existing incident-to-control relationship.
   unlink(incidentId: string, controlId: string) {
     return prisma.incident_controls.deleteMany({
       where: { incident_id: incidentId, control_id: controlId },

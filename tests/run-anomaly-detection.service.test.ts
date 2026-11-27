@@ -150,7 +150,7 @@ describe('run anomaly detection service', () => {
       status: user_status.ACTIVE,
     });
     await expect(
-      anomalyDetectionService.run('u', { lookbackHours: 24, maxEvents: 100 }),
+      anomalyDetectionService.run('u', { maxEvents: 100 }),
     ).rejects.toMatchObject({ statusCode: 403, code: 'FORBIDDEN' });
   });
 
@@ -194,7 +194,7 @@ describe('run anomaly detection service', () => {
 
     const result = await anomalyDetectionService.run(
       'u',
-      { lookbackHours: 24, maxEvents: 100 },
+      { maxEvents: 100 },
       'request-id',
     );
 
@@ -211,7 +211,6 @@ describe('run anomaly detection service', () => {
     expect(anomalyDetectionRepository.findPendingEvents).toHaveBeenNthCalledWith(
       1,
       'model',
-      null,
       100,
       'ALL',
     );
@@ -273,7 +272,6 @@ describe('run anomaly detection service', () => {
     });
     expect(anomalyDetectionRepository.findPendingEvents).toHaveBeenCalledWith(
       'model',
-      null,
       100,
       'WAZUH_REALTIME',
     );
@@ -327,10 +325,7 @@ describe('run anomaly detection service', () => {
     });
     vi.mocked(anomalyDetectionRepository.hasPendingEvents).mockResolvedValueOnce(true);
 
-    const result = await anomalyDetectionService.run('u', {
-      lookbackHours: 24,
-      maxEvents: 100,
-    });
+    const result = await anomalyDetectionService.run('u', { maxEvents: 100 });
 
     expect(result).toMatchObject({
       eventsEvaluated: 100,
@@ -344,7 +339,6 @@ describe('run anomaly detection service', () => {
     expect(anomalyDetectionRepository.findPendingEvents).toHaveBeenNthCalledWith(
       1,
       'model',
-      null,
       100,
       'ALL',
     );

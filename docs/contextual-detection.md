@@ -25,9 +25,9 @@ Application rules require an explicit application identity in normalizedPayload.
 
 ## Scoring and thresholds
 
-A rule match contributes to the evidence-weighted score described below. Alerts require score >= the configured model threshold or enabled asset override. Scores are not calibrated attack probabilities. Otherwise, severity, contextual behavior and off-hours use deployed weights normalized by their sum. The existing weights.rarity key is retained for compatibility but now weights contextual failure/new-context evidence, not global type rarity. With defaults the weights remain 0.45/0.35/0.2. Missing severity contributes zero. All-zero weights produce zero behavioral score; rule scores still require the applicable threshold.
+A score comes from the empirical multi-window history comparison described in [Historical anomaly scoring](history-baseline-scoring.md). Source severity, off-hours context and rule matches remain recorded evidence but are not added to the score. Alerts require a READY baseline and score greater than or equal to the configured model threshold or enabled asset override. Scores are historical-rarity signals, not calibrated attack probabilities.
 
-Asset overrides continue to affect the behavioral threshold only. They cannot suppress explicit security rules. Store policy/weight/threshold snapshots for every evaluated event, including nonalerts. Rule matches, evidence IDs, time zone and baseline readiness are stored as feature contributions.
+Asset overrides replace the model threshold for events mapped to that asset. Store policy and threshold snapshots for every evaluated event, including nonalerts. Rule matches, evidence IDs, time zone and baseline readiness are stored as feature contributions.
 
 ## Configuration
 
@@ -77,7 +77,7 @@ Rule matches no longer all receive 0.90 or HIGH. This is a transparent prioritiz
 - Successful access after the required failures/denials adds 0.10.
 - Total is capped at 0.99. Severity: below 0.50 LOW; 0.50-0.7499 MEDIUM; 0.75-0.8999 HIGH; 0.90+ CRITICAL.
 
-These initial engineering weights require evaluation against labeled organization data before making accuracy claims. Behavioral-only scoring and rule triggering conditions are unchanged. Scores may legitimately match when evidence is equivalent. Store the complete rule_score_breakdown (revision evidence-weighted-v2) in existing contributions. No schema migration is needed.
+This historical heuristic required evaluation against labeled organization data before making accuracy claims. It is retained here only to interpret older evidence-weighted-v2 records; the current empirical-history scorer does not use these coefficients or create new rule_score_breakdown evidence.
 
 Existing detections and alerts are not rescored. New grouping keys include the scoring revision to avoid appending new-version matches to old 90% alerts. Event/model/engine processing identity stays unchanged so the worker does not replay historical events. Grouped alerts retain the first detection's score; subsequent scores are available in correlated evidence.
 

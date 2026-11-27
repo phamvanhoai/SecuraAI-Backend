@@ -2,6 +2,7 @@ import { prisma } from '../../database/prisma.js';
 import type { IncidentAssetOptionsQuery } from './dto/link-incident-asset.dto.js';
 
 export const incidentAssetsRepository = {
+  // Load the account fields required for service authorization.
   findActor(userId: string) {
     return prisma.users.findUnique({
       where: { id: userId },
@@ -9,6 +10,7 @@ export const incidentAssetsRepository = {
     });
   },
 
+  // Load the incident state before listing or changing asset links.
   findIncident(incidentId: string) {
     return prisma.incidents.findUnique({
       where: { id: incidentId },
@@ -16,6 +18,7 @@ export const incidentAssetsRepository = {
     });
   },
 
+  // Confirm that the selected asset exists and remains active.
   findActiveAsset(assetId: string) {
     return prisma.assets.findFirst({
       where: { id: assetId, status: 'ACTIVE' },
@@ -23,6 +26,7 @@ export const incidentAssetsRepository = {
     });
   },
 
+  // Query active assets and mark which ones are already linked to the incident.
   async findOptions(incidentId: string, query: IncidentAssetOptionsQuery) {
     const relationshipFilter =
       query.scope === 'linked'
@@ -64,6 +68,7 @@ export const incidentAssetsRepository = {
     return { incident, assets, total };
   },
 
+  // Insert the many-to-many incident-asset relationship and return its summary.
   link(incidentId: string, assetId: string, linkedBy: string) {
     return prisma.incident_assets.create({
       data: { incident_id: incidentId, asset_id: assetId, linked_by: linkedBy },
@@ -75,6 +80,7 @@ export const incidentAssetsRepository = {
     });
   },
 
+  // Remove one existing incident-to-asset relationship.
   unlink(incidentId: string, assetId: string) {
     return prisma.incident_assets.deleteMany({
       where: { incident_id: incidentId, asset_id: assetId },

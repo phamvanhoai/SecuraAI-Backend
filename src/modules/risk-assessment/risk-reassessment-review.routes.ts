@@ -16,18 +16,24 @@ import {
 } from './dto/review-risk-reassessment-request.dto.js';
 
 export const riskReassessmentReviewRouter = Router();
+
+// Use case: Review Risk Reassessment Request -> list the actor's requests.
 riskReassessmentReviewRouter.get(
   '/reassessment-requests/mine',
   authenticate,
   validate({ query: listOwnedReassessmentRequestsQuerySchema }),
   asyncHandler(listOwnedRiskReassessmentRequests),
 );
+
+// Use case: Review Risk Reassessment Request -> startRiskReassessmentReview.
 riskReassessmentReviewRouter.post(
   '/reassessment-requests/:requestId/review',
   authenticate,
   validate({ params: reviewRiskReassessmentRequestParamsSchema }),
   asyncHandler(startRiskReassessmentReview),
 );
+
+// Use case: Reassess Residual Risk -> completeRiskReassessment.
 riskReassessmentReviewRouter.post(
   '/reassessment-requests/:requestId/complete',
   authenticate,
@@ -37,6 +43,8 @@ riskReassessmentReviewRouter.post(
   }),
   asyncHandler(completeRiskReassessment),
 );
+
+// Use case: Review Risk Reassessment Request -> reject the request.
 riskReassessmentReviewRouter.post(
   '/reassessment-requests/:requestId/reject',
   authenticate,

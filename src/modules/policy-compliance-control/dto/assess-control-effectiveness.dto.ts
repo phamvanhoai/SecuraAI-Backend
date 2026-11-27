@@ -18,6 +18,7 @@ export function resultForEffectiveness(
 }
 export const assessControlEffectivenessBodySchema = z
   .object({
+    evidenceIds: z.array(z.uuid()).min(1).max(100).refine(ids => new Set(ids).size === ids.length, 'Select each evidence only once'),
     testMethod: z.string().trim().min(3).max(1000),
     result: z.enum(['effective', 'partially_effective', 'ineffective']),
     effectiveness: z.coerce.number().min(0).max(100).multipleOf(0.01),

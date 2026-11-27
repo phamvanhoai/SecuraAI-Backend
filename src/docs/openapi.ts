@@ -721,7 +721,7 @@ export const openApiSpec = {
         summary: 'Create Risk',
         security: [{ bearerAuth: [] }],
         description:
-          'Active Security Officer required. Persists original scope and linked active assets atomically. Service membership never automatically changes saved risk scope. Active Employee owner and at least one active scope asset are required.',
+          'Active Security Officer required. Review date must be strictly after today in Asia/Ho_Chi_Minh (UTC+7); today and past dates return 422 INVALID_REVIEW_DATE. Persists original scope and linked active assets atomically. Service membership never automatically changes saved risk scope. Active Employee owner and at least one active scope asset are required.',
         requestBody: {
           required: true,
           content: {
@@ -1881,7 +1881,7 @@ export const openApiSpec = {
         tags: ['Incident Management'],
         summary: 'Create an incident manually or from a confirmed source',
         description:
-          'Only an active Security Officer can create a V2 incident, either manually when no suitable alert/finding is available, or from an eligible confirmed alert/security finding. Source-backed incidents retain a unique finding link. Executive/Admin/Employee accounts cannot create incidents. This is not a general incident-report intake endpoint.',
+          'Only an active Security Officer can create a V2 incident manually or from a confirmed source. Both modes check up to 200 newest incidents with detection times within seven days (creation time fallback), returning at most five title-based suggestions. A 409 INCIDENT_RELATED_REVIEW_REQUIRED includes error.details.items with id, incidentCode, title, status, detectedAt and reason. Retry with separateReason and all suggested reviewedIncidentIds to create separately; the reason is audited atomically. These bounded suggestions are not exhaustive deduplication or asset/account correlation. Source-backed incidents retain a unique finding link. Executive/Admin/Employee cannot create incidents.',
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
@@ -1894,6 +1894,12 @@ export const openApiSpec = {
                     required: ['sourceType', 'sourceId', 'title', 'description', 'severity'],
                     properties: {
                       sourceType: { type: 'string', enum: ['alert', 'finding'] },
+                      separateReason: { type: 'string', minLength: 10, maxLength: 2000 },
+                      reviewedIncidentIds: {
+                        type: 'array',
+                        maxItems: 5,
+                        items: { type: 'string', format: 'uuid' },
+                      },
                       sourceId: { type: 'string', format: 'uuid' },
                       title: { type: 'string', minLength: 5, maxLength: 255 },
                       description: { type: 'string', minLength: 20, maxLength: 10000 },
@@ -1906,6 +1912,12 @@ export const openApiSpec = {
                     required: ['sourceType', 'title', 'description', 'severity'],
                     properties: {
                       sourceType: { type: 'string', enum: ['manual'] },
+                      separateReason: { type: 'string', minLength: 10, maxLength: 2000 },
+                      reviewedIncidentIds: {
+                        type: 'array',
+                        maxItems: 5,
+                        items: { type: 'string', format: 'uuid' },
+                      },
                       title: { type: 'string', minLength: 5, maxLength: 255 },
                       description: { type: 'string', minLength: 20, maxLength: 10000 },
                       severity: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] },
@@ -1923,7 +1935,8 @@ export const openApiSpec = {
           '403': { description: 'Security Officer role required' },
           '404': { description: 'Source alert or finding not found' },
           '409': {
-            description: 'Source is unconfirmed, already converted, or changed concurrently',
+            description:
+              'Related incident review required (INCIDENT_RELATED_REVIEW_REQUIRED with error.details.items), or source unconfirmed, already converted, or changed concurrently',
           },
           '422': { description: 'Invalid incident details' },
         },
@@ -2886,7 +2899,7 @@ export const openApiSpec = {
         tags: ['Policy Management'],
         summary: 'List published policies for the current Employee',
         description:
-          'Returns current active V2 policies and their published versions with the Employee reading status.',
+          'All active Employees can read all current active published policies; there is no department/applicability filter. acknowledgedAt refers only to the current version. Each item includes changeSummary and previousAcknowledgement (null, or the latest superseded published version this Employee acknowledged: versionId, versionNumber, acknowledgedAt). Draft/approval work does not change the current publication or its reading status.',
         security: [{ bearerAuth: [] }],
         parameters: [
           { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
@@ -2896,7 +2909,6 @@ export const openApiSpec = {
             schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
           },
           { name: 'q', in: 'query', schema: { type: 'string', minLength: 1, maxLength: 100 } },
-          { name: 'departmentId', in: 'query', schema: { type: 'string', format: 'uuid' } },
           {
             name: 'status',
             in: 'query',
@@ -2916,7 +2928,7 @@ export const openApiSpec = {
         tags: ['Policy Management'],
         summary: 'View a published policy version',
         description:
-          'Returns the content and details of the current published V2 policy version to an active Employee.',
+          'Returns the content and details of the current published V2 policy version to any active Employee. Includes acknowledgedAt for this version and nullable previousAcknowledgement { versionId, versionNumber, acknowledgedAt } for the latest superseded published version this Employee confirmed. Earlier confirmations are retained, never transferred to a new version. A draft replacement is not exposed here.',
         security: [{ bearerAuth: [] }],
         parameters: [
           {
@@ -2946,7 +2958,7 @@ export const openApiSpec = {
         tags: ['Policy Management'],
         summary: 'Acknowledge a published policy version',
         description:
-          'Records that the active Employee has read and understood the current published V2 policy version. Repeated requests return the existing acknowledgement.',
+          'Records an explicit Employee confirmation of reading the current published version. Rechecks active Employee role and current publication inside the acknowledgement transaction using the same policy row lock as publication. Stale requests return 409 POLICY_VERSION_CHANGED and require reading the current version. Repeated confirmations preserve the original timestamp without duplicate audit. A new confirmation appends POLICY_READING_ACKNOWLEDGED through the shared audit writer atomically; audit failure rolls back. Existing version confirmations are retained. No department restriction.',
         security: [{ bearerAuth: [] }],
         parameters: [
           {
@@ -2964,6 +2976,7 @@ export const openApiSpec = {
         ],
         responses: {
           '200': { description: 'Acknowledgement recorded or existing acknowledgement returned' },
+          '409': { description: 'Published version changed; refresh and read the current version before confirming' },
           '401': { description: 'Authentication required' },
           '403': { description: 'Employee role required' },
           '404': { description: 'Current published policy version not found' },
@@ -3841,15 +3854,6 @@ export const openApiSpec = {
                 type: 'object',
                 additionalProperties: false,
                 properties: {
-                  lookbackHours: {
-                    type: 'integer',
-                    minimum: 1,
-                    maximum: 720,
-                    default: 24,
-                    deprecated: true,
-                    description:
-                      'Retained for client compatibility. Manual recovery now processes all pending events regardless of age.',
-                  },
                   maxEvents: {
                     type: 'integer',
                     minimum: 1,

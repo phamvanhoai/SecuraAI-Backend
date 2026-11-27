@@ -1,10 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { requestContextStorage } from '../src/common/middleware/request-context.js';
 
 const mocks = vi.hoisted(() => {
   const transaction = {
     users: { findUnique: vi.fn() },
     incidents: { findUnique: vi.fn(), updateMany: vi.fn(), findUniqueOrThrow: vi.fn() },
-    audit_logs: { create: vi.fn() },
+    audit_logs: { create: vi.fn(), findFirst: vi.fn() },
     $queryRaw: vi.fn(),
   };
   return { transaction };
@@ -26,6 +27,7 @@ const input = {
 const updatedAt = new Date('2026-10-09T00:00:00Z');
 beforeEach(() => {
   vi.resetAllMocks();
+  mocks.transaction.audit_logs.findFirst.mockResolvedValue({ record_hash: 'previous-incident-hash' });
   mocks.transaction.users.findUnique.mockResolvedValue({
     role: 'SECURITY_OFFICER',
     status: 'ACTIVE',
@@ -42,8 +44,13 @@ beforeEach(() => {
   });
 });
 describe('incident severity repository transaction', () => {
+  it('propagates a shared audit failure so the incident transaction cannot commit', async () => {
+    const failure = new Error('Audit unavailable');
+    mocks.transaction.audit_logs.create.mockRejectedValue(failure);
+    await expect(incidentsRepository.classifySeverity(actorId, incidentId, input)).rejects.toBe(failure);
+  });
   it('locks the incident and writes severity and rationale audit in one transaction', async () => {
-    expect(await incidentsRepository.classifySeverity(actorId, incidentId, input)).toMatchObject({
+    expect(await requestContextStorage.run({ sourceIp: '192.0.2.20', correlationId: 'incident-request' }, () => incidentsRepository.classifySeverity(actorId, incidentId, input))).toMatchObject({
       outcome: 'classified',
     });
     expect(mocks.transaction.$queryRaw).toHaveBeenCalled();
@@ -60,6 +67,9 @@ describe('incident severity repository transaction', () => {
         before_data: { severity: 'high', status: 'TRIAGE' },
         after_data: { ...input, status: 'TRIAGE' },
         record_hash: expect.stringMatching(/^[a-f0-9]{64}$/),
+        previous_hash: 'previous-incident-hash',
+        source_ip: '192.0.2.20',
+        correlation_id: 'incident-request',
       }),
     });
   });

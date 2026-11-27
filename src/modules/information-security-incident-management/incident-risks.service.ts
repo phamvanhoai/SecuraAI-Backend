@@ -4,6 +4,7 @@ import type {
   LinkIncidentRiskInput,
 } from './dto/link-incident-risk.dto.js';
 import { incidentRisksRepository } from './incident-risks.repository.js';
+// Require an active Security Officer for incident-risk operations.
 async function requireSecurityOfficer(userId: string) {
   const actor = await incidentRisksRepository.findActor(userId);
   if (!actor || actor.status !== 'ACTIVE')
@@ -11,6 +12,7 @@ async function requireSecurityOfficer(userId: string) {
   if (actor.role !== 'SECURITY_OFFICER')
     throw new AppError(403, 'FORBIDDEN', 'Security Officer role required');
 }
+// Map an existing risk and link state into the public response.
 const riskResponse = (risk: {
   id: string;
   risk_code: string;
@@ -25,6 +27,7 @@ const riskResponse = (risk: {
   reviewDate: risk.review_date,
 });
 export const incidentRisksService = {
+  // Load risks according to the validated link-state and search filters.
   async options(userId: string, incidentId: string, query: IncidentRiskOptionsQuery) {
     await requireSecurityOfficer(userId);
     const { incident, risks, total } = await incidentRisksRepository.findOptions(incidentId, query);
@@ -49,6 +52,7 @@ export const incidentRisksService = {
       },
     };
   },
+  // Link Incident to Existing Risk after checking the actor, incident and risk.
   async link(userId: string, incidentId: string, input: LinkIncidentRiskInput) {
     await requireSecurityOfficer(userId);
     const [incident, risk] = await Promise.all([
@@ -79,6 +83,7 @@ export const incidentRisksService = {
       throw error;
     }
   },
+  // Validate the incident and remove one linked risk.
   async unlink(userId: string, incidentId: string, riskId: string) {
     await requireSecurityOfficer(userId);
     const incident = await incidentRisksRepository.findIncident(incidentId);
