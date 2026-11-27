@@ -44,6 +44,10 @@ export interface AutoMappingBatchResult {
 
 // Initialize & Upload Candidate List
 export const eventAutoMappingService = {
+  /**
+   * Automatically matches each ingested event's accountIdentifier and deviceIdentifier against
+   * ACTIVE users, monitored accounts, and assets, returning mappingStatus and single-entity mapping rows.
+   */
   async resolveAutoMappings(
     events: EventForAutoMapping[],
     injectedCandidates?: AutoMappingCandidates,

@@ -19,6 +19,7 @@ import {
 
 export const normalizedEventsRouter = Router();
 
+// Retrieve summary metrics of normalized events and mapping coverage
 normalizedEventsRouter.get(
   '/metrics',
   authenticate,
@@ -26,6 +27,7 @@ normalizedEventsRouter.get(
   asyncHandler(getNormalizedEventMetrics),
 );
 
+// Load ACTIVE users, assets, and monitored accounts for manual mapping dropdowns
 normalizedEventsRouter.get(
   '/mapping-options',
   authenticate,
@@ -33,6 +35,7 @@ normalizedEventsRouter.get(
   asyncHandler(getMappingOptions),
 );
 
+// Retrieve full details, active mapping, mapping history, and anomaly detections for one event
 normalizedEventsRouter.get(
   '/:id',
   authenticate,
@@ -41,6 +44,7 @@ normalizedEventsRouter.get(
   asyncHandler(getNormalizedEventDetail),
 );
 
+// Review or correct user/asset entity mapping for a normalized event (PUT)
 normalizedEventsRouter.put(
   '/:id/mappings',
   authenticate,
@@ -49,6 +53,7 @@ normalizedEventsRouter.put(
   asyncHandler(updateEntityMapping),
 );
 
+// Review or correct user/asset entity mapping for a normalized event (PATCH)
 normalizedEventsRouter.patch(
   '/:id/mappings',
   authenticate,
@@ -57,6 +62,7 @@ normalizedEventsRouter.patch(
   asyncHandler(updateEntityMapping),
 );
 
+// Re-queue a failed AI anomaly detection job for a normalized event
 normalizedEventsRouter.post(
   '/:id/detection/retry',
   authenticate,
@@ -65,6 +71,7 @@ normalizedEventsRouter.post(
   asyncHandler(retryEventDetection),
 );
 
+// List, search, and filter normalized security events with pagination
 normalizedEventsRouter.get(
   '/',
   authenticate,

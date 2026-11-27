@@ -40,6 +40,7 @@ import {
 
 export const eventSourcesRouter = Router();
 
+// Test connectivity using ad-hoc unsaved Wazuh connection inputs
 eventSourcesRouter.post(
   '/test-connection',
   authenticate,
@@ -48,6 +49,7 @@ eventSourcesRouter.post(
   asyncHandler(testEventSourceConnection),
 );
 
+// Test connectivity using the stored endpoint of an existing event source
 eventSourcesRouter.post(
   '/:id/test-connection',
   authenticate,
@@ -59,7 +61,7 @@ eventSourcesRouter.post(
   asyncHandler(testEventSourceConnectionById),
 );
 
-// Batch detail & invalid events inspection endpoints
+// Retrieve summary details of a specific file-import ingestion batch
 eventSourcesRouter.get(
   '/batches/:batchId',
   authenticate,
@@ -68,6 +70,7 @@ eventSourcesRouter.get(
   asyncHandler(getBatchDetail),
 );
 
+// Retrieve paginated invalid event records captured during a specific import batch
 eventSourcesRouter.get(
   '/batches/:batchId/invalid-events',
   authenticate,
@@ -79,6 +82,7 @@ eventSourcesRouter.get(
   asyncHandler(getBatchInvalidEvents),
 );
 
+// List historical ingestion batches belonging to a specific event source
 eventSourcesRouter.get(
   '/:id/batches',
   authenticate,
@@ -101,6 +105,7 @@ eventSourcesRouter.get(
   asyncHandler(listEventSources),
 );
 
+// Retrieve detailed information, masked API keys, and stats for a single event source
 eventSourcesRouter.get(
   '/:id',
   authenticate,
@@ -109,6 +114,7 @@ eventSourcesRouter.get(
   asyncHandler(getEventSourceDetail),
 );
 
+// Register a new normalized event source
 eventSourcesRouter.post(
   '/',
   authenticate,
@@ -117,6 +123,7 @@ eventSourcesRouter.post(
   asyncHandler(createEventSource),
 );
 
+// Full/partial update of event source configuration or enable/disable status (PUT)
 eventSourcesRouter.put(
   '/:id',
   authenticate,
@@ -128,6 +135,7 @@ eventSourcesRouter.put(
   asyncHandler(updateEventSource),
 );
 
+// Partial update of event source configuration or enable/disable status (PATCH)
 eventSourcesRouter.patch(
   '/:id',
   authenticate,
@@ -139,6 +147,7 @@ eventSourcesRouter.patch(
   asyncHandler(updateEventSource),
 );
 
+// Import and validate a batch of normalized events from an uploaded JSON/CSV payload
 eventSourcesRouter.post(
   '/:id/import',
   authenticate,

@@ -13,7 +13,7 @@ type HttpResponse = {
   rawText: string;
 };
 
-// URL normalization
+/** Normalizes a raw endpoint string into a URL, defaulting to HTTPS when the protocol is omitted. */
 function formatEndpointUrl(endpoint: string): URL {
   const trimmed = endpoint.trim();
   const withProtocol =
@@ -23,6 +23,10 @@ function formatEndpointUrl(endpoint: string): URL {
   return new URL(withProtocol);
 }
 
+/**
+ * Executes a bounded HTTP/HTTPS request with timeout enforcement and a 2MB response cap,
+ * parsing JSON bodies when possible for diagnostic inspection.
+ */
 function requestHttp(
   url: URL,
   options: {
@@ -110,6 +114,7 @@ function requestHttp(
   });
 }
 
+/** Extracts the Bearer JWT token returned by Wazuh's authentication endpoint from JSON or raw text. */
 function extractJwt(body: unknown, rawText: string): string {
   if (typeof body === 'object' && body !== null) {
     const bodyObj = body as Record<string, unknown>;
@@ -122,6 +127,10 @@ function extractJwt(body: unknown, rawText: string): string {
 }
 
 export const wazuhConnectionTester = {
+  /**
+   * Verifies live reachability, SSL certificate validity, and Wazuh API credentials by
+   * authenticating via Basic Auth to obtain a JWT and querying the Wazuh API root endpoint.
+   */
   async testConnection(
     input: TestEventSourceConnectionInput,
   ): Promise<TestEventSourceConnectionResponseDto> {

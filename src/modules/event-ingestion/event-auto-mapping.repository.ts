@@ -26,6 +26,7 @@ export interface CandidateAsset {
 }
 
 export const eventAutoMappingRepository = {
+  /** Fetches all ACTIVE users, monitored accounts, and assets in parallel as auto-mapping lookup candidates. */
   async findCandidates(): Promise<{
     users: CandidateUser[];
     monitoredAccounts: CandidateMonitoredAccount[];

@@ -23,26 +23,26 @@ function mapSortColumn(
 }
 
 const uuidPattern = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
+// Build WHERE clause for audit logs
 export function buildAuditLogsWhereClause(query: ListAuditLogsQuery): Prisma.audit_logsWhereInput {
   const andConditions: Prisma.audit_logsWhereInput[] = [];
-
+  // Filter by actor type
   if (query.actorType) {
     andConditions.push({ actor_type: query.actorType });
   }
-
+  // Filter by action
   if (query.action) {
     andConditions.push({ action: { contains: query.action, mode: 'insensitive' } });
   }
-
+  // Filter by resource type
   if (query.resourceType) {
     andConditions.push({ resource_type: { contains: query.resourceType, mode: 'insensitive' } });
   }
-
+  // Filter by correlation ID
   if (query.correlationId) {
     andConditions.push({ correlation_id: { contains: query.correlationId, mode: 'insensitive' } });
   }
-
+  // Filter by start date
   if (query.startDate || query.endDate) {
     const dateFilter: Prisma.DateTimeFilter = {};
     if (query.startDate) {
@@ -53,7 +53,7 @@ export function buildAuditLogsWhereClause(query: ListAuditLogsQuery): Prisma.aud
     }
     andConditions.push({ occurred_at: dateFilter });
   }
-
+  // Filter by actor
   if (query.actor) {
     const actorOrConditions: Prisma.audit_logsWhereInput[] = [
       { users: { full_name: { contains: query.actor, mode: 'insensitive' } } },
@@ -65,7 +65,7 @@ export function buildAuditLogsWhereClause(query: ListAuditLogsQuery): Prisma.aud
     }
     andConditions.push({ OR: actorOrConditions });
   }
-
+  // Filter by search
   if (query.search) {
     const searchOrConditions: Prisma.audit_logsWhereInput[] = [
       { action: { contains: query.search, mode: 'insensitive' } },
@@ -94,7 +94,7 @@ export function buildAuditLogsWhereClause(query: ListAuditLogsQuery): Prisma.aud
 
   return { AND: andConditions };
 }
-
+// Audit logs repository
 export const auditLogsRepository = {
   findActorUser(userId: string) {
     return prisma.users.findUnique({
@@ -102,7 +102,7 @@ export const auditLogsRepository = {
       select: { id: true, full_name: true, email: true, role: true, status: true },
     });
   },
-
+  // Find many audit logs
   async findMany(query: ListAuditLogsQuery) {
     const sortField = mapSortColumn(query.sortBy);
     const skip = (query.page - 1) * query.limit;
@@ -149,12 +149,12 @@ export const auditLogsRepository = {
       },
     });
   },
-
+  // Count audit logs
   count(query?: ListAuditLogsQuery) {
     const where = query ? buildAuditLogsWhereClause(query) : undefined;
     return where ? prisma.audit_logs.count({ where }) : prisma.audit_logs.count();
   },
-
+  // Find by id
   findById(id: string) {
     return prisma.audit_logs.findUnique({
       where: { id },

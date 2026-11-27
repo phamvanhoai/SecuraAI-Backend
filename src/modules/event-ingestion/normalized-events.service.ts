@@ -53,6 +53,7 @@ type RawMappingRecord = {
   } | null;
 };
 
+/** Maps a raw event_entity_mappings database record into the camelCase EntityMappingDto. */
 function formatEntityMapping(m: RawMappingRecord): EntityMappingDto {
   return {
     id: m.id,
@@ -101,6 +102,10 @@ function formatEntityMapping(m: RawMappingRecord): EntityMappingDto {
   };
 }
 
+/**
+ * Merges single-entity mapping rows created in the same action (within a 5-second window
+ * sharing method, active state, reason, and actor) into unified mapping history entries.
+ */
 function groupMappingHistory(mappings: EntityMappingDto[]): EntityMappingDto[] {
   const grouped: EntityMappingDto[] = [];
 
@@ -138,6 +143,10 @@ function groupMappingHistory(mappings: EntityMappingDto[]): EntityMappingDto[] {
 }
 
 export const normalizedEventsService = {
+  /**
+   * Returns a paginated, filtered list of normalized security events with mapped user/asset
+   * summaries and optional AI detection pipeline statuses.
+   */
   async listEvents(
     _userId: string,
     query: ListNormalizedEventsQuery,
@@ -216,6 +225,7 @@ export const normalizedEventsService = {
     };
   },
 
+  /** Re-enqueues a failed AI detection job for an existing normalized event. */
   async retryDetection(_userId: string, id: string): Promise<{ eventId: string; status: 'PENDING' }> {
     if (!(await normalizedEventsRepository.exists(id)))
       throw new AppError(404, 'NOT_FOUND', 'Normalized security event not found');
@@ -229,6 +239,10 @@ export const normalizedEventsService = {
     return { eventId: id, status: 'PENDING' };
   },
 
+  /**
+   * Fetches full event details including normalized JSON payload, merged active entity mappings,
+   * grouped mapping audit history, and anomaly detection results.
+   */
   async getEventDetail(_userId: string, id: string): Promise<NormalizedEventDetailDto> {
     const event = await normalizedEventsRepository.findById(id);
     if (!event) {
@@ -293,6 +307,7 @@ export const normalizedEventsService = {
     };
   },
 
+  /** Applies a manual entity mapping correction for an event and maps target-not-found errors to HTTP 404. */
   async updateEventMapping(
     userId: string,
     eventId: string,
@@ -328,6 +343,7 @@ export const normalizedEventsService = {
     }
   },
 
+  /** Retrieves candidate users, assets, and monitored accounts for populating manual mapping selectors. */
   async getMappingOptions(_userId: string): Promise<MappingOptionsDto> {
     const options = await normalizedEventsRepository.getMappingOptions();
     return {
@@ -352,6 +368,7 @@ export const normalizedEventsService = {
     };
   },
 
+  /** Returns summary counts of normalized events, mapping coverage, and event family distribution. */
   async getMetrics(_userId: string): Promise<NormalizedEventMetricsDto> {
     return normalizedEventsRepository.getMetrics();
   },
