@@ -5,6 +5,10 @@ import {
   startAutomatedDetectionWorker,
   stopAutomatedDetectionWorker,
 } from './modules/ai-anomaly-detection-alerts/automated-detection.worker.js';
+import {
+  startAutomatedRetentionPurgeWorker,
+  stopAutomatedRetentionPurgeWorker,
+} from './modules/event-ingestion/event-retention-purge.worker.js';
 import { runExplanationJobs } from './modules/ai-anomaly-detection-alerts/explanation-jobs.service.js';
 
 if (!env.DETECTION_PIPELINE_ENABLED)
@@ -14,6 +18,7 @@ if (!env.DETECTION_PIPELINE_ENABLED)
 let stopping = false;
 let explaining = false;
 startAutomatedDetectionWorker();
+startAutomatedRetentionPurgeWorker();
 const timer = setInterval(() => {
   if (stopping || explaining) return;
   explaining = true;
@@ -32,6 +37,7 @@ function stop() {
   stopping = true;
   clearInterval(timer);
   stopAutomatedDetectionWorker();
+  stopAutomatedRetentionPurgeWorker();
   // In-flight jobs finish or recover through their database lease after exit.
   setTimeout(() => {
     void prisma.$disconnect().finally(() => process.exit(0));

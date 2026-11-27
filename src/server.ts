@@ -7,6 +7,10 @@ import {
   startAutomatedDetectionWorker,
   stopAutomatedDetectionWorker,
 } from './modules/ai-anomaly-detection-alerts/automated-detection.worker.js';
+import {
+  startAutomatedRetentionPurgeWorker,
+  stopAutomatedRetentionPurgeWorker,
+} from './modules/event-ingestion/event-retention-purge.worker.js';
 import { attachAiAlertRealtimeServer } from './modules/ai-anomaly-detection-alerts/ai-alert-realtime.server.js';
 
 const server = createServer(createApp());
@@ -15,7 +19,10 @@ const aiAlertRealtimeServer = attachAiAlertRealtimeServer(server);
 const startServer = async (): Promise<void> => {
   try {
     await prisma.$connect();
-    if (!env.DETECTION_PIPELINE_ENABLED) startAutomatedDetectionWorker();
+    if (!env.DETECTION_PIPELINE_ENABLED) {
+      startAutomatedDetectionWorker();
+      startAutomatedRetentionPurgeWorker();
+    }
     logger.info({ database: 'postgresql' }, 'Database connection established');
 
     server.listen(env.PORT, () =>
@@ -40,6 +47,7 @@ const startServer = async (): Promise<void> => {
 const shutdown = (signal: string): void => {
   logger.info({ signal }, 'Graceful shutdown started');
   stopAutomatedDetectionWorker();
+  stopAutomatedRetentionPurgeWorker();
   aiAlertRealtimeServer.close();
   server.close(async (error) => {
     await prisma.$disconnect();
