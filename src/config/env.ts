@@ -50,6 +50,11 @@ const envSchema = z.object({
     .min(1_000)
     .max(300_000)
     .default(60_000),
+  RETENTION_PURGE_ENABLED: booleanString.default(true),
+  RETENTION_PURGE_INTERVAL_MS: z.coerce.number().int().min(60_000).max(86_400_000).default(3_600_000),
+  RETENTION_PURGE_BATCH_SIZE: z.coerce.number().int().min(10).max(1_000).default(200),
+  RETENTION_PURGE_MAX_BATCHES_PER_RUN: z.coerce.number().int().min(1).max(500).default(50),
+  RETENTION_PURGE_RUN_ON_STARTUP: booleanString.default(false),
   WAZUH_INGEST_TOKEN: optionalSecret,
   GOOGLE_CLIENT_ID: optionalString,
 });

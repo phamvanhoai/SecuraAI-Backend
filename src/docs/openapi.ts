@@ -5284,6 +5284,55 @@ export const openApiSpec = {
         },
       },
     },
+    '/event-governance/retention-purge/status': {
+      get: {
+        tags: ['Event Ingestion'],
+        summary: 'Get automated retention purge worker status and history',
+        description:
+          'Returns the retention purge schedule configuration, per-family effective retention cutoffs resolved from active event governance policies, last in-memory execution result, and recent audited purge runs. Restricted to System Administrators.',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          '200': { description: 'Retention purge worker status and recent purge audit history' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'System Administrator role required' },
+        },
+      },
+    },
+    '/event-governance/retention-purge/run': {
+      post: {
+        tags: ['Event Ingestion'],
+        summary: 'Execute or dry-run automated retention purge',
+        description:
+          'Triggers an immediate retention purge (or dry-run count preview) enforcing active event data governance policies using PostgreSQL advisory locks and FK-safe batched deletion while preserving events linked to alerts or incident evidence. Restricted to System Administrators.',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: false,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  dryRun: { type: 'boolean', default: false },
+                  eventFamily: {
+                    type: 'string',
+                    enum: ['AUTHENTICATION', 'VPN_SSO', 'APPLICATION_ACCESS'],
+                  },
+                  batchSize: { type: 'integer', minimum: 10, maximum: 1000 },
+                  maxBatches: { type: 'integer', minimum: 1, maximum: 100 },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'Retention purge run summary or dry-run preview' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'System Administrator role required' },
+          '409': { description: 'Retention purge job is already running' },
+          '422': { description: 'Invalid retention purge parameters' },
+        },
+      },
+    },
     '/health/live': {
       get: {
         tags: ['Health'],
