@@ -63,6 +63,16 @@ export const assetsService = {
       },
     };
   },
+  async dependencyOptions(userId: string, assetId: string, q: string) {
+    const actor = await activeActor(userId);
+    if (actor.role !== 'SECURITY_OFFICER')
+      throw new AppError(403, 'FORBIDDEN', 'Security Officer role required');
+    const asset = await assetsRepository.findById(assetId);
+    if (!asset) throw new AppError(404, 'ASSET_NOT_FOUND', 'Asset not found');
+    if (asset.status !== 'ACTIVE')
+      throw new AppError(409, 'ASSET_ARCHIVED', 'Archived assets cannot be linked');
+    return { items: await assetsRepository.dependencyOptions(assetId, q) };
+  },
   async linkContext(userId: string, assetId: string, input: LinkAssetContextInput) {
     const actor = await activeActor(userId);
     if (actor.role !== 'SECURITY_OFFICER')

@@ -1,3 +1,4 @@
+import { assetDependencyOptionsQuerySchema } from './dto/link-asset-context.dto.js';
 import type { RequestHandler } from 'express';
 import { assetOwnerOptionsQuerySchema } from './dto/asset-owner-options.dto.js';
 import { AppError } from '../../common/errors/app-error.js';
@@ -118,5 +119,15 @@ export const getAssetClassificationHistory: RequestHandler = async (req, res) =>
     assetId,
     assetClassificationHistoryQuerySchema.parse(req.query),
   );
+  res.status(200).json({ success: true, data });
+};
+
+export const getAssetDependencyOptions: RequestHandler = async (req, res) => {
+  const { assetId } = assetIdParamsSchema.parse(req.params);
+  const { q } = assetDependencyOptionsQuerySchema.parse(req.query);
+  const data = await assetsService.dependencyOptions(
+    authenticatedUserId(res.locals.authenticatedUserId), assetId, q,
+  );
+  res.setHeader('Cache-Control', 'private, no-store');
   res.status(200).json({ success: true, data });
 };

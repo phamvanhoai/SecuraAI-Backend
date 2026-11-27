@@ -1,3 +1,5 @@
+import { getAssetDependencyOptions } from './assets.controller.js';
+import { assetDependencyOptionsQuerySchema } from './dto/link-asset-context.dto.js';
 import { Router } from 'express';
 import { getAssetOwnerOptions } from './assets.controller.js';
 import { assetOwnerOptionsQuerySchema } from './dto/asset-owner-options.dto.js';
@@ -26,6 +28,10 @@ import { getAssetContextHistory, getAssetClassificationHistory } from './assets.
 import { assetClassificationHistoryQuerySchema } from './dto/classify-asset.dto.js';
 import { assetContextHistoryQuerySchema } from './dto/link-asset-context.dto.js';
 export const assetsRouter = Router();
+assetsRouter.get('/:assetId/dependency-options', authenticate,
+  validate({ params: assetIdParamsSchema, query: assetDependencyOptionsQuerySchema }),
+  asyncHandler(getAssetDependencyOptions));
+
 assetsRouter.get(
   '/owner-options',
   authenticate,

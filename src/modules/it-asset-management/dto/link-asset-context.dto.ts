@@ -31,3 +31,7 @@ export const assetContextSnapshotSchema = z.object({
   eventSources: z.array(reference),
 });
 export type AssetContextHistoryQuery = z.infer<typeof assetContextHistoryQuerySchema>;
+
+export const assetDependencyOptionsQuerySchema = z.object({
+  q: z.string().trim().max(100).default(''),
+}).strict();
