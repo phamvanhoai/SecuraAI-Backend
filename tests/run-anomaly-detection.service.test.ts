@@ -107,7 +107,7 @@ describe('run anomaly detection service', () => {
 
   it.each([
     ['MALICIOUS', 0.95, true],
-    ['SUSPICIOUS', 0.7, false],
+    ['SUSPICIOUS', 1, false],
     ['BENIGN', 0.1, false],
   ] as const)(
     'uses the escalated LLM %s verdict as the final decision',
@@ -139,6 +139,7 @@ describe('run anomaly detection service', () => {
         expect.objectContaining({
           detections: [
             expect.objectContaining({
+              score,
               threshold: 0.8,
               thresholdSource: 'MODEL_DEFAULT',
               isAnomaly,

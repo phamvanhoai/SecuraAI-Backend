@@ -195,7 +195,7 @@ async function runDetection(
     const explanations = new Map<string, Promise<string>>();
     // One shared deadline for optional prose across the entire batch, not a
     // separate 60-second wait for every alert. Explicit regeneration is unchanged.
-    const explanationDeadline = Date.now() + 5_000; //milisecon = 5s
+    const explanationDeadline = Date.now() + 5_000; // 5 seconds
     const evaluated: Array<SuccessfulDetection | ProcessingFailure> = [];
     // Groups of 4 limit concurrent DB/AI calls; each result remains independent.
     for (let offset = 0; offset < batch.events.length; offset += 4) {
@@ -245,9 +245,8 @@ async function runDetection(
               ? assetThreshold.threshold
               : parameters.threshold;
             const thresholdSource = assetThreshold?.enabled ? 'ASSET_OVERRIDE' : 'MODEL_DEFAULT';
+            // If the ML score >= threshold, send the event and its 1/5/15/60-minute context to the LLM.
             const modelEscalated = mlPrediction.prediction.score >= threshold;
-            // The LLM is a second review only for ML results that reach the
-            // escalation threshold; low-risk ML results stop before this call.
             const llmPrediction = modelEscalated
               ? await requestLlmClassification(event, temporalContext)
               : null;
@@ -292,7 +291,6 @@ async function runDetection(
                   : llmPrediction.prediction.verdict === 'SUSPICIOUS'
                     ? 'LLM_SUSPICIOUS'
                     : 'LLM_BENIGN';
-              if (!isAnomaly) score = Math.min(score, 0.99999999);
             }
             // The ML/LLM result and applied threshold are now final.
             // Generate Anomaly Alert uses isAnomaly in the next part of this flow.
