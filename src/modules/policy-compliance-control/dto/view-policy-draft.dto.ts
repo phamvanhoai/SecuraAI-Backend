@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+// Validate request data for reviewable policy draft query.
 export const reviewablePolicyDraftQuerySchema = z.strictObject({
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(20),
@@ -8,6 +9,7 @@ export const reviewablePolicyDraftQuerySchema = z.strictObject({
   sortOrder: z.enum(['asc', 'desc']).default('desc'),
 });
 
+// Validate request data for policy draft review params.
 export const policyDraftReviewParamsSchema = z.strictObject({
   policyId: z.uuid(),
   versionId: z.uuid(),

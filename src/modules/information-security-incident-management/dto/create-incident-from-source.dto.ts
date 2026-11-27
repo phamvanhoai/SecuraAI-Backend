@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+// Validate request data for incident source options query.
 export const incidentSourceOptionsQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(20),
@@ -15,6 +16,7 @@ const incidentDetailsSchema = z.object({
   reviewedIncidentIds: z.array(z.string().uuid()).max(5).optional(),
 });
 
+// Validate request data for create incident from source.
 export const createIncidentFromSourceSchema = z.discriminatedUnion('sourceType', [
   incidentDetailsSchema.extend({
     sourceType: z.enum(['alert', 'finding']),

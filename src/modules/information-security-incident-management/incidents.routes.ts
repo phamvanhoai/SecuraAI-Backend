@@ -54,78 +54,91 @@ import {
 } from './dto/record-recovery-action.dto.js';
 import { recordRecoveryAction, getRecoveryHistory } from './incidents.controller.js';
 export const incidentsRouter = Router();
+// getIncidentClosure: authenticate -> validate request -> controller -> service.
 incidentsRouter.get(
   '/:incidentId/close',
   authenticate,
   validate({ params: incidentDetailParamsSchema }),
   asyncHandler(getIncidentClosure),
 );
+// closeIncident: authenticate -> validate request -> controller -> service.
 incidentsRouter.post(
   '/:incidentId/close',
   authenticate,
   validate({ params: incidentDetailParamsSchema, body: closeIncidentSchema }),
   asyncHandler(closeIncident),
 );
+// updateIncidentPhase: authenticate -> validate request -> controller -> service.
 incidentsRouter.patch(
   '/:incidentId/progress',
   authenticate,
   validate({ params: incidentDetailParamsSchema, body: incidentProgressSchema }),
   asyncHandler(updateIncidentPhase),
 );
+// getIncidentPhaseHistory: authenticate -> validate request -> controller -> service.
 incidentsRouter.get(
   '/:incidentId/progress',
   authenticate,
   validate({ params: incidentDetailParamsSchema, query: phaseHistoryQuerySchema }),
   asyncHandler(getIncidentPhaseHistory),
 );
+// getIncidentAnalysis: authenticate -> validate request -> controller -> service.
 incidentsRouter.get(
   '/:incidentId/analysis',
   authenticate,
   validate({ params: incidentDetailParamsSchema }),
   asyncHandler(getIncidentAnalysis),
 );
+// saveIncidentAnalysis: authenticate -> validate request -> controller -> service.
 incidentsRouter.patch(
   '/:incidentId/analysis',
   authenticate,
   validate({ params: incidentDetailParamsSchema, body: saveIncidentAnalysisSchema }),
   asyncHandler(saveIncidentAnalysis),
 );
+// getIncidentAnalysisHistory: authenticate -> validate request -> controller -> service.
 incidentsRouter.get(
   '/:incidentId/analysis/history',
   authenticate,
   validate({ params: incidentDetailParamsSchema, query: analysisHistoryQuerySchema }),
   asyncHandler(getIncidentAnalysisHistory),
 );
+// recordEradicationAction: authenticate -> validate request -> controller -> service.
 incidentsRouter.post(
   '/:incidentId/eradication-actions',
   authenticate,
   validate({ params: incidentDetailParamsSchema, body: recordEradicationActionSchema }),
   asyncHandler(recordEradicationAction),
 );
+// getEradicationHistory: authenticate -> validate request -> controller -> service.
 incidentsRouter.get(
   '/:incidentId/eradication-actions',
   authenticate,
   validate({ params: incidentDetailParamsSchema, query: eradicationHistoryQuerySchema }),
   asyncHandler(getEradicationHistory),
 );
+// recordRecoveryAction: authenticate -> validate request -> controller -> service.
 incidentsRouter.post(
   '/:incidentId/recovery-actions',
   authenticate,
   validate({ params: incidentDetailParamsSchema, body: recordRecoveryActionSchema }),
   asyncHandler(recordRecoveryAction),
 );
+// getRecoveryHistory: authenticate -> validate request -> controller -> service.
 incidentsRouter.get(
   '/:incidentId/recovery-actions',
   authenticate,
   validate({ params: incidentDetailParamsSchema, query: recoveryHistoryQuerySchema }),
   asyncHandler(getRecoveryHistory),
 );
+// recordContainmentAction: authenticate -> validate request -> controller -> service.
 incidentsRouter.post(
   '/:incidentId/containment-actions',
   authenticate,
   validate({ params: incidentDetailParamsSchema, body: recordContainmentActionSchema }),
   asyncHandler(recordContainmentAction),
 );
+// getContainmentHistory: authenticate -> validate request -> controller -> service.
 incidentsRouter.get(
   '/:incidentId/containment-actions',
   authenticate,
@@ -133,6 +146,7 @@ incidentsRouter.get(
   asyncHandler(getContainmentHistory),
 );
 
+// getAssignmentHistory: authenticate -> validate request -> controller -> service.
 incidentsRouter.get(
   '/:incidentId/assignee',
   authenticate,
@@ -140,11 +154,13 @@ incidentsRouter.get(
   asyncHandler(getAssignmentHistory),
 );
 
+// listIncidentAssignmentOptions: authenticate -> validate request -> controller -> service.
 incidentsRouter.get(
   '/assignment-options',
   authenticate,
   asyncHandler(listIncidentAssignmentOptions),
 );
+// assignIncidentHandler: authenticate -> validate request -> controller -> service.
 incidentsRouter.patch(
   '/:incidentId/assignee',
   authenticate,
@@ -152,6 +168,7 @@ incidentsRouter.patch(
   asyncHandler(assignIncidentHandler),
 );
 
+// getClassificationHistory: authenticate -> validate request -> controller -> service.
 incidentsRouter.get(
   '/:incidentId/severity',
   authenticate,
@@ -159,6 +176,7 @@ incidentsRouter.get(
   asyncHandler(getClassificationHistory),
 );
 
+// classifyIncidentSeverity: authenticate -> validate request -> controller -> service.
 incidentsRouter.patch(
   '/:incidentId/severity',
   authenticate,
@@ -166,6 +184,7 @@ incidentsRouter.patch(
   asyncHandler(classifyIncidentSeverity),
 );
 
+// createIncidentFromSource: authenticate -> validate request -> controller -> service.
 incidentsRouter.post(
   '/',
   authenticate,
@@ -173,6 +192,7 @@ incidentsRouter.post(
   asyncHandler(createIncidentFromSource),
 );
 
+// listIncidentSourceOptions: authenticate -> validate request -> controller -> service.
 incidentsRouter.get(
   '/source-options',
   authenticate,
@@ -180,6 +200,7 @@ incidentsRouter.get(
   asyncHandler(listIncidentSourceOptions),
 );
 
+// listMyIncidents: authenticate -> validate request -> controller -> service.
 incidentsRouter.get(
   '/mine',
   authenticate,
@@ -187,6 +208,7 @@ incidentsRouter.get(
   asyncHandler(listMyIncidents),
 );
 
+// listIncidents: authenticate -> validate request -> controller -> service.
 incidentsRouter.get(
   '/',
   authenticate,
@@ -194,6 +216,7 @@ incidentsRouter.get(
   asyncHandler(listIncidents),
 );
 
+// getIncidentDetail: authenticate -> validate request -> controller -> service.
 incidentsRouter.get(
   '/:incidentId',
   (req, _res, next) => {

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+// Validate request data for record eradication action.
 export const recordEradicationActionSchema = z
   .object({
     description: z.string().trim().min(10).max(4000),
@@ -8,6 +9,7 @@ export const recordEradicationActionSchema = z
   .strict();
 export type RecordEradicationAction = z.infer<typeof recordEradicationActionSchema>;
 
+// Validate request data for eradication history query.
 export const eradicationHistoryQuerySchema = z
   .object({
     page: z.coerce.number().int().min(1).max(100000).default(1),

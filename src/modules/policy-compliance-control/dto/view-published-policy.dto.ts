@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+// Validate request data for published policy list query.
 export const publishedPolicyListQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(20),
@@ -7,6 +8,7 @@ export const publishedPolicyListQuerySchema = z.object({
   status: z.enum(['all', 'pending', 'acknowledged']).default('all'),
 });
 
+// Validate request data for published policy params.
 export const publishedPolicyParamsSchema = z.object({
   policyId: z.string().uuid(),
   versionId: z.string().uuid(),

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+// Validate request data for classify incident severity.
 export const classifyIncidentSeveritySchema = z
   .object({
     severity: z.enum(['low', 'medium', 'high', 'critical']),
@@ -10,6 +11,7 @@ export const classifyIncidentSeveritySchema = z
 
 export type ClassifyIncidentSeverity = z.infer<typeof classifyIncidentSeveritySchema>;
 
+// Validate request data for classification history query.
 export const classificationHistoryQuerySchema = z
   .object({
     page: z.coerce.number().int().min(1).max(100000).default(1),

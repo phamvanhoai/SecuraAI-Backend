@@ -10,6 +10,7 @@ const incidentStatuses = [
   'closed',
 ] as const;
 
+// Validate request data for view incidents query.
 export const viewIncidentsQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(10),
@@ -18,6 +19,7 @@ export const viewIncidentsQuerySchema = z.object({
   status: z.enum(incidentStatuses).optional(),
 });
 
+// Validate request data for incident detail params.
 export const incidentDetailParamsSchema = z.object({ incidentId: z.string().uuid() });
 
 export type ViewIncidentsQuery = z.infer<typeof viewIncidentsQuerySchema>;
