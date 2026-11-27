@@ -25,7 +25,10 @@ export async function eventPipelineStatuses(ids: string[]) {
         row.status === 'COMPLETED'
           ? 'isAnomaly' in result && result.isAnomaly === true
             ? 'LINKED_TO_ALERT'
-            : 'BELOW_THRESHOLD'
+            : 'outcome' in result &&
+                (result.outcome === 'LLM_BENIGN' || result.outcome === 'LLM_SUSPICIOUS')
+              ? result.outcome
+              : 'BELOW_THRESHOLD'
           : row.status;
       return [
         row.event_id,

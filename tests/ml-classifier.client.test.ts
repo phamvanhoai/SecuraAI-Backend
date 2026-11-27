@@ -3,8 +3,8 @@ import type { DetectionEvent } from '../src/modules/ai-anomaly-detection-alerts/
 import {
   buildMlPredictionPayload,
   buildMlTemporalContext,
-  requestMlShadowPrediction,
-} from '../src/modules/ai-anomaly-detection-alerts/ml-shadow.client.js';
+  requestMlPrediction,
+} from '../src/modules/ai-anomaly-detection-alerts/ml-classifier.client.js';
 
 function event(): DetectionEvent {
   return {
@@ -34,7 +34,7 @@ function event(): DetectionEvent {
 
 afterEach(() => vi.unstubAllGlobals());
 
-describe('ML shadow client', () => {
+describe('ML classifier client', () => {
   it('maps a normalized Wazuh event to the classifier contract', () => {
     expect(buildMlPredictionPayload(event())).toMatchObject({
       timestamp: '2026-11-02T10:00:00.000Z',
@@ -107,7 +107,7 @@ describe('ML shadow client', () => {
       ),
     );
 
-    const result = await requestMlShadowPrediction(event(), {
+    const result = await requestMlPrediction(event(), {
       baseUrl: 'http://model.test',
       timeoutMs: 100,
     });
@@ -122,7 +122,7 @@ describe('ML shadow client', () => {
   it('fails open as unavailable when the service cannot be reached', async () => {
     vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new Error('offline')));
     await expect(
-      requestMlShadowPrediction(event(), { baseUrl: 'http://model.test', timeoutMs: 100 }),
+      requestMlPrediction(event(), { baseUrl: 'http://model.test', timeoutMs: 100 }),
     ).resolves.toEqual({ status: 'UNAVAILABLE', reason: 'NETWORK' });
   });
 });

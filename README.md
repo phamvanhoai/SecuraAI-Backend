@@ -39,16 +39,16 @@ Chỉ sao chép environment nếu chưa có. Điền DATABASE_URL, JWT_ACCESS_SE
 
 Đối chiếu [.env.example](.env.example) và validation trong [src/config/env.ts](src/config/env.ts).
 
-| Nhóm | Biến tiêu biểu |
-| --- | --- |
-| Server | PORT, API_PREFIX, CORS_ORIGINS, TRUST_PROXY, LOG_LEVEL, SWAGGER_ENABLED |
-| Database | DATABASE_URL |
-| Auth | JWT_ACCESS_SECRET, JWT_ACCESS_TTL_SECONDS, REFRESH_TOKEN_TTL_DAYS, GOOGLE_CLIENT_ID |
-| Email | SMTP_HOST, SMTP_PORT, SMTP_SECURE, SMTP_USER, SMTP_PASS |
-| Explanation | OLLAMA_ENABLED, OLLAMA_BASE_URL, OLLAMA_MODEL, OLLAMA_TIMEOUT_MS |
-| Worker | ANOMALY_AUTO_DETECTION_ENABLED, ANOMALY_AUTO_DETECTION_INTERVAL_MS |
-| Ingestion | WAZUH_INGEST_TOKEN và integration API keys theo contract |
-| Seed | ADMIN_EMAIL, ADMIN_PASSWORD, ADMIN_USERNAME, ADMIN_FULL_NAME, SEED_RISK_DEMO |
+| Nhóm        | Biến tiêu biểu                                                                      |
+| ----------- | ----------------------------------------------------------------------------------- |
+| Server      | PORT, API_PREFIX, CORS_ORIGINS, TRUST_PROXY, LOG_LEVEL, SWAGGER_ENABLED             |
+| Database    | DATABASE_URL                                                                        |
+| Auth        | JWT_ACCESS_SECRET, JWT_ACCESS_TTL_SECONDS, REFRESH_TOKEN_TTL_DAYS, GOOGLE_CLIENT_ID |
+| Email       | SMTP_HOST, SMTP_PORT, SMTP_SECURE, SMTP_USER, SMTP_PASS                             |
+| Explanation | OLLAMA_ENABLED, OLLAMA_BASE_URL, OLLAMA_MODEL, OLLAMA_TIMEOUT_MS                    |
+| Worker      | ANOMALY_AUTO_DETECTION_ENABLED, ANOMALY_AUTO_DETECTION_INTERVAL_MS                  |
+| Ingestion   | WAZUH_INGEST_TOKEN và integration API keys theo contract                            |
+| Seed        | ADMIN_EMAIL, ADMIN_PASSWORD, ADMIN_USERNAME, ADMIN_FULL_NAME, SEED_RISK_DEMO        |
 
 Ollama/Wazuh không bắt buộc để chạy các module GRC. Email và tích hợp cần cấu hình riêng để test end-to-end.
 
@@ -68,19 +68,19 @@ npm run db:seed ghi dữ liệu có chủ đích, dùng account từ environment
 
 ## Các domain
 
-| Module | Phạm vi |
-| --- | --- |
-| authentication-account | Login/Google, refresh/logout, reset/change password |
-| user-management-authorization | Users, departments, import, account lifecycle, role/scope/ownership |
-| it-asset-management | Assets, owner, classification/history, archive, context/history, business services |
-| risk-assessment | Register, threat/vulnerability, inherent/residual, controls, treatment, target, acceptance và review/reassessment |
-| policy-compliance-control | Draft/review/revision/approval/publish, applicability, acknowledgement, controls và evidence |
-| information-security-incident-management | Reporting, severity, handler, response journals, RCA, close, links, weaknesses và reassessment requests |
-| event-ingestion | Sources, Wazuh, file import, normalized events, mapping và governance |
-| ai-anomaly-detection-alerts | Detection, alerts, thresholds, model metadata, explanation và triage/feedback |
-| notification-system-logs | Notifications/email, preferences, reminders và system logs |
-| audit-security-reporting | Audit/diffs, login history, API keys, dashboard và report exports |
-| health | Liveness/readiness |
+| Module                                   | Phạm vi                                                                                                           |
+| ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| authentication-account                   | Login/Google, refresh/logout, reset/change password                                                               |
+| user-management-authorization            | Users, departments, import, account lifecycle, role/scope/ownership                                               |
+| it-asset-management                      | Assets, owner, classification/history, archive, context/history, business services                                |
+| risk-assessment                          | Register, threat/vulnerability, inherent/residual, controls, treatment, target, acceptance và review/reassessment |
+| policy-compliance-control                | Draft/review/revision/approval/publish, applicability, acknowledgement, controls và evidence                      |
+| information-security-incident-management | Reporting, severity, handler, response journals, RCA, close, links, weaknesses và reassessment requests           |
+| event-ingestion                          | Sources, Wazuh, file import, normalized events, mapping và governance                                             |
+| ai-anomaly-detection-alerts              | Detection, alerts, thresholds, model metadata, explanation và triage/feedback                                     |
+| notification-system-logs                 | Notifications/email, preferences, reminders và system logs                                                        |
+| audit-security-reporting                 | Audit/diffs, login history, API keys, dashboard và report exports                                                 |
+| health                                   | Liveness/readiness                                                                                                |
 
 Đối chiếu [OpenAPI](src/docs/openapi.ts), [module notes](src/modules/README.md), routes/DTOs/services và tests cho từng endpoint. Một số contract V1 còn trả 501 ENDPOINT_NOT_IMPLEMENTED; chúng không thực thi code V3. Training đã loại khỏi active code. reference/legacy-v3 chỉ dùng tham khảo.
 
@@ -146,10 +146,9 @@ Password changes update the credential and revoke all refresh sessions in one tr
 Notification images: sending forms accept up to three PNG/JPEG/WebP source images (5 MiB each), normalize them to bounded PNG payloads, and show removable previews. Backend fully decodes and re-encodes PNGs (192 KiB, 1600px per side), stores private files under uploads/notification-images, and records generated IDs/names/SHA-256 hashes in notifications.image_references. Recipients and active Admins read them through authenticated non-cacheable routes. Email uses CID inline attachments; no remote image URL fetching. Deploy migration 20261030010000_notification_image_references before running this version, and retain the uploads directory on persistent/shared storage in deployed environments.
 Contextual actor workflow audit and current access boundaries: [docs/contextual-actor-workflows.md](docs/contextual-actor-workflows.md).
 
-Contextual anomaly detection rules, configuration and demo: [docs/contextual-detection.md](docs/contextual-detection.md).
+ML/LLM anomaly detection flow and configuration: [docs/ml-llm-detection.md](docs/ml-llm-detection.md).
 
-
-Current detection scoring: empirical-history-v1 compares recorded event-time history by principal/source/family/application/protocol. No 55-point base or weighted severity/off-hours bonuses. Alert requires a READY baseline and score >= model/asset threshold. Insufficient/truncated/missing context records null score in statistical_baseline evidence (zero in the required legacy numeric column is a storage sentinel, not a normality judgment). Manual results expose insufficientBaseline. Existing records are never automatically rescored. See docs/history-baseline-scoring.md.
+Current detection uses past-only 1/5/15/60-minute context. ML produces the first-stage score, which is compared with the enabled Asset threshold or the common deployed-model threshold. Escalated events receive an LLM review, and only a `MALICIOUS` verdict creates an alert. There is no statistical-rule fallback. Existing records are never automatically rescored.
 
 Durable detection setup and deployment: [docs/durable-detection-pipeline.md](docs/durable-detection-pipeline.md).
 

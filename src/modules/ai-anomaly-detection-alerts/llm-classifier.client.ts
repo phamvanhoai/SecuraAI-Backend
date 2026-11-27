@@ -1,24 +1,31 @@
 import { z } from 'zod';
 import { env } from '../../config/env.js';
 import type { DetectionEvent } from './anomaly-detection.repository.js';
-import type { MlTemporalContext } from './ml-shadow.client.js';
+import type { MlTemporalContext } from './ml-classifier.client.js';
 
 // Validate the structured final-review content returned by the LLM.
 const resultSchema = z.object({
-  verdict: z.string().transform((value) => value.trim().toUpperCase()).pipe(
-    z.enum(['BENIGN', 'SUSPICIOUS', 'MALICIOUS']),
-  ),
-  score: z.coerce.number().transform((value) => value > 1 && value <= 100 ? value / 100 : value)
+  verdict: z
+    .string()
+    .transform((value) => value.trim().toUpperCase())
+    .pipe(z.enum(['BENIGN', 'SUSPICIOUS', 'MALICIOUS'])),
+  score: z.coerce
+    .number()
+    .transform((value) => (value > 1 && value <= 100 ? value / 100 : value))
     .pipe(z.number().min(0).max(1)),
-  category: z.string().transform((value) => {
-    const normalized = value.trim().toUpperCase().replace(/[\s/-]+/g, '_');
-    if (/AUTH|LOGIN|BRUTE_FORCE|PASSWORD_SPRAY/.test(normalized)) return 'AUTHENTICATION';
-    if (/VPN|SSO|SAML|OAUTH/.test(normalized)) return 'VPN_SSO';
-    if (/APP|WEB|HTTP|ACCESS/.test(normalized)) return 'APPLICATION_ACCESS';
-    return normalized;
-  }).pipe(
-    z.enum(['AUTHENTICATION', 'VPN_SSO', 'APPLICATION_ACCESS', 'UNKNOWN']),
-  ),
+  category: z
+    .string()
+    .transform((value) => {
+      const normalized = value
+        .trim()
+        .toUpperCase()
+        .replace(/[\s/-]+/g, '_');
+      if (/AUTH|LOGIN|BRUTE_FORCE|PASSWORD_SPRAY/.test(normalized)) return 'AUTHENTICATION';
+      if (/VPN|SSO|SAML|OAUTH/.test(normalized)) return 'VPN_SSO';
+      if (/APP|WEB|HTTP|ACCESS/.test(normalized)) return 'APPLICATION_ACCESS';
+      return normalized;
+    })
+    .pipe(z.enum(['AUTHENTICATION', 'VPN_SSO', 'APPLICATION_ACCESS', 'UNKNOWN'])),
   reason: z.string().trim().min(1).max(2_000),
 });
 const responseSchema = z.object({ message: z.object({ content: z.string().min(1) }) });
@@ -75,14 +82,13 @@ function parseContent(content: string): unknown {
   return JSON.parse(withoutFence) as unknown;
 }
 
-// Send an event to the final LLM review stage only when every required feature
-// flag is enabled. This function returns a verdict; it does not write alerts.
+// Send an ML-escalated event to the final LLM review stage.
+// This function returns a verdict; it does not write alerts.
 export async function requestLlmClassification(
   event: DetectionEvent,
   temporalContext?: MlTemporalContext,
 ): Promise<LlmClassificationResult> {
-  if (!env.AI_FUSION_ENABLED || !env.LLM_CLASSIFIER_ENABLED || !env.OLLAMA_ENABLED)
-    return { status: 'DISABLED' };
+  if (!env.OLLAMA_ENABLED) return { status: 'DISABLED' };
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), env.OLLAMA_TIMEOUT_MS);
   try {

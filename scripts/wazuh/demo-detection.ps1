@@ -22,19 +22,19 @@ $outputDirectory = Join-Path ([IO.Path]::GetTempPath()) $runId
 $utf8 = New-Object System.Text.UTF8Encoding($false)
 
 # Anchor the newest event at yesterday 18:00 UTC (01:00 Vietnam time).
-# All events stay in the past; relative sequence/baseline intervals are preserved.
+# All events stay in the past; relative temporal-context intervals are preserved.
 $anchor = [DateTime]::UtcNow.Date.AddDays(-1).AddHours(18)
 $reference = [DateTimeOffset]::Parse('2026-10-29T18:00:00Z').UtcDateTime
 $shift = $anchor - $reference
 $expected = @{
-    All = '49 events; 9 rule matches; alerts depend on configured threshold'
-    AuthBurst = '6 events; AUTH_FAILURE_BURST; alerts depend on configured threshold'
-    AuthSuccess = '7 events; AUTH_FAILURE_BURST + AUTH_SUCCESS_AFTER_FAILURE; 2 alerts + 1 grouped match'
-    AppDenial = '11 events; APP_DENIAL_BURST; alerts depend on configured threshold'
-    AppSuccess = '12 events; APP_DENIAL_BURST + APP_SUCCESS_AFTER_DENIAL; 2 alerts + 1 grouped match'
-    VpnBurst = '6 events; VPN_SSO_FAILURE_BURST; alerts depend on configured threshold'
-    VpnNewContext = '21 events; VPN_SSO_NEW_CONTEXT_OFF_HOURS; alerts depend on configured threshold after 20 baseline events'
-    Normal = '3 events; no alerts with default thresholds'
+    All = '49 events; results depend on ML, configured thresholds and LLM verdicts'
+    AuthBurst = '6 events; ML evaluates the authentication failure sequence'
+    AuthSuccess = '7 events; ML evaluates the failure-to-success sequence'
+    AppDenial = '11 events; ML evaluates the application denial sequence'
+    AppSuccess = '12 events; ML evaluates the denial-to-success sequence'
+    VpnBurst = '6 events; ML evaluates the VPN failure sequence'
+    VpnNewContext = '21 events; ML evaluates recent SSO context and source changes'
+    Normal = '3 events; expected low risk, subject to the deployed model'
 }
 $selected = @($records | Where-Object {
     $item = $_

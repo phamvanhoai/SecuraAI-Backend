@@ -4,22 +4,16 @@ import { z } from 'zod';
 import { AppError } from '../../common/errors/app-error.js';
 import type { RunAnomalyDetectionBody } from './dto/run-anomaly-detection.dto.js';
 import { anomalyDetectionRepository } from './anomaly-detection.repository.js';
-import {
-  detectionPolicySchema,
-  evaluateContext,
-  detectionSeverity,
-  type ContextEvent,
-  type ContextualDecision,
-} from './contextual-detection.js';
+import { detectionSeverity, type ContextEvent, type DetectionFeature } from './detection-model.js';
 import { env } from '../../config/env.js';
 import { detectionJobsRepository, pipelineEngine } from './detection-jobs.repository.js';
 import { generateStoredAlertExplanation } from './alert-explanation.generator.js';
 import {
   buildMlTemporalContext,
-  requestMlShadowPrediction,
+  requestMlPrediction,
   type MlTemporalContext,
-  type MlShadowResult,
-} from './ml-shadow.client.js';
+  type MlPredictionResult,
+} from './ml-classifier.client.js';
 import { requestLlmClassification } from './llm-classifier.client.js';
 
 // Represent one event that could not complete the required ML or LLM stage.
@@ -39,12 +33,12 @@ type SuccessfulDetection = {
   id: string;
   eventId: string;
   score: number;
-  baselineReady: boolean;
+  outcome: 'BELOW_THRESHOLD' | 'LLM_BENIGN' | 'LLM_SUSPICIOUS' | 'MALICIOUS';
   threshold: number;
   thresholdSource: string;
   isAnomaly: boolean;
   occurredAt: Date;
-  features: ContextualDecision['features'];
+  features: DetectionFeature[];
   groupKey: string;
   explanationText?: string;
   explanationGeneratedAt?: Date;
@@ -55,7 +49,6 @@ type SuccessfulDetection = {
 const parametersSchema = z
   .object({
     threshold: z.number().min(0.5).max(1).default(0.8),
-    detectionPolicy: detectionPolicySchema.default(() => detectionPolicySchema.parse({})),
     assetThresholds: z
       .record(
         z.string(),
@@ -68,8 +61,11 @@ const parametersSchema = z
 // Hold the last in-process detection run so later runs wait for it to finish.
 let detectionQueue: Promise<void> = Promise.resolve();
 
-// Create the empty rule decision that AI-only mode later replaces with ML/LLM results.
-function createAiOnlyDecision(event: ContextEvent): ContextualDecision {
+// Create the stable grouping key and initial evidence for the ML/LLM pipeline.
+function createAiDecision(event: ContextEvent): {
+  groupKey: string;
+  features: DetectionFeature[];
+} {
   const groupKey = createHash('sha256')
     .update(
       JSON.stringify([
@@ -82,17 +78,12 @@ function createAiOnlyDecision(event: ContextEvent): ContextualDecision {
     )
     .digest('hex');
   return {
-    baselineReady: false,
-    score: 0,
-    matchedRules: [],
     groupKey,
     features: [
       {
         featureName: 'detection_mode',
         featureValue: JSON.stringify({
-          mode: 'AI_ONLY',
-          legacyRulesEvaluated: false,
-          legacySevenDayBaselineEvaluated: false,
+          mode: 'ML_LLM',
         }),
         contributionScore: 0,
         rank: 1,
@@ -184,8 +175,8 @@ export const anomalyDetectionService = {
   },
 };
 
-// Batch flow: pending events -> baseline -> 1/5/15/60-minute ML context
-// -> optional LLM review -> final decision -> explanation -> transaction.
+// Batch flow: pending events -> 1/5/15/60-minute ML context -> ML triage
+// -> LLM final review when escalated -> explanation -> transaction.
 // Evaluate, classify, explain and persist one bounded event batch.
 async function runDetection(
   model: Awaited<ReturnType<typeof anomalyDetectionRepository.findDeployedModel>> & {},
@@ -205,7 +196,7 @@ async function runDetection(
     throw new AppError(
       409,
       'INVALID_DETECTION_CONFIGURATION',
-      'The deployed detection configuration is invalid. Check its timezone, working hours and rule thresholds.',
+      'The deployed detection configuration has an invalid model or asset threshold.',
     );
   const parameters = parsed.data;
   // Collect at most maxEvents results not processed by this model/engine.
@@ -216,80 +207,32 @@ async function runDetection(
   );
   try {
     const detectedAt = new Date();
-    const aiOnlyMode = env.AI_FUSION_ENABLED && env.AI_FUSION_CAN_CREATE_ALERTS;
     const explanations = new Map<string, Promise<string>>();
     // One shared deadline for optional prose across the entire batch, not a
     // separate 60-second wait for every alert. Explicit regeneration is unchanged.
-    const explanationDeadline = Date.now() + 5_000;
+    const explanationDeadline = Date.now() + 5_000; //milisecon = 5s
     const evaluated: Array<SuccessfulDetection | ProcessingFailure> = [];
-    // Groups of four limit concurrent DB/AI calls; each result remains independent.
+    // Groups of 4 limit concurrent DB/AI calls; each result remains independent.
     for (let offset = 0; offset < batch.events.length; offset += 4) {
       evaluated.push(
         ...(await Promise.all(
           batch.events.slice(offset, offset + 4).map(async (event) => {
-            // Use case: Generate Anomaly Score.
-            // Build the event's historical decision before optional AI review.
-            let decision: ContextualDecision;
-            if (aiOnlyMode) {
-              decision = createAiOnlyDecision(event);
-            } else {
-              const context = await anomalyDetectionRepository.findEventContext(event);
-              decision = evaluateContext(
-                event,
-                context.events,
-                context.truncated,
-                parameters.detectionPolicy,
-              );
-              if (!decision.baselineReady && env.DETECTION_PIPELINE_ENABLED) {
-                const peers = await anomalyDetectionRepository.findPeerContext(event);
-                decision = evaluateContext(
-                  event,
-                  peers.events,
-                  peers.truncated,
-                  parameters.detectionPolicy,
-                  true,
-                );
-              }
-            }
-            // Start with the statistical score and select the model-level or
-            // asset-specific threshold that applies to this event.
-            let score = decision.score;
-            const assetId = event.event_entity_mappings[0]?.asset_id;
-            const customThreshold = assetId ? parameters.assetThresholds[assetId] : undefined;
-            const configuredThresholdSource = customThreshold?.enabled
-              ? 'ASSET_OVERRIDE'
-              : 'MODEL_DEFAULT';
-            let thresholdSource = configuredThresholdSource;
-            let threshold = customThreshold?.enabled
-              ? customThreshold.threshold
-              : parameters.threshold;
-            let isAnomaly = decision.baselineReady && score >= threshold;
-            if (!aiOnlyMode)
-              decision.features.push({
-                featureName: 'configured_threshold',
-                featureValue: JSON.stringify({ threshold, source: configuredThresholdSource }),
-                contributionScore: 0,
-                rank: decision.features.length + 1,
-              });
-            let mlPrediction: MlShadowResult | null = null;
-            let temporalContext: MlTemporalContext | undefined;
-            let scoringReady = decision.baselineReady;
-            if (env.ML_SHADOW_ENABLED || env.AI_FUSION_ENABLED) {
-              // Convert 60 minutes of history into 1/5/15/60-minute ML features.
-              const mlHistory = await anomalyDetectionRepository.findMlTemporalContext(event);
-              temporalContext = buildMlTemporalContext(event, mlHistory);
-              mlPrediction = await requestMlShadowPrediction(event, {
-                temporalContext,
-              });
-              decision.features.push({
-                featureName: 'ml_shadow_prediction',
-                featureValue: JSON.stringify(mlPrediction),
-                contributionScore: 0,
-                rank: decision.features.length + 1,
-              });
-            }
-            if (aiOnlyMode && mlPrediction?.status !== 'PREDICTED') {
-              const reason = mlPrediction?.status === 'UNAVAILABLE' ? mlPrediction.reason : 'DISABLED';
+            // Use case: Generate Anomaly Score. ML is the required first stage;
+            // there is no statistical-rule fallback when the model is unavailable.
+            const decision = createAiDecision(event);
+            const mlHistory = await anomalyDetectionRepository.findMlTemporalContext(event);
+            const temporalContext: MlTemporalContext = buildMlTemporalContext(event, mlHistory);
+            const mlPrediction: MlPredictionResult = await requestMlPrediction(event, {
+              temporalContext,
+            });
+            decision.features.push({
+              featureName: 'ml_prediction',
+              featureValue: JSON.stringify(mlPrediction),
+              contributionScore: 0,
+              rank: decision.features.length + 1,
+            });
+            if (mlPrediction.status !== 'PREDICTED') {
+              const reason = mlPrediction.reason;
               return {
                 eventId: event.id,
                 processingFailure: {
@@ -307,15 +250,26 @@ async function runDetection(
                 },
               };
             }
-            const modelEscalated =
-              mlPrediction?.status === 'PREDICTED' &&
-              mlPrediction.prediction.score >= mlPrediction.prediction.escalationThreshold;
+            // Apply the enabled threshold for the mapped Asset. Events without
+            // one use the deployed model's common threshold.
+            const assetId = event.event_entity_mappings[0]?.asset_id;
+            const assetThreshold = assetId ? parameters.assetThresholds[assetId] : undefined;
+            const threshold = assetThreshold?.enabled
+              ? assetThreshold.threshold
+              : parameters.threshold;
+            const thresholdSource = assetThreshold?.enabled ? 'ASSET_OVERRIDE' : 'MODEL_DEFAULT';
+            decision.features.push({
+              featureName: 'configured_threshold',
+              featureValue: JSON.stringify({ threshold, source: thresholdSource, assetId }),
+              contributionScore: 0,
+              rank: decision.features.length + 1,
+            });
+            const modelEscalated = mlPrediction.prediction.score >= threshold;
             // The LLM is a second review only for ML results that reach the
             // escalation threshold; low-risk ML results stop before this call.
-            const llmPrediction =
-              env.AI_FUSION_ENABLED && modelEscalated
-                ? await requestLlmClassification(event, temporalContext)
-                : null;
+            const llmPrediction = modelEscalated
+              ? await requestLlmClassification(event, temporalContext)
+              : null;
             if (llmPrediction) {
               decision.features.push({
                 featureName: 'llm_security_classification',
@@ -324,12 +278,9 @@ async function runDetection(
                 rank: decision.features.length + 1,
               });
             }
-            if (
-              aiOnlyMode &&
-              modelEscalated &&
-              (!llmPrediction || llmPrediction.status !== 'PREDICTED')
-            ) {
-              const reason = llmPrediction?.status === 'UNAVAILABLE' ? llmPrediction.reason : 'DISABLED';
+            if (modelEscalated && (!llmPrediction || llmPrediction.status !== 'PREDICTED')) {
+              const reason =
+                llmPrediction?.status === 'UNAVAILABLE' ? llmPrediction.reason : 'DISABLED';
               return {
                 eventId: event.id,
                 processingFailure: {
@@ -347,60 +298,41 @@ async function runDetection(
                 },
               };
             }
-            const triage = !env.AI_FUSION_ENABLED
-              ? { status: 'DISABLED' as const }
-              : mlPrediction?.status !== 'PREDICTED'
-                ? { status: 'ML_UNAVAILABLE' as const }
-                : modelEscalated
-                  ? {
-                      status: 'ESCALATED_TO_LLM' as const,
-                      modelScore: mlPrediction.prediction.score,
-                      escalationThreshold: mlPrediction.prediction.escalationThreshold,
-                      llmStatus: llmPrediction?.status ?? 'NOT_CALLED',
-                    }
-                  : {
-                      status: 'LOW_RISK_MONITOR' as const,
-                      modelScore: mlPrediction.prediction.score,
-                      escalationThreshold: mlPrediction.prediction.escalationThreshold,
-                    };
+            const triage = modelEscalated
+              ? {
+                  status: 'ESCALATED_TO_LLM' as const,
+                  modelScore: mlPrediction.prediction.score,
+                  configuredThreshold: threshold,
+                  thresholdSource,
+                  llmStatus: llmPrediction?.status ?? 'NOT_CALLED',
+                }
+              : {
+                  status: 'LOW_RISK_MONITOR' as const,
+                  modelScore: mlPrediction.prediction.score,
+                  configuredThreshold: threshold,
+                  thresholdSource,
+                };
             decision.features.push({
               featureName: 'ai_triage_decision',
               featureValue: JSON.stringify(triage),
               contributionScore: 0,
               rank: decision.features.length + 1,
             });
-            if (aiOnlyMode) {
-              // In AI-only mode, only an escalated MALICIOUS LLM verdict creates an alert.
-              if (mlPrediction?.status !== 'PREDICTED')
-                throw new Error('ML prediction state changed during AI-only evaluation');
-              if (!modelEscalated) {
-                scoringReady = true;
-                score = mlPrediction.prediction.score;
-                threshold = mlPrediction.prediction.escalationThreshold;
-                isAnomaly = false;
-                thresholdSource = 'AI_MODEL_TRIAGE';
-              } else if (llmPrediction?.status === 'PREDICTED') {
-                scoringReady = true;
-                score = llmPrediction.prediction.score;
-                if (llmPrediction.prediction.verdict === 'MALICIOUS') {
-                  // The LLM verdict is the final decision. The numeric fields are
-                  // retained for schema/report compatibility and are not a
-                  // calibrated probability boundary.
-                  threshold = mlPrediction.prediction.escalationThreshold;
-                  isAnomaly = true;
-                  thresholdSource = 'AI_LLM_FINAL';
-                } else if (llmPrediction.prediction.verdict === 'SUSPICIOUS') {
-                  threshold = 1;
-                  score = Math.min(score, 0.99999999);
-                  isAnomaly = false;
-                  thresholdSource = 'AI_LLM_FINAL';
-                } else {
-                  threshold = mlPrediction.prediction.escalationThreshold;
-                  score = Math.min(score, 0.99999999);
-                  isAnomaly = false;
-                  thresholdSource = 'AI_LLM_FINAL';
-                }
-              }
+            // ML handles low-risk triage. For escalated events, the LLM verdict
+            // is final and only MALICIOUS creates an alert.
+            let score = mlPrediction.prediction.score;
+            let isAnomaly = false;
+            let outcome: SuccessfulDetection['outcome'] = 'BELOW_THRESHOLD';
+            if (modelEscalated && llmPrediction?.status === 'PREDICTED') {
+              score = llmPrediction.prediction.score;
+              isAnomaly = llmPrediction.prediction.verdict === 'MALICIOUS';
+              outcome =
+                llmPrediction.prediction.verdict === 'MALICIOUS'
+                  ? 'MALICIOUS'
+                  : llmPrediction.prediction.verdict === 'SUSPICIOUS'
+                    ? 'LLM_SUSPICIOUS'
+                    : 'LLM_BENIGN';
+              if (!isAnomaly) score = Math.min(score, 0.99999999);
             }
             // The generated score, threshold and readiness state are now final.
             // Generate Anomaly Alert uses isAnomaly in the next part of this flow.
@@ -430,7 +362,7 @@ async function runDetection(
               id: randomUUID(),
               eventId: event.id,
               score,
-              baselineReady: scoringReady,
+              outcome,
               threshold,
               thresholdSource,
               isAnomaly,
@@ -446,8 +378,8 @@ async function runDetection(
     const failures = evaluated.flatMap((item) =>
       'processingFailure' in item ? [{ eventId: item.eventId, ...item.processingFailure }] : [],
     );
-    const detections = evaluated.filter((item): item is SuccessfulDetection =>
-      !('processingFailure' in item),
+    const detections = evaluated.filter(
+      (item): item is SuccessfulDetection => !('processingFailure' in item),
     );
     const summary = {
       modelVersionId: model.id,
@@ -457,11 +389,10 @@ async function runDetection(
       eventsEvaluated: evaluated.length,
       processingFailures: failures.length,
       anomaliesDetected: detections.filter((item) => item.isAnomaly).length,
-      insufficientBaseline: detections.filter((item) => !item.baselineReady).length,
-      engineVersion: env.DETECTION_PIPELINE_ENABLED ? pipelineEngine : 'contextual-rules-v1',
-      timeZone: parameters.detectionPolicy.timeZone,
-      customThresholdsApplied: detections.filter((item) => item.threshold !== parameters.threshold)
-        .length,
+      engineVersion: pipelineEngine,
+      customThresholdsApplied: detections.filter(
+        (item) => item.thresholdSource === 'ASSET_OVERRIDE',
+      ).length,
     } satisfies Prisma.InputJsonObject;
     if (evaluated.length === 0) {
       return {
