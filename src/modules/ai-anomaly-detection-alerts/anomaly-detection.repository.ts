@@ -202,7 +202,6 @@ export const anomalyDetectionRepository = {
               detection_id: item.id,
               feature_name: feature.featureName,
               feature_value: feature.featureValue,
-              contribution_score: feature.contributionScore,
               rank: feature.rank,
             })),
           );

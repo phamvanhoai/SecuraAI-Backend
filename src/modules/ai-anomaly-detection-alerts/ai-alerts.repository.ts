@@ -62,6 +62,15 @@ function readParameters(value: Prisma.JsonValue | null | undefined): Prisma.Json
   return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
 }
 
+// Preserve current model settings while removing retired backend scoring weights.
+function currentDetectionParameters(
+  value: Prisma.JsonValue | null | undefined,
+): Prisma.JsonObject {
+  const parameters = { ...readParameters(value) };
+  delete parameters.weights;
+  return parameters;
+}
+
 // Extract valid asset-threshold entries from deployed-model parameters.
 function readThresholdMap(
   value: Prisma.JsonValue | null | undefined,
@@ -253,12 +262,8 @@ export const aiAlertsRepository = {
       });
       if (!model) return null;
 
-      // The threshold is stored inside the model parameters JSON.
-      // Keep all other settings and replace only the threshold value.
-      const current =
-        model.parameters && typeof model.parameters === 'object' && !Array.isArray(model.parameters)
-          ? model.parameters
-          : {};
+      // Keep current model settings, remove retired scoring weights and replace the threshold.
+      const current = currentDetectionParameters(model.parameters);
       const updated = await transaction.ai_model_versions.update({
         where: { id: model.id },
         data: { parameters: { ...current, threshold: input.threshold } },
@@ -418,7 +423,7 @@ export const aiAlertsRepository = {
           updatedByUserId: userId,
           updatedAt,
         } satisfies Prisma.InputJsonObject;
-        const parameters = readParameters(model.parameters);
+        const parameters = currentDetectionParameters(model.parameters);
         const thresholds = readThresholdMap(model.parameters);
         const existing = thresholds[assetId];
         if (input.mode === 'create' && existing?.enabled === true) {

@@ -16,7 +16,6 @@ export interface ContextEvent {
 export interface DetectionFeature {
   featureName: string;
   featureValue: string;
-  contributionScore: number;
   rank: number;
 }
 

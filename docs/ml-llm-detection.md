@@ -4,7 +4,7 @@ SecuraAI calls the separately deployed classifier for every evaluated event. The
 
 - The pipeline has no statistical-rule fallback.
 - Only the past-only 1m/5m/15m/60m context required by ML and LLM is queried, bounded to the preceding 60 minutes.
-- The ML response is stored as an `ml_prediction` feature contribution with contribution score `0`.
+- The validated ML response is stored as `ml_prediction` evidence. The Backend does not calculate a separate feature-contribution score.
 - ML or LLM timeout, network, HTTP and response-validation failures produce a durable `FAILED` job with a stage-specific error code. They never create an alert, fall back to legacy rules, or masquerade as a review-pending security decision. Security Officers may explicitly retry the event.
 - Only an LLM `MALICIOUS` verdict creates or groups an alert. `BENIGN` and `SUSPICIOUS` do not.
 - The classifier score is experimental and is not a calibrated probability.
@@ -21,8 +21,8 @@ When the backend runs in Docker and FastAPI runs on the host, use `http://host.d
 ## Demo worker consistency
 
 The API process and every detection worker connected to the same database must use the same
-shadow-inference configuration and Backend image. A stale worker can claim durable detection jobs
-before the current worker and persist detections without the expected shadow evidence. The demo
-Compose configuration therefore enables shadow inference for both services through their shared
-environment and uses `http://host.docker.internal:8002`, the local SecuraAI model port. Start the
-host model service on an address reachable from Docker before starting the demo worker.
+detection-pipeline configuration and Backend image. A stale worker can claim durable detection jobs
+before the current worker and persist results from an older engine. The demo Compose configuration
+therefore points both services to the same ML endpoint through their shared environment and uses
+`http://host.docker.internal:8002`, the local SecuraAI model port. Start the host model service on an
+address reachable from Docker before starting the demo worker.
