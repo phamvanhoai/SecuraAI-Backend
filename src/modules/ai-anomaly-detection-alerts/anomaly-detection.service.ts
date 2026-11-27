@@ -56,7 +56,7 @@ const parametersSchema = z
       )
       .default({}),
   })
-  .passthrough();
+  .strip();
 
 // Hold the last in-process detection run so later runs wait for it to finish.
 let detectionQueue: Promise<void> = Promise.resolve();
@@ -81,24 +81,9 @@ function createAiDecision(event: ContextEvent): {
     groupKey,
     features: [
       {
-        featureName: 'detection_mode',
-        featureValue: JSON.stringify({
-          mode: 'ML_LLM',
-        }),
-        contributionScore: 0,
-        rank: 1,
-      },
-      {
-        featureName: 'evidence_event_ids',
-        featureValue: JSON.stringify([event.id]),
-        contributionScore: 0,
-        rank: 2,
-      },
-      {
         featureName: 'detection_group',
         featureValue: JSON.stringify(groupKey),
-        contributionScore: 0,
-        rank: 3,
+        rank: 1,
       },
     ],
   };
@@ -222,13 +207,15 @@ async function runDetection(
             const decision = createAiDecision(event);
             const mlHistory = await anomalyDetectionRepository.findMlTemporalContext(event);
             const temporalContext: MlTemporalContext = buildMlTemporalContext(event, mlHistory);
+            // Send the current event plus its 1/5/15/60-minute evidence to ML
+            // and wait for either an anomaly score or a failure status.
             const mlPrediction: MlPredictionResult = await requestMlPrediction(event, {
               temporalContext,
             });
+            // Keep the complete ML response as evidence for this detection result.
             decision.features.push({
               featureName: 'ml_prediction',
               featureValue: JSON.stringify(mlPrediction),
-              contributionScore: 0,
               rank: decision.features.length + 1,
             });
             if (mlPrediction.status !== 'PREDICTED') {
@@ -258,12 +245,6 @@ async function runDetection(
               ? assetThreshold.threshold
               : parameters.threshold;
             const thresholdSource = assetThreshold?.enabled ? 'ASSET_OVERRIDE' : 'MODEL_DEFAULT';
-            decision.features.push({
-              featureName: 'configured_threshold',
-              featureValue: JSON.stringify({ threshold, source: thresholdSource, assetId }),
-              contributionScore: 0,
-              rank: decision.features.length + 1,
-            });
             const modelEscalated = mlPrediction.prediction.score >= threshold;
             // The LLM is a second review only for ML results that reach the
             // escalation threshold; low-risk ML results stop before this call.
@@ -274,7 +255,6 @@ async function runDetection(
               decision.features.push({
                 featureName: 'llm_security_classification',
                 featureValue: JSON.stringify(llmPrediction),
-                contributionScore: 0,
                 rank: decision.features.length + 1,
               });
             }
@@ -298,26 +278,6 @@ async function runDetection(
                 },
               };
             }
-            const triage = modelEscalated
-              ? {
-                  status: 'ESCALATED_TO_LLM' as const,
-                  modelScore: mlPrediction.prediction.score,
-                  configuredThreshold: threshold,
-                  thresholdSource,
-                  llmStatus: llmPrediction?.status ?? 'NOT_CALLED',
-                }
-              : {
-                  status: 'LOW_RISK_MONITOR' as const,
-                  modelScore: mlPrediction.prediction.score,
-                  configuredThreshold: threshold,
-                  thresholdSource,
-                };
-            decision.features.push({
-              featureName: 'ai_triage_decision',
-              featureValue: JSON.stringify(triage),
-              contributionScore: 0,
-              rank: decision.features.length + 1,
-            });
             // ML handles low-risk triage. For escalated events, the LLM verdict
             // is final and only MALICIOUS creates an alert.
             let score = mlPrediction.prediction.score;
@@ -334,7 +294,7 @@ async function runDetection(
                     : 'LLM_BENIGN';
               if (!isAnomaly) score = Math.min(score, 0.99999999);
             }
-            // The generated score, threshold and readiness state are now final.
+            // The ML/LLM result and applied threshold are now final.
             // Generate Anomaly Alert uses isAnomaly in the next part of this flow.
             // Related anomalies in one 15-minute bucket reuse an explanation.
             const explanationKey = `${decision.groupKey}:${Math.floor(event.occurred_at.getTime() / (15 * 60_000))}`;

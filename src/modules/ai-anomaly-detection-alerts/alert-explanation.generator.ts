@@ -9,7 +9,6 @@ export interface StoredAlertExplanationInput {
   featureContributions: Array<{
     featureName: string;
     featureValue: string | null;
-    contributionScore: number | null;
     rank: number | null;
   }>;
   eventId: string;

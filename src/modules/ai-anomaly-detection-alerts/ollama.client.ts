@@ -23,7 +23,6 @@ export interface AlertExplanationInput {
   featureContributions: Array<{
     featureName: string;
     featureValue: string | null;
-    contributionScore: number | null;
     rank: number | null;
   }>;
 }

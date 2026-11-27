@@ -24,9 +24,8 @@ const detection = (id: string, minutes = 0) => ({
   groupKey: 'same-account-ip-source',
   features: [
     {
-      featureName: 'ai_triage_decision',
-      featureValue: '{"status":"ESCALATED_TO_LLM"}',
-      contributionScore: 0.9,
+      featureName: 'ml_prediction',
+      featureValue: '{"status":"PREDICTED","prediction":{"score":0.9}}',
       rank: 1,
     },
   ],

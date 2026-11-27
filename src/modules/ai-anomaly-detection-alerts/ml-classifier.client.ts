@@ -73,6 +73,7 @@ export function buildMlTemporalContext(
   history: readonly ContextEvent[],
 ): MlTemporalContext {
   const time = event.occurred_at.getTime();
+  // Keep up to 60 minutes of past events from the same source and family.
   const eligible = history
     .filter(
       (item) =>
@@ -83,6 +84,8 @@ export function buildMlTemporalContext(
         item.occurred_at.getTime() >= time - 60 * 60_000,
     )
     .sort((a, b) => a.occurred_at.getTime() - b.occurred_at.getTime());
+
+  // Use the 5-minute window for detailed behavior features sent to ML.
   const prior = eligible.filter((item) => item.occurred_at.getTime() >= time - 5 * 60_000);
   const types = prior.map((item) => item.event_type.toUpperCase());
   const current = event.event_type.toUpperCase();
@@ -95,7 +98,8 @@ export function buildMlTemporalContext(
   ]);
   const failureTypes = new Set([...failures, 'ACCESS_DENIED', 'APPLICATION_ACCESS_DENIED']);
   const context = [...prior, event];
-  // Count events and failures inside one requested rolling-time window.
+
+  // The 1-, 15-, and 60-minute windows only need total events and failures.
   const summary = (minutes: number) => {
     const items = eligible.filter((item) => item.occurred_at.getTime() >= time - minutes * 60_000);
     return {
@@ -212,11 +216,12 @@ export async function requestMlPrediction(
     const response = await fetch(`${options.baseUrl ?? env.ML_MODEL_BASE_URL}/v1/predict`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
+      // Send the event fields and 1/5/15/60-minute evidence as JSON.
       body: JSON.stringify(buildMlPredictionPayload(event, options.temporalContext)),
       signal: controller.signal,
     });
     if (!response.ok) return { status: 'UNAVAILABLE', reason: 'HTTP_ERROR' };
-    // Never trust an external model response until it passes the Zod schema.
+    // Receive the ML score and validate its structure before returning it.
     const parsed = responseSchema.safeParse(await response.json());
     return parsed.success
       ? { status: 'PREDICTED', prediction: parsed.data }
