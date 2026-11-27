@@ -910,7 +910,7 @@ export const openApiSpec = {
         tags: ['IT Asset Management'],
         summary: 'Create an IT asset',
         description:
-          'Registers an IT asset with an optional owner. Business service, criticality and data classification start as null; use context and classification operations afterwards. No default classification is assigned. Requires an active Security Officer.',
+          'Registers an IT asset with an optional owner. Dependencies and event sources are not accepted during creation; link them afterwards through Link Asset Context. Business service, criticality and data classification start as null; use context and classification operations afterwards. No default classification is assigned. Requires an active Security Officer.',
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
@@ -929,12 +929,7 @@ export const openApiSpec = {
                     maxLength: 2000,
                     description: 'Optional; empty or 20-2000 characters after trimming.',
                   },
-                  dependencies: { type: 'array', maxItems: 50 },
-                  eventSourceIds: {
-                    type: 'array',
-                    maxItems: 50,
-                    items: { type: 'string', format: 'uuid' },
-                  },
+
                 },
               },
             },
@@ -948,7 +943,7 @@ export const openApiSpec = {
           '401': { description: 'Authentication required' },
           '403': { description: 'Security Officer role required' },
           '409': { description: 'Asset code already exists' },
-          '422': { description: 'Invalid input or unavailable relationship' },
+          '422': { description: 'Invalid input or unavailable Asset Owner' },
         },
       },
     },
@@ -989,8 +984,9 @@ export const openApiSpec = {
               schema: {
                 type: 'object',
                 additionalProperties: false,
-                required: ['reason'],
-                properties: { reason: { type: 'string', minLength: 20, maxLength: 1000 } },
+                required: ['reason', 'confirmationCode'],
+                properties: {
+                  confirmationCode: { type: 'string', minLength: 1, maxLength: 100, description: 'Exact asset code; checked inside the archive transaction.' }, reason: { type: 'string', minLength: 20, maxLength: 1000 } },
               },
             },
           },
@@ -1004,7 +1000,7 @@ export const openApiSpec = {
             description:
               'Already archived, active dependent assets, or concurrent changes. Dependency message lists up to 20 asset codes/names.',
           },
-          '422': { description: 'Missing or invalid archive reason' },
+          '422': { description: 'Missing/invalid reason or confirmation code; ASSET_CONFIRMATION_MISMATCH when the code does not match' },
           '503': { description: 'Transaction timeout; retry' },
         },
       },

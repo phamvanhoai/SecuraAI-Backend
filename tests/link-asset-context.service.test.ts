@@ -13,7 +13,6 @@ describe('assetsService.linkContext', () => {
   it('validates and replaces the asset context links', async () => {
     vi.mocked(assetsRepository.findActor).mockResolvedValue({ role: 'SECURITY_OFFICER', status: 'ACTIVE' });
     vi.mocked(assetsRepository.findById).mockResolvedValue({ status: 'ACTIVE' } as never);
-    vi.mocked(assetsRepository.validateCreateReferences).mockResolvedValue({ ownerValid: true, serviceValid: true, dependenciesValid: true, eventSourcesValid: true });
     vi.mocked(assetsRepository.linkContext).mockResolvedValue({ kind: 'updated', asset: { id: assetId, updated_at: new Date('2026-09-30T07:00:00Z') } });
     await expect(assetsService.linkContext(userId, assetId, input)).resolves.toMatchObject({ assetId, ...input });
   });
