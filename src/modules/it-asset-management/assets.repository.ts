@@ -521,6 +521,55 @@ export const assetsRepository = {
       { isolationLevel: 'Serializable', maxWait: 5000, timeout: 15000 },
     );
   },
+  async dependencyOptions(assetId: string, q: string) {
+    const items = await prisma.assets.findMany({
+      where: {
+        id: { not: assetId }, status: 'ACTIVE',
+        ...(q ? { OR: [
+          { asset_code: { contains: q, mode: 'insensitive' as const } },
+          { name: { contains: q, mode: 'insensitive' as const } },
+        ] } : {}),
+      },
+      select: { id: true, asset_code: true, name: true, status: true },
+      orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+      take: 10,
+    });
+    if (!items.length) return [];
+    // Start from each displayed candidate and find a path back to the edited asset.
+    // A per-path visited array terminates safely even with historical cycles.
+    const cycles = await prisma.$queryRaw<Array<{ candidate_id: string; path: string[] }>>(Prisma.sql`
+      WITH RECURSIVE reachable(candidate_id, id, visited) AS (
+        SELECT id, id, ARRAY[id]
+        FROM unnest(ARRAY[${Prisma.join(items.map(item => item.id))}]::uuid[]) AS start(id)
+        UNION ALL
+        SELECT reachable.candidate_id, dependency.depends_on_asset_id,
+          reachable.visited || dependency.depends_on_asset_id
+        FROM public.asset_dependencies AS dependency
+        JOIN reachable ON dependency.asset_id = reachable.id
+        WHERE reachable.id <> ${assetId}::uuid
+          AND NOT dependency.depends_on_asset_id = ANY(reachable.visited)
+      ), found AS (
+        SELECT DISTINCT ON (candidate_id) candidate_id,
+          ARRAY[${assetId}::uuid] || visited AS ids
+        FROM reachable WHERE id = ${assetId}::uuid
+        ORDER BY candidate_id, cardinality(visited), visited
+      )
+      SELECT candidate_id, ARRAY(
+        SELECT asset.asset_code || ' — ' || asset.name
+        FROM unnest(found.ids) WITH ORDINALITY AS step(id, position)
+        JOIN public.assets AS asset ON asset.id = step.id
+        ORDER BY step.position
+      ) AS path FROM found
+    `);
+    const paths = new Map(cycles.map(cycle => [cycle.candidate_id, cycle.path]));
+    return items.map(item => ({
+      id: item.id, assetCode: item.asset_code, name: item.name,
+      status: item.status.toLowerCase(),
+      canSelect: !paths.has(item.id),
+      blockedReason: paths.has(item.id) ? 'Cannot select: this dependency would create a circular dependency.' : null,
+      cyclePath: paths.get(item.id) ?? [],
+    }));
+  },
   linkContext(assetId: string, input: LinkAssetContextInput, userId: string) {
     return prisma.$transaction(
       async (tx) => {

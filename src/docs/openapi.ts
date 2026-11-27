@@ -947,6 +947,24 @@ export const openApiSpec = {
         },
       },
     },
+    '/assets/{assetId}/dependency-options': {
+      get: {
+        tags: ['IT Asset Management'], summary: 'Search asset dependency options with cycle eligibility',
+        description: 'Active Security Officer only, for an active asset. Returns the latest 10 active assets excluding itself; q searches code/name. canSelect is false for candidates with a dependency path back to the edited asset; blockedReason and cyclePath explain why. This is advisory: PUT context rechecks cycles transactionally at save time. No pagination.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'assetId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+          { name: 'q', in: 'query', schema: { type: 'string', maxLength: 100 } },
+        ],
+        responses: {
+          '200': {
+            description: 'Envelope data.items contains up to 10 objects: id, assetCode, name, status, canSelect (boolean), blockedReason (string or null), and cyclePath (string array). Blocked options remain visible.',
+          },
+          '401': { description: 'Authentication required' }, '403': { description: 'Security Officer required' },
+          '404': { description: 'Asset not found' }, '409': { description: 'Asset archived' }, '422': { description: 'Invalid asset ID or search' },
+        },
+      },
+    },
     '/assets/create-options': {
       get: {
         tags: ['IT Asset Management'],
