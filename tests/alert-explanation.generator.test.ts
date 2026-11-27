@@ -14,7 +14,7 @@ const input = {
   threshold: 0.8,
   suggestedRiskLevel: 'high',
   detectedAt: new Date('2026-10-21T22:00:00Z'),
-  featureContributions: [],
+  evidence: [],
   eventId: 'event-1',
 };
 

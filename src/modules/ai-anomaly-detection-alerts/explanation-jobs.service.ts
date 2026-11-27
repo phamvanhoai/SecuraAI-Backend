@@ -26,7 +26,7 @@ export async function runExplanationJobs(): Promise<void> {
           threshold: peak?.threshold ?? detection.threshold.toNumber(),
           suggestedRiskLevel: alert.severity?.toLowerCase() ?? null,
           detectedAt: detection.detected_at,
-          featureContributions:
+          evidence:
             peak?.features ??
             detection.anomaly_feature_contributions.map((f) => ({
               featureName: f.feature_name,
