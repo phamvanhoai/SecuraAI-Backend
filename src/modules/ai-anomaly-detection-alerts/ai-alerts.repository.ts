@@ -45,6 +45,7 @@ const alertSelect = {
 
 export type AiAlertRecord = Prisma.anomaly_alertsGetPayload<{ select: typeof alertSelect }>;
 
+// Translate public filter names to the database alert-status enum.
 function databaseStatuses(status: ListAiAlertsQuery['status']): alert_status[] | undefined {
   if (!status) return undefined;
   if (status === 'new') return ['NEW'];
@@ -56,10 +57,12 @@ function databaseStatuses(status: ListAiAlertsQuery['status']): alert_status[] |
   return undefined;
 }
 
+// Read model parameters as a JSON object without trusting other JSON shapes.
 function readParameters(value: Prisma.JsonValue | null | undefined): Prisma.JsonObject {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
 }
 
+// Extract valid asset-threshold entries from deployed-model parameters.
 function readThresholdMap(
   value: Prisma.JsonValue | null | undefined,
 ): Record<string, Prisma.JsonObject> {
@@ -73,6 +76,7 @@ function readThresholdMap(
   );
 }
 
+// Read the previous audit hash used to extend the tamper-evident chain.
 async function latestAuditHash(transaction: Prisma.TransactionClient): Promise<string | null> {
   const previous = await transaction.audit_logs.findFirst({
     orderBy: [{ occurred_at: 'desc' }, { id: 'desc' }],
@@ -81,6 +85,7 @@ async function latestAuditHash(transaction: Prisma.TransactionClient): Promise<s
   return previous?.record_hash ?? null;
 }
 
+// Produce the deterministic hash stored with a new audit record.
 export function hashAuditRecord(input: {
   previousHash: string | null;
   actorUserId: string;
@@ -186,6 +191,7 @@ export const aiAlertsRepository = {
       return { outcome: 'conflict' as const, alert };
     });
   },
+  // Query active assets eligible for custom threshold configuration.
   listActiveAssetOptions(q?: string) {
     return prisma.assets.findMany({
       where: {
@@ -204,6 +210,7 @@ export const aiAlertsRepository = {
       take: 50,
     });
   },
+  // Read the latest deployed model and its threshold parameters.
   findDeployedModelThreshold() {
     // Find the latest deployed model and return only the fields needed
     // by the service and the API response.
@@ -220,6 +227,7 @@ export const aiAlertsRepository = {
       },
     });
   },
+  // Update the deployed threshold and append its audit record atomically.
   async configureDeployedModelThreshold(input: {
     modelVersionId: string;
     threshold: number;
@@ -301,6 +309,7 @@ export const aiAlertsRepository = {
       return updated;
     });
   },
+  // Query a filtered and paginated model-version list with evaluation metrics.
   listModelVersions(query: ListModelVersionsQuery) {
     const where: Prisma.ai_model_versionsWhereInput = {
       ...(query.modelName
@@ -348,6 +357,7 @@ export const aiAlertsRepository = {
       }),
     ]);
   },
+  // Read one page of asset threshold settings from deployed-model parameters.
   async listAlertThresholds(query: ListAlertThresholdsQuery) {
     const model = await prisma.ai_model_versions.findFirst({
       where: { status: 'DEPLOYED' },
@@ -428,6 +438,7 @@ export const aiAlertsRepository = {
       { isolationLevel: 'Serializable' },
     );
   },
+  // Group recent alerts by workflow status for dashboard totals.
   metrics(detectedAfter: Date) {
     return prisma.anomaly_alerts.groupBy({
       by: ['status'],
@@ -514,6 +525,7 @@ export const aiAlertsRepository = {
       },
     });
   },
+  // Load explanation data plus model/event context needed for regeneration.
   findExplanationForRegeneration(alertId: string) {
     return prisma.anomaly_alerts.findUnique({
       where: { id: alertId },
@@ -544,6 +556,7 @@ export const aiAlertsRepository = {
       },
     });
   },
+  // Replace explanation text conditionally and record the audited change.
   replaceExplanation(input: {
     alertId: string;
     actorUserId: string;
@@ -614,6 +627,7 @@ export const aiAlertsRepository = {
       return true;
     });
   },
+  // Load the alert state and model version required before feedback creation.
   findForFeedback(alertId: string) {
     return prisma.anomaly_alerts.findUnique({
       where: { id: alertId },
@@ -623,6 +637,7 @@ export const aiAlertsRepository = {
       },
     });
   },
+  // Store analyst feedback with actor, time, reason and model version.
   createFeedback(input: {
     alertId: string;
     analystUserId: string;
@@ -654,6 +669,7 @@ export const aiAlertsRepository = {
       },
     });
   },
+  // Query one page of analyst feedback history for an alert.
   listFeedback(alertId: string, query: ListAiAlertFeedbackQuery) {
     const where = { alert_id: alertId };
     return Promise.all([
@@ -677,6 +693,7 @@ export const aiAlertsRepository = {
       }),
     ]);
   },
+  // Confirm an alert, create its incident and feedback, and audit the transition.
   confirmAsIncident(input: { alertId: string; userId: string; comment?: string }) {
     return prisma.$transaction(async (transaction) => {
       const alert = await transaction.anomaly_alerts.findUnique({
@@ -759,6 +776,7 @@ export const aiAlertsRepository = {
       return { outcome: 'confirmed' as const, alert, finding, changed: true };
     });
   },
+  // Dismiss an alert and store false-positive feedback in one transaction.
   markFalsePositive(input: { alertId: string; userId: string; comment?: string }) {
     return prisma.$transaction(async (transaction) => {
       const alert = await transaction.anomaly_alerts.findUnique({
@@ -813,6 +831,7 @@ export const aiAlertsRepository = {
       return { outcome: 'changed' as const, alert, triage };
     });
   },
+  // Keep an alert open for investigation and record the analyst's reason.
   markFurtherInvestigation(input: { alertId: string; userId: string; reason: string }) {
     return prisma.$transaction(async (transaction) => {
       const alert = await transaction.anomaly_alerts.findUnique({

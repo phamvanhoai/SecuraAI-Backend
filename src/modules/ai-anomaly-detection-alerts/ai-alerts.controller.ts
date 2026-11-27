@@ -22,6 +22,7 @@ import { configureDetectionThresholdSchema } from './dto/detection-threshold.dto
 import { regenerateAlertExplanationSchema } from './dto/regenerate-alert-explanation.dto.js';
 import { aiAlertRealtimeService } from './ai-alert-realtime.service.js';
 
+// Issue a short-lived ticket used to authenticate the real-time alert socket.
 export const issueAiAlertRealtimeTicket: RequestHandler = async (_req, res) => {
   const userId: unknown = res.locals.authenticatedUserId;
   if (typeof userId !== 'string')
@@ -42,6 +43,7 @@ export const getDetectionThreshold: RequestHandler = async (_req, res) => {
     .json({ success: true, data: await aiAlertsService.getDetectionThreshold(userId) });
 };
 
+// Pass the validated model threshold and audit context to the service.
 export const configureDetectionThreshold: RequestHandler = async (req, res) => {
   // authenticate already verified the token and stored the user ID here.
   // The controller reads it instead of trusting a user ID from the request body.
@@ -127,6 +129,7 @@ export const startAiAlertTriage: RequestHandler = async (req, res) => {
   res.status(200).json({ success: true, data });
 };
 
+// Return the authorized alert status totals used by the dashboard.
 export const getAiAlertMetrics: RequestHandler = async (_req, res) => {
   const userId: unknown = res.locals.authenticatedUserId;
   if (typeof userId !== 'string')

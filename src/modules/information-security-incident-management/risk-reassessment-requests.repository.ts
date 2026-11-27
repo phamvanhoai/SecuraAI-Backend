@@ -1,15 +1,18 @@
 import { prisma } from '../../database/prisma.js';
 
 export const riskReassessmentRequestsRepository = {
+  // Load the account fields required for service authorization.
   findActor(userId: string) {
     return prisma.users.findUnique({ where: { id: userId }, select: { role: true, status: true } });
   },
+  // Load the incident before reading or creating reassessment requests.
   findIncident(incidentId: string) {
     return prisma.incidents.findUnique({
       where: { id: incidentId },
       select: { id: true, incident_code: true, title: true, status: true },
     });
   },
+  // Confirm that the selected risk is linked to this incident.
   findLinkedRisk(incidentId: string, riskId: string) {
     return prisma.incident_risks.findUnique({
       where: { incident_id_risk_id: { incident_id: incidentId, risk_id: riskId } },
@@ -18,6 +21,7 @@ export const riskReassessmentRequestsRepository = {
       },
     });
   },
+  // Confirm optional control-weakness evidence belongs to this incident.
   findControlFinding(incidentId: string, findingId: string) {
     return prisma.control_findings.findFirst({
       where: {
@@ -34,6 +38,7 @@ export const riskReassessmentRequestsRepository = {
       },
     });
   },
+  // Detect an unfinished request for the same incident and risk.
   findActiveRequest(incidentId: string, riskId: string) {
     return prisma.risk_reassessment_requests.findFirst({
       where: {
@@ -44,6 +49,7 @@ export const riskReassessmentRequestsRepository = {
       select: { id: true, status: true },
     });
   },
+  // Return one page of reassessment requests raised from the incident.
   async listHistory(incidentId: string, page: number, limit: number) {
     const where = { incident_id: incidentId };
     const [items, total] = await Promise.all([
@@ -91,6 +97,7 @@ export const riskReassessmentRequestsRepository = {
     ]);
     return { items, total };
   },
+  // Return linked risks and supporting findings available to a new request.
   async findOptions(incidentId: string) {
     const [incident, riskLinks, findings] = await Promise.all([
       this.findIncident(incidentId),

@@ -5,6 +5,7 @@ import type {
 } from './dto/link-incident-asset.dto.js';
 import { incidentAssetsRepository } from './incident-assets.repository.js';
 
+// Require an active Security Officer for incident-asset operations.
 async function requireSecurityOfficer(userId: string) {
   const actor = await incidentAssetsRepository.findActor(userId);
   if (!actor || actor.status !== 'ACTIVE')
@@ -86,6 +87,7 @@ export const incidentAssetsService = {
     }
   },
 
+  // Validate the incident and remove one linked asset.
   async unlink(userId: string, incidentId: string, assetId: string) {
     await requireSecurityOfficer(userId);
     const incident = await incidentAssetsRepository.findIncident(incidentId);

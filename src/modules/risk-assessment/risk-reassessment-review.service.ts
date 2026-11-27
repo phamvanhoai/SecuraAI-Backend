@@ -4,6 +4,7 @@ import type { CompleteRiskReassessmentInput } from './dto/review-risk-reassessme
 import type { RejectRiskReassessmentRequestInput } from './dto/review-risk-reassessment-request.dto.js';
 import { riskReassessmentReviewRepository } from './risk-reassessment-review.repository.js';
 
+// Map a reassessment request and its actor permissions into the public response.
 const mapRequest = (
   request: Awaited<ReturnType<typeof riskReassessmentReviewRepository.findById>> & {},
   userId: string,

@@ -6,6 +6,7 @@ import {
   recordControlWeaknessBodySchema,
 } from './dto/record-control-weakness.dto.js';
 import { controlWeaknessesService } from './control-weaknesses.service.js';
+// Read the trusted user ID placed in response locals by authenticate.
 function userId(value: unknown) {
   if (typeof value !== 'string') throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
   return value;
