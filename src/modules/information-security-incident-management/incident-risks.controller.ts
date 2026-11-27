@@ -7,6 +7,7 @@ import {
   linkIncidentRiskBodySchema,
 } from './dto/link-incident-risk.dto.js';
 import { incidentRisksService } from './incident-risks.service.js';
+// Read the trusted user ID placed in response locals by authenticate.
 function authenticatedUserId(value: unknown): string {
   if (typeof value !== 'string') throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
   return value;

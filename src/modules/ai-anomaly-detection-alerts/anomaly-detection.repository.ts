@@ -106,7 +106,6 @@ export const anomalyDetectionRepository = {
   // Claim/query at most `take` events not processed by this model/engine.
   async findPendingEvents(
     modelVersionId: string,
-    since: Date | null,
     take: number,
     scope: PendingEventScope,
   ) {
@@ -121,7 +120,6 @@ export const anomalyDetectionRepository = {
       });
       return { events, leaseToken: claim.token };
     }
-    const timeWindow = since ? { occurred_at: { gte: since } } : {};
     const sourceScope: Prisma.normalized_eventsWhereInput =
       scope === 'WAZUH_REALTIME'
         ? {
@@ -131,7 +129,6 @@ export const anomalyDetectionRepository = {
         : {};
     const events = await prisma.normalized_events.findMany({
       where: {
-        ...timeWindow,
         ...sourceScope,
         anomaly_detections: {
           none: { model_version_id: modelVersionId, engine_version: engineVersion },
@@ -201,7 +198,8 @@ export const anomalyDetectionRepository = {
         // Serializes duplicate runs across worker processes, not only this Node instance.
         // Cast PostgreSQL's void result so Prisma can deserialize the acquired lock.
         await transaction.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${input.modelVersionId}, 0))::text AS locked`;
-        // Detection scores are immutable; skipDuplicates makes retries idempotent.
+        // Store the Generate Anomaly Score result and the threshold used for
+        // each event. Scores are immutable; skipDuplicates makes retries idempotent.
         const created = input.detections.length
           ? await transaction.anomaly_detections.createMany({
               data: input.detections.map((item) => ({

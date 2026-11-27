@@ -1,14 +1,17 @@
 import { prisma } from '../../database/prisma.js';
 export const controlWeaknessesRepository = {
+  // Load the account fields required for service authorization.
   findActor(userId: string) {
     return prisma.users.findUnique({ where: { id: userId }, select: { role: true, status: true } });
   },
+  // Load the incident before reading or recording its control weaknesses.
   findIncident(incidentId: string) {
     return prisma.incidents.findUnique({
       where: { id: incidentId },
       select: { id: true, incident_code: true, title: true, status: true },
     });
   },
+  // Confirm that the control is already linked to this incident.
   findLinkedControl(incidentId: string, controlId: string) {
     return prisma.incident_controls.findUnique({
       where: { incident_id_control_id: { incident_id: incidentId, control_id: controlId } },
@@ -19,6 +22,7 @@ export const controlWeaknessesRepository = {
       },
     });
   },
+  // Return linked controls and their current open-weakness state.
   async findOptions(incidentId: string) {
     const [incident, links] = await Promise.all([
       this.findIncident(incidentId),
@@ -46,6 +50,7 @@ export const controlWeaknessesRepository = {
     ]);
     return { incident, links };
   },
+  // Detect an existing open weakness to prevent duplicate records.
   findOpenWeakness(incidentId: string, controlId: string) {
     return prisma.control_findings.findFirst({
       where: {
@@ -57,6 +62,7 @@ export const controlWeaknessesRepository = {
       select: { id: true },
     });
   },
+  // Return one page of weaknesses previously recorded for the incident.
   async listHistory(incidentId: string, page: number, limit: number) {
     const where = { incident_id: incidentId, finding_type: 'CONTROL_WEAKNESS' as const };
     const [items, total] = await Promise.all([

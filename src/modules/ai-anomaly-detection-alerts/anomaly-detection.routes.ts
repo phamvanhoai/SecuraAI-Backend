@@ -16,7 +16,7 @@ const runLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// UC 94: authenticate -> limit/validate -> controller -> detection service.
+// Run Anomaly Detection: authenticate -> limit/validate -> controller -> service.
 // The service collects events, builds time windows, scores and saves alerts.
 anomalyDetectionRouter.post(
   '/runs',

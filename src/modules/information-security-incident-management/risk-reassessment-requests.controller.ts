@@ -7,6 +7,7 @@ import {
 } from './dto/create-risk-reassessment-request.dto.js';
 import { riskReassessmentRequestsService } from './risk-reassessment-requests.service.js';
 
+// Read the trusted user ID placed in response locals by authenticate.
 function userId(value: unknown) {
   if (typeof value !== 'string') throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
   return value;

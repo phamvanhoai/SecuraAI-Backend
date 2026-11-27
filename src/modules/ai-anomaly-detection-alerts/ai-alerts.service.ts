@@ -27,6 +27,7 @@ const storedThresholdSchema = z.object({
   updatedAt: z.iso.datetime({ offset: true }),
 });
 
+// Map a stored asset threshold to the stable API response shape.
 function thresholdResponse(record: {
   asset: { id: string; asset_code: string; name: string };
   configuration: unknown;
@@ -39,6 +40,7 @@ function thresholdResponse(record: {
   };
 }
 
+// Map database workflow statuses to the stable frontend status contract.
 function responseStatus(status: AiAlertRecord['status']) {
   if (status === 'NEW') return 'new' as const;
   if (status === 'IN_TRIAGE') return 'reviewing' as const;
@@ -47,6 +49,7 @@ function responseStatus(status: AiAlertRecord['status']) {
   return 'dismissed' as const;
 }
 
+// Map an alert record and its source event/model into the public list response.
 function toResponse(alert: AiAlertRecord) {
   const detection = alert.anomaly_detections;
   const event = detection.normalized_events;
@@ -122,6 +125,7 @@ export const aiAlertsService = {
       changed: result.outcome === 'started',
     };
   },
+  // Return active assets that may receive a custom alert threshold.
   async listActiveAssetOptions(userId: string, q?: string) {
     await requireSecurityOfficer(userId);
     const assets = await aiAlertsRepository.listActiveAssetOptions(q);
@@ -131,6 +135,7 @@ export const aiAlertsService = {
       name: asset.name,
     }));
   },
+  // Return the threshold of the currently deployed detection model.
   async getDetectionThreshold(userId: string) {
     await requireThresholdManager(userId);
     const model = await aiAlertsRepository.findDeployedModelThreshold();
@@ -142,6 +147,7 @@ export const aiAlertsService = {
       );
     return detectionThresholdResponse(model);
   },
+  // Authorize and update the deployed model's default detection threshold.
   async configureDetectionThreshold(
     userId: string,
     input: ConfigureDetectionThreshold,
@@ -236,6 +242,7 @@ export const aiAlertsService = {
       },
     };
   },
+  // Return one filtered page of asset-specific threshold settings.
   async listAlertThresholds(userId: string, query: ListAlertThresholdsQuery) {
     await requireSecurityOfficer(userId);
     const [total, records] = await aiAlertsRepository.listAlertThresholds(query);
@@ -270,10 +277,12 @@ export const aiAlertsService = {
       );
     return thresholdResponse(result);
   },
+  // Count recent alerts by workflow status for the alert dashboard.
   async metrics(userId: string) {
     await requireSecurityOfficer(userId);
     const detectedAfter = new Date(Date.now() - 86_400_000);
     const groups = await aiAlertsRepository.metrics(detectedAfter);
+    // Sum one or more database statuses into a dashboard metric.
     const count = (statuses: AiAlertRecord['status'][]): number =>
       groups
         .filter((group) => statuses.includes(group.status))
@@ -356,6 +365,7 @@ export const aiAlertsService = {
       createdAt: alert.explanation_generated_at,
     };
   },
+  // Replace stored explanation prose without changing score or alert decision.
   async regenerateExplanation(
     userId: string,
     alertId: string,
@@ -446,6 +456,7 @@ export const aiAlertsService = {
     });
     return feedbackResponse(created);
   },
+  // Return the recorded analyst feedback history for one alert.
   async listFeedback(userId: string, alertId: string, query: ListAiAlertFeedbackQuery) {
     const [, alert] = await Promise.all([
       requireSecurityOfficer(userId),
@@ -595,10 +606,12 @@ export const aiAlertsService = {
   },
 };
 
+// Convert an optional Prisma decimal to a JSON-safe number.
 function decimalNumber(value: Prisma.Decimal | null): number | null {
   return value?.toNumber() ?? null;
 }
 
+// Require an active Security Officer or Executive for threshold management.
 async function requireThresholdManager(userId: string): Promise<void> {
   const actor = await anomalyDetectionRepository.findActor(userId);
   if (!actor || actor.status !== 'ACTIVE')
@@ -634,6 +647,7 @@ function detectionThresholdResponse(model: {
   };
 }
 
+// Require an active Security Officer for alert review and feedback workflows.
 async function requireSecurityOfficer(userId: string): Promise<void> {
   const actor = await anomalyDetectionRepository.findActor(userId);
   if (!actor || actor.status !== 'ACTIVE')
@@ -642,24 +656,28 @@ async function requireSecurityOfficer(userId: string): Promise<void> {
     throw new AppError(403, 'FORBIDDEN', 'Security Officer role required');
 }
 
+// Map the public feedback label to its database decision enum.
 function feedbackDecision(label: CreateAiAlertFeedback['feedbackLabel']): triage_decision {
   if (label === 'confirmed_incident') return 'VALID_ANOMALY';
   if (label === 'false_positive') return 'FALSE_POSITIVE';
   return 'NEED_INVESTIGATION';
 }
 
+// Map a stored decision enum back to the public feedback label.
 function feedbackLabel(decision: triage_decision): CreateAiAlertFeedback['feedbackLabel'] {
   if (decision === 'VALID_ANOMALY') return 'confirmed_incident';
   if (decision === 'FALSE_POSITIVE') return 'false_positive';
   return 'needs_review';
 }
 
+// Provide a readable reason when a workflow action has no custom comment.
 function defaultFeedbackReason(label: CreateAiAlertFeedback['feedbackLabel']): string {
   if (label === 'confirmed_incident') return 'Confirmed incident';
   if (label === 'false_positive') return 'False positive';
   return 'Needs further review';
 }
 
+// Map a feedback record into the stable camelCase API response.
 function feedbackResponse(record: {
   id: string;
   alert_id: string;

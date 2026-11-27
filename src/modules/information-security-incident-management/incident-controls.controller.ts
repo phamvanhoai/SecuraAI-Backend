@@ -8,6 +8,7 @@ import {
 } from './dto/link-incident-control.dto.js';
 import { incidentControlsService } from './incident-controls.service.js';
 
+// Read the trusted user ID placed in response locals by authenticate.
 function authenticatedUserId(value: unknown): string {
   if (typeof value !== 'string') throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
   return value;

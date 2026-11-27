@@ -3,6 +3,7 @@ import type { CreateRiskReassessmentRequestInput } from './dto/create-risk-reass
 import type { RiskReassessmentRequestHistoryQuery } from './dto/create-risk-reassessment-request.dto.js';
 import { riskReassessmentRequestsRepository } from './risk-reassessment-requests.repository.js';
 
+// Require an active Security Officer for reassessment-request operations.
 async function requireSecurityOfficer(userId: string) {
   const actor = await riskReassessmentRequestsRepository.findActor(userId);
   if (!actor || actor.status !== 'ACTIVE')
@@ -11,6 +12,7 @@ async function requireSecurityOfficer(userId: string) {
     throw new AppError(403, 'FORBIDDEN', 'Security Officer role required');
 }
 
+// Map an incident-linked risk into the reassessment option response.
 const riskResponse = (risk: { id: string; risk_code: string; title: string; status: string }) => ({
   id: risk.id,
   riskCode: risk.risk_code,
@@ -18,6 +20,7 @@ const riskResponse = (risk: { id: string; risk_code: string; title: string; stat
   status: risk.status.toLowerCase(),
 });
 
+// Map a control weakness into the supporting-evidence response.
 const findingResponse = (finding: {
   id: string;
   severity: string | null;
@@ -37,6 +40,7 @@ const findingResponse = (finding: {
 });
 
 export const riskReassessmentRequestsService = {
+  // Return the authorized, paginated request history for an incident.
   async history(userId: string, incidentId: string, query: RiskReassessmentRequestHistoryQuery) {
     await requireSecurityOfficer(userId);
     const incident = await riskReassessmentRequestsRepository.findIncident(incidentId);
@@ -90,6 +94,7 @@ export const riskReassessmentRequestsService = {
       },
     };
   },
+  // Return linked risks and findings available when creating a request.
   async options(userId: string, incidentId: string) {
     await requireSecurityOfficer(userId);
     const { incident, riskLinks, findings } =

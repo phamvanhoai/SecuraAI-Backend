@@ -50,9 +50,9 @@ apiRouter.use('/notifications', notificationsRouter);
 apiRouter.use('/system-logs', systemLogsRouter);
 apiRouter.use('/audit', auditRouter);
 
-// Run Anomaly Detection (UC 94).
-// POST /runs -> pending events -> history windows -> score/decision
-// -> grouped alerts -> detection, evidence and audit records.
+// Run Anomaly Detection starts at POST /runs and contains two internal flows:
+// Generate Anomaly Score evaluates each event, then Generate Anomaly Alert
+// groups anomalous results and stores their alert and audit records.
 apiRouter.use('/anomaly-detections', anomalyDetectionRouter);
 
 // Alert list/detail/filter, score, features, XAI, model versions,

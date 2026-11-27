@@ -101,13 +101,12 @@ const protocol = (event: ContextEvent): string =>
       ? 'VPN'
       : event.event_family;
 
-/** Score one event from past-only history and return evidence plus its alert group. */
+/** Generate Anomaly Score from past-only history and return its supporting evidence. */
 export function evaluateContext(
   event: ContextEvent,
   history: readonly ContextEvent[],
   truncated: boolean,
   policy: DetectionPolicy,
-  weights = { severity: 0.45, rarity: 0.35, offHours: 0.2 },
   peer = false,
 ): ContextualDecision {
   const time = event.occurred_at.getTime();
@@ -316,7 +315,6 @@ export function evaluateContext(
     ['detection_group', key, 0],
     ['engine_version', 'contextual-rules-v1', 0],
     ['policy_snapshot', policy, 0],
-    ['legacy_weights_ignored', weights, 0],
   ];
   return {
     score,

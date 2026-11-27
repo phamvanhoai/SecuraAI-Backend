@@ -55,12 +55,14 @@ const requestSelect = {
 } as const;
 
 export const riskReassessmentReviewRepository = {
+  // Load the fixed role, status and responsibility data used for authorization.
   findActor(userId: string) {
     return prisma.users.findUnique({
       where: { id: userId },
       select: { id: true, role: true, status: true },
     });
   },
+  // Query only requests visible to the contextual Risk Owner or elevated actor.
   async listOwned(userId: string | undefined, query: ListOwnedReassessmentRequestsQuery) {
     const status =
       query.status === 'all'
@@ -114,6 +116,7 @@ export const riskReassessmentReviewRepository = {
       }),
     ]);
   },
+  // Load one request with its risk owner and current workflow state.
   findById(requestId: string) {
     return prisma.risk_reassessment_requests.findUnique({
       where: { id: requestId },
@@ -133,6 +136,7 @@ export const riskReassessmentReviewRepository = {
     if (result.count === 0) return null;
     return this.findById(requestId);
   },
+  // Reject an in-review request with a conditional workflow update.
   async reject(requestId: string, userId: string, input: RejectRiskReassessmentRequestInput) {
     const reviewedAt = new Date();
     const result = await prisma.risk_reassessment_requests.updateMany({

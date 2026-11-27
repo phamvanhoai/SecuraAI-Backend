@@ -94,6 +94,7 @@ export function buildMlTemporalContext(
     'APPLICATION_ACCESS_DENIED',
   ]);
   const context = [...prior, event];
+  // Count events and failures inside one requested rolling-time window.
   const summary = (minutes: number) => {
     const items = eligible.filter(
       (item) => item.occurred_at.getTime() >= time - minutes * 60_000,
@@ -192,8 +193,8 @@ export function buildMlPredictionPayload(
   };
 }
 
-// Send one event to the self-trained model API, apply a timeout, and convert
-// transport or response failures into an explicit UNAVAILABLE result.
+// Generate Anomaly Score: send one event and its temporal features to the
+// self-trained model, then validate the returned score and escalation threshold.
 export async function requestMlShadowPrediction(
   event: DetectionEvent,
   options: { baseUrl?: string; timeoutMs?: number; temporalContext?: MlTemporalContext } = {},
