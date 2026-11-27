@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../database/prisma.js';
 
-export const pipelineEngine = 'history-pipeline-v1';
+export const pipelineEngine = 'ml-llm-pipeline-v1';
 export const detectionJobsRepository = {
   async discover(modelId: string, scope: 'ALL' | 'WAZUH_REALTIME') {
     const scopeSql =

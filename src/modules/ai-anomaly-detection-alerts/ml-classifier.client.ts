@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { env } from '../../config/env.js';
 import type { DetectionEvent } from './anomaly-detection.repository.js';
-import type { ContextEvent } from './contextual-detection.js';
+import type { ContextEvent } from './detection-model.js';
 
 // Validate the response returned by the separately deployed trained-model API.
 const responseSchema = z
@@ -16,9 +16,9 @@ const responseSchema = z
   })
   .strict();
 
-export type MlShadowPrediction = z.infer<typeof responseSchema>;
-export type MlShadowResult =
-  | { status: 'PREDICTED'; prediction: MlShadowPrediction }
+export type MlPrediction = z.infer<typeof responseSchema>;
+export type MlPredictionResult =
+  | { status: 'PREDICTED'; prediction: MlPrediction }
   | { status: 'UNAVAILABLE'; reason: 'TIMEOUT' | 'NETWORK' | 'INVALID_RESPONSE' | 'HTTP_ERROR' };
 
 type JsonRecord = Record<string, unknown>;
@@ -87,18 +87,17 @@ export function buildMlTemporalContext(
   const types = prior.map((item) => item.event_type.toUpperCase());
   const current = event.event_type.toUpperCase();
   const previous = prior.at(-1);
-  const failures = new Set(['LOGIN_FAILURE', 'LOGIN_FAILED', 'VPN_LOGIN_FAILURE', 'SSO_LOGIN_FAILURE']);
-  const failureTypes = new Set([
-    ...failures,
-    'ACCESS_DENIED',
-    'APPLICATION_ACCESS_DENIED',
+  const failures = new Set([
+    'LOGIN_FAILURE',
+    'LOGIN_FAILED',
+    'VPN_LOGIN_FAILURE',
+    'SSO_LOGIN_FAILURE',
   ]);
+  const failureTypes = new Set([...failures, 'ACCESS_DENIED', 'APPLICATION_ACCESS_DENIED']);
   const context = [...prior, event];
   // Count events and failures inside one requested rolling-time window.
   const summary = (minutes: number) => {
-    const items = eligible.filter(
-      (item) => item.occurred_at.getTime() >= time - minutes * 60_000,
-    );
+    const items = eligible.filter((item) => item.occurred_at.getTime() >= time - minutes * 60_000);
     return {
       events: items.length + 1,
       failures:
@@ -113,13 +112,17 @@ export function buildMlTemporalContext(
     events1m: window1m.events,
     failures1m: window1m.failures,
     events5m: prior.length + 1,
-    failedLogins5m: types.filter((type) => ['LOGIN_FAILURE', 'LOGIN_FAILED'].includes(type)).length +
+    failedLogins5m:
+      types.filter((type) => ['LOGIN_FAILURE', 'LOGIN_FAILED'].includes(type)).length +
       Number(['LOGIN_FAILURE', 'LOGIN_FAILED'].includes(current)),
-    accessDenials5m: types.filter((type) => ['ACCESS_DENIED', 'APPLICATION_ACCESS_DENIED'].includes(type)).length +
+    accessDenials5m:
+      types.filter((type) => ['ACCESS_DENIED', 'APPLICATION_ACCESS_DENIED'].includes(type)).length +
       Number(['ACCESS_DENIED', 'APPLICATION_ACCESS_DENIED'].includes(current)),
-    vpnFailures5m: types.filter((type) => ['VPN_LOGIN_FAILURE', 'SSO_LOGIN_FAILURE'].includes(type)).length +
+    vpnFailures5m:
+      types.filter((type) => ['VPN_LOGIN_FAILURE', 'SSO_LOGIN_FAILURE'].includes(type)).length +
       Number(['VPN_LOGIN_FAILURE', 'SSO_LOGIN_FAILURE'].includes(current)),
-    distinctAccounts5m: new Set(context.map((item) => item.account_identifier).filter(Boolean)).size,
+    distinctAccounts5m: new Set(context.map((item) => item.account_identifier).filter(Boolean))
+      .size,
     distinctSourceIps5m: new Set(context.map((item) => item.source_ip).filter(Boolean)).size,
     successAfterFailure5m: current.includes('SUCCESS') && types.some((type) => failures.has(type)),
     secondsSincePrevious: previous
@@ -195,18 +198,18 @@ export function buildMlPredictionPayload(
 
 // Generate Anomaly Score: send one event and its temporal features to the
 // self-trained model, then validate the returned score and escalation threshold.
-export async function requestMlShadowPrediction(
+export async function requestMlPrediction(
   event: DetectionEvent,
   options: { baseUrl?: string; timeoutMs?: number; temporalContext?: MlTemporalContext } = {},
-): Promise<MlShadowResult> {
+): Promise<MlPredictionResult> {
   const controller = new AbortController();
   const timeout = setTimeout(
     () => controller.abort(),
-    options.timeoutMs ?? env.ML_SHADOW_TIMEOUT_MS,
+    options.timeoutMs ?? env.ML_MODEL_TIMEOUT_MS,
   );
   try {
-    // ML_SHADOW_BASE_URL points to the separate Train-Model FastAPI service.
-    const response = await fetch(`${options.baseUrl ?? env.ML_SHADOW_BASE_URL}/v1/predict`, {
+    // ML_MODEL_BASE_URL points to the separate Train-Model FastAPI service.
+    const response = await fetch(`${options.baseUrl ?? env.ML_MODEL_BASE_URL}/v1/predict`, {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
       body: JSON.stringify(buildMlPredictionPayload(event, options.temporalContext)),

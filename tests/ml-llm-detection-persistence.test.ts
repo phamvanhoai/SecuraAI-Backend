@@ -19,17 +19,18 @@ const detection = (id: string, minutes = 0) => ({
   threshold: 0.99,
   thresholdSource: 'MODEL_DEFAULT',
   isAnomaly: true,
+  outcome: 'MALICIOUS' as const,
   occurredAt: new Date(time.getTime() + minutes * 60_000),
-  groupKey: 'same-rule-account-ip-source',
+  groupKey: 'same-account-ip-source',
   features: [
     {
-      featureName: 'matched_rules',
-      featureValue: '["AUTH_FAILURE_BURST"]',
+      featureName: 'ai_triage_decision',
+      featureValue: '{"status":"ESCALATED_TO_LLM"}',
       contributionScore: 0.9,
       rank: 1,
     },
   ],
-  explanationText: 'Rule matched independently of threshold.',
+  explanationText: 'ML escalation and LLM malicious verdict.',
   explanationGeneratedAt: time,
 });
 const input = (detections: ReturnType<typeof detection>[]) => ({
@@ -48,7 +49,7 @@ beforeEach(() => {
   });
   db.audit_logs.findFirst.mockResolvedValue(null);
 });
-describe('contextual detection persistence', () => {
+describe('ML/LLM detection persistence', () => {
   it('raises priority on stronger grouped evidence while preserving the original detection', async () => {
     db.anomaly_detections.createMany.mockResolvedValue({ count: 1 });
     db.anomaly_detections.findMany.mockResolvedValue([{ id: 'b' }]);
@@ -90,7 +91,7 @@ describe('contextual detection persistence', () => {
       alertsGrouped: 0,
     });
   });
-  it('stores detections/features but groups repeated rule matches into one open alert', async () => {
+  it('stores detections/features but groups related malicious events into one open alert', async () => {
     db.anomaly_detections.createMany.mockResolvedValue({ count: 2 });
     db.anomaly_detections.findMany.mockResolvedValue([{ id: 'a' }, { id: 'b' }]);
     const result = await anomalyDetectionRepository.persistRun(

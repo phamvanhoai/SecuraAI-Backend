@@ -338,7 +338,7 @@ function Invoke-SimScenario {
                 $null = cmd.exe /c "net use \\127.0.0.1\IPC$ WrongLabPass! /user:localhost\$user >nul 2>&1"
                 Start-Sleep -Milliseconds (Get-RandomDelayMs)
             }
-            $expected = 'Native Windows Event ID 4625 (INSUFFICIENT_BASELINE - Score 0.0000 unless account has >=20 history windows)'
+            $expected = 'Native Windows Event ID 4625 evaluated by ML using its recent temporal context'
             Record-RunHistory $runId $ScenarioName 'AUTHENTICATION (Win4625)' 6 $user '127.0.0.1' '-' $expected
         }
 
@@ -431,7 +431,7 @@ function Invoke-SimScenario {
             1..12 | ForEach-Object {
                 Write-SimEvent -SimEvent 'APP_ACCESS_DENIED' -Actor $user -Ip $ip -AppId $appId -AppName 'Payroll Core System'
             }
-            $expected = 'FN Limitation (INSUFFICIENT_BASELINE - Score 0.0000): Attacker without history (<20 windows) blocked by Cold-Start guard despite 8 auth fails + 12 app denials'
+            $expected = 'ML/LLM evaluation of an attacker sequence containing 8 authentication failures and 12 application denials'
             Record-RunHistory $runId $ScenarioName 'AUTHENTICATION+APP_ACCESS' 20 $user $ip $appId $expected
         }
 

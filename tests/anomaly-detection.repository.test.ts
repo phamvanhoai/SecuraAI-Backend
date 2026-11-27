@@ -17,25 +17,33 @@ describe('anomaly detection pending-event scope', () => {
     findMany.mockResolvedValue([]);
     groupBy.mockResolvedValue([]);
   });
-  it('bounds entity history by source and occurrence time rather than the current time', async () => {
-    const occurredAt = new Date('2026-01-01T12:00:00Z');
-    await anomalyDetectionRepository.findEventContext({ id: 'historical', event_source_id: 'source', event_family: 'AUTHENTICATION', event_type: 'LOGIN_SUCCESS', occurred_at: occurredAt,
-      account_identifier: 'alice', source_ip: '192.0.2.1', device_identifier: null, normalized_payload: {}, severity: null, event_entity_mappings: [] });
-    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({ where: { event_source_id: 'source', account_identifier: 'alice', occurred_at: { gte: new Date('2025-12-25T12:00:00Z'), lte: occurredAt } }, take: 5001 }));
-  });
-
   it('builds ML temporal history across the same account or source IP', async () => {
     const occurredAt = new Date('2026-01-01T12:00:00Z');
-    await anomalyDetectionRepository.findMlTemporalContext({ id: 'current', event_source_id: 'source', event_family: 'AUTHENTICATION', event_type: 'LOGIN_FAILURE', occurred_at: occurredAt,
-      account_identifier: 'alice', source_ip: '192.0.2.1', device_identifier: null, normalized_payload: {}, severity: null, event_entity_mappings: [] });
-    expect(findMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: expect.objectContaining({
-        event_source_id: 'source', event_family: 'AUTHENTICATION',
-        OR: [{ account_identifier: 'alice' }, { source_ip: '192.0.2.1' }],
-        occurred_at: { gte: new Date('2026-01-01T11:00:00Z'), lte: occurredAt },
+    await anomalyDetectionRepository.findMlTemporalContext({
+      id: 'current',
+      event_source_id: 'source',
+      event_family: 'AUTHENTICATION',
+      event_type: 'LOGIN_FAILURE',
+      occurred_at: occurredAt,
+      account_identifier: 'alice',
+      source_ip: '192.0.2.1',
+      device_identifier: null,
+      normalized_payload: {},
+      severity: null,
+      event_entity_mappings: [],
+    });
+    expect(findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          event_source_id: 'source',
+          event_family: 'AUTHENTICATION',
+          OR: [{ account_identifier: 'alice' }, { source_ip: '192.0.2.1' }],
+          occurred_at: { gte: new Date('2026-01-01T11:00:00Z'), lte: occurredAt },
+        }),
+        orderBy: [{ occurred_at: 'asc' }, { id: 'asc' }],
+        take: 5001,
       }),
-      orderBy: [{ occurred_at: 'asc' }, { id: 'asc' }], take: 5001,
-    }));
+    );
   });
 
   it('limits automated detection to direct Wazuh API events', async () => {
@@ -46,7 +54,9 @@ describe('anomaly detection pending-event scope', () => {
         where: {
           ingestion_batch_id: null,
           event_sources: { source_type: 'WAZUH', ingestion_method: 'API' },
-          anomaly_detections: { none: { model_version_id: 'model-1', engine_version: 'contextual-rules-v1' } },
+          anomaly_detections: {
+            none: { model_version_id: 'model-1', engine_version: 'ml-llm-pipeline-v1' },
+          },
         },
         take: 100,
       }),
@@ -59,7 +69,11 @@ describe('anomaly detection pending-event scope', () => {
 
     expect(findMany).toHaveBeenCalledWith(
       expect.objectContaining({
-        where: { anomaly_detections: { none: { model_version_id: 'model-1', engine_version: 'contextual-rules-v1' } } },
+        where: {
+          anomaly_detections: {
+            none: { model_version_id: 'model-1', engine_version: 'ml-llm-pipeline-v1' },
+          },
+        },
         take: 100,
       }),
     );

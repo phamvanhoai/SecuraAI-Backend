@@ -45,12 +45,11 @@ function buildPrompt(input: AlertExplanationInput): string {
   return [
     'Explain this security anomaly to a SOC analyst using only the supplied evidence.',
     'Do not invent users, IP addresses, locations, prior events, or attack techniques.',
-    'The current statistical_baseline method calculates historical rarity across rolling 5-minute, 30-minute, 1-hour and 24-hour windows, with finite-sample smoothing and a multiple-window correction. Overlapping windows are not independent evidence and must not be added together. It does not add rule points, severity bonuses, or working-hour bonuses. Do not describe it as attack probability. Rules are contextual evidence and never bypass the configured threshold. An alert requires score >= threshold. Signal scores are not attack probabilities. Stored historical alerts may predate this policy; do not claim a score met its threshold when it did not.',
+    'The first-stage ML model uses past-only 1/5/15/60-minute context for triage. Its score is compared with the enabled Asset threshold, or the deployed model threshold when no Asset override is enabled. Escalated events receive a final LLM verdict. Only MALICIOUS creates an alert; the LLM score is diagnostic evidence strength, not probability or a decision threshold.',
     'Keep the summary concise. Observations must be evidence-based. Recommended actions must be investigative, not automatic enforcement.',
     `Evidence: ${JSON.stringify({
       anomalyScore: input.anomalyScore,
       threshold: input.threshold,
-      scoreAboveThreshold: Number((input.anomalyScore - input.threshold).toFixed(8)),
       suggestedRiskLevel: input.suggestedRiskLevel,
       detectedAt: input.detectedAt.toISOString(),
       featureContributions: input.featureContributions,

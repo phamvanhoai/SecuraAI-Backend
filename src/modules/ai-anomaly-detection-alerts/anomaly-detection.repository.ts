@@ -1,12 +1,13 @@
 import { createHash } from 'node:crypto';
 import { Prisma } from '@prisma/client';
 import { prisma } from '../../database/prisma.js';
-import type { DetectionFeature } from './contextual-detection.js';
-import { detectionSeverity } from './contextual-detection.js';
+import type { DetectionFeature } from './detection-model.js';
+import { detectionSeverity } from './detection-model.js';
 import { peakSnapshot } from './alert-score-snapshot.js';
 import { env } from '../../config/env.js';
 import { detectionJobsRepository, pipelineEngine } from './detection-jobs.repository.js';
-const engineVersion = env.DETECTION_PIPELINE_ENABLED ? pipelineEngine : 'contextual-rules-v1';
+// Manual and durable workers use the same ML/LLM engine identity.
+const engineVersion = pipelineEngine;
 
 const eventSelect = {
   id: true,
@@ -30,43 +31,6 @@ export type DetectionEvent = Prisma.normalized_eventsGetPayload<{ select: typeof
 export type PendingEventScope = 'ALL' | 'WAZUH_REALTIME';
 
 export const anomalyDetectionRepository = {
-  // Load peer history when an entity-specific baseline is not ready.
-  async findPeerContext(event: DetectionEvent) {
-    const events = await prisma.normalized_events.findMany({
-      where: {
-        event_source_id: event.event_source_id,
-        event_family: event.event_family,
-        occurred_at: {
-          gte: new Date(event.occurred_at.getTime() - 7 * 86_400_000),
-          lte: event.occurred_at,
-        },
-      },
-      select: eventSelect,
-      orderBy: [{ occurred_at: 'desc' }, { id: 'desc' }],
-      take: 5001,
-    });
-    return { events: events.slice(0, 5000), truncated: events.length > 5000 };
-  },
-  // Load the event's own account/source history for baseline scoring.
-  async findEventContext(event: DetectionEvent) {
-    if (!event.account_identifier && !event.source_ip) return { events: [], truncated: false };
-    const events = await prisma.normalized_events.findMany({
-      where: {
-        event_source_id: event.event_source_id,
-        ...(event.account_identifier
-          ? { account_identifier: event.account_identifier }
-          : { source_ip: event.source_ip }),
-        occurred_at: {
-          gte: new Date(event.occurred_at.getTime() - 7 * 86_400_000),
-          lte: event.occurred_at,
-        },
-      },
-      select: eventSelect,
-      orderBy: [{ occurred_at: 'desc' }, { id: 'desc' }],
-      take: 5001,
-    });
-    return { events: events.slice(0, 5000), truncated: events.length > 5000 };
-  },
   // Load 60 past minutes; the ML client derives the 1/5/15/60-minute windows.
   async findMlTemporalContext(event: DetectionEvent) {
     if (!event.account_identifier && !event.source_ip) return [];
@@ -104,11 +68,7 @@ export const anomalyDetectionRepository = {
     });
   },
   // Claim/query at most `take` events not processed by this model/engine.
-  async findPendingEvents(
-    modelVersionId: string,
-    take: number,
-    scope: PendingEventScope,
-  ) {
+  async findPendingEvents(modelVersionId: string, take: number, scope: PendingEventScope) {
     if (env.DETECTION_PIPELINE_ENABLED) {
       await detectionJobsRepository.discover(modelVersionId, scope);
       const claim = await detectionJobsRepository.claim(modelVersionId, take, 'DETECTION', scope);
@@ -178,7 +138,7 @@ export const anomalyDetectionRepository = {
       isAnomaly: boolean;
       occurredAt: Date;
       features: DetectionFeature[];
-      baselineReady?: boolean;
+      outcome: 'BELOW_THRESHOLD' | 'LLM_BENIGN' | 'LLM_SUSPICIOUS' | 'MALICIOUS';
       groupKey: string;
       explanationText?: string;
       explanationGeneratedAt?: Date;
@@ -203,14 +163,14 @@ export const anomalyDetectionRepository = {
         const created = input.detections.length
           ? await transaction.anomaly_detections.createMany({
               data: input.detections.map((item) => ({
-            id: item.id,
-            event_id: item.eventId,
-            model_version_id: input.modelVersionId,
-            engine_version: engineVersion,
-            anomaly_score: item.score,
-            threshold: item.threshold,
-            threshold_source: item.thresholdSource,
-            is_anomaly: item.isAnomaly,
+                id: item.id,
+                event_id: item.eventId,
+                model_version_id: input.modelVersionId,
+                engine_version: engineVersion,
+                anomaly_score: item.score,
+                threshold: item.threshold,
+                threshold_source: item.thresholdSource,
+                is_anomaly: item.isAnomaly,
               })),
               skipDuplicates: true,
             })
@@ -236,16 +196,16 @@ export const anomalyDetectionRepository = {
           : [];
         const persistedIds = new Set(persisted.map((item) => item.id));
         const featureRows = input.detections
-            .filter((item) => persistedIds.has(item.id))
-            .flatMap((item) =>
-              item.features.map((feature) => ({
-                detection_id: item.id,
-                feature_name: feature.featureName,
-                feature_value: feature.featureValue,
-                contribution_score: feature.contributionScore,
-                rank: feature.rank,
-              })),
-            );
+          .filter((item) => persistedIds.has(item.id))
+          .flatMap((item) =>
+            item.features.map((feature) => ({
+              detection_id: item.id,
+              feature_name: feature.featureName,
+              feature_value: feature.featureValue,
+              contribution_score: feature.contributionScore,
+              rank: feature.rank,
+            })),
+          );
         if (featureRows.length)
           await transaction.anomaly_feature_contributions.createMany({ data: featureRows });
         let alertsCreated = 0;
@@ -414,7 +374,7 @@ export const anomalyDetectionRepository = {
           await transaction.anomaly_feature_contributions.createMany({ data: groupedEvidence });
         if (input.leaseToken) {
           for (const item of input.detections) {
-            await transaction.$executeRaw`UPDATE detection_jobs SET status=${item.baselineReady === false ? 'INSUFFICIENT_BASELINE' : 'COMPLETED'},result=${JSON.stringify({ scored: item.baselineReady !== false, score: item.baselineReady === false ? null : item.score, isAnomaly: item.isAnomaly, detectionId: item.id })}::jsonb,
+            await transaction.$executeRaw`UPDATE detection_jobs SET status='COMPLETED',result=${JSON.stringify({ score: item.score, isAnomaly: item.isAnomaly, outcome: item.outcome, detectionId: item.id })}::jsonb,
               lease_token=NULL,lease_until=NULL,error_code=NULL,updated_at=now()
               WHERE lease_token=${input.leaseToken}::uuid AND event_id=${item.eventId}::uuid`;
           }

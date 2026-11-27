@@ -1,4 +1,4 @@
-# Wazuh contextual detection demo (PowerShell)
+# Wazuh ML/LLM detection demo (PowerShell)
 
 Run from SecuraAI-Backend:
 
@@ -12,14 +12,14 @@ Run from SecuraAI-Backend:
 
 | Case | Scenario | Expected with defaults, isolated new account |
 |---|---|---|
-| AuthBurst | 6 failed Windows logins | Rule candidate; alert only if score reaches threshold |
-| AuthSuccess | 6 failures then successful Windows login | Rule candidates; alerts only if scores reach threshold |
-| AppDenial | 11 denied accesses to one application | Rule candidate; alert only if score reaches threshold |
-| AppSuccess | 11 denials then application login | Rule candidates; alerts only if scores reach threshold |
-| VpnBurst | 6 failed VPN logins | Rule candidate; alert only if score reaches threshold |
-| VpnNewContext | 20 successful SSO baseline events then success from a new IP outside local working hours | Rule candidate; alert only if score reaches threshold |
-| Normal | One ordinary successful event in each family | No alerts |
-| All | Shared complete 49-event fixture | Alert/group counts depend on score and threshold |
+| AuthBurst | 6 failed Windows logins | ML evaluates the 1/5/15/60-minute sequence |
+| AuthSuccess | 6 failures then successful Windows login | ML evaluates the failure-to-success sequence |
+| AppDenial | 11 denied accesses to one application | ML evaluates the denial burst |
+| AppSuccess | 11 denials then application login | ML evaluates the denial-to-success sequence |
+| VpnBurst | 6 failed VPN logins | ML evaluates the VPN failure burst |
+| VpnNewContext | 20 SSO events then success from a new IP | ML evaluates the supplied recent context |
+| Normal | One ordinary successful event in each family | Expected low risk, subject to the deployed model |
+| All | Shared complete 49-event fixture | Results depend on ML, configured thresholds and LLM verdicts |
 
 All reuses the same authentication/application chains for both burst and subsequent-success rules, so it is not the sum of the independent case counts. Each execution adds unique accounts/external IDs and uses past event timestamps (newest at yesterday 18:00 UTC, 01:00 in the default Vietnam timezone). Inspect Security Events using the printed run ID. Events deliberately appear in yesterday's time range; select a suitable range in Security Events. Alerts are generated at detection time, so new alerts appear under the current detection time.
 
@@ -27,7 +27,7 @@ All reuses the same authentication/application chains for both burst and subsequ
 
 - Docker Desktop and the Wazuh manager container are running. Override its name with -Container if needed.
 - ossec.conf contains the custom-securaai integration, api_key and hook_url pointing to the intended SecuraAI backend.
-- The backend is running the new contextual engine with automated detection enabled and a deployed scoring configuration. This script does not start/reconfigure the backend, deploy a model, change thresholds or change your API key.
+- The Backend, Train-Model API and LLM service are running with automated detection enabled and a deployed configuration. This script does not start/reconfigure services, deploy a model, change thresholds or change your API key.
 - The event source accepts AUTHENTICATION, APPLICATION_ACCESS and VPN_SSO.
 - For App Access, deploy this repository's updated integration script preserving the application's identity:
 

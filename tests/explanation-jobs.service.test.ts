@@ -10,7 +10,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock('../src/config/env.js', () => ({ env: { OLLAMA_ENABLED: true } }));
 vi.mock('../src/database/prisma.js', () => ({ prisma: { $executeRaw: mocks.write } }));
 vi.mock('../src/modules/ai-anomaly-detection-alerts/detection-jobs.repository.js', () => ({
-  pipelineEngine: 'history-pipeline-v1',
+  pipelineEngine: 'ml-llm-pipeline-v1',
   detectionJobsRepository: { claim: mocks.claim, fail: mocks.fail },
 }));
 vi.mock('../src/modules/ai-anomaly-detection-alerts/anomaly-detection.repository.js', () => ({
