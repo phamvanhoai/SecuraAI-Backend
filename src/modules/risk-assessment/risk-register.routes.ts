@@ -54,12 +54,29 @@ import {
   defineTargetRiskBodySchema,
   defineTargetRiskParamsSchema,
 } from './dto/define-target-risk.dto.js';
-import { createTreatmentPlanBodySchema, treatmentPlanOptionsQuerySchema } from './dto/create-treatment-plan.dto.js';
-import { updateTreatmentPlanBodySchema, updateTreatmentPlanParamsSchema } from './dto/update-treatment-plan.dto.js';
-import { decideRiskAcceptanceBodySchema, decideRiskAcceptanceParamsSchema, submitRiskAcceptanceBodySchema, submitRiskAcceptanceParamsSchema, openRiskReviewBodySchema } from './dto/risk-acceptance.dto.js';
+import {
+  createTreatmentPlanBodySchema,
+  treatmentPlanOptionsQuerySchema,
+} from './dto/create-treatment-plan.dto.js';
+import {
+  updateTreatmentPlanBodySchema,
+  updateTreatmentPlanParamsSchema,
+} from './dto/update-treatment-plan.dto.js';
+import {
+  decideRiskAcceptanceBodySchema,
+  decideRiskAcceptanceParamsSchema,
+  submitRiskAcceptanceBodySchema,
+  submitRiskAcceptanceParamsSchema,
+  openRiskReviewBodySchema,
+} from './dto/risk-acceptance.dto.js';
 
 export const riskRegisterRouter = Router();
-riskRegisterRouter.post('/:riskId/review/complete', authenticate, validate({ params: riskIdParamsSchema, body: completeRiskReviewSchema }), asyncHandler(completeRiskReview));
+riskRegisterRouter.post(
+  '/:riskId/review/complete',
+  authenticate,
+  validate({ params: riskIdParamsSchema, body: completeRiskReviewSchema }),
+  asyncHandler(completeRiskReview),
+);
 riskRegisterRouter.get(
   '/',
   authenticate,
@@ -81,7 +98,10 @@ riskRegisterRouter.patch(
 riskRegisterRouter.get(
   '/:riskId/vulnerability-control-options',
   authenticate,
-  validate({ params: identifyVulnerabilityParamsSchema, query: vulnerabilityControlOptionsQuerySchema }),
+  validate({
+    params: identifyVulnerabilityParamsSchema,
+    query: vulnerabilityControlOptionsQuerySchema,
+  }),
   asyncHandler(getVulnerabilityControlOptions),
 );
 riskRegisterRouter.get(
@@ -90,10 +110,30 @@ riskRegisterRouter.get(
   validate({ query: createRiskOptionsQuerySchema }),
   asyncHandler(getCreateRiskOptions),
 );
-riskRegisterRouter.get('/treatment-plans/create-options', authenticate, validate({ query: treatmentPlanOptionsQuerySchema }), asyncHandler(getTreatmentPlanOptions));
-riskRegisterRouter.post('/treatment-plans', authenticate, validate({ body: createTreatmentPlanBodySchema }), asyncHandler(createTreatmentPlan));
-riskRegisterRouter.patch('/treatment-plans/:treatmentPlanId', authenticate, validate({ params: updateTreatmentPlanParamsSchema, body: updateTreatmentPlanBodySchema }), asyncHandler(updateTreatmentPlan));
-riskRegisterRouter.patch('/acceptances/:acceptanceId/decision', authenticate, validate({ params: decideRiskAcceptanceParamsSchema, body: decideRiskAcceptanceBodySchema }), asyncHandler(decideRiskAcceptance));
+riskRegisterRouter.get(
+  '/treatment-plans/create-options',
+  authenticate,
+  validate({ query: treatmentPlanOptionsQuerySchema }),
+  asyncHandler(getTreatmentPlanOptions),
+);
+riskRegisterRouter.post(
+  '/treatment-plans',
+  authenticate,
+  validate({ body: createTreatmentPlanBodySchema }),
+  asyncHandler(createTreatmentPlan),
+);
+riskRegisterRouter.patch(
+  '/treatment-plans/:treatmentPlanId',
+  authenticate,
+  validate({ params: updateTreatmentPlanParamsSchema, body: updateTreatmentPlanBodySchema }),
+  asyncHandler(updateTreatmentPlan),
+);
+riskRegisterRouter.patch(
+  '/acceptances/:acceptanceId/decision',
+  authenticate,
+  validate({ params: decideRiskAcceptanceParamsSchema, body: decideRiskAcceptanceBodySchema }),
+  asyncHandler(decideRiskAcceptance),
+);
 riskRegisterRouter.use(['/treatment-plans'], (_req, _res, next) => next('router'));
 riskRegisterRouter.post(
   '/:riskId/threats',
@@ -134,9 +174,19 @@ riskRegisterRouter.post(
   validate({ params: defineTargetRiskParamsSchema, body: defineTargetRiskBodySchema }),
   asyncHandler(defineTargetRisk),
 );
-riskRegisterRouter.post('/:riskId/acceptance', authenticate, validate({ params: submitRiskAcceptanceParamsSchema, body: submitRiskAcceptanceBodySchema }), asyncHandler(submitRiskAcceptance));
+riskRegisterRouter.post(
+  '/:riskId/acceptance',
+  authenticate,
+  validate({ params: submitRiskAcceptanceParamsSchema, body: submitRiskAcceptanceBodySchema }),
+  asyncHandler(submitRiskAcceptance),
+);
 // Review never rewrites the original approval or its expiry date.
-riskRegisterRouter.post('/:riskId/review', authenticate, validate({ params: submitRiskAcceptanceParamsSchema, body: openRiskReviewBodySchema }), asyncHandler(openRiskAcceptanceReview));
+riskRegisterRouter.post(
+  '/:riskId/review',
+  authenticate,
+  validate({ params: submitRiskAcceptanceParamsSchema, body: openRiskReviewBodySchema }),
+  asyncHandler(openRiskAcceptanceReview),
+);
 riskRegisterRouter.get(
   '/:riskId',
   authenticate,

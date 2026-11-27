@@ -39,16 +39,14 @@ export const startRiskReassessmentReview: RequestHandler = async (req, res) => {
 // Parse the new residual assessment and ask the service to complete the request.
 export const completeRiskReassessment: RequestHandler = async (req, res) => {
   const { requestId } = reviewRiskReassessmentRequestParamsSchema.parse(req.params);
-  res
-    .status(200)
-    .json({
-      success: true,
-      data: await riskReassessmentReviewService.complete(
-        userId(res.locals.authenticatedUserId),
-        requestId,
-        completeRiskReassessmentBodySchema.parse(req.body),
-      ),
-    });
+  res.status(200).json({
+    success: true,
+    data: await riskReassessmentReviewService.complete(
+      userId(res.locals.authenticatedUserId),
+      requestId,
+      completeRiskReassessmentBodySchema.parse(req.body),
+    ),
+  });
 };
 // Parse the rejection reason and ask the service to reject the request.
 export const rejectRiskReassessmentRequest: RequestHandler = async (req, res) => {

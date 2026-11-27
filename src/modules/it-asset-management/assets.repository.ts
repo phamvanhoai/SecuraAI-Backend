@@ -10,45 +10,71 @@ import type { ClassifyAssetInput } from './dto/classify-asset.dto.js';
 import type { LinkAssetContextInput } from './dto/link-asset-context.dto.js';
 import type { AssetContextHistoryQuery } from './dto/link-asset-context.dto.js';
 const contextSelect = {
-  id: true, status: true, updated_at: true, owner_user_id: true, business_service_id: true,
+  id: true,
+  status: true,
+  updated_at: true,
+  owner_user_id: true,
+  business_service_id: true,
   business_services: { select: { id: true, name: true } },
-  asset_dependencies_asset_dependencies_asset_idToassets: { select: {
-    depends_on_asset_id: true,
-    assets_asset_dependencies_depends_on_asset_idToassets: { select: { id: true, asset_code: true, name: true } },
-  } },
-  asset_event_sources: { select: { event_source_id: true, event_sources: { select: { id: true, name: true } } } },
+  asset_dependencies_asset_dependencies_asset_idToassets: {
+    select: {
+      depends_on_asset_id: true,
+      assets_asset_dependencies_depends_on_asset_idToassets: {
+        select: { id: true, asset_code: true, name: true },
+      },
+    },
+  },
+  asset_event_sources: {
+    select: { event_source_id: true, event_sources: { select: { id: true, name: true } } },
+  },
 } as const;
 type ContextRecord = Prisma.assetsGetPayload<{ select: typeof contextSelect }>;
 function contextSnapshot(record: ContextRecord) {
   return {
     businessService: record.business_services,
-    dependencies: record.asset_dependencies_asset_dependencies_asset_idToassets.map((link) => ({
-      id: link.depends_on_asset_id,
-      assetCode: link.assets_asset_dependencies_depends_on_asset_idToassets.asset_code,
-      name: link.assets_asset_dependencies_depends_on_asset_idToassets.name,
-    })).sort((a, b) => a.id.localeCompare(b.id)),
-    eventSources: record.asset_event_sources.map((link) => link.event_sources).sort((a, b) => a.id.localeCompare(b.id)),
+    dependencies: record.asset_dependencies_asset_dependencies_asset_idToassets
+      .map((link) => ({
+        id: link.depends_on_asset_id,
+        assetCode: link.assets_asset_dependencies_depends_on_asset_idToassets.asset_code,
+        name: link.assets_asset_dependencies_depends_on_asset_idToassets.name,
+      }))
+      .sort((a, b) => a.id.localeCompare(b.id)),
+    eventSources: record.asset_event_sources
+      .map((link) => link.event_sources)
+      .sort((a, b) => a.id.localeCompare(b.id)),
   };
 }
 function sameIds(left: string[], right: string[]) {
   return left.length === right.length && left.every((id) => right.includes(id));
 }
 const classificationSelect = {
-  id: true, status: true, criticality: true, data_classification: true,
-  classification_confidentiality_impact: true, classification_integrity_impact: true,
-  classification_availability_impact: true, classification_business_impact: true,
-  classification_rationale: true, data_classification_basis: true,
-  classification_method_version: true, data_classification_method_version: true,
-  classified_at: true, classified_by: true,
+  id: true,
+  status: true,
+  criticality: true,
+  data_classification: true,
+  classification_confidentiality_impact: true,
+  classification_integrity_impact: true,
+  classification_availability_impact: true,
+  classification_business_impact: true,
+  classification_rationale: true,
+  data_classification_basis: true,
+  classification_method_version: true,
+  data_classification_method_version: true,
+  classified_at: true,
+  classified_by: true,
 } as const;
-function classificationValues(record: Prisma.assetsGetPayload<{ select: typeof classificationSelect }>) {
+function classificationValues(
+  record: Prisma.assetsGetPayload<{ select: typeof classificationSelect }>,
+) {
   return {
     confidentialityImpact: record.classification_confidentiality_impact,
     integrityImpact: record.classification_integrity_impact,
     availabilityImpact: record.classification_availability_impact,
     businessImpact: record.classification_business_impact,
-    criticality: record.criticality, dataClassification: record.data_classification,
-    rationale: record.classification_rationale, dataClassificationBasis: record.data_classification_basis,
+    criticality: record.criticality,
+    dataClassification: record.data_classification,
+    rationale: record.classification_rationale,
+    dataClassificationBasis: record.data_classification_basis,
     methodVersion: record.classification_method_version,
     dataClassificationMethodVersion: record.data_classification_method_version,
   };
@@ -113,12 +139,20 @@ export const assetsRepository = {
   },
   ownerOptions(q: string) {
     return prisma.users.findMany({
-      where: { AND: [responsibilityWhere('ASSET_OWNER', false)], ...(q ? { OR: [
-        { full_name: { contains: q, mode: 'insensitive' } },
-        { email: { contains: q, mode: 'insensitive' } },
-      ] } : {}) },
+      where: {
+        AND: [responsibilityWhere('ASSET_OWNER', false)],
+        ...(q
+          ? {
+              OR: [
+                { full_name: { contains: q, mode: 'insensitive' } },
+                { email: { contains: q, mode: 'insensitive' } },
+              ],
+            }
+          : {}),
+      },
       select: { id: true, full_name: true, email: true },
-      orderBy: [{ full_name: 'asc' }, { id: 'asc' }], take: 10,
+      orderBy: [{ full_name: 'asc' }, { id: 'asc' }],
+      take: 10,
     });
   },
   list(query: ListAssetsQuery) {
@@ -229,155 +263,313 @@ export const assetsRepository = {
     return prisma.$transaction(async (tx) => {
       if (input.ownerUserId) {
         await tx.$queryRaw`SELECT id FROM users WHERE id = ${input.ownerUserId}::uuid FOR SHARE`;
-        const eligible = await tx.users.findFirst({ where: { id: input.ownerUserId, AND: [responsibilityWhere('ASSET_OWNER', false)] }, select: { id: true } });
-        if (!eligible) throw new AppError(422, 'INVALID_ASSET_OWNER', 'Grant Asset Owner responsibility before assigning this Employee');
+        const eligible = await tx.users.findFirst({
+          where: { id: input.ownerUserId, AND: [responsibilityWhere('ASSET_OWNER', false)] },
+          select: { id: true },
+        });
+        if (!eligible)
+          throw new AppError(
+            422,
+            'INVALID_ASSET_OWNER',
+            'Grant Asset Owner responsibility before assigning this Employee',
+          );
       }
       return tx.assets.create({
-      data: {
-        asset_code: assetCode,
-        name: input.name,
-        asset_type: input.assetType,
-        criticality: null,
-        data_classification: null,
-        created_by: actorUserId,
-        ...(input.description ? { description: input.description } : {}),
-        ...(input.ownerUserId ? { owner_user_id: input.ownerUserId } : {}),
-        business_service_id: null,
-      },
-      select,
-    });
+        data: {
+          asset_code: assetCode,
+          name: input.name,
+          asset_type: input.assetType,
+          criticality: null,
+          data_classification: null,
+          created_by: actorUserId,
+          ...(input.description ? { description: input.description } : {}),
+          ...(input.ownerUserId ? { owner_user_id: input.ownerUserId } : {}),
+          business_service_id: null,
+        },
+        select,
+      });
     });
   },
   update(assetId: string, input: UpdateAssetInput) {
-    return prisma.assets.update({ where: { id: assetId }, data: {
-      name: input.name, asset_type: input.assetType, description: input.description,
-    }, select });
+    return prisma.assets.update({
+      where: { id: assetId },
+      data: {
+        name: input.name,
+        asset_type: input.assetType,
+        description: input.description,
+      },
+      select,
+    });
   },
-  archive(assetId: string, userId: string, reason: string, correlationId: string | null, confirmationCode: string) {
-    return prisma.$transaction(async (tx) => {
-      const actor = await tx.users.findUnique({ where: { id: userId }, select: { role: true, status: true } });
-      if (!actor || actor.status !== 'ACTIVE' || actor.role !== 'SECURITY_OFFICER') return { kind: 'forbidden' } as const;
-      await tx.$queryRaw`SELECT id FROM public.assets WHERE id = ${assetId}::uuid FOR UPDATE`;
-      const asset = await tx.assets.findUnique({ where: { id: assetId }, select: { asset_code: true, status: true, archived_at: true } });
-      if (!asset) return { kind: 'not_found' } as const;
-      if (confirmationCode.trim() !== asset.asset_code) return { kind: 'confirmation_mismatch' } as const;
-      if (asset.status !== 'ACTIVE') return { kind: 'archived' } as const;
-      const dependencyWhere = { depends_on_asset_id: assetId, assets_asset_dependencies_asset_idToassets: { status: 'ACTIVE' as const } };
-      const count = await tx.asset_dependencies.count({ where: dependencyWhere });
-      if (count) {
-        const dependencies = await tx.asset_dependencies.findMany({
-          where: dependencyWhere, take: 20, orderBy: { asset_id: 'asc' },
-          select: { assets_asset_dependencies_asset_idToassets: { select: { asset_code: true, name: true } } },
+  archive(
+    assetId: string,
+    userId: string,
+    reason: string,
+    correlationId: string | null,
+    confirmationCode: string,
+  ) {
+    return prisma.$transaction(
+      async (tx) => {
+        const actor = await tx.users.findUnique({
+          where: { id: userId },
+          select: { role: true, status: true },
         });
-        return { kind: 'dependencies', count, dependencies } as const;
-      }
-      // Use the same database clock as the existing updated_at trigger.
-      const [clock] = await tx.$queryRaw<Array<{ at: Date }>>`SELECT transaction_timestamp() AS at`;
-      if (!clock) throw new Error('Database archive timestamp unavailable');
-      const at = clock.at;
-      await tx.assets.update({ where: { id: assetId }, data: { status: 'ARCHIVED', archived_at: at, archived_by: userId, archive_reason: reason, updated_at: at }, select: { id: true } });
-      const before = { status: asset.status, archivedAt: asset.archived_at?.toISOString() ?? null };
-      const after = { status: 'ARCHIVED', archivedAt: at.toISOString(), archivedBy: userId, archiveReason: reason };
-      await auditWriter.record(
-        {
-          actorType: 'USER',
-          actorUserId: userId,
-          action: 'ASSET_ARCHIVED',
-          resourceType: 'ASSET',
-          resourceId: assetId,
-          occurredAt: at,
-          source: 'API',
-          correlationId: correlationId,
-          beforeData: before,
-          afterData: after,
-        },
-        tx,
-      );
-      return { kind: 'updated' } as const;
-    }, { isolationLevel: 'Serializable', maxWait: 5000, timeout: 15000 });
+        if (!actor || actor.status !== 'ACTIVE' || actor.role !== 'SECURITY_OFFICER')
+          return { kind: 'forbidden' } as const;
+        await tx.$queryRaw`SELECT id FROM public.assets WHERE id = ${assetId}::uuid FOR UPDATE`;
+        const asset = await tx.assets.findUnique({
+          where: { id: assetId },
+          select: { asset_code: true, status: true, archived_at: true },
+        });
+        if (!asset) return { kind: 'not_found' } as const;
+        if (confirmationCode.trim() !== asset.asset_code)
+          return { kind: 'confirmation_mismatch' } as const;
+        if (asset.status !== 'ACTIVE') return { kind: 'archived' } as const;
+        const dependencyWhere = {
+          depends_on_asset_id: assetId,
+          assets_asset_dependencies_asset_idToassets: { status: 'ACTIVE' as const },
+        };
+        const count = await tx.asset_dependencies.count({ where: dependencyWhere });
+        if (count) {
+          const dependencies = await tx.asset_dependencies.findMany({
+            where: dependencyWhere,
+            take: 20,
+            orderBy: { asset_id: 'asc' },
+            select: {
+              assets_asset_dependencies_asset_idToassets: {
+                select: { asset_code: true, name: true },
+              },
+            },
+          });
+          return { kind: 'dependencies', count, dependencies } as const;
+        }
+        // Use the same database clock as the existing updated_at trigger.
+        const [clock] = await tx.$queryRaw<
+          Array<{ at: Date }>
+        >`SELECT transaction_timestamp() AS at`;
+        if (!clock) throw new Error('Database archive timestamp unavailable');
+        const at = clock.at;
+        await tx.assets.update({
+          where: { id: assetId },
+          data: {
+            status: 'ARCHIVED',
+            archived_at: at,
+            archived_by: userId,
+            archive_reason: reason,
+            updated_at: at,
+          },
+          select: { id: true },
+        });
+        const before = {
+          status: asset.status,
+          archivedAt: asset.archived_at?.toISOString() ?? null,
+        };
+        const after = {
+          status: 'ARCHIVED',
+          archivedAt: at.toISOString(),
+          archivedBy: userId,
+          archiveReason: reason,
+        };
+        await auditWriter.record(
+          {
+            actorType: 'USER',
+            actorUserId: userId,
+            action: 'ASSET_ARCHIVED',
+            resourceType: 'ASSET',
+            resourceId: assetId,
+            occurredAt: at,
+            source: 'API',
+            correlationId: correlationId,
+            beforeData: before,
+            afterData: after,
+          },
+          tx,
+        );
+        return { kind: 'updated' } as const;
+      },
+      { isolationLevel: 'Serializable', maxWait: 5000, timeout: 15000 },
+    );
   },
   assignOwner(assetId: string, ownerUserId: string | null) {
     return prisma.$transaction(async (tx) => {
       if (ownerUserId) {
         await tx.$queryRaw`SELECT id FROM users WHERE id = ${ownerUserId}::uuid FOR SHARE`;
-        const eligible = await tx.users.findFirst({ where: { id: ownerUserId, AND: [responsibilityWhere('ASSET_OWNER', false)] }, select: { id: true } });
-        if (!eligible) throw new AppError(422, 'INVALID_ASSET_OWNER', 'Grant Asset Owner responsibility before assigning this Employee');
+        const eligible = await tx.users.findFirst({
+          where: { id: ownerUserId, AND: [responsibilityWhere('ASSET_OWNER', false)] },
+          select: { id: true },
+        });
+        if (!eligible)
+          throw new AppError(
+            422,
+            'INVALID_ASSET_OWNER',
+            'Grant Asset Owner responsibility before assigning this Employee',
+          );
       }
-      return tx.assets.update({ where: { id: assetId }, data: { owner_user_id: ownerUserId }, select: { id: true, updated_at: true, users_assets_owner_user_idTousers: { select: { id: true, full_name: true, status: true } } } });
+      return tx.assets.update({
+        where: { id: assetId },
+        data: { owner_user_id: ownerUserId },
+        select: {
+          id: true,
+          updated_at: true,
+          users_assets_owner_user_idTousers: {
+            select: { id: true, full_name: true, status: true },
+          },
+        },
+      });
     });
   },
-  classify(assetId: string, criticality: string, input: ClassifyAssetInput, userId: string, methodVersion: string) {
-    return prisma.$transaction(async (tx) => {
-      const actor = await tx.users.findUnique({ where: { id: userId }, select: { role: true, status: true } });
-      if (!actor || actor.status !== 'ACTIVE' || actor.role !== 'SECURITY_OFFICER') return { kind: 'forbidden' } as const;
-      const current = await tx.assets.findUnique({ where: { id: assetId }, select: classificationSelect });
-      if (!current) return { kind: 'not_found' } as const;
-      if (current.status !== 'ACTIVE') return { kind: 'archived' } as const;
-      const previous = { status: current.status, criticality: current.criticality, data_classification: current.data_classification };
-      const next = {
-        confidentialityImpact: input.confidentialityImpact, integrityImpact: input.integrityImpact,
-        availabilityImpact: input.availabilityImpact, businessImpact: input.businessImpact,
-        criticality, dataClassification: input.dataClassification, rationale: input.rationale,
-        dataClassificationBasis: input.dataClassificationBasis, methodVersion,
-        dataClassificationMethodVersion: 'SECURAAI-DATA-CLASSIFICATION-v1',
-      };
-      if (current.classified_at && JSON.stringify(classificationValues(current)) === JSON.stringify(next)) {
-        return { kind: 'updated', previous, asset: {
-          id: current.id, criticality: current.criticality, data_classification: current.data_classification, classified_at: current.classified_at,
-        } } as const;
-      }
-      const at = new Date();
-      const asset = await tx.assets.update({
-        where: { id: assetId },
-        data: { criticality, data_classification: input.dataClassification,
-          classification_confidentiality_impact: input.confidentialityImpact,
-          classification_integrity_impact: input.integrityImpact,
-          classification_availability_impact: input.availabilityImpact,
-          classification_business_impact: input.businessImpact,
-          classification_rationale: input.rationale, classification_method_version: methodVersion,
-          data_classification_basis: input.dataClassificationBasis,
-          data_classification_method_version: 'SECURAAI-DATA-CLASSIFICATION-v1',
-          classified_by: userId, classified_at: at, updated_at: at,
-        },
-        select: { id: true, criticality: true, data_classification: true, classified_at: true },
-      });
-      const before = current.classified_at === null && current.criticality === null && current.data_classification === null
-        ? null : { ...classificationValues(current), assessedBy: current.classified_by, assessedAt: current.classified_at?.toISOString() ?? null };
-      const after = { ...next, assessedBy: userId, assessedAt: at.toISOString() };
-      await auditWriter.record(
-        {
-          actorType: 'USER',
-          actorUserId: userId,
-          action: 'ASSET_CLASSIFICATION_UPDATED',
-          resourceType: 'ASSET',
-          resourceId: assetId,
-          source: 'API',
-          occurredAt: at,
-          beforeData: before,
-          afterData: after,
-        },
-        tx,
-      );
-      return { kind: 'updated', asset, previous } as const;
-    }, { isolationLevel: 'Serializable', maxWait: 5000, timeout: 15000 });
+  classify(
+    assetId: string,
+    criticality: string,
+    input: ClassifyAssetInput,
+    userId: string,
+    methodVersion: string,
+  ) {
+    return prisma.$transaction(
+      async (tx) => {
+        const actor = await tx.users.findUnique({
+          where: { id: userId },
+          select: { role: true, status: true },
+        });
+        if (!actor || actor.status !== 'ACTIVE' || actor.role !== 'SECURITY_OFFICER')
+          return { kind: 'forbidden' } as const;
+        const current = await tx.assets.findUnique({
+          where: { id: assetId },
+          select: classificationSelect,
+        });
+        if (!current) return { kind: 'not_found' } as const;
+        if (current.status !== 'ACTIVE') return { kind: 'archived' } as const;
+        const previous = {
+          status: current.status,
+          criticality: current.criticality,
+          data_classification: current.data_classification,
+        };
+        const next = {
+          confidentialityImpact: input.confidentialityImpact,
+          integrityImpact: input.integrityImpact,
+          availabilityImpact: input.availabilityImpact,
+          businessImpact: input.businessImpact,
+          criticality,
+          dataClassification: input.dataClassification,
+          rationale: input.rationale,
+          dataClassificationBasis: input.dataClassificationBasis,
+          methodVersion,
+          dataClassificationMethodVersion: 'SECURAAI-DATA-CLASSIFICATION-v1',
+        };
+        if (
+          current.classified_at &&
+          JSON.stringify(classificationValues(current)) === JSON.stringify(next)
+        ) {
+          return {
+            kind: 'updated',
+            previous,
+            asset: {
+              id: current.id,
+              criticality: current.criticality,
+              data_classification: current.data_classification,
+              classified_at: current.classified_at,
+            },
+          } as const;
+        }
+        const at = new Date();
+        const asset = await tx.assets.update({
+          where: { id: assetId },
+          data: {
+            criticality,
+            data_classification: input.dataClassification,
+            classification_confidentiality_impact: input.confidentialityImpact,
+            classification_integrity_impact: input.integrityImpact,
+            classification_availability_impact: input.availabilityImpact,
+            classification_business_impact: input.businessImpact,
+            classification_rationale: input.rationale,
+            classification_method_version: methodVersion,
+            data_classification_basis: input.dataClassificationBasis,
+            data_classification_method_version: 'SECURAAI-DATA-CLASSIFICATION-v1',
+            classified_by: userId,
+            classified_at: at,
+            updated_at: at,
+          },
+          select: { id: true, criticality: true, data_classification: true, classified_at: true },
+        });
+        const before =
+          current.classified_at === null &&
+          current.criticality === null &&
+          current.data_classification === null
+            ? null
+            : {
+                ...classificationValues(current),
+                assessedBy: current.classified_by,
+                assessedAt: current.classified_at?.toISOString() ?? null,
+              };
+        const after = { ...next, assessedBy: userId, assessedAt: at.toISOString() };
+        await auditWriter.record(
+          {
+            actorType: 'USER',
+            actorUserId: userId,
+            action: 'ASSET_CLASSIFICATION_UPDATED',
+            resourceType: 'ASSET',
+            resourceId: assetId,
+            source: 'API',
+            occurredAt: at,
+            beforeData: before,
+            afterData: after,
+          },
+          tx,
+        );
+        return { kind: 'updated', asset, previous } as const;
+      },
+      { isolationLevel: 'Serializable', maxWait: 5000, timeout: 15000 },
+    );
   },
   linkContext(assetId: string, input: LinkAssetContextInput, userId: string) {
-    return prisma.$transaction(async (tx) => {
-      const actor = await tx.users.findUnique({ where: { id: userId }, select: { role: true, status: true } });
-      if (!actor || actor.status !== 'ACTIVE' || actor.role !== 'SECURITY_OFFICER') return { kind: 'forbidden' } as const;
-      const current = await tx.assets.findUnique({ where: { id: assetId }, select: contextSelect });
-      if (!current) return { kind: 'not_found' } as const;
-      if (current.status !== 'ACTIVE') return { kind: 'archived' } as const;
-      const oldDependencies = current.asset_dependencies_asset_dependencies_asset_idToassets.map((link) => link.depends_on_asset_id);
-      const oldSources = current.asset_event_sources.map((link) => link.event_source_id);
-      const addedDependencies = input.dependencyIds.filter((id) => !oldDependencies.includes(id));
-      const addedSources = input.eventSourceIds.filter((id) => !oldSources.includes(id));
-      if (input.businessServiceId && input.businessServiceId !== current.business_service_id && !await tx.business_services.findFirst({ where: { id: input.businessServiceId, status: 'ACTIVE' }, select: { id: true } })) return { kind: 'invalid_service' } as const;
-      if (addedDependencies.length && await tx.assets.count({ where: { id: { in: addedDependencies }, status: 'ACTIVE' } }) !== addedDependencies.length) return { kind: 'invalid_dependency' } as const;
-      if (addedSources.length && await tx.event_sources.count({ where: { id: { in: addedSources }, status: 'ACTIVE' } }) !== addedSources.length) return { kind: 'invalid_source' } as const;
-      // Track visited nodes per path so pre-existing cycles terminate safely.
-      if (input.dependencyIds.length) {
-        const [cycle] = await tx.$queryRaw<Array<{ has_cycle: boolean; path: string[] }>>(Prisma.sql`
+    return prisma.$transaction(
+      async (tx) => {
+        const actor = await tx.users.findUnique({
+          where: { id: userId },
+          select: { role: true, status: true },
+        });
+        if (!actor || actor.status !== 'ACTIVE' || actor.role !== 'SECURITY_OFFICER')
+          return { kind: 'forbidden' } as const;
+        const current = await tx.assets.findUnique({
+          where: { id: assetId },
+          select: contextSelect,
+        });
+        if (!current) return { kind: 'not_found' } as const;
+        if (current.status !== 'ACTIVE') return { kind: 'archived' } as const;
+        const oldDependencies = current.asset_dependencies_asset_dependencies_asset_idToassets.map(
+          (link) => link.depends_on_asset_id,
+        );
+        const oldSources = current.asset_event_sources.map((link) => link.event_source_id);
+        const addedDependencies = input.dependencyIds.filter((id) => !oldDependencies.includes(id));
+        const addedSources = input.eventSourceIds.filter((id) => !oldSources.includes(id));
+        if (
+          input.businessServiceId &&
+          input.businessServiceId !== current.business_service_id &&
+          !(await tx.business_services.findFirst({
+            where: { id: input.businessServiceId, status: 'ACTIVE' },
+            select: { id: true },
+          }))
+        )
+          return { kind: 'invalid_service' } as const;
+        if (
+          addedDependencies.length &&
+          (await tx.assets.count({
+            where: { id: { in: addedDependencies }, status: 'ACTIVE' },
+          })) !== addedDependencies.length
+        )
+          return { kind: 'invalid_dependency' } as const;
+        if (
+          addedSources.length &&
+          (await tx.event_sources.count({
+            where: { id: { in: addedSources }, status: 'ACTIVE' },
+          })) !== addedSources.length
+        )
+          return { kind: 'invalid_source' } as const;
+        // Track visited nodes per path so pre-existing cycles terminate safely.
+        if (input.dependencyIds.length) {
+          const [cycle] = await tx.$queryRaw<
+            Array<{ has_cycle: boolean; path: string[] }>
+          >(Prisma.sql`
           WITH RECURSIVE reachable(id, visited) AS (
             SELECT id, ARRAY[id] FROM unnest(ARRAY[${Prisma.join(input.dependencyIds)}]::uuid[]) AS start(id)
             UNION ALL
@@ -397,48 +589,56 @@ export const assetsRepository = {
             ORDER BY step.position
           ) AS path FROM found
         `);
-        if (cycle?.has_cycle) return { kind: 'cycle', path: cycle.path ?? [] } as const;
-      }
-      if (current.business_service_id === input.businessServiceId &&
-          sameIds(oldDependencies, input.dependencyIds) && sameIds(oldSources, input.eventSourceIds)) {
-        return { kind: 'updated', asset: { id: current.id, updated_at: current.updated_at } } as const;
-      }
-      const before = contextSnapshot(current);
-      const asset = await tx.assets.update({
-      where: { id: assetId },
-      data: {
-        business_service_id: input.businessServiceId,
-        asset_dependencies_asset_dependencies_asset_idToassets: {
-          deleteMany: { depends_on_asset_id: { notIn: input.dependencyIds } },
-          create: addedDependencies.map((id) => ({
-            assets_asset_dependencies_depends_on_asset_idToassets: { connect: { id } },
-          })),
-        },
-        asset_event_sources: {
-          deleteMany: { event_source_id: { notIn: input.eventSourceIds } },
-          create: addedSources.map((id) => ({ event_source_id: id })),
-        },
+          if (cycle?.has_cycle) return { kind: 'cycle', path: cycle.path ?? [] } as const;
+        }
+        if (
+          current.business_service_id === input.businessServiceId &&
+          sameIds(oldDependencies, input.dependencyIds) &&
+          sameIds(oldSources, input.eventSourceIds)
+        ) {
+          return {
+            kind: 'updated',
+            asset: { id: current.id, updated_at: current.updated_at },
+          } as const;
+        }
+        const before = contextSnapshot(current);
+        const asset = await tx.assets.update({
+          where: { id: assetId },
+          data: {
+            business_service_id: input.businessServiceId,
+            asset_dependencies_asset_dependencies_asset_idToassets: {
+              deleteMany: { depends_on_asset_id: { notIn: input.dependencyIds } },
+              create: addedDependencies.map((id) => ({
+                assets_asset_dependencies_depends_on_asset_idToassets: { connect: { id } },
+              })),
+            },
+            asset_event_sources: {
+              deleteMany: { event_source_id: { notIn: input.eventSourceIds } },
+              create: addedSources.map((id) => ({ event_source_id: id })),
+            },
+          },
+          select: contextSelect,
+        });
+        const after = contextSnapshot(asset);
+        const at = new Date();
+        await auditWriter.record(
+          {
+            actorType: 'USER',
+            actorUserId: userId,
+            action: 'ASSET_CONTEXT_UPDATED',
+            resourceType: 'ASSET',
+            resourceId: assetId,
+            source: 'API',
+            occurredAt: at,
+            beforeData: before,
+            afterData: after,
+          },
+          tx,
+        );
+        return { kind: 'updated', asset: { id: asset.id, updated_at: asset.updated_at } } as const;
       },
-      select: contextSelect,
-      });
-      const after = contextSnapshot(asset);
-      const at = new Date();
-      await auditWriter.record(
-        {
-          actorType: 'USER',
-          actorUserId: userId,
-          action: 'ASSET_CONTEXT_UPDATED',
-          resourceType: 'ASSET',
-          resourceId: assetId,
-          source: 'API',
-          occurredAt: at,
-          beforeData: before,
-          afterData: after,
-        },
-        tx,
-      );
-      return { kind: 'updated', asset: { id: asset.id, updated_at: asset.updated_at } } as const;
-    }, { isolationLevel: 'Serializable', maxWait: 5000, timeout: 15000 });
+      { isolationLevel: 'Serializable', maxWait: 5000, timeout: 15000 },
+    );
   },
   contextHistory(assetId: string, actorId: string, query: AssetContextHistoryQuery) {
     return readAssetHistory(assetId, actorId, query, 'ASSET_CONTEXT_UPDATED');
@@ -448,24 +648,46 @@ export const assetsRepository = {
   },
 };
 
-function readAssetHistory(assetId: string, actorId: string, query: AssetContextHistoryQuery,
-  action: 'ASSET_CONTEXT_UPDATED' | 'ASSET_CLASSIFICATION_UPDATED') {
-    return prisma.$transaction(async (tx) => {
-      const actor = await tx.users.findUnique({ where: { id: actorId }, select: { role: true, status: true } });
-      if (!actor || actor.status !== 'ACTIVE') throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
-      const asset = await tx.assets.findUnique({ where: { id: assetId }, select: { owner_user_id: true } });
+function readAssetHistory(
+  assetId: string,
+  actorId: string,
+  query: AssetContextHistoryQuery,
+  action: 'ASSET_CONTEXT_UPDATED' | 'ASSET_CLASSIFICATION_UPDATED',
+) {
+  return prisma.$transaction(
+    async (tx) => {
+      const actor = await tx.users.findUnique({
+        where: { id: actorId },
+        select: { role: true, status: true },
+      });
+      if (!actor || actor.status !== 'ACTIVE')
+        throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+      const asset = await tx.assets.findUnique({
+        where: { id: assetId },
+        select: { owner_user_id: true },
+      });
       if (!asset) throw new AppError(404, 'ASSET_NOT_FOUND', 'Asset not found');
       if (actor.role !== 'SECURITY_OFFICER' && asset.owner_user_id !== actorId)
         throw new AppError(403, 'FORBIDDEN', 'Asset Owner access required');
       const where = { resource_type: 'ASSET', resource_id: assetId, action };
       const [total, items] = await Promise.all([
         tx.audit_logs.count({ where }),
-        tx.audit_logs.findMany({ where, orderBy: [{ occurred_at: 'desc' }, { id: 'desc' }],
-          skip: (query.page - 1) * query.limit, take: query.limit,
-          select: { id: true, occurred_at: true, before_data: true, after_data: true,
-            users: { select: { id: true, full_name: true } } },
+        tx.audit_logs.findMany({
+          where,
+          orderBy: [{ occurred_at: 'desc' }, { id: 'desc' }],
+          skip: (query.page - 1) * query.limit,
+          take: query.limit,
+          select: {
+            id: true,
+            occurred_at: true,
+            before_data: true,
+            after_data: true,
+            users: { select: { id: true, full_name: true } },
+          },
         }),
       ]);
       return { total, items };
-    }, { isolationLevel: 'RepeatableRead' });
+    },
+    { isolationLevel: 'RepeatableRead' },
+  );
 }

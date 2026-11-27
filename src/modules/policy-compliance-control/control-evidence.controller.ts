@@ -39,9 +39,7 @@ export const linkControlEvidence: RequestHandler = async (req, res) => {
   res.status(data.linked ? 201 : 200).json({ success: true, data });
 };
 export const unlinkControlEvidence: RequestHandler = async (req, res) => {
-  const params = controlParamsSchema
-    .merge(evidenceParamsSchema)
-    .parse(req.params);
+  const params = controlParamsSchema.merge(evidenceParamsSchema).parse(req.params);
   const data = await controlEvidenceService.unlink(
     actor(res.locals.authenticatedUserId),
     params.controlId,

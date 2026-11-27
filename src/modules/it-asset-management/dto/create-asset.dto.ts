@@ -8,7 +8,15 @@ export const createAssetBodySchema = z
     name: z.string().trim().min(3).max(100),
     assetType: assetTypeSchema,
     ownerUserId: optionalUuid,
-    description: z.string().trim().max(2000).refine((value) => value.length === 0 || value.length >= 20, "Enter at least 20 characters or leave blank.").optional(),
+    description: z
+      .string()
+      .trim()
+      .max(2000)
+      .refine(
+        (value) => value.length === 0 || value.length >= 20,
+        'Enter at least 20 characters or leave blank.',
+      )
+      .optional(),
   })
   .strict();
 

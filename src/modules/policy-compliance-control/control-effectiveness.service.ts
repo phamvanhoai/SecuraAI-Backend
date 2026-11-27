@@ -10,7 +10,10 @@ import {
   type ControlEffectivenessRecord,
 } from './control-effectiveness.repository.js';
 
-const map = (item: ControlEffectivenessRecord, bases: Awaited<ReturnType<typeof controlEffectivenessRepository.evidenceBasis>>) => ({
+const map = (
+  item: ControlEffectivenessRecord,
+  bases: Awaited<ReturnType<typeof controlEffectivenessRepository.evidenceBasis>>,
+) => ({
   ...controlAssessmentReview(item, bases),
   id: item.id,
   controlCode: item.control_code,
@@ -65,9 +68,12 @@ export const controlEffectivenessService = {
       user.role === 'SECURITY_OFFICER',
       query,
     );
-    const bases = await controlEffectivenessRepository.evidenceBasis(items.map(item => item.id), items.flatMap(item => item.control_assessments.map(value => value.id)));
+    const bases = await controlEffectivenessRepository.evidenceBasis(
+      items.map((item) => item.id),
+      items.flatMap((item) => item.control_assessments.map((value) => value.id)),
+    );
     return {
-      items: items.map(item => map(item, bases)),
+      items: items.map((item) => map(item, bases)),
       pagination: {
         page: query.page,
         limit: query.limit,

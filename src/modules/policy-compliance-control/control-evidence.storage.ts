@@ -125,11 +125,18 @@ export function resolveEvidencePath(storageKey: string): string {
     throw new AppError(500, 'INVALID_EVIDENCE_STORAGE_KEY', 'Evidence storage is invalid');
   return target;
 }
-export async function readVerifiedEvidenceFile(storageKey: string, sha256: string): Promise<Buffer> {
+export async function readVerifiedEvidenceFile(
+  storageKey: string,
+  sha256: string,
+): Promise<Buffer> {
   const buffer = await readFile(resolveEvidencePath(storageKey)).catch(() => {
     throw new AppError(404, 'EVIDENCE_FILE_NOT_FOUND', 'The evidence file is unavailable');
   });
   if (createHash('sha256').update(buffer).digest('hex') !== sha256)
-    throw new AppError(409, 'EVIDENCE_INTEGRITY_FAILED', 'The evidence file integrity check failed');
+    throw new AppError(
+      409,
+      'EVIDENCE_INTEGRITY_FAILED',
+      'The evidence file integrity check failed',
+    );
   return buffer;
 }
