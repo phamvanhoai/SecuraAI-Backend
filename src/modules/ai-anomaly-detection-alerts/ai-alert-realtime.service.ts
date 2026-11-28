@@ -4,6 +4,7 @@ import { env } from '../../config/env.js';
 import { AppError } from '../../common/errors/app-error.js';
 import { anomalyDetectionRepository } from './anomaly-detection.repository.js';
 
+// Accept only tickets created for the AI alert realtime connection.
 const realtimeTicketClaimsSchema = z.object({
   sub: z.uuid(),
   type: z.literal('ai-alert-realtime'),
@@ -11,8 +12,10 @@ const realtimeTicketClaimsSchema = z.object({
   exp: z.number().int().optional(),
 });
 
+// Keep tickets short-lived because the browser sends them during WebSocket setup.
 const REALTIME_TICKET_TTL_SECONDS = 30;
 
+// Realtime AI alerts are available only to an active Security Officer.
 async function requireSecurityOfficer(userId: string): Promise<void> {
   const actor = await anomalyDetectionRepository.findActor(userId);
   if (!actor || actor.status !== 'ACTIVE')
@@ -22,9 +25,11 @@ async function requireSecurityOfficer(userId: string): Promise<void> {
 }
 
 export const aiAlertRealtimeService = {
+  // Create a one-time connection ticket after checking the current user again.
   async issueTicket(userId: string) {
     await requireSecurityOfficer(userId);
     return {
+      // Limit the token to this realtime endpoint with a dedicated audience and type.
       ticket: jwt.sign({ type: 'ai-alert-realtime' }, env.JWT_ACCESS_SECRET, {
         algorithm: 'HS256',
         subject: userId,
@@ -37,6 +42,7 @@ export const aiAlertRealtimeService = {
     };
   },
 
+  // Return the user ID only when the signature, scope, expiry and claims are valid.
   verifyTicket(ticket: string): string | null {
     try {
       const verified: unknown = jwt.verify(ticket, env.JWT_ACCESS_SECRET, {
@@ -47,6 +53,7 @@ export const aiAlertRealtimeService = {
       const claims = realtimeTicketClaimsSchema.safeParse(verified);
       return claims.success ? claims.data.sub : null;
     } catch {
+      // Invalid or expired tickets are rejected without exposing verification details.
       return null;
     }
   },
