@@ -405,8 +405,10 @@ async function runDetection(
     const persisted = await anomalyDetectionRepository.persistRun({
       actor: audit.actor,
       modelVersionId: model.id,
-      leaseToken: batch.leaseToken, //Automated worker get job = token
-      correlationId: audit.correlationId, // link with auditlog
+      // This token proves that the jobs still belong to this worker.
+      leaseToken: batch.leaseToken,
+      // Use the same ID to find this run in request logs and audit logs.
+      correlationId: audit.correlationId,
       detections,
       failures,
       summary,
