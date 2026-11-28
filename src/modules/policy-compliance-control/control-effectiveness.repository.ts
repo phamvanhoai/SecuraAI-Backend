@@ -141,6 +141,7 @@ export const controlEffectivenessRepository = {
             'FORBIDDEN',
             'Security Officer or assigned Control Owner required',
           );
+        // Stop if applicability or implementation status changed after the service read the Control.
         if (
           control.applicability !== expected.applicability ||
           control.implementation_status !== expected.implementation_status
@@ -150,6 +151,7 @@ export const controlEffectivenessRepository = {
             'CONTROL_STALE',
             'Control configuration changed. Reload before assessing',
           );
+        // Stop if no linked Evidence item is Active and valid now.
         if (
           !control.control_evidence_links.some((link) =>
             isControlEvidenceUsable(link.evidence_items, new Date()),
@@ -160,6 +162,7 @@ export const controlEffectivenessRepository = {
             'CONTROL_EVIDENCE_REQUIRED',
             'At least one active evidence item is required',
           );
+        // If the form sends its original status, stop when it no longer matches the saved status.
         if (
           input.expectedImplementationStatus &&
           input.expectedImplementationStatus !== control.implementation_status.toLowerCase()
@@ -169,12 +172,16 @@ export const controlEffectivenessRepository = {
             'CONTROL_STALE',
             'Implementation status changed. Close and reopen Assess Control before saving',
           );
+        // Keep only the Evidence selected in the form and still linked to this Control.
         const selectedEvidence = control.control_evidence_links
           .filter((link) => input.evidenceIds.includes(link.evidence_items.id))
           .map((link) => link.evidence_items);
         if (
+          // Stop if any selected Evidence is missing from the current links.
           selectedEvidence.length !== input.evidenceIds.length ||
+          // At least one Evidence item must be selected.
           !selectedEvidence.length ||
+          // Every selected Evidence item must be Active and valid now.
           selectedEvidence.some((item) => !isControlEvidenceUsable(item, new Date()))
         )
           throw new AppError(
@@ -182,6 +189,8 @@ export const controlEffectivenessRepository = {
             'CONTROL_EVIDENCE_STALE',
             'Selected Evidence is no longer linked or valid. Reopen Assess Control and select current Evidence.',
           );
+        // Copy the selected Evidence details as the basis for this assessment.
+        // This snapshot is saved in the audit log later, not by this map operation.
         const evidenceBasis = selectedEvidence
           .map((item) => ({
             id: item.id,
@@ -191,7 +200,10 @@ export const controlEffectivenessRepository = {
             validFrom: item.valid_from?.toISOString() ?? null,
             validUntil: item.valid_until?.toISOString() ?? null,
           }))
+          // Keep the same order even when the user selects Evidence in a different order.
           .sort((a, b) => a.id.localeCompare(b.id));
+        // Use the status selected in the form and map it to the database enum.
+        // If no status is submitted, keep the current saved status. This does not save it yet.
         const nextStatus = input.implementationStatus
           ? (
               {
@@ -202,12 +214,15 @@ export const controlEffectivenessRepository = {
               } as const
             )[input.implementationStatus]
           : control.implementation_status;
+        // Only assess operating effectiveness for a Control that is Applicable.
         if (control.applicability !== 'APPLICABLE')
           throw new AppError(
             422,
             'CONTROL_NOT_APPLICABLE',
             'Only Applicable controls can be assessed for operating effectiveness. Update applicability and reopen Assess Control.',
           );
+        // The Control must be deployed at least partly before its operation can be tested.
+        // Planned and Not implemented statuses cannot pass this check.
         if (nextStatus !== 'PARTIALLY_IMPLEMENTED' && nextStatus !== 'IMPLEMENTED')
           throw new AppError(
             422,

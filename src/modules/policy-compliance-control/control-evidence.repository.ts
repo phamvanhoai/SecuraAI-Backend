@@ -11,6 +11,7 @@ import type {
 import { evidenceDocumentUrlSchema } from './dto/control-evidence.dto.js';
 import { isControlEvidenceUsable, usableControlEvidenceWhere } from './control-evidence.rules.js';
 
+// Read Evidence metadata and user names. File contents are not loaded here.
 const select = {
   id: true,
   name: true,
@@ -40,7 +41,9 @@ type Access = {
   control: { id: string; control_code: string; name: string };
 };
 
+// Build the API response and show whether this Evidence is usable now.
 function map(item: Evidence, now: Date) {
+  // Only return a document URL when it passes the URL schema.
   const url = evidenceDocumentUrlSchema.safeParse(item.storage_uri);
   const usable = item.status === 'ACTIVE' && isControlEvidenceUsable(item, now);
   return {
@@ -81,6 +84,7 @@ function map(item: Evidence, now: Date) {
     createdAt: item.created_at,
   };
 }
+// Check the active account and access to this Control inside the transaction.
 async function access(
   tx: Prisma.TransactionClient,
   actorId: string,
@@ -94,6 +98,7 @@ async function access(
   });
   if (!actor || actor.status !== 'ACTIVE')
     throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+  // Lock the Control before changing Evidence links to avoid conflicting writes.
   if (write)
     await tx.$queryRaw`SELECT id FROM public.security_controls WHERE id = ${controlId}::uuid FOR UPDATE`;
   const control = await tx.security_controls.findUnique({
@@ -102,6 +107,7 @@ async function access(
   });
   if (!control) throw new AppError(404, 'CONTROL_NOT_FOUND', 'Security control not found');
   const officer = actor.role === 'SECURITY_OFFICER';
+  // Allow a Security Officer or the Employee who owns this Control.
   if (!officer && !(actor.role === 'EMPLOYEE' && control.owner_user_id === actorId))
     throw new AppError(
       403,
@@ -110,6 +116,7 @@ async function access(
     );
   return { actorId, controlId, officer, control };
 }
+// Officers can query all Evidence. Other allowed users can query their own Evidence or Evidence linked to Controls they own.
 function visible(access: Access): Prisma.evidence_itemsWhereInput {
   return access.officer
     ? {}
@@ -124,6 +131,7 @@ function visible(access: Access): Prisma.evidence_itemsWhereInput {
         ],
       };
 }
+// Save an Evidence action in audit using the same transaction as the change.
 async function audit(
   tx: Prisma.TransactionClient,
   context: Access,
@@ -153,14 +161,17 @@ async function audit(
   });
 }
 export const controlEvidenceRepository = {
+  // List linked Evidence or usable Evidence available to link, with search and pagination.
   list(actorId: string, controlId: string, query: ListControlEvidence) {
     return prisma.$transaction(
       async (tx) => {
         const context = await access(tx, actorId, controlId, false);
         const now = new Date();
+        // Apply access rules before searching or counting Evidence.
         const where: Prisma.evidence_itemsWhereInput = {
           AND: [
             visible(context),
+            // Linked view includes current links; available view shows usable Evidence not yet linked here.
             query.view === 'linked'
               ? { control_evidence_links: { some: { control_id: controlId } } }
               : {
@@ -225,6 +236,7 @@ export const controlEvidenceRepository = {
       { isolationLevel: 'RepeatableRead', maxWait: 5000, timeout: 15000 },
     );
   },
+  // Create an external URL Evidence record, link it to the Control and audit the action together.
   add(actorId: string, controlId: string, input: AddControlEvidence) {
     return prisma.$transaction(
       async (tx) => {
@@ -235,11 +247,13 @@ export const controlEvidenceRepository = {
           where: { id: input.requestId },
           select,
         });
+        // If this request ID was already saved, check that it is the same request before returning the saved result.
         if (previous) {
           const linked = await tx.control_evidence_links.findUnique({
             where: { control_id_evidence_id: { control_id: controlId, evidence_id: previous.id } },
             select: { linked_by: true },
           });
+          // A reused request ID must match the original owner, link and Evidence data.
           if (
             previous.owner_user_id !== actorId ||
             linked?.linked_by !== actorId ||
@@ -261,12 +275,14 @@ export const controlEvidenceRepository = {
         const now = new Date();
         const collectedAt = new Date(input.collectedAt);
         const validUntil = input.validUntil ? new Date(input.validUntil) : null;
+        // Evidence cannot be collected in the future.
         if (collectedAt > now)
           throw new AppError(
             422,
             'EVIDENCE_FUTURE_COLLECTION',
             'Collection time cannot be in the future',
           );
+        // An optional expiry must be after both collection time and the current time.
         if (validUntil && (validUntil <= now || validUntil <= collectedAt))
           throw new AppError(
             422,
@@ -291,6 +307,7 @@ export const controlEvidenceRepository = {
             'EVIDENCE_ALREADY_EXISTS',
             'This document and collection time already exist. Use Link existing evidence',
           );
+        // Save Evidence metadata in evidence_items. This does not mark it reviewed or assessed.
         const item = await tx.evidence_items.create({
           data: {
             id: input.requestId,
@@ -306,6 +323,7 @@ export const controlEvidenceRepository = {
           },
           select,
         });
+        // Save the Control-to-Evidence link and the user who linked it.
         await tx.control_evidence_links.create({
           data: { control_id: controlId, evidence_id: item.id, linked_by: actorId, linked_at: now },
         });
@@ -322,6 +340,7 @@ export const controlEvidenceRepository = {
       { maxWait: 5000, timeout: 15000 },
     );
   },
+  // Save metadata for a file already stored by the upload flow; file bytes are not written here.
   addUploaded(
     actorId: string,
     controlId: string,
@@ -347,11 +366,13 @@ export const controlEvidenceRepository = {
           where: { id: input.requestId },
           select,
         });
+        // If this request ID was already saved, check that it is the same request before returning the saved result.
         if (previous) {
           const linked = await tx.control_evidence_links.findUnique({
             where: { control_id_evidence_id: { control_id: controlId, evidence_id: previous.id } },
             select: { linked_by: true },
           });
+          // A reused request ID must match the original owner, link and Evidence data.
           if (
             previous.owner_user_id !== actorId ||
             linked?.linked_by !== actorId ||
@@ -369,18 +390,21 @@ export const controlEvidenceRepository = {
         const now = new Date();
         const collectedAt = new Date(input.collectedAt);
         const validUntil = input.validUntil ? new Date(input.validUntil) : null;
+        // Evidence cannot be collected in the future.
         if (collectedAt > now)
           throw new AppError(
             422,
             'EVIDENCE_FUTURE_COLLECTION',
             'Collection time cannot be in the future',
           );
+        // An optional expiry must be after both collection time and the current time.
         if (validUntil && (validUntil <= now || validUntil <= collectedAt))
           throw new AppError(
             422,
             'EVIDENCE_INVALID_VALIDITY',
             'Validity must end after collection and the current time',
           );
+        // Lock by file hash so concurrent uploads of the same content do not bypass the duplicate check.
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtext(${input.sha256}))`;
         const duplicate = await tx.evidence_items.findFirst({
           where: {
@@ -391,12 +415,14 @@ export const controlEvidenceRepository = {
           },
           select: { id: true },
         });
+        // Reject an uploaded file with the same hash when the existing Evidence is visible to this user.
         if (duplicate)
           throw new AppError(
             409,
             'EVIDENCE_FILE_ALREADY_EXISTS',
             'This file already exists. Use Link existing evidence',
           );
+        // Save Evidence metadata in evidence_items. This does not mark it reviewed or assessed.
         const item = await tx.evidence_items.create({
           data: {
             id: input.requestId,
@@ -416,6 +442,7 @@ export const controlEvidenceRepository = {
           },
           select,
         });
+        // Save the Control-to-Evidence link and the user who linked it.
         await tx.control_evidence_links.create({
           data: { control_id: controlId, evidence_id: item.id, linked_by: actorId, linked_at: now },
         });
@@ -432,6 +459,7 @@ export const controlEvidenceRepository = {
       { maxWait: 5000, timeout: 15000 },
     );
   },
+  // Check download access and return storage metadata. The storage layer reads the file bytes.
   getUploadedFile(actorId: string, evidenceId: string) {
     return prisma.$transaction(async (tx) => {
       await tx.$queryRaw`SELECT id FROM public.users WHERE id = ${actorId}::uuid FOR SHARE`;
@@ -468,6 +496,7 @@ export const controlEvidenceRepository = {
           integrity_hash: true,
         },
       });
+      // Return the same not-found response for missing, incomplete or inaccessible file records.
       if (!item?.storage_uri || !item.original_file_name || !item.mime_type || !item.integrity_hash)
         throw new AppError(
           404,
@@ -483,6 +512,7 @@ export const controlEvidenceRepository = {
       };
     });
   },
+  // Record the download action only. This method does not read or send the file.
   async recordFileDownload(actorId: string, evidenceId: string) {
     const id = randomUUID();
     const at = new Date();
@@ -512,6 +542,7 @@ export const controlEvidenceRepository = {
       },
     });
   },
+  // Reuse an existing, visible and usable Evidence item without creating a copy.
   link(actorId: string, controlId: string, input: LinkControlEvidence) {
     return prisma.$transaction(
       async (tx) => {
@@ -522,9 +553,11 @@ export const controlEvidenceRepository = {
           where: { AND: [visible(context), { id: input.evidenceId }] },
           select,
         });
+        // Do not link Evidence that does not exist or is outside the user access scope.
         if (!item)
           throw new AppError(404, 'EVIDENCE_NOT_AVAILABLE', 'Evidence not found or not accessible');
         const now = new Date();
+        // Only link Evidence that is Active and currently valid.
         if (item.status !== 'ACTIVE' || !isControlEvidenceUsable(item, now))
           throw new AppError(
             409,
@@ -535,7 +568,9 @@ export const controlEvidenceRepository = {
           where: { control_id_evidence_id: { control_id: controlId, evidence_id: item.id } },
           select: { evidence_id: true },
         });
+        // An existing link is returned without creating another link or another audit event.
         if (existing) return { evidence: map(item, now), linked: false };
+        // Save the Control-to-Evidence link and the user who linked it.
         await tx.control_evidence_links.create({
           data: { control_id: controlId, evidence_id: item.id, linked_by: actorId, linked_at: now },
         });
@@ -545,6 +580,7 @@ export const controlEvidenceRepository = {
       { isolationLevel: 'Serializable', maxWait: 5000, timeout: 15000 },
     );
   },
+  // Remove only this Control link. Keep the Evidence record and its other links.
   unlink(actorId: string, controlId: string, evidenceId: string, input: UnlinkControlEvidence) {
     return prisma.$transaction(
       async (tx) => {
@@ -553,12 +589,14 @@ export const controlEvidenceRepository = {
           where: { control_id_evidence_id: { control_id: controlId, evidence_id: evidenceId } },
           select: { evidence_id: true },
         });
+        // Stop if this Evidence is not currently linked to the selected Control.
         if (!link)
           throw new AppError(
             404,
             'EVIDENCE_LINK_NOT_FOUND',
             'Evidence is not linked to this Control',
           );
+        // Delete the relation only; do not delete evidence_items or stored files.
         await tx.control_evidence_links.delete({
           where: { control_id_evidence_id: { control_id: controlId, evidence_id: evidenceId } },
         });
