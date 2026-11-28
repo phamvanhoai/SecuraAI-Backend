@@ -165,8 +165,7 @@ export const anomalyDetectionRepository = {
           });
         }
         if (input.leaseToken) {
-          // Check that every job still belongs to this worker and its time limit
-          // has not ended before saving any result.
+          // Make sure every job still belongs to this worker and is not expired.
           const owned = await transaction.$queryRaw<
             { id: string }[]
           >`SELECT id FROM detection_jobs WHERE lease_token=${input.leaseToken}::uuid AND status='PROCESSING' AND lease_until>now() FOR UPDATE`;
@@ -236,6 +235,7 @@ export const anomalyDetectionRepository = {
             | null = cached ?? null;
           const cachedAlertIsExpired =
             !cached || detection.occurredAt.getTime() - cached.occurredAt.getTime() > 15 * 60_000;
+          // Find the newest open alert with the same group, model and engine within 15 minutes.
           if (cachedAlertIsExpired) {
             existing = await transaction.anomaly_alerts.findFirst({
               where: {
@@ -266,17 +266,19 @@ export const anomalyDetectionRepository = {
               orderBy: { generated_at: 'desc' },
             });
           }
+          // Lock an existing alert once before adding more detections to it.
           if (existing && !lockedAlerts.has(existing.detection_id)) {
-            // Lock the alert while it is updated, so another worker cannot update
-            // the same alert at the same time.
+            // Lock the alert only if it is still open, so other workers must wait.
             const open = await transaction.$queryRaw<{ id: string }[]>`SELECT id FROM anomaly_alerts
-              WHERE detection_id = ${existing.detection_id}::uuid AND status IN ('NEW', 'IN_TRIAGE', 'NEED_INVESTIGATION') FOR UPDATE`;
+              WHERE detection_id = ${existing.detection_id}::uuid
+                AND status IN ('NEW', 'IN_TRIAGE', 'NEED_INVESTIGATION')
+              FOR UPDATE`;
             if (open.length === 0) existing = null;
             else lockedAlerts.add(existing.detection_id);
           }
+          // Add the detection to the matching alert instead of creating a new one.
           if (existing) {
-            // If the new detection has a higher score, raise the alert score and
-            // severity. The saved detection scores are not changed.
+            // Load the alert's first score and any later score changes.
             const original = await transaction.anomaly_detections.findUniqueOrThrow({
               where: { id: existing.detection_id },
               select: {
@@ -317,7 +319,9 @@ export const anomalyDetectionRepository = {
                   }
                 }),
             );
+            // Raise the alert priority only when the new score is stronger.
             if (detection.score > previousScore) {
+              // Update only an open alert and keep its update time moving forward.
               const updated = await transaction.$queryRaw<{ updated_at: Date }[]>`
                 UPDATE anomaly_alerts
                 SET severity = ${detectionSeverity(detection.score)},
@@ -326,6 +330,7 @@ export const anomalyDetectionRepository = {
                   AND status IN ('NEW', 'IN_TRIAGE', 'NEED_INVESTIGATION')
                 RETURNING updated_at`;
               const updatedAt = updated[0]?.updated_at;
+              // Stop when another change prevents the priority update.
               if (!updatedAt) throw new Error('Open alert changed during priority update');
               // Save the old and new scores so users can see why the alert changed.
               groupedEvidence.push({
@@ -358,6 +363,7 @@ export const anomalyDetectionRepository = {
               }),
               rank: 100,
             });
+            // Copy database results into the simple in-memory group cache.
             if ('anomaly_detections' in existing)
               groups.set(detection.groupKey, {
                 detection_id: existing.detection_id,
@@ -404,7 +410,7 @@ export const anomalyDetectionRepository = {
               lease_token=NULL,lease_until=NULL,error_code=${item.code},updated_at=now()
               WHERE lease_token=${input.leaseToken}::uuid AND event_id=${item.eventId}::uuid`;
           }
-          // Create follow-up jobs for any alert explanation work still needed.
+          // Queue optional Ollama explanation enrichment for alerts created by this batch.
           if (input.detections.length > 0)
             await transaction.$executeRaw`INSERT INTO detection_jobs(kind,alert_id,model_version_id,engine_version)
             SELECT 'EXPLANATION',a.id,${input.modelVersionId}::uuid,${pipelineEngine} FROM anomaly_alerts a JOIN anomaly_detections d ON d.id=a.detection_id
