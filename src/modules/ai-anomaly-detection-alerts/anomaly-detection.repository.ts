@@ -34,24 +34,29 @@ export type PendingEventScope = 'ALL' | 'WAZUH_REALTIME';
 export const anomalyDetectionRepository = {
   // Load 60 past minutes; the ML client derives the 1/5/15/60-minute windows.
   async findMlTemporalContext(event: DetectionEvent) {
+    //if dont have acount and ip then dont find history
     if (!event.account_identifier && !event.source_ip) return [];
+    const relatedIdentities: Prisma.normalized_eventsWhereInput[] = [];
+    if (event.account_identifier) {
+      relatedIdentities.push({ account_identifier: event.account_identifier });
+    }
+    if (event.source_ip) {
+      relatedIdentities.push({ source_ip: event.source_ip });
+    }
     // Load same-source and same-family history linked by account or source IP.
     return prisma.normalized_events.findMany({
       where: {
         event_source_id: event.event_source_id,
         event_family: event.event_family,
-        OR: [
-          ...(event.account_identifier ? [{ account_identifier: event.account_identifier }] : []),
-          ...(event.source_ip ? [{ source_ip: event.source_ip }] : []),
-        ],
+        OR: relatedIdentities,
         occurred_at: {
           gte: new Date(event.occurred_at.getTime() - 60 * 60_000),
           lte: event.occurred_at,
         },
       },
       select: eventSelect,
-      orderBy: [{ occurred_at: 'asc' }, { id: 'asc' }],
-      take: 5001,
+      orderBy: [{ occurred_at: 'asc' }, { id: 'asc' }], //increa
+      take: 5001, //get row
     });
   },
   // Load the authenticated account fields required by service authorization.
@@ -65,7 +70,7 @@ export const anomalyDetectionRepository = {
   findDeployedModel() {
     return prisma.ai_model_versions.findFirst({
       where: { status: 'DEPLOYED' },
-      orderBy: [{ deployed_at: 'desc' }, { created_at: 'desc' }],
+      orderBy: [{ deployed_at: 'desc' }, { created_at: 'desc' }], //new to old
       select: { id: true, model_name: true, version: true, parameters: true },
     });
   },
@@ -73,9 +78,12 @@ export const anomalyDetectionRepository = {
   async findPendingEvents(modelVersionId: string, take: number, scope: PendingEventScope) {
     if (env.DETECTION_PIPELINE_ENABLED) {
       // Create missing durable jobs, claim one bounded batch and load its events.
-      await detectionJobsRepository.discover(modelVersionId, scope);
-      const claim = await detectionJobsRepository.claim(modelVersionId, take, 'DETECTION', scope);
-      const ids = claim.jobs.flatMap((job) => (job.event_id ? [job.event_id] : []));
+      await detectionJobsRepository.discover(modelVersionId, scope); // find job have not detect and create job pending
+      const claim = await detectionJobsRepository.claim(modelVersionId, take, 'DETECTION', scope); // claim job pending
+      const ids: string[] = [];
+      for (const job of claim.jobs) {
+        if (job.event_id) ids.push(job.event_id);
+      }
       const events = await prisma.normalized_events.findMany({
         where: { id: { in: ids } },
         select: eventSelect,
@@ -84,13 +92,14 @@ export const anomalyDetectionRepository = {
       return { events, leaseToken: claim.token };
     }
     // Without durable jobs, restrict automated runs to real-time Wazuh events.
-    const sourceScope: Prisma.normalized_eventsWhereInput =
-      scope === 'WAZUH_REALTIME'
-        ? {
-            ingestion_batch_id: null,
-            event_sources: { source_type: 'WAZUH', ingestion_method: 'API' },
-          }
-        : {};
+    let sourceScope: Prisma.normalized_eventsWhereInput = {};
+    if (scope === 'WAZUH_REALTIME') {
+      sourceScope = {
+        ingestion_batch_id: null,
+        event_sources: { source_type: 'WAZUH', ingestion_method: 'API' },
+      };
+    }
+    //anomaly detections
     const events = await prisma.normalized_events.findMany({
       where: {
         ...sourceScope,
@@ -165,21 +174,22 @@ export const anomalyDetectionRepository = {
         await transaction.$queryRaw`SELECT pg_advisory_xact_lock(hashtextextended(${input.modelVersionId}, 0))::text AS locked`;
         // Store the Generate Anomaly Score result and the threshold used for
         // each event. Scores are immutable; skipDuplicates makes retries idempotent.
-        const created = input.detections.length
-          ? await transaction.anomaly_detections.createMany({
-              data: input.detections.map((item) => ({
-                id: item.id,
-                event_id: item.eventId,
-                model_version_id: input.modelVersionId,
-                engine_version: engineVersion,
-                anomaly_score: item.score,
-                threshold: item.threshold,
-                threshold_source: item.thresholdSource,
-                is_anomaly: item.isAnomaly,
-              })),
-              skipDuplicates: true,
-            })
-          : { count: 0 };
+        let created = { count: 0 };
+        if (input.detections.length > 0) {
+          created = await transaction.anomaly_detections.createMany({
+            data: input.detections.map((item) => ({
+              id: item.id,
+              event_id: item.eventId,
+              model_version_id: input.modelVersionId,
+              engine_version: engineVersion,
+              anomaly_score: item.score,
+              threshold: item.threshold,
+              threshold_source: item.thresholdSource,
+              is_anomaly: item.isAnomaly,
+            })),
+            skipDuplicates: true,
+          });
+        }
         if (input.leaseToken) {
           // Verify this worker still owns every claimed job before saving results.
           const owned = await transaction.$queryRaw<
@@ -189,19 +199,21 @@ export const anomalyDetectionRepository = {
             throw new Error('Detection lease expired; discard stale results');
         }
         // Keep only persisted MALICIOUS detections that do not have an alert yet.
-        const persistedAnomalies = anomalyIds.length
-          ? await transaction.anomaly_detections.findMany({
-              where: { id: { in: anomalyIds }, anomaly_alerts: null },
-              select: { id: true },
-            })
-          : [];
+        let persistedAnomalies: { id: string }[] = [];
+        if (anomalyIds.length > 0) {
+          persistedAnomalies = await transaction.anomaly_detections.findMany({
+            where: { id: { in: anomalyIds }, anomaly_alerts: null },
+            select: { id: true },
+          });
+        }
         // Reload persisted IDs because duplicate detection retries may be skipped.
-        const persisted = input.detections.length
-          ? await transaction.anomaly_detections.findMany({
-              where: { id: { in: input.detections.map((item) => item.id) } },
-              select: { id: true },
-            })
-          : [];
+        let persisted: { id: string }[] = [];
+        if (input.detections.length > 0) {
+          persisted = await transaction.anomaly_detections.findMany({
+            where: { id: { in: input.detections.map((item) => item.id) } },
+            select: { id: true },
+          });
+        }
         const persistedIds = new Set(persisted.map((item) => item.id));
         // Convert each detection's ML/LLM evidence into database rows.
         const featureRows = input.detections
@@ -236,37 +248,45 @@ export const anomalyDetectionRepository = {
           }
           const cached = groups.get(detection.groupKey);
           // Reuse an open alert with the same group from the last 15 minutes.
-          let existing =
-            cached && detection.occurredAt.getTime() - cached.occurredAt.getTime() <= 15 * 60_000
-              ? cached
-              : await transaction.anomaly_alerts.findFirst({
-                  where: {
-                    status: { in: ['NEW', 'IN_TRIAGE', 'NEED_INVESTIGATION'] },
-                    anomaly_detections: {
-                      model_version_id: input.modelVersionId,
-                      engine_version: engineVersion,
-                      normalized_events: {
-                        occurred_at: {
-                          gte: new Date(detection.occurredAt.getTime() - 15 * 60_000),
-                          lte: detection.occurredAt,
-                        },
-                      },
-                      anomaly_feature_contributions: {
-                        some: {
-                          feature_name: 'detection_group',
-                          feature_value: JSON.stringify(detection.groupKey),
-                        },
-                      },
+          let existing:
+            | { detection_id: string; occurredAt: Date }
+            | {
+                detection_id: string;
+                anomaly_detections: { normalized_events: { occurred_at: Date } };
+              }
+            | null = cached ?? null;
+          const cachedAlertIsExpired =
+            !cached || detection.occurredAt.getTime() - cached.occurredAt.getTime() > 15 * 60_000;
+          if (cachedAlertIsExpired) {
+            existing = await transaction.anomaly_alerts.findFirst({
+              where: {
+                status: { in: ['NEW', 'IN_TRIAGE', 'NEED_INVESTIGATION'] },
+                anomaly_detections: {
+                  model_version_id: input.modelVersionId,
+                  engine_version: engineVersion,
+                  normalized_events: {
+                    occurred_at: {
+                      gte: new Date(detection.occurredAt.getTime() - 15 * 60_000),
+                      lte: detection.occurredAt,
                     },
                   },
-                  select: {
-                    detection_id: true,
-                    anomaly_detections: {
-                      select: { normalized_events: { select: { occurred_at: true } } },
+                  anomaly_feature_contributions: {
+                    some: {
+                      feature_name: 'detection_group',
+                      feature_value: JSON.stringify(detection.groupKey),
                     },
                   },
-                  orderBy: { generated_at: 'desc' },
-                });
+                },
+              },
+              select: {
+                detection_id: true,
+                anomaly_detections: {
+                  select: { normalized_events: { select: { occurred_at: true } } },
+                },
+              },
+              orderBy: { generated_at: 'desc' },
+            });
+          }
           if (existing && !lockedAlerts.has(existing.detection_id)) {
             // Lock the alert so concurrent workers cannot group into it together.
             const open = await transaction.$queryRaw<{ id: string }[]>`SELECT id FROM anomaly_alerts
@@ -302,12 +322,15 @@ export const anomalyDetectionRepository = {
                 .map((item) => {
                   try {
                     const value: unknown = JSON.parse(item.feature_value ?? 'null');
-                    return typeof value === 'object' &&
+                    if (
+                      typeof value === 'object' &&
                       value !== null &&
                       'score' in value &&
                       typeof value.score === 'number'
-                      ? value.score
-                      : 0;
+                    ) {
+                      return value.score;
+                    }
+                    return 0;
                   } catch {
                     return 0;
                   }
@@ -417,9 +440,10 @@ export const anomalyDetectionRepository = {
             originalDetectionId: item.detection_id,
             evidence: item.feature_value ?? '',
           }));
-        const auditSummary: Prisma.InputJsonValue = scoreUpdates.length
-          ? { run: input.summary, scoreUpdates }
-          : input.summary;
+        let auditSummary: Prisma.InputJsonValue = input.summary;
+        if (scoreUpdates.length > 0) {
+          auditSummary = { run: input.summary, scoreUpdates };
+        }
         // Hash this audit entry with the previous record so changes are detectable.
         const recordHash = createHash('sha256')
           .update(
@@ -432,20 +456,31 @@ export const anomalyDetectionRepository = {
           )
           .digest('hex');
         // Store the actor, request context and final batch summary.
+        let actorUserId: string | null = null;
+        let source = 'SYSTEM';
+        if (input.actor.type === 'USER') {
+          actorUserId = input.actor.userId;
+          source = 'API';
+        }
+        const auditData: Prisma.audit_logsUncheckedCreateInput = {
+          actor_user_id: actorUserId,
+          actor_type: input.actor.type,
+          action: 'ANOMALY_DETECTION_RUN',
+          resource_type: 'ANOMALY_DETECTION',
+          source,
+          source_ip: input.sourceIp ?? null,
+          user_agent: input.userAgent ?? null,
+          after_data: auditSummary,
+          record_hash: recordHash,
+        };
+        if (input.correlationId) {
+          auditData.correlation_id = input.correlationId;
+        }
+        if (previous) {
+          auditData.previous_hash = previous.record_hash;
+        }
         await transaction.audit_logs.create({
-          data: {
-            actor_user_id: input.actor.type === 'USER' ? input.actor.userId : null,
-            actor_type: input.actor.type,
-            action: 'ANOMALY_DETECTION_RUN',
-            resource_type: 'ANOMALY_DETECTION',
-            ...(input.correlationId ? { correlation_id: input.correlationId } : {}),
-            source: input.actor.type === 'USER' ? 'API' : 'SYSTEM',
-            source_ip: input.sourceIp ?? null,
-            user_agent: input.userAgent ?? null,
-            after_data: auditSummary,
-            ...(previous ? { previous_hash: previous.record_hash } : {}),
-            record_hash: recordHash,
-          },
+          data: auditData,
         });
         // Return the actual rows created or grouped after idempotency checks.
         return { detectionsCreated: created.count, alertsCreated, alertsGrouped };
