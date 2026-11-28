@@ -5,7 +5,6 @@ import { AppError } from '../../common/errors/app-error.js';
 import type { RunAnomalyDetectionBody } from './dto/run-anomaly-detection.dto.js';
 import { anomalyDetectionRepository } from './anomaly-detection.repository.js';
 import { detectionSeverity, type ContextEvent, type DetectionFeature } from './detection-model.js';
-import { env } from '../../config/env.js';
 import { detectionJobsRepository, pipelineEngine } from './detection-jobs.repository.js';
 import { generateStoredAlertExplanation } from './alert-explanation.generator.js';
 import {
@@ -205,7 +204,6 @@ async function runDetection(
     const explanations = new Map<string, Promise<string>>();
     // One shared deadline for optional prose across the entire batch, not a
     // separate 60-second wait for every alert. Explicit regeneration is unchanged.
-    const explanationDeadline = Date.now() + 5_000; // 5 seconds
     const evaluated: Array<SuccessfulDetection | ProcessingFailure> = [];
     // Groups of 4 limit concurrent DB/AI calls; each result remains independent.
     for (let offset = 0; offset < batch.events.length; offset += 4) {
@@ -319,10 +317,7 @@ async function runDetection(
             // Related anomalies in one 15-minute bucket reuse an explanation.
             const explanationKey = `${decision.groupKey}:${Math.floor(event.occurred_at.getTime() / (15 * 60_000))}`;
             if (isAnomaly && !explanations.has(explanationKey)) {
-              let timeoutMs = Math.max(0, explanationDeadline - Date.now());
-              if (env.DETECTION_PIPELINE_ENABLED) {
-                timeoutMs = 0;
-              }
+              const timeoutMs = 0;
               explanations.set(
                 explanationKey,
                 // Generate one explanation from the final score and stored evidence.

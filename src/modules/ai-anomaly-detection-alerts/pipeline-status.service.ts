@@ -1,19 +1,6 @@
-import { env } from '../../config/env.js';
 import { detectionJobsRepository } from './detection-jobs.repository.js';
 
 export async function eventPipelineStatuses(ids: string[]) {
-  if (!env.DETECTION_PIPELINE_ENABLED)
-    return new Map<
-      string,
-      {
-        status: string;
-        score: number | null;
-        alertId: string | null;
-        errorCode: string | null;
-        errorMessage: string | null;
-        retryable: boolean;
-      }
-    >();
   const rows = await detectionJobsRepository.statuses(ids);
   return new Map(
     rows.map((row) => {

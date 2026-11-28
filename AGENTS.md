@@ -274,7 +274,6 @@ A code task is complete only when:
 
 When requirements are ambiguous, inspect the project references and existing patterns first. Ask the user only when a choice would materially change business behavior, security, data design or public API compatibility.
 
-
 ## Employee responsibility eligibility
 
 Admin's Assign role, scope & ownership form uses the existing user_access_scopes storage for permanent user-level GLOBAL ALLOW eligibility codes RISK_OWNER, CONTROL_OWNER, ASSET_OWNER and AUTHORIZED_APPROVER, only for EMPLOYEE. These codes are business responsibility labels, never users.role enum values or organization-wide resource permissions. Assign individual records through the owning modules; retain backend ownership/status checks. Existing Employee ownership implies eligibility without fabricated assignment dates or a data backfill. Transfer owned records before withdrawing the matching responsibility or changing the Employee role. AUDIT_VIEW/POLICY_APPROVE are obsolete in this form. AUTHORIZED_APPROVER is Employee eligibility for workflow-specific approval assignment; it never grants organization-wide approval access. Existing approval routes retain their workflow-specific checks. No schema migration is needed.
@@ -293,7 +292,6 @@ Detection uses bounded, past-only 1/5/15/60-minute event context. ML performs fi
 
 Detection identity includes engine_version in addition to event/model. Keep legacy results (default LEGACY) distinct from the active engine so workers running different deployed code cannot consume each other's pending events. Migration 20261030020000_version_detection_engine adds one column and replaces the unique constraint; no new table.
 
-
 Current detection scoring comes from the separately deployed ML model. Its score is compared with the enabled Asset threshold, falling back to the common deployed-model threshold. The selected configured threshold determines whether the LLM is called. The LLM verdict, not its diagnostic score, determines the final alert decision. ML/LLM failures are recorded explicitly and never fall back to retired rules. Existing records are never automatically rescored.
 
-Durable pipeline: after approved migration 20261030140000_durable_detection_jobs, DETECTION_PIPELINE_ENABLED separates API and worker processes. See docs/durable-detection-pipeline.md. Current additive schema verification expects 67 tables, 144 foreign keys and 194 checks; older inventory totals above describe earlier snapshots.
+Durable pipeline: migration 20261030140000_durable_detection_jobs is required. The API persists events and the worker is the only supported detection/explanation processor; the retired direct in-process detection path and rollout flag no longer exist. See docs/durable-detection-pipeline.md. Current additive schema verification expects 67 tables, 144 foreign keys and 194 checks; older inventory totals above describe earlier snapshots.

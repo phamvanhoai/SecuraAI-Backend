@@ -4,7 +4,6 @@ import { prisma } from '../../database/prisma.js';
 import type { DetectionFeature } from './detection-model.js';
 import { detectionSeverity } from './detection-model.js';
 import { peakSnapshot } from './alert-score-snapshot.js';
-import { env } from '../../config/env.js';
 import { detectionJobsRepository, pipelineEngine } from './detection-jobs.repository.js';
 // Manual and durable workers use the same ML/LLM engine identity.
 const engineVersion = pipelineEngine;
@@ -76,63 +75,26 @@ export const anomalyDetectionRepository = {
   },
   // Claim/query at most `take` events not processed by this model/engine.
   async findPendingEvents(modelVersionId: string, take: number, scope: PendingEventScope) {
-    if (env.DETECTION_PIPELINE_ENABLED) {
-      // Create missing durable jobs, claim one bounded batch and load its events.
-      await detectionJobsRepository.discover(modelVersionId, scope); // find job have not detect and create job pending
-      const claim = await detectionJobsRepository.claim(modelVersionId, take, 'DETECTION', scope); // claim job pending
-      const ids: string[] = [];
-      for (const job of claim.jobs) {
-        if (job.event_id) ids.push(job.event_id);
-      }
-      const events = await prisma.normalized_events.findMany({
-        where: { id: { in: ids } },
-        select: eventSelect,
-        orderBy: [{ occurred_at: 'asc' }, { id: 'asc' }],
-      });
-      return { events, leaseToken: claim.token };
-    }
-    // Without durable jobs, restrict automated runs to real-time Wazuh events.
-    let sourceScope: Prisma.normalized_eventsWhereInput = {};
-    if (scope === 'WAZUH_REALTIME') {
-      sourceScope = {
-        ingestion_batch_id: null,
-        event_sources: { source_type: 'WAZUH', ingestion_method: 'API' },
-      };
-    }
-    //anomaly detections
+    // Create missing durable jobs, claim one bounded batch and load its events.
+    await detectionJobsRepository.discover(modelVersionId, scope);
+    const claim = await detectionJobsRepository.claim(modelVersionId, take, 'DETECTION', scope);
+    const ids = claim.jobs.flatMap((job) => (job.event_id ? [job.event_id] : []));
     const events = await prisma.normalized_events.findMany({
-      where: {
-        ...sourceScope,
-        anomaly_detections: {
-          none: { model_version_id: modelVersionId, engine_version: engineVersion },
-        },
-      },
+      where: { id: { in: ids } },
       select: eventSelect,
       orderBy: [{ occurred_at: 'asc' }, { id: 'asc' }],
-      take,
     });
-    return { events };
+    return { events, leaseToken: claim.token };
   },
   // Check whether another batch remains after the current run finishes.
   async hasPendingEvents(modelVersionId: string) {
-    if (env.DETECTION_PIPELINE_ENABLED) {
-      const rows = await prisma.$queryRaw<{ pending: boolean }[]>`SELECT EXISTS (
-        SELECT 1 FROM detection_jobs j WHERE j.kind='DETECTION' AND j.model_version_id=${modelVersionId}::uuid
-          AND j.engine_version=${pipelineEngine} AND j.status IN ('PENDING','PROCESSING')
-        UNION ALL SELECT 1 FROM normalized_events e WHERE NOT EXISTS(SELECT 1 FROM anomaly_detections d WHERE d.event_id=e.id AND d.model_version_id=${modelVersionId}::uuid)
-          AND NOT EXISTS(SELECT 1 FROM detection_jobs j WHERE j.event_id=e.id AND j.model_version_id=${modelVersionId}::uuid AND j.engine_version=${pipelineEngine})
-      ) AS pending`;
-      return rows[0]?.pending ?? false;
-    }
-    const pending = await prisma.normalized_events.findFirst({
-      where: {
-        anomaly_detections: {
-          none: { model_version_id: modelVersionId, engine_version: engineVersion },
-        },
-      },
-      select: { id: true },
-    });
-    return pending !== null;
+    const rows = await prisma.$queryRaw<{ pending: boolean }[]>`SELECT EXISTS (
+      SELECT 1 FROM detection_jobs j WHERE j.kind='DETECTION' AND j.model_version_id=${modelVersionId}::uuid
+        AND j.engine_version=${pipelineEngine} AND j.status IN ('PENDING','PROCESSING')
+      UNION ALL SELECT 1 FROM normalized_events e WHERE NOT EXISTS(SELECT 1 FROM anomaly_detections d WHERE d.event_id=e.id AND d.model_version_id=${modelVersionId}::uuid)
+        AND NOT EXISTS(SELECT 1 FROM detection_jobs j WHERE j.event_id=e.id AND j.model_version_id=${modelVersionId}::uuid AND j.engine_version=${pipelineEngine})
+    ) AS pending`;
+    return rows[0]?.pending ?? false;
   },
   // Atomically save detections, evidence, grouped alerts, jobs and audit data.
   persistRun(input: {

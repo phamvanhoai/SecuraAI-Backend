@@ -1,7 +1,6 @@
 import { AppError } from '../../common/errors/app-error.js';
 import { eventPipelineStatuses } from '../ai-anomaly-detection-alerts/pipeline-status.service.js';
 import { detectionJobsRepository } from '../ai-anomaly-detection-alerts/detection-jobs.repository.js';
-import { env } from '../../config/env.js';
 import { normalizedEventsRepository } from './normalized-events.repository.js';
 import type {
   EntityMappingDto,
@@ -179,18 +178,14 @@ export const normalizedEventsService = {
 
       return {
         id: event.id,
-        ...(env.DETECTION_PIPELINE_ENABLED
-          ? {
-              detection: processing.get(event.id) ?? {
-                status: event._count.anomaly_detections > 0 ? 'PREVIOUSLY_EVALUATED' : 'PENDING',
-                score: null,
-                alertId: null,
-                errorCode: null,
-                errorMessage: null,
-                retryable: false,
-              },
-            }
-          : {}),
+        detection: processing.get(event.id) ?? {
+          status: event._count.anomaly_detections > 0 ? 'PREVIOUSLY_EVALUATED' : 'PENDING',
+          score: null,
+          alertId: null,
+          errorCode: null,
+          errorMessage: null,
+          retryable: false,
+        },
         eventSourceId: event.event_source_id,
         eventSourceName: event.event_sources.name,
         eventSourceType: event.event_sources.source_type,
@@ -226,16 +221,15 @@ export const normalizedEventsService = {
   },
 
   /** Re-enqueues a failed AI detection job for an existing normalized event. */
-  async retryDetection(_userId: string, id: string): Promise<{ eventId: string; status: 'PENDING' }> {
+  async retryDetection(
+    _userId: string,
+    id: string,
+  ): Promise<{ eventId: string; status: 'PENDING' }> {
     if (!(await normalizedEventsRepository.exists(id)))
       throw new AppError(404, 'NOT_FOUND', 'Normalized security event not found');
     const retried = await detectionJobsRepository.retryFailedEvent(id);
     if (!retried)
-      throw new AppError(
-        409,
-        'DETECTION_NOT_RETRYABLE',
-        'Only failed AI analyses can be retried',
-      );
+      throw new AppError(409, 'DETECTION_NOT_RETRYABLE', 'Only failed AI analyses can be retried');
     return { eventId: id, status: 'PENDING' };
   },
 

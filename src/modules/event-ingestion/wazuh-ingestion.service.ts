@@ -1,10 +1,6 @@
 import { AppError } from '../../common/errors/app-error.js';
-import type {
-  WazuhIngestInput,
-  WazuhIngestResponseDto,
-} from './dto/wazuh-event-ingest.dto.js';
+import type { WazuhIngestInput, WazuhIngestResponseDto } from './dto/wazuh-event-ingest.dto.js';
 import { wazuhIngestionRepository } from './wazuh-ingestion.repository.js';
-import { requestAutomatedDetection } from '../ai-anomaly-detection-alerts/automated-detection.worker.js';
 import { normalizeWazuhEvent } from './wazuh-event.normalizer.js';
 
 type ResolvedSource = { id: string; status: string };
@@ -40,7 +36,6 @@ export const wazuhIngestionService = {
 
     const normalized = normalizeWazuhEvent(input);
     const saved = await wazuhIngestionRepository.saveNormalizedEvent(source.id, normalized);
-    requestAutomatedDetection();
 
     return {
       eventId: saved.id,

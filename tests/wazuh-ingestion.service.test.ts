@@ -7,10 +7,6 @@ vi.mock('../src/modules/event-ingestion/wazuh-ingestion.repository.js', () => ({
     saveNormalizedEvent: vi.fn(),
   },
 }));
-vi.mock('../src/modules/ai-anomaly-detection-alerts/automated-detection.worker.js', () => ({
-  requestAutomatedDetection: vi.fn(),
-}));
-
 import { wazuhIngestionRepository } from '../src/modules/event-ingestion/wazuh-ingestion.repository.js';
 import { wazuhIngestionService } from '../src/modules/event-ingestion/wazuh-ingestion.service.js';
 
@@ -62,7 +58,9 @@ describe('wazuhIngestionService.ingestNormalizedEvent source routing', () => {
       source_type: 'WAZUH',
     });
 
-    await expect(wazuhIngestionService.ingestNormalizedEvent('source-A', input)).rejects.toMatchObject({
+    await expect(
+      wazuhIngestionService.ingestNormalizedEvent('source-A', input),
+    ).rejects.toMatchObject({
       statusCode: 403,
       code: 'FORBIDDEN',
     });
@@ -86,7 +84,9 @@ describe('wazuhIngestionService.ingestNormalizedEvent source routing', () => {
       source_type: 'FIREWALL',
     });
 
-    await expect(wazuhIngestionService.ingestNormalizedEvent('source-F', input)).rejects.toMatchObject({
+    await expect(
+      wazuhIngestionService.ingestNormalizedEvent('source-F', input),
+    ).rejects.toMatchObject({
       statusCode: 403,
     });
     expect(wazuhIngestionRepository.saveNormalizedEvent).not.toHaveBeenCalled();
