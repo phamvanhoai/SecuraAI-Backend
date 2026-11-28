@@ -215,13 +215,15 @@ policyComplianceRouter.post(
   validate({ body: createPolicyDraftBodySchema }),
   asyncHandler(createPolicyDraft),
 );
-// listOwnedPublishedPolicies: authenticate -> validate request -> controller -> service.
+// View the Control effectiveness list within the user's access scope.
 policyComplianceRouter.get(
   '/control-assessments',
   authenticate,
   validate({ query: listControlEffectivenessQuerySchema }),
   asyncHandler(listControlEffectiveness),
 );
+// Save a new effectiveness assessment for the selected Control.
+// The service checks whether the user may assess this Control.
 policyComplianceRouter.post(
   '/controls/:controlId/assessments',
   authenticate,
