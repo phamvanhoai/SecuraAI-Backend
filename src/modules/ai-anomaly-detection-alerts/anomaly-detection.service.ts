@@ -127,12 +127,17 @@ export const anomalyDetectionService = {
         'Deploy an anomaly detection model before running detection',
       );
     // Record who started the manual run and its request information.
-    const audit = {
+    const audit: {
+      actor: { type: 'USER'; userId: string };
+      correlationId?: string;
+      sourceIp?: string;
+      userAgent?: string;
+    } = {
       actor: { type: 'USER' as const, userId },
-      ...(correlationId ? { correlationId } : {}),
-      ...(context?.sourceIp ? { sourceIp: context.sourceIp } : {}),
-      ...(context?.userAgent ? { userAgent: context.userAgent } : {}),
     };
+    if (correlationId) audit.correlationId = correlationId;
+    if (context?.sourceIp) audit.sourceIp = context.sourceIp;
+    if (context?.userAgent) audit.userAgent = context.userAgent;
     return withDetectionLock(async () => {
       // Manual detection can process pending events from every source.
       const result = await runDetection(
@@ -225,37 +230,43 @@ async function runDetection(
             });
             if (mlPrediction.status !== 'PREDICTED') {
               const reason = mlPrediction.reason;
+              let code = 'ML_MODEL_UNAVAILABLE';
+              let message = 'The anomaly detection model is unavailable.';
+              if (reason === 'TIMEOUT') {
+                code = 'ML_MODEL_TIMEOUT';
+                message = 'The anomaly detection model timed out.';
+              } else if (reason === 'INVALID_RESPONSE') {
+                code = 'ML_INVALID_RESPONSE';
+              }
               // Return an ML failure for this event so the job can be retried.
               return {
                 eventId: event.id,
                 processingFailure: {
-                  code:
-                    reason === 'TIMEOUT'
-                      ? 'ML_MODEL_TIMEOUT'
-                      : reason === 'INVALID_RESPONSE'
-                        ? 'ML_INVALID_RESPONSE'
-                        : 'ML_MODEL_UNAVAILABLE',
+                  code,
                   stage: 'ML_MODEL' as const,
-                  message:
-                    reason === 'TIMEOUT'
-                      ? 'The anomaly detection model timed out.'
-                      : 'The anomaly detection model is unavailable.',
+                  message,
                 },
               };
             }
             // Apply the enabled threshold for the mapped Asset. Events without
             // one use the deployed model's common threshold.
             const assetId = event.event_entity_mappings[0]?.asset_id;
-            const assetThreshold = assetId ? parameters.assetThresholds[assetId] : undefined;
-            const threshold = assetThreshold?.enabled
-              ? assetThreshold.threshold
-              : parameters.threshold;
-            const thresholdSource = assetThreshold?.enabled ? 'ASSET_OVERRIDE' : 'MODEL_DEFAULT';
+            let assetThreshold;
+            if (assetId) {
+              assetThreshold = parameters.assetThresholds[assetId];
+            }
+            let threshold = parameters.threshold;
+            let thresholdSource = 'MODEL_DEFAULT';
+            if (assetThreshold?.enabled) {
+              threshold = assetThreshold.threshold;
+              thresholdSource = 'ASSET_OVERRIDE';
+            }
             // If the ML score >= threshold, send the event and its 1/5/15/60-minute context to the LLM.
             const modelEscalated = mlPrediction.prediction.score >= threshold;
-            const llmPrediction = modelEscalated
-              ? await requestLlmClassification(event, temporalContext)
-              : null;
+            let llmPrediction: Awaited<ReturnType<typeof requestLlmClassification>> | null = null;
+            if (modelEscalated) {
+              llmPrediction = await requestLlmClassification(event, temporalContext);
+            }
             if (llmPrediction) {
               // Store the complete LLM response as detection evidence.
               decision.features.push({
@@ -265,23 +276,25 @@ async function runDetection(
               });
             }
             if (modelEscalated && (!llmPrediction || llmPrediction.status !== 'PREDICTED')) {
-              const reason =
-                llmPrediction?.status === 'UNAVAILABLE' ? llmPrediction.reason : 'DISABLED';
+              let reason = 'DISABLED';
+              if (llmPrediction?.status === 'UNAVAILABLE') {
+                reason = llmPrediction.reason;
+              }
+              let code = 'LLM_UNAVAILABLE';
+              let message = 'Foundation-Sec analysis is unavailable.';
+              if (reason === 'TIMEOUT') {
+                code = 'LLM_TIMEOUT';
+                message = 'Foundation-Sec analysis timed out.';
+              } else if (reason === 'INVALID_RESPONSE') {
+                code = 'LLM_INVALID_RESPONSE';
+              }
               // Return an LLM failure instead of creating an incomplete decision.
               return {
                 eventId: event.id,
                 processingFailure: {
-                  code:
-                    reason === 'TIMEOUT'
-                      ? 'LLM_TIMEOUT'
-                      : reason === 'INVALID_RESPONSE'
-                        ? 'LLM_INVALID_RESPONSE'
-                        : 'LLM_UNAVAILABLE',
+                  code,
                   stage: 'FOUNDATION_SEC' as const,
-                  message:
-                    reason === 'TIMEOUT'
-                      ? 'Foundation-Sec analysis timed out.'
-                      : 'Foundation-Sec analysis is unavailable.',
+                  message,
                 },
               };
             }
@@ -293,18 +306,23 @@ async function runDetection(
             if (modelEscalated && llmPrediction?.status === 'PREDICTED') {
               score = llmPrediction.prediction.score;
               isAnomaly = llmPrediction.prediction.verdict === 'MALICIOUS';
-              outcome =
-                llmPrediction.prediction.verdict === 'MALICIOUS'
-                  ? 'MALICIOUS'
-                  : llmPrediction.prediction.verdict === 'SUSPICIOUS'
-                    ? 'LLM_SUSPICIOUS'
-                    : 'LLM_BENIGN';
+              if (llmPrediction.prediction.verdict === 'MALICIOUS') {
+                outcome = 'MALICIOUS';
+              } else if (llmPrediction.prediction.verdict === 'SUSPICIOUS') {
+                outcome = 'LLM_SUSPICIOUS';
+              } else {
+                outcome = 'LLM_BENIGN';
+              }
             }
             // The ML/LLM result and applied threshold are now final.
             // Generate Anomaly Alert uses isAnomaly in the next part of this flow.
             // Related anomalies in one 15-minute bucket reuse an explanation.
             const explanationKey = `${decision.groupKey}:${Math.floor(event.occurred_at.getTime() / (15 * 60_000))}`;
-            if (isAnomaly && !explanations.has(explanationKey))
+            if (isAnomaly && !explanations.has(explanationKey)) {
+              let timeoutMs = Math.max(0, explanationDeadline - Date.now());
+              if (env.DETECTION_PIPELINE_ENABLED) {
+                timeoutMs = 0;
+              }
               explanations.set(
                 explanationKey,
                 // Generate one explanation from the final score and stored evidence.
@@ -318,16 +336,18 @@ async function runDetection(
                     eventId: event.id,
                   },
                   {
-                    timeoutMs: env.DETECTION_PIPELINE_ENABLED
-                      ? 0
-                      : Math.max(0, explanationDeadline - Date.now()),
+                    timeoutMs,
                   },
                 ),
               );
+            }
             // Only a MALICIOUS event waits for its stored explanation.
-            const explanationText = isAnomaly ? await explanations.get(explanationKey) : undefined;
+            let explanationText: string | undefined;
+            if (isAnomaly) {
+              explanationText = await explanations.get(explanationKey);
+            }
             // Return the completed detection result for database persistence.
-            return {
+            const result: SuccessfulDetection = {
               id: randomUUID(),
               eventId: event.id,
               score,
@@ -338,25 +358,36 @@ async function runDetection(
               occurredAt: event.occurred_at,
               features: decision.features,
               groupKey: decision.groupKey,
-              // Add explanation fields only when explanation text exists.
-              ...(explanationText ? { explanationText, explanationGeneratedAt: detectedAt } : {}),
             };
+            // Add explanation fields only when explanation text exists.
+            if (explanationText) {
+              result.explanationText = explanationText;
+              result.explanationGeneratedAt = detectedAt;
+            }
+            return result;
           }),
         )),
       );
     }
-    const failures = evaluated.flatMap((item) =>
-      'processingFailure' in item ? [{ eventId: item.eventId, ...item.processingFailure }] : [],
-    );
+    const failures: Array<ProcessingFailure['processingFailure'] & { eventId: string }> = [];
+    for (const item of evaluated) {
+      if ('processingFailure' in item) {
+        failures.push({ eventId: item.eventId, ...item.processingFailure });
+      }
+    }
     const detections = evaluated.filter(
       (item): item is SuccessfulDetection => !('processingFailure' in item),
     );
     // Summarize the complete batch for the API response and audit record.
+    let scope = 'ALL_PENDING';
+    if (input.eventScope === 'WAZUH_REALTIME') {
+      scope = 'WAZUH_REALTIME';
+    }
     const summary = {
       modelVersionId: model.id,
       modelName: model.model_name,
       modelVersion: model.version,
-      scope: input.eventScope === 'WAZUH_REALTIME' ? 'WAZUH_REALTIME' : 'ALL_PENDING',
+      scope,
       eventsEvaluated: evaluated.length,
       processingFailures: failures.length,
       anomaliesDetected: detections.filter((item) => item.isAnomaly).length,
@@ -380,7 +411,7 @@ async function runDetection(
       actor: audit.actor,
       modelVersionId: model.id,
       leaseToken: batch.leaseToken, //Automated worker get job = token
-      ...(audit.correlationId ? { correlationId: audit.correlationId } : {}), // link with auditlog
+      correlationId: audit.correlationId, // link with auditlog
       detections,
       failures,
       summary,
