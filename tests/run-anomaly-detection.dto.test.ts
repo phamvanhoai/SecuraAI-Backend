@@ -3,7 +3,7 @@ import { runAnomalyDetectionBodySchema } from '../src/modules/ai-anomaly-detecti
 
 describe('run anomaly detection DTO', () => {
   it('applies bounded defaults', () => {
-    expect(runAnomalyDetectionBodySchema.parse({})).toEqual({ lookbackHours: 24, maxEvents: 100 });
+    expect(runAnomalyDetectionBodySchema.parse({})).toEqual({ maxEvents: 100 });
   });
 
   it('rejects unbounded batches and unknown fields', () => {

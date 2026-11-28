@@ -8,11 +8,13 @@ import {
 } from './dto/review-risk-reassessment-request.dto.js';
 import { riskReassessmentReviewService } from './risk-reassessment-review.service.js';
 
+// Read the trusted user ID placed in response locals by authenticate.
 function userId(value: unknown) {
   if (typeof value !== 'string') throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
   return value;
 }
 
+// Return the reassessment requests visible to the authenticated actor.
 export const listOwnedRiskReassessmentRequests: RequestHandler = async (req, res) => {
   res.status(200).json({
     success: true,
@@ -23,6 +25,7 @@ export const listOwnedRiskReassessmentRequests: RequestHandler = async (req, res
   });
 };
 
+// Parse the request ID and ask the service to start its review.
 export const startRiskReassessmentReview: RequestHandler = async (req, res) => {
   const { requestId } = reviewRiskReassessmentRequestParamsSchema.parse(req.params);
   res.status(200).json({
@@ -33,19 +36,19 @@ export const startRiskReassessmentReview: RequestHandler = async (req, res) => {
     ),
   });
 };
+// Parse the new residual assessment and ask the service to complete the request.
 export const completeRiskReassessment: RequestHandler = async (req, res) => {
   const { requestId } = reviewRiskReassessmentRequestParamsSchema.parse(req.params);
-  res
-    .status(200)
-    .json({
-      success: true,
-      data: await riskReassessmentReviewService.complete(
-        userId(res.locals.authenticatedUserId),
-        requestId,
-        completeRiskReassessmentBodySchema.parse(req.body),
-      ),
-    });
+  res.status(200).json({
+    success: true,
+    data: await riskReassessmentReviewService.complete(
+      userId(res.locals.authenticatedUserId),
+      requestId,
+      completeRiskReassessmentBodySchema.parse(req.body),
+    ),
+  });
 };
+// Parse the rejection reason and ask the service to reject the request.
 export const rejectRiskReassessmentRequest: RequestHandler = async (req, res) => {
   const { requestId } = reviewRiskReassessmentRequestParamsSchema.parse(req.params);
   res.status(200).json({

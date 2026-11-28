@@ -14,6 +14,8 @@ describe('durable queue SQL boundaries', () => {
     );
     const sql = (db.$queryRaw.mock.calls[0]?.[0] as readonly string[]).join('?');
     expect(sql).toContain('SKIP LOCKED');
+    expect(sql).toContain("j.status='PENDING' OR (j.status='PROCESSING' AND j.lease_until<now())");
+    expect(sql).toContain('FOR UPDATE OF j SKIP LOCKED');
     expect(sql).toContain('j.attempts<5');
     expect(sql).toContain("interval '10 minutes'");
     expect(result.token).toMatch(/^[a-f0-9-]{36}$/);
@@ -24,6 +26,8 @@ describe('durable queue SQL boundaries', () => {
     await detectionJobsRepository.fail('lease-token');
     const sql = (db.$executeRaw.mock.calls[0]?.[0] as readonly string[]).join('?');
     expect(sql).toContain("THEN 'FAILED' ELSE 'PENDING'");
+    expect(sql).toContain("available_at=now()+interval '30 seconds'*attempts");
+    expect(sql).toContain('lease_token=NULL,lease_until=NULL');
     expect(sql).toContain('WHERE lease_token=');
     expect(sql).not.toContain('lease-token');
   });
@@ -33,5 +37,13 @@ describe('durable queue SQL boundaries', () => {
     expect(sql).toContain('NOT EXISTS(SELECT 1 FROM anomaly_detections');
     expect(sql).toContain('ON CONFLICT DO NOTHING');
     expect(sql).toContain('LIMIT 500');
+  });
+  it('marks expired fifth-attempt leases as exhausted after each claim cycle', async () => {
+    db.$queryRaw.mockResolvedValue([]);
+    await detectionJobsRepository.claim('model-id', 10, 'DETECTION');
+    const cleanupSql = (db.$executeRaw.mock.calls[0]?.[0] as readonly string[]).join('?');
+    expect(cleanupSql).toContain("status='FAILED'");
+    expect(cleanupSql).toContain("error_code='RETRIES_EXHAUSTED'");
+    expect(cleanupSql).toContain("attempts>=5 AND status='PROCESSING' AND lease_until<now()");
   });
 });

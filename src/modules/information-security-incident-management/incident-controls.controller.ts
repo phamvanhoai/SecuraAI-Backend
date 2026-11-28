@@ -8,11 +8,13 @@ import {
 } from './dto/link-incident-control.dto.js';
 import { incidentControlsService } from './incident-controls.service.js';
 
+// Read the trusted user ID placed in response locals by authenticate.
 function authenticatedUserId(value: unknown): string {
   if (typeof value !== 'string') throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
   return value;
 }
 
+// Return validated control options for the selected incident.
 export const getIncidentControlOptions: RequestHandler = async (req, res) => {
   const { incidentId } = incidentControlParamsSchema.parse(req.params);
   const data = await incidentControlsService.options(
@@ -23,6 +25,7 @@ export const getIncidentControlOptions: RequestHandler = async (req, res) => {
   res.status(200).json({ success: true, data });
 };
 
+// Parse both IDs and ask the service to remove the incident-control link.
 export const unlinkIncidentControl: RequestHandler = async (req, res) => {
   const { incidentId, controlId } = incidentControlLinkParamsSchema.parse(req.params);
   await incidentControlsService.unlink(
@@ -33,6 +36,7 @@ export const unlinkIncidentControl: RequestHandler = async (req, res) => {
   res.status(204).send();
 };
 
+// Parse the incident and control input, then ask the service to create the link.
 export const linkIncidentControl: RequestHandler = async (req, res) => {
   const { incidentId } = incidentControlParamsSchema.parse(req.params);
   const data = await incidentControlsService.link(

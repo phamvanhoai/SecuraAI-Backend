@@ -3,7 +3,7 @@ import { archiveAssetBodySchema } from "../src/modules/it-asset-management/dto/a
 import { assignAssetOwnerBodySchema } from "../src/modules/it-asset-management/dto/assign-asset-owner.dto.js";
 import { deactivateBusinessServiceSchema } from "../src/modules/it-asset-management/dto/deactivate-business-service.dto.js";
 describe("archiveAssetBodySchema reason boundaries", () => {
-  const fields = {};
+  const fields = { confirmationCode: "AST-TEST" };
   it.each(["", " ", "a".repeat(19), " " + "a".repeat(19) + " "]) ("rejects short reason %j", (reason) => {
     expect(archiveAssetBodySchema.safeParse({ ...fields, reason }).success).toBe(false);
   });

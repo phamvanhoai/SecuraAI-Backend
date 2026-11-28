@@ -3,10 +3,13 @@ import { prisma } from '../../database/prisma.js';
 import type { ListNormalizedEventsQuery } from './dto/list-normalized-events.dto.js';
 
 export const normalizedEventsRepository = {
+  /** Checks whether a normalized event exists by primary key. */
   async exists(id: string): Promise<boolean> {
     const event = await prisma.normalized_events.findUnique({ where: { id }, select: { id: true } });
     return event !== null;
   },
+
+  /** Queries a paginated, sorted, and multi-filtered list of normalized events with source and active mapping metadata. */
   async findEvents(params: ListNormalizedEventsQuery) {
     const sortFieldMap: Record<string, keyof Prisma.normalized_eventsOrderByWithRelationInput> = {
       occurredAt: 'occurred_at',
@@ -222,6 +225,7 @@ export const normalizedEventsRepository = {
     return { items, total };
   },
 
+  /** Loads a normalized event by ID with full payload, all mapping history records, and anomaly detections. */
   async findById(id: string) {
     return prisma.normalized_events.findUnique({
       where: { id },
@@ -317,6 +321,10 @@ export const normalizedEventsRepository = {
     });
   },
 
+  /**
+   * Validates target user/asset references, then atomically deactivates prior mappings,
+   * creates single-entity MANUAL mapping rows (per chk_event_mapping_single_entity), and updates mapping_status.
+   */
   async updateMapping(params: {
     eventId: string;
     userId: string | null;
@@ -492,6 +500,7 @@ export const normalizedEventsRepository = {
     );
   },
 
+  /** Fetches up to 200 ACTIVE users, non-archived assets, and monitored accounts for manual mapping dropdowns. */
   async getMappingOptions() {
     const [users, assets, monitoredAccounts] = await Promise.all([
       prisma.users.findMany({
@@ -535,6 +544,7 @@ export const normalizedEventsRepository = {
     return { users, assets, monitoredAccounts };
   },
 
+  /** Aggregates total, mapped, unmapped, 24-hour, and per-family normalized event metrics in parallel. */
   async getMetrics() {
     const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
 

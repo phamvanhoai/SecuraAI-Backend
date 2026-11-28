@@ -1,23 +1,31 @@
 import { z } from 'zod';
 import { env } from '../../config/env.js';
 import type { DetectionEvent } from './anomaly-detection.repository.js';
-import type { MlTemporalContext } from './ml-shadow.client.js';
+import type { MlTemporalContext } from './ml-classifier.client.js';
 
+// Validate the structured final-review content returned by the LLM.
 const resultSchema = z.object({
-  verdict: z.string().transform((value) => value.trim().toUpperCase()).pipe(
-    z.enum(['BENIGN', 'SUSPICIOUS', 'MALICIOUS']),
-  ),
-  score: z.coerce.number().transform((value) => value > 1 && value <= 100 ? value / 100 : value)
+  verdict: z
+    .string()
+    .transform((value) => value.trim().toUpperCase())
+    .pipe(z.enum(['BENIGN', 'SUSPICIOUS', 'MALICIOUS'])),
+  score: z.coerce
+    .number()
+    .transform((value) => (value > 1 && value <= 100 ? value / 100 : value))
     .pipe(z.number().min(0).max(1)),
-  category: z.string().transform((value) => {
-    const normalized = value.trim().toUpperCase().replace(/[\s/-]+/g, '_');
-    if (/AUTH|LOGIN|BRUTE_FORCE|PASSWORD_SPRAY/.test(normalized)) return 'AUTHENTICATION';
-    if (/VPN|SSO|SAML|OAUTH/.test(normalized)) return 'VPN_SSO';
-    if (/APP|WEB|HTTP|ACCESS/.test(normalized)) return 'APPLICATION_ACCESS';
-    return normalized;
-  }).pipe(
-    z.enum(['AUTHENTICATION', 'VPN_SSO', 'APPLICATION_ACCESS', 'UNKNOWN']),
-  ),
+  category: z
+    .string()
+    .transform((value) => {
+      const normalized = value
+        .trim()
+        .toUpperCase()
+        .replace(/[\s/-]+/g, '_');
+      if (/AUTH|LOGIN|BRUTE_FORCE|PASSWORD_SPRAY/.test(normalized)) return 'AUTHENTICATION';
+      if (/VPN|SSO|SAML|OAUTH/.test(normalized)) return 'VPN_SSO';
+      if (/APP|WEB|HTTP|ACCESS/.test(normalized)) return 'APPLICATION_ACCESS';
+      return normalized;
+    })
+    .pipe(z.enum(['AUTHENTICATION', 'VPN_SSO', 'APPLICATION_ACCESS', 'UNKNOWN'])),
   reason: z.string().trim().min(1).max(2_000),
 });
 const responseSchema = z.object({ message: z.object({ content: z.string().min(1) }) });
@@ -54,6 +62,8 @@ const outputSchema = {
   additionalProperties: false,
 } as const;
 
+// Prefer the original Wazuh event when it is preserved in normalized metadata.
+// Fall back to the normalized payload when the raw event is unavailable.
 function rawPayload(event: DetectionEvent): unknown {
   const payload = event.normalized_payload;
   if (typeof payload !== 'object' || payload === null || Array.isArray(payload)) return payload;
@@ -62,6 +72,8 @@ function rawPayload(event: DetectionEvent): unknown {
   return (metadata as Record<string, unknown>)['rawWazuhEvent'] ?? payload;
 }
 
+// Accept plain JSON or a JSON Markdown fence, then return untrusted parsed data
+// for resultSchema to validate.
 function parseContent(content: string): unknown {
   const trimmed = content.trim();
   const withoutFence = trimmed.startsWith('```')
@@ -70,16 +82,20 @@ function parseContent(content: string): unknown {
   return JSON.parse(withoutFence) as unknown;
 }
 
+// Send an ML-escalated event to the final LLM review stage.
+// This function returns a verdict; it does not write alerts.
 export async function requestLlmClassification(
   event: DetectionEvent,
   temporalContext?: MlTemporalContext,
 ): Promise<LlmClassificationResult> {
-  if (!env.AI_FUSION_ENABLED || !env.LLM_CLASSIFIER_ENABLED || !env.OLLAMA_ENABLED)
-    return { status: 'DISABLED' };
+  if (!env.OLLAMA_ENABLED) return { status: 'DISABLED' };
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), env.OLLAMA_TIMEOUT_MS);
   try {
+    // Foundation-Sec is served through the configured Ollama-compatible chat API.
     const endpoint = new URL('/api/chat', `${env.OLLAMA_BASE_URL.replace(/\/$/, '')}/`);
+
+    // Send only the event evidence needed for final review and cap its size.
     const evidence = JSON.stringify({
       eventFamily: event.event_family,
       eventType: event.event_type,
@@ -112,6 +128,8 @@ export async function requestLlmClassification(
       }),
     });
     if (!response.ok) return { status: 'UNAVAILABLE', reason: 'HTTP_ERROR' };
+    // Validate the outer Ollama response, parse its JSON message, then validate
+    // the final verdict before the detection service can use it.
     const body = responseSchema.parse(await response.json());
     const parsed = resultSchema.parse(parseContent(body.message.content));
     return {

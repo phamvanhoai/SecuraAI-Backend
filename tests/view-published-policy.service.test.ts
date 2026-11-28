@@ -18,9 +18,21 @@ describe('view published policy service', () => {
     vi.mocked(policyComplianceRepository.findPublishedPolicyForEmployee).mockResolvedValue({
       id: versionId, policy_id: policyId, version_number: '1.0', content: 'Official content', change_summary: null, status: 'PUBLISHED', author_user_id: userId,
       created_at: new Date('2026-09-01T00:00:00Z'), published_at: new Date('2026-09-02T00:00:00Z'),
-      policies_policy_versions_policy_idTopolicies: { policy_code: 'ISP-001', title: 'Security policy', description: null }, policy_acknowledgements: [],
+      policies_policy_versions_policy_idTopolicies: { policy_code: 'ISP-001', title: 'Security policy', description: null, policy_versions_policy_versions_policy_idTopolicies: [] }, policy_acknowledgements: [],
     });
     await expect(policyComplianceService.getPublishedPolicyForEmployee(userId, policyId, versionId)).resolves.toMatchObject({ policyCode: 'ISP-001', version: { content: 'Official content' }, acknowledgedAt: null });
+  });
+  it('returns a v1 confirmation separately from unacknowledged current v2 in list and detail', async () => {
+    vi.mocked(policyComplianceRepository.findActor).mockResolvedValue({ id: userId, role: 'EMPLOYEE', status: 'ACTIVE' });
+    const oldId = '1ed854c0-c3d2-402e-abaf-c92bcdaf1b81';
+    const at = new Date('2026-09-02T00:00:00Z');
+    const previous = [{ id: oldId, version_number: '1.0', policy_acknowledgements: [{ acknowledged_at: at }] }];
+    const current = { id: versionId, version_number: '2.0', content: 'New content', change_summary: 'Added MFA', status: 'PUBLISHED' as const, author_user_id: userId, created_at: at, published_at: at, policy_acknowledgements: [] };
+    vi.mocked(policyComplianceRepository.listPublishedPoliciesForEmployee).mockResolvedValue([1, [{ id: policyId, policy_code: 'ISP-001', title: 'Policy', description: null, policy_versions_policy_versions_policy_idTopolicies: previous, policy_versions_policies_current_published_version_idTopolicy_versions: current }]]);
+    vi.mocked(policyComplianceRepository.findPublishedPolicyForEmployee).mockResolvedValue({ ...current, policy_id: policyId, policies_policy_versions_policy_idTopolicies: { policy_code: 'ISP-001', title: 'Policy', description: null, policy_versions_policy_versions_policy_idTopolicies: previous } });
+    const expected = { acknowledgedAt: null, previousAcknowledgement: { versionId: oldId, versionNumber: '1.0', acknowledgedAt: at } };
+    expect((await policyComplianceService.listPublishedPoliciesForEmployee(userId, { page: 1, limit: 20, status: 'pending' })).items[0]).toMatchObject({ ...expected, versionNumber: '2.0', changeSummary: 'Added MFA' });
+    expect(await policyComplianceService.getPublishedPolicyForEmployee(userId, policyId, versionId)).toMatchObject(expected);
   });
   it('rejects roles outside the WBS actors', async () => {
     vi.mocked(policyComplianceRepository.findActor).mockResolvedValue({ id: userId, role: 'ADMIN', status: 'ACTIVE' });
@@ -36,7 +48,7 @@ describe('view published policy service', () => {
       acknowledgedAt: new Date('2026-09-30T00:00:00Z'),
       alreadyAcknowledged: false,
     });
-    expect(policyComplianceRepository.createPolicyAcknowledgement).toHaveBeenCalledWith(versionId, userId);
+    expect(policyComplianceRepository.createPolicyAcknowledgement).toHaveBeenCalledWith(policyId, versionId, userId);
   });
   it('returns an existing acknowledgement without duplicating it', async () => {
     vi.mocked(policyComplianceRepository.findActor).mockResolvedValue({ id: userId, role: 'EMPLOYEE', status: 'ACTIVE' });

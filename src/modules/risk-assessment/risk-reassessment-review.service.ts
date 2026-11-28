@@ -4,6 +4,7 @@ import type { CompleteRiskReassessmentInput } from './dto/review-risk-reassessme
 import type { RejectRiskReassessmentRequestInput } from './dto/review-risk-reassessment-request.dto.js';
 import { riskReassessmentReviewRepository } from './risk-reassessment-review.repository.js';
 
+// Map a reassessment request and its actor permissions into the public response.
 const mapRequest = (
   request: Awaited<ReturnType<typeof riskReassessmentReviewRepository.findById>> & {},
   userId: string,
@@ -15,9 +16,16 @@ const mapRequest = (
   requestedAt: request.requested_at,
   reviewedAt: request.reviewed_at,
   reviewComment: request.review_comment,
-  canReject: role === 'EMPLOYEE' && request.risks.owner_user_id === userId && ['PENDING', 'UNDER_REVIEW'].includes(request.status),
-  canReview: role === 'EMPLOYEE' && request.risks.owner_user_id === userId && request.status === 'PENDING',
-  canReassess: request.status === 'UNDER_REVIEW' && (role === 'SECURITY_OFFICER' || (role === 'EMPLOYEE' && request.risks.owner_user_id === userId)),
+  canReject:
+    role === 'EMPLOYEE' &&
+    request.risks.owner_user_id === userId &&
+    ['PENDING', 'UNDER_REVIEW'].includes(request.status),
+  canReview:
+    role === 'EMPLOYEE' && request.risks.owner_user_id === userId && request.status === 'PENDING',
+  canReassess:
+    request.status === 'UNDER_REVIEW' &&
+    (role === 'SECURITY_OFFICER' ||
+      (role === 'EMPLOYEE' && request.risks.owner_user_id === userId)),
   risk: {
     id: request.risks.id,
     riskCode: request.risks.risk_code,
@@ -70,6 +78,7 @@ const mapRequest = (
 });
 
 export const riskReassessmentReviewService = {
+  // List requests visible to the current contextual actor.
   async listOwned(userId: string, query: ListOwnedReassessmentRequestsQuery) {
     const actor = await riskReassessmentReviewRepository.findActor(userId);
     if (!actor || actor.status !== 'ACTIVE')
@@ -88,6 +97,8 @@ export const riskReassessmentReviewService = {
       },
     };
   },
+  // Review Risk Reassessment Request: verify current ownership and move a
+  // pending request into review with a conditional write.
   async startReview(userId: string, requestId: string) {
     const actor = await riskReassessmentReviewRepository.findActor(userId);
     if (!actor || actor.status !== 'ACTIVE')
@@ -116,6 +127,7 @@ export const riskReassessmentReviewService = {
       );
     return mapRequest(updated, userId, actor.role);
   },
+  // Reject only a request that this actor can currently review.
   async reject(userId: string, requestId: string, input: RejectRiskReassessmentRequestInput) {
     const actor = await riskReassessmentReviewRepository.findActor(userId);
     if (!actor || actor.status !== 'ACTIVE')
@@ -144,6 +156,8 @@ export const riskReassessmentReviewService = {
       );
     return { requestId, status: 'rejected', reason: input.reason, reviewedAt: result.reviewedAt };
   },
+  // Reassess Residual Risk: validate the contextual actor and request state,
+  // then store the new assessment and complete the request together.
   async complete(userId: string, requestId: string, input: CompleteRiskReassessmentInput) {
     const actor = await riskReassessmentReviewRepository.findActor(userId);
     if (!actor || actor.status !== 'ACTIVE')

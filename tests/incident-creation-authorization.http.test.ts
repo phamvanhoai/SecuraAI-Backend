@@ -6,6 +6,7 @@ const mocks = vi.hoisted(() => ({
   transactionActor: vi.fn(),
   create: vi.fn(),
   finding: vi.fn(),
+  related: vi.fn(),
 }));
 vi.mock('../src/database/prisma.js', () => ({
   prisma: {
@@ -13,7 +14,7 @@ vi.mock('../src/database/prisma.js', () => ({
     $transaction: (callback: (tx: object) => Promise<unknown>) =>
       callback({
         users: { findUnique: mocks.transactionActor },
-        incidents: { create: mocks.create },
+        incidents: { create: mocks.create, findMany: mocks.related },
         security_findings: { findFirst: mocks.finding },
       }),
   },
@@ -37,6 +38,7 @@ const manual = {
 };
 beforeEach(() => {
   vi.resetAllMocks();
+  mocks.related.mockResolvedValue([]);
   mocks.actor.mockResolvedValue({ id, role: 'SECURITY_OFFICER', status: 'ACTIVE' });
   mocks.transactionActor.mockResolvedValue({ role: 'SECURITY_OFFICER', status: 'ACTIVE' });
 });
@@ -123,4 +125,14 @@ it('allows an officer through the repository with server-owned creator and OPEN 
       }),
     }),
   );
+});
+
+it('returns actionable related incidents without creating a manual duplicate', async () => {
+  mocks.related.mockResolvedValue([{ id, incident_code: 'INC-EXISTING', title: manual.title,
+    status: 'OPEN', detected_at: new Date(), created_at: new Date() }]);
+  const response = await request(app).post('/api/v1/incidents').auth(token, { type: 'bearer' }).send(manual);
+  expect(response.status).toBe(409);
+  expect(response.body.error.code).toBe('INCIDENT_RELATED_REVIEW_REQUIRED');
+  expect(response.body.error.details.items[0]).toMatchObject({ id, incidentCode: 'INC-EXISTING' });
+  expect(mocks.create).not.toHaveBeenCalled();
 });

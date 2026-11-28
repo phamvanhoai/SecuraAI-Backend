@@ -5,6 +5,7 @@ import type {
 } from './dto/link-incident-asset.dto.js';
 import { incidentAssetsRepository } from './incident-assets.repository.js';
 
+// Require an active Security Officer for incident-asset operations.
 async function requireSecurityOfficer(userId: string) {
   const actor = await incidentAssetsRepository.findActor(userId);
   if (!actor || actor.status !== 'ACTIVE')
@@ -14,6 +15,7 @@ async function requireSecurityOfficer(userId: string) {
 }
 
 export const incidentAssetsService = {
+  // Load active assets for the link dialog after checking the actor and incident state.
   async options(userId: string, incidentId: string, query: IncidentAssetOptionsQuery) {
     await requireSecurityOfficer(userId);
     const { incident, assets, total } = await incidentAssetsRepository.findOptions(
@@ -46,6 +48,8 @@ export const incidentAssetsService = {
     };
   },
 
+  // Link Incident to Asset: both the incident and asset must exist, and a
+  // closed incident cannot be changed.
   async link(userId: string, incidentId: string, input: LinkIncidentAssetInput) {
     await requireSecurityOfficer(userId);
     const [incident, asset] = await Promise.all([
@@ -83,6 +87,7 @@ export const incidentAssetsService = {
     }
   },
 
+  // Validate the incident and remove one linked asset.
   async unlink(userId: string, incidentId: string, assetId: string) {
     await requireSecurityOfficer(userId);
     const incident = await incidentAssetsRepository.findIncident(incidentId);

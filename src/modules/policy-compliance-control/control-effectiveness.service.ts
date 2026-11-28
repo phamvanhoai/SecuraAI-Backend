@@ -10,7 +10,10 @@ import {
   type ControlEffectivenessRecord,
 } from './control-effectiveness.repository.js';
 
-const map = (item: ControlEffectivenessRecord, bases: Awaited<ReturnType<typeof controlEffectivenessRepository.evidenceBasis>>) => ({
+const map = (
+  item: ControlEffectivenessRecord,
+  bases: Awaited<ReturnType<typeof controlEffectivenessRepository.evidenceBasis>>,
+) => ({
   ...controlAssessmentReview(item, bases),
   id: item.id,
   controlCode: item.control_code,
@@ -65,9 +68,12 @@ export const controlEffectivenessService = {
       user.role === 'SECURITY_OFFICER',
       query,
     );
-    const bases = await controlEffectivenessRepository.evidenceBasis(items.map(item => item.id), items.flatMap(item => item.control_assessments.map(value => value.id)));
+    const bases = await controlEffectivenessRepository.evidenceBasis(
+      items.map((item) => item.id),
+      items.flatMap((item) => item.control_assessments.map((value) => value.id)),
+    );
     return {
-      items: items.map(item => map(item, bases)),
+      items: items.map((item) => map(item, bases)),
       pagination: {
         page: query.page,
         limit: query.limit,
@@ -76,15 +82,21 @@ export const controlEffectivenessService = {
       },
     };
   },
+  // Check access and Evidence before saving a new Control effectiveness assessment.
   async assess(userId: string, controlId: string, input: AssessControlEffectivenessBody) {
+    // Require an existing, active user.
     const user = await actor(userId);
+    // Read the current Control, its Owner and linked Evidence.
     const control = await controlEffectivenessRepository.find(controlId);
+    // Stop if the selected Control does not exist.
     if (!control) throw new AppError(404, 'CONTROL_NOT_FOUND', 'Security control not found');
+    // Allow a Security Officer or the Employee who owns this Control; reject other users.
     if (
       user.role !== 'SECURITY_OFFICER' &&
       !(user.role === 'EMPLOYEE' && control.owner_user_id === userId)
     )
       throw new AppError(403, 'FORBIDDEN', 'Security Officer or assigned Control Owner required');
+    // Require at least one linked Evidence item that is Active and valid now.
     if (
       !control.control_evidence_links.some((link) =>
         isControlEvidenceUsable(link.evidence_items, new Date()),
@@ -95,7 +107,10 @@ export const controlEffectivenessService = {
         'CONTROL_EVIDENCE_REQUIRED',
         'At least one active evidence item is required',
       );
+    // The repository rechecks access, Control state and selected Evidence inside a transaction.
+    // Pass the Control read above so it can detect configuration changes before saving.
     const created = await controlEffectivenessRepository.create(controlId, userId, input, control);
+    // Return the new assessment ID, result, score and saved time to the controller.
     return {
       assessmentId: created.id,
       controlId,

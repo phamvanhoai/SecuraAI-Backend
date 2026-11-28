@@ -3,13 +3,13 @@
 # SecuraAI - Wazuh Custom Integration (Edge Normalizer)
 # Path on Wazuh Manager: /var/ossec/integrations/custom-securaai
 #
-# Kiến trúc:
+# Architecture:
 #   Wazuh Alert -> custom-securaai (Edge Normalizer) -> Normalized Event -> SecuraAI API
 #
-# Arguments do Wazuh truyền vào:
-#   sys.argv[1] : Đường dẫn file JSON alert tạm thời (/tmp/...)
-#   sys.argv[2] : API Key / Ingestion Token cấu hình trong ossec.conf (<api_key>)
-#   sys.argv[3] : SecuraAI Ingestion Endpoint cấu hình trong ossec.conf (<hook_url>)
+# Arguments passed by Wazuh Manager:
+#   sys.argv[1] : Path to the temporary alert JSON file (/tmp/...)
+#   sys.argv[2] : API key / ingestion token configured in ossec.conf (<api_key>)
+#   sys.argv[3] : SecuraAI ingestion endpoint configured in ossec.conf (<hook_url>)
 # ==============================================================================
 
 import json
@@ -24,10 +24,14 @@ from datetime import datetime, timezone
 # ------------------------------------------------------------------------------
 LOG_FILE = "/var/ossec/logs/integrations.log"
 
+# Writes status and error messages to Wazuh's integrations.log.
+# Falls back to stderr if the log file is unwritable (e.g. local testing on Windows),
+# so a logging failure never crashes the script and drops a security alert.
 def log_message(msg: str):
     timestamp = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
     log_line = f"{timestamp} custom-securaai: {msg}\n"
     try:
+        # Open in append mode ("a") to keep previous integration logs intact
         with open(LOG_FILE, "a", encoding="utf-8") as f:
             f.write(log_line)
     except Exception:
@@ -37,13 +41,13 @@ def log_message(msg: str):
 # ------------------------------------------------------------------------------
 # Scope Filter & Event Mapping
 #
-# CHỈ phân loại vào 3 Event Families:
+# ONLY classify alerts into these 3 Event Families:
 #   1. AUTHENTICATION
 #   2. VPN_SSO
 #   3. APPLICATION_ACCESS
 #
-# Mọi alert khác không thuộc 3 nhóm này -> DROP ngay (Không normalize, không POST).
-# Chú ý: Tuyệt đối không suy luận APPLICATION_ACCESS chỉ vì group là 'windows_application'.
+# Any alert outside these 3 families -> DROP immediately (no normalization, no POST).
+# Note: Never infer APPLICATION_ACCESS solely because a rule has the 'windows_application' group.
 # ------------------------------------------------------------------------------
 FAMILY_AUTHENTICATION = "AUTHENTICATION"
 FAMILY_VPN_SSO = "VPN_SSO"
@@ -57,11 +61,12 @@ WIN_PRIVILEGE_USE_EVENTS = {"4672", "4673", "4674"}
 
 def determine_classification(alert: dict):
     """
-    Phân tích rule ID, event ID, decoders và metadata của Wazuh Alert.
-    Trả về (eventFamily, eventType, platform, eventId) hoặc (None, None, None, None) nếu DROP.
+    Inspects the Wazuh alert's rule ID, event ID, groups, and description.
+    Returns (eventFamily, eventType, platform, eventId), or (None, None, None, None) to DROP.
     """
     rule = alert.get("rule", {})
     rule_id = str(rule.get("id", ""))
+    # Normalize group names and description to lowercase for case-insensitive keyword matching
     groups = [g.lower() for g in rule.get("groups", [])]
     description = (rule.get("description", "")).lower()
 
@@ -71,7 +76,7 @@ def determine_classification(alert: dict):
     channel = (win_system.get("channel", "")).lower() if win_system else ""
 
     # --------------------------------------------------------------------------
-    # 1. WINDOWS SECURITY EVENTS (Chỉ bắt trong Security Channel hoặc có EventID cụ thể)
+    # 1. WINDOWS SECURITY EVENTS (Only match relevant Auth/Privilege Event IDs)
     # --------------------------------------------------------------------------
     if win_event_id:
         if win_event_id in WIN_AUTH_FAILED_EVENTS:
@@ -83,7 +88,7 @@ def determine_classification(alert: dict):
         if win_event_id in WIN_PRIVILEGE_USE_EVENTS:
             return FAMILY_APPLICATION_ACCESS, "PRIVILEGE_USE", "windows", win_event_id
 
-        # Nếu là Windows EventID khác không liên quan đến Auth/Privilege (ví dụ 1000, 60642...) -> DROP
+        # Drop any other Windows Event ID unrelated to Auth or Privilege (e.g. 1000, rule 60642)
         return None, None, None, None
 
     # --------------------------------------------------------------------------
@@ -92,12 +97,14 @@ def determine_classification(alert: dict):
     auth_failed_groups = {"authentication_failed", "sshd_failed_login", "pam_failed", "invalid_login"}
     auth_success_groups = {"authentication_success", "sshd_success", "pam_success"}
 
+    # Check explicit Wazuh auth groups first before falling back to description keywords
     if any(g in auth_failed_groups for g in groups):
         return FAMILY_AUTHENTICATION, "LOGIN_FAILURE", "linux", rule_id
 
     if any(g in auth_success_groups for g in groups):
         return FAMILY_AUTHENTICATION, "LOGIN_SUCCESS", "linux", rule_id
 
+    # Handle generic SSH/PAM/auth groups by inspecting the rule description for outcome keywords
     if "sshd" in groups or "pam" in groups or "authentication" in groups:
         if any(k in description for k in ["failed", "failure", "invalid user", "rejected"]):
             return FAMILY_AUTHENTICATION, "LOGIN_FAILURE", "linux", rule_id
@@ -112,11 +119,13 @@ def determine_classification(alert: dict):
     vpn_keywords = ["vpn", "openvpn", "cisco_vpn", "fortinet_vpn", "radius", "wireguard", "anyconnect"]
     sso_keywords = ["sso", "saml", "oauth", "oidc", "keycloak", "okta", "auth0", "azure_ad"]
 
+    # Classify VPN alerts (e.g. OpenVPN, WireGuard, Cisco) into VPN_SSO
     if any(k in groups for k in vpn_keywords) or any(k in description for k in vpn_keywords):
         if any(k in description for k in ["failed", "error", "rejected", "denied", "invalid"]):
             return FAMILY_VPN_SSO, "VPN_LOGIN_FAILURE", "network_vpn", rule_id
         return FAMILY_VPN_SSO, "VPN_LOGIN_SUCCESS", "network_vpn", rule_id
 
+    # Classify SSO / Identity Provider alerts (e.g. Keycloak, Okta, SAML/OIDC) into VPN_SSO
     if any(k in groups for k in sso_keywords) or any(k in description for k in sso_keywords):
         if any(k in description for k in ["failed", "error", "denied", "invalid", "unauthorized"]):
             return FAMILY_VPN_SSO, "SSO_LOGIN_FAILURE", "identity_sso", rule_id
@@ -124,7 +133,7 @@ def determine_classification(alert: dict):
 
     # --------------------------------------------------------------------------
     # 4. APPLICATION ACCESS / PRIVILEGE ACTIVITIES
-    #    (Chỉ bắt web app auth, DB auth, hoặc privilege activity thực sự)
+    #    (Only match explicit web app auth, DB auth, or real privilege activities)
     # --------------------------------------------------------------------------
     app_auth_keywords = ["web_access_auth", "apache_auth", "nginx_auth", "mysql_auth", "postgresql_auth", "db_login"]
     if any(k in groups for k in app_auth_keywords):
@@ -132,18 +141,19 @@ def determine_classification(alert: dict):
             return FAMILY_APPLICATION_ACCESS, "ACCESS_DENIED", "application", rule_id
         return FAMILY_APPLICATION_ACCESS, "ACCESS_GRANTED", "application", rule_id
 
-    # Mọi alert khác (bao gồm windows_application chung chung, rule 60642...) -> DROP
+    # Drop all other alerts (including generic windows_application noise like rule 60642)
     return None, None, None, None
 
 
 # ------------------------------------------------------------------------------
-# Normalization Logic (Tạo Normalized Event Schema cố định)
+# Normalization Logic (Maps alerts into SecuraAI's fixed Normalized Event schema)
 # ------------------------------------------------------------------------------
 def extract_actor(alert: dict) -> dict:
-    """Trích xuất thông tin người dùng / tài khoản."""
+    """Extracts user/account details (username, domain, userId)."""
     data = alert.get("data", {})
     win_data = data.get("win", {}).get("eventdata", {})
 
+    # Check Windows target/subject fields first, then Linux/custom fields; fall back to "UNKNOWN"
     username = (
         win_data.get("targetUserName")
         or win_data.get("subjectUserName")
@@ -164,10 +174,11 @@ def extract_actor(alert: dict) -> dict:
 
 
 def extract_source_ip(alert: dict) -> str:
-    """Trích xuất IP nguồn."""
+    """Extracts the client/source IP address."""
     data = alert.get("data", {})
     win_data = data.get("win", {}).get("eventdata", {})
 
+    # Check Windows, generic Wazuh, and syslog IP fields; fall back to 0.0.0.0 when unavailable
     ip = (
         win_data.get("ipAddress")
         or win_data.get("clientAddress")
@@ -175,9 +186,10 @@ def extract_source_ip(alert: dict) -> str:
         or alert.get("syslog", {}).get("srcip")
         or "0.0.0.0"
     )
-
+    # On many Windows/Linux machines, an IPv4 address is often accompanied by an IPv6 prefix.
     if ip in ("-", "::1", "127.0.0.1"):
         return ip
+    # Strip IPv6-mapped IPv4 prefix (e.g. "::ffff:192.168.1.5" -> "192.168.1.5")
     return ip.replace("::ffff:", "")
 
 
@@ -205,20 +217,24 @@ SIM_MAX_BACKDATE_HOURS = 24
 SIM_MAX_FUTURE_SKEW_SECONDS = 120
 
 
+# Returns True only when the alert came from local_rules.xml simulation rules (100501-100509) with sim_type="securaai".
 def is_simulation_alert(data: dict, rule: dict) -> bool:
     return str(rule.get("id", "")) in SIM_RULE_IDS and data.get("sim_type") == "securaai"
 
 
+# Parses an ISO-8601 timestamp string into a UTC-aware datetime, returning None if invalid or missing timezone.
 def parse_utc_timestamp(value):
     if not isinstance(value, str) or not value.strip():
         return None
     text_value = value.strip()
+    # Convert trailing "Z" to "+00:00" for compatibility with Python < 3.11 inside Wazuh containers
     if text_value.endswith("Z"):
         text_value = text_value[:-1] + "+00:00"
     try:
         parsed = datetime.fromisoformat(text_value)
     except ValueError:
         return None
+    # Reject naive timestamps without timezone offset so comparisons against UTC now stay accurate
     if parsed.tzinfo is None:
         return None
     return parsed.astimezone(timezone.utc)
@@ -228,21 +244,26 @@ def resolve_event_timestamp(alert: dict, data: dict, rule: dict):
     """Return (timestamp, source) where source explains which clock was used."""
     wazuh_timestamp = alert.get("timestamp") or datetime.now(timezone.utc).isoformat()
     declared = data.get("emitted_at")
+    # Normal production alerts have no emitted_at field -> use Wazuh Manager's authoritative clock
     if declared is None:
         return wazuh_timestamp, "WAZUH"
 
+    # Gate 1: Reject self-declared timestamps on non-simulation alerts to prevent log time spoofing
     if not is_simulation_alert(data, rule):
         log_message(f"Ignored self-declared emitted_at on non-simulation alert (rule {rule.get('id')}).")
         return wazuh_timestamp, "WAZUH"
 
+    # Gate 2: Require the lab opt-in flag file on the Wazuh Manager before honoring backdated times
     if not os.path.isfile(SIM_TIMESTAMP_FLAG_FILE):
         return wazuh_timestamp, "WAZUH"
 
+    # Gate 3: Ensure emitted_at is valid ISO-8601 with an explicit timezone
     parsed = parse_utc_timestamp(declared)
     if parsed is None:
         log_message(f"Ignored invalid simulation emitted_at value (rule {rule.get('id')}).")
         return wazuh_timestamp, "WAZUH"
 
+    # Gate 4: Restrict declared timestamps to [-24h, +120s] around current UTC time
     age_seconds = (datetime.now(timezone.utc) - parsed).total_seconds()
     if age_seconds > SIM_MAX_BACKDATE_HOURS * 3600 or age_seconds < -SIM_MAX_FUTURE_SKEW_SECONDS:
         log_message(f"Ignored out-of-range simulation emitted_at (rule {rule.get('id')}).")
@@ -253,7 +274,7 @@ def resolve_event_timestamp(alert: dict, data: dict, rule: dict):
 
 def normalize_wazuh_alert(alert: dict) -> dict:
     """
-    Chuyển đổi Wazuh Alert JSON sang schema SecuraAI Normalized Event cố định:
+    Converts a raw Wazuh Alert JSON into SecuraAI's fixed Normalized Event schema:
     {
       "source": { "type": "WAZUH" },
       "eventFamily": "AUTHENTICATION" | "VPN_SSO" | "APPLICATION_ACCESS",
@@ -266,12 +287,13 @@ def normalize_wazuh_alert(alert: dict) -> dict:
       "metadata": { ... }
     }
     """
+    # Step 1: Classify the raw alert; return None immediately if it is outside the 3 target families (DROP)
     event_family, event_type, platform, event_id = determine_classification(alert)
 
-    # Nếu không thuộc 3 Event Families -> DROP (trả về None)
     if not event_family:
         return None
 
+    # Step 2: Extract raw nested objects and resolve the authoritative event timestamp
     agent = alert.get("agent", {})
     rule = alert.get("rule", {})
     data = alert.get("data", {})
@@ -280,6 +302,7 @@ def normalize_wazuh_alert(alert: dict) -> dict:
 
     timestamp, timestamp_source = resolve_event_timestamp(alert, data, rule)
 
+    # Step 3: Build the fixed SecuraAI Normalized Event JSON payload
     normalized_payload = {
         "source": {
             "type": "WAZUH",
@@ -300,6 +323,7 @@ def normalize_wazuh_alert(alert: dict) -> dict:
             "level": int(rule.get("level", 0)),
             "description": rule.get("description", ""),
         },
+        # Attach platform/process/network context and simulation flags for investigation and scoring
         "metadata": {
             "applicationId": data.get("application_id") or data.get("applicationId"),
             "applicationName": data.get("application_name") or data.get("applicationName"),
@@ -339,7 +363,7 @@ def normalize_wazuh_alert(alert: dict) -> dict:
 # HTTP Dispatcher
 # ------------------------------------------------------------------------------
 def send_to_securaai(payload: dict, hook_url: str, api_key: str):
-    """POST Normalized Event JSON sang SecuraAI API."""
+    """Sends the Normalized Event JSON payload via HTTP POST to the SecuraAI API."""
     json_bytes = json.dumps(payload).encode("utf-8")
 
     headers = {
@@ -347,12 +371,14 @@ def send_to_securaai(payload: dict, hook_url: str, api_key: str):
         "User-Agent": "Wazuh-SecuraAI-Edge-Normalizer/1.0",
     }
 
+    # Attach the ingestion token in both headers if a real key (not a placeholder) was configured
     if api_key and api_key not in ("-", "none", "YOUR_SECURA_AI_INGEST_TOKEN"):
         headers["X-SecuraAI-Ingest-Key"] = api_key
         headers["Authorization"] = f"Bearer {api_key}"
 
     req = urllib.request.Request(hook_url, data=json_bytes, headers=headers, method="POST")
 
+    # Send with urllib (built-in) and log the outcome without crashing on transient HTTP/network errors
     try:
         with urllib.request.urlopen(req, timeout=10) as response:
             status_code = response.getcode()
@@ -369,7 +395,10 @@ def send_to_securaai(payload: dict, hook_url: str, api_key: str):
 # ------------------------------------------------------------------------------
 # Main Entry Point
 # ------------------------------------------------------------------------------
+# Entry point invoked by wazuh-integratord:
+# reads the alert JSON file, drops out-of-scope events, and posts normalized events to SecuraAI.
 def main():
+    # Step 1: Validate CLI arguments passed by Wazuh Manager
     if len(sys.argv) < 4:
         log_message("Error: Missing arguments. Usage: custom-securaai <alert_file> <api_key> <hook_url>")
         sys.exit(1)
@@ -378,24 +407,25 @@ def main():
     api_key = sys.argv[2]
     hook_url = sys.argv[3]
 
+    # Step 2: Check the temporary Wazuh alert JSON file exists
     if not os.path.isfile(alert_file_path):
         log_message(f"Error: Alert file not found: {alert_file_path}")
         sys.exit(1)
 
     try:
-        with open(alert_file_path, "r", encoding="utf-8") as f:
+        with open(alert_file_path, "r", encoding="utf-8") as f: # Read the file content and convert the JSON string into a Python dictionary (dict)
             alert = json.load(f)
     except Exception as e:
         log_message(f"Failed to parse alert JSON from {alert_file_path}: {str(e)}")
         sys.exit(1)
 
+    # Step 3: Classify and normalize; exit 0 cleanly when dropped so Wazuh does not treat drops as errors
     normalized = normalize_wazuh_alert(alert)
 
     if not normalized:
-        # DROP: Alert không thuộc 3 Event Families mục tiêu -> Thoát code 0 ngay
         sys.exit(0)
 
-    # POST Normalized Event sang SecuraAI API
+    # Step 4: Forward the normalized event to the SecuraAI ingestion API
     send_to_securaai(normalized, hook_url, api_key)
     sys.exit(0)
 

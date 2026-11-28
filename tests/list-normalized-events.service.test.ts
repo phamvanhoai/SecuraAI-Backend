@@ -55,6 +55,7 @@ describe('normalizedEventsService', () => {
       items: mockEvents,
       total: 1,
     });
+    vi.spyOn(detectionJobsRepository, 'statuses').mockResolvedValue([]);
 
     const result = await normalizedEventsService.listEvents('user-admin-1', {
       page: 1,
@@ -77,7 +78,10 @@ describe('normalizedEventsService', () => {
     vi.spyOn(normalizedEventsRepository, 'findById').mockResolvedValue(null);
 
     await expect(
-      normalizedEventsService.getEventDetail('user-admin-1', '550e8400-e29b-41d4-a716-446655440099'),
+      normalizedEventsService.getEventDetail(
+        'user-admin-1',
+        '550e8400-e29b-41d4-a716-446655440099',
+      ),
     ).rejects.toThrow('Normalized security event not found');
   });
 
@@ -137,7 +141,10 @@ describe('normalizedEventsService', () => {
 
     vi.spyOn(normalizedEventsRepository, 'findById').mockResolvedValue(mockDetail);
 
-    const result = await normalizedEventsService.getEventDetail('user-admin-1', '550e8400-e29b-41d4-a716-446655440002');
+    const result = await normalizedEventsService.getEventDetail(
+      'user-admin-1',
+      '550e8400-e29b-41d4-a716-446655440002',
+    );
 
     expect(result.id).toBe('550e8400-e29b-41d4-a716-446655440002');
     expect(result.normalizedPayload).toEqual({ raw_event: 'VPN Connection Established' });

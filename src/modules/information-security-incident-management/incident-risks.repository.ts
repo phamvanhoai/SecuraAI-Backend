@@ -1,21 +1,25 @@
 import { prisma } from '../../database/prisma.js';
 import type { IncidentRiskOptionsQuery } from './dto/link-incident-risk.dto.js';
 export const incidentRisksRepository = {
+  // Load the account fields required for service authorization.
   findActor(userId: string) {
     return prisma.users.findUnique({ where: { id: userId }, select: { role: true, status: true } });
   },
+  // Load the incident state before listing or changing risk links.
   findIncident(incidentId: string) {
     return prisma.incidents.findUnique({
       where: { id: incidentId },
       select: { id: true, incident_code: true, title: true, status: true },
     });
   },
+  // Confirm that the selected existing risk is available for linking.
   findRisk(riskId: string) {
     return prisma.risks.findFirst({
       where: { id: riskId, status: { not: 'ARCHIVED' } },
       select: { id: true, risk_code: true, title: true, status: true, review_date: true },
     });
   },
+  // Query existing risks and mark which ones are already linked.
   async findOptions(incidentId: string, query: IncidentRiskOptionsQuery) {
     const relationshipFilter =
       query.scope === 'linked'
@@ -53,6 +57,7 @@ export const incidentRisksRepository = {
     ]);
     return { incident, risks, total };
   },
+  // Insert the many-to-many incident-risk relationship.
   link(incidentId: string, riskId: string, linkedBy: string) {
     return prisma.incident_risks.create({
       data: { incident_id: incidentId, risk_id: riskId, linked_by: linkedBy },
@@ -65,6 +70,7 @@ export const incidentRisksRepository = {
       },
     });
   },
+  // Remove one existing incident-to-risk relationship.
   unlink(incidentId: string, riskId: string) {
     return prisma.incident_risks.deleteMany({
       where: { incident_id: incidentId, risk_id: riskId },

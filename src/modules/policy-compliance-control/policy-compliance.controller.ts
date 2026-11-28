@@ -39,6 +39,7 @@ import {
   policyApplicabilityParamsSchema,
 } from './dto/define-policy-applicability.dto.js';
 
+// Parse request inputs and pass the authenticated user to the createPolicyVersion service flow.
 export const createPolicyVersion: RequestHandler = async (req, res) => {
   const { policyId } = createPolicyVersionParamsSchema.parse(req.params);
   const data = await policyComplianceService.createPolicyVersion(
@@ -49,6 +50,7 @@ export const createPolicyVersion: RequestHandler = async (req, res) => {
   res.status(201).json({ success: true, data });
 };
 
+// Parse request inputs and pass the authenticated user to the getPolicyApplicability service flow.
 export const getPolicyApplicability: RequestHandler = async (req, res) => {
   const { policyId, versionId } = policyApplicabilityParamsSchema.parse(req.params);
   const data = await policyComplianceService.getApplicability(
@@ -59,6 +61,7 @@ export const getPolicyApplicability: RequestHandler = async (req, res) => {
   res.status(200).json({ success: true, data });
 };
 
+// Parse request inputs and pass the authenticated user to the definePolicyApplicability service flow.
 export const definePolicyApplicability: RequestHandler = async (req, res) => {
   const { policyId, versionId } = policyApplicabilityParamsSchema.parse(req.params);
   const data = await policyComplianceService.defineApplicability(
@@ -70,11 +73,13 @@ export const definePolicyApplicability: RequestHandler = async (req, res) => {
   res.status(200).json({ success: true, data });
 };
 
+// Parse request inputs and pass the authenticated user to the authenticatedUserId service flow.
 function authenticatedUserId(value: unknown): string {
   if (typeof value !== 'string') throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
   return value;
 }
 
+// Parse request inputs and pass the authenticated user to the listReviewablePolicyDrafts service flow.
 export const listReviewablePolicyDrafts: RequestHandler = async (req, res) => {
   const data = await policyComplianceService.listReviewableDrafts(
     authenticatedUserId(res.locals.authenticatedUserId),
@@ -83,6 +88,7 @@ export const listReviewablePolicyDrafts: RequestHandler = async (req, res) => {
   res.status(200).json({ success: true, data });
 };
 
+// Parse request inputs and pass the authenticated user to the createPolicyDraft service flow.
 export const createPolicyDraft: RequestHandler = async (req, res) => {
   const data = await policyComplianceService.createPolicyDraft(
     authenticatedUserId(res.locals.authenticatedUserId),
@@ -91,6 +97,7 @@ export const createPolicyDraft: RequestHandler = async (req, res) => {
   res.status(201).json({ success: true, data });
 };
 
+// Parse request inputs and pass the authenticated user to the getPolicyDraftReview service flow.
 export const getPolicyDraftReview: RequestHandler = async (req, res) => {
   const { policyId, versionId } = policyDraftReviewParamsSchema.parse(req.params);
   const data = await policyComplianceService.getReviewableDraft(
@@ -101,6 +108,7 @@ export const getPolicyDraftReview: RequestHandler = async (req, res) => {
   res.status(200).json({ success: true, data });
 };
 
+// Parse request inputs and pass the authenticated user to the listPolicyVersionHistory service flow.
 export const listPolicyVersionHistory: RequestHandler = async (req, res) => {
   const data = await policyComplianceService.listPolicyVersionHistory(
     authenticatedUserId(res.locals.authenticatedUserId),
@@ -109,6 +117,7 @@ export const listPolicyVersionHistory: RequestHandler = async (req, res) => {
   res.status(200).json({ success: true, data });
 };
 
+// Parse request inputs and pass the authenticated user to the getPolicyVersionHistory service flow.
 export const getPolicyVersionHistory: RequestHandler = async (req, res) => {
   const { policyId, versionId } = policyVersionHistoryParamsSchema.parse(req.params);
   const data = await policyComplianceService.getPolicyVersionHistory(
@@ -119,6 +128,7 @@ export const getPolicyVersionHistory: RequestHandler = async (req, res) => {
   res.status(200).json({ success: true, data });
 };
 
+// Parse request inputs and pass the authenticated user to the reviewPolicy service flow.
 export const reviewPolicy: RequestHandler = async (req, res) => {
   const { policyId, versionId } = policyDraftReviewParamsSchema.parse(req.params);
   const data = await policyComplianceService.reviewPolicy(
@@ -129,6 +139,7 @@ export const reviewPolicy: RequestHandler = async (req, res) => {
   res.status(200).json({ success: true, data });
 };
 
+// Parse request inputs and pass the authenticated user to the listOwnPolicyDrafts service flow.
 export const listOwnPolicyDrafts: RequestHandler = async (req, res) => {
   const data = await policyComplianceService.listOwnDrafts(
     authenticatedUserId(res.locals.authenticatedUserId),
@@ -137,6 +148,7 @@ export const listOwnPolicyDrafts: RequestHandler = async (req, res) => {
   res.status(200).json({ success: true, data });
 };
 
+// Parse request inputs and pass the authenticated user to the submitPolicyForReview service flow.
 export const submitPolicyForReview: RequestHandler = async (req, res) => {
   const { policyId, versionId } = submitPolicyForReviewParamsSchema.parse(req.params);
   const data = await policyComplianceService.submitForReview(
@@ -147,6 +159,7 @@ export const submitPolicyForReview: RequestHandler = async (req, res) => {
   res.status(200).json({ success: true, data });
 };
 
+// Parse request inputs and pass the authenticated user to the approvePolicyForPublication service flow.
 export const approvePolicyForPublication: RequestHandler = async (req, res) => {
   const { policyId, versionId } = approvePolicyForPublicationParamsSchema.parse(req.params);
   const data = await policyComplianceService.approveForPublication(
@@ -157,6 +170,7 @@ export const approvePolicyForPublication: RequestHandler = async (req, res) => {
   res.status(200).json({ success: true, data });
 };
 
+// Parse request inputs and pass the authenticated user to the publishPolicyVersion service flow.
 export const publishPolicyVersion: RequestHandler = async (req, res) => {
   const { policyId, versionId } = approvePolicyForPublicationParamsSchema.parse(req.params);
   const data = await policyComplianceService.publishPolicyVersion(
@@ -167,6 +181,7 @@ export const publishPolicyVersion: RequestHandler = async (req, res) => {
   res.status(200).json({ success: true, data });
 };
 
+// Parse request inputs and pass the authenticated user to the getOwnPolicyDraft service flow.
 export const getOwnPolicyDraft: RequestHandler = async (req, res) => {
   const { policyId, versionId } = editPolicyDraftParamsSchema.parse(req.params);
   const data = await policyComplianceService.getOwnDraft(
@@ -177,6 +192,7 @@ export const getOwnPolicyDraft: RequestHandler = async (req, res) => {
   res.status(200).json({ success: true, data });
 };
 
+// Parse request inputs and pass the authenticated user to the editPolicyDraft service flow.
 export const editPolicyDraft: RequestHandler = async (req, res) => {
   const { policyId, versionId } = editPolicyDraftParamsSchema.parse(req.params);
   const data = await policyComplianceService.editOwnDraft(
@@ -188,6 +204,7 @@ export const editPolicyDraft: RequestHandler = async (req, res) => {
   res.status(200).json({ success: true, data });
 };
 
+// Parse request inputs and pass the authenticated user to the requestPolicyRevision service flow.
 export const requestPolicyRevision: RequestHandler = async (req, res) => {
   const { policyId, versionId } = requestPolicyRevisionParamsSchema.parse(req.params);
   const data = await policyComplianceService.requestRevision(
@@ -199,6 +216,7 @@ export const requestPolicyRevision: RequestHandler = async (req, res) => {
   res.status(200).json({ success: true, data });
 };
 
+// Parse request inputs and pass the authenticated user to the rejectPolicy service flow.
 export const rejectPolicy: RequestHandler = async (req, res) => {
   const { policyId, versionId } = rejectPolicyParamsSchema.parse(req.params);
   const data = await policyComplianceService.rejectPolicy(
@@ -210,6 +228,7 @@ export const rejectPolicy: RequestHandler = async (req, res) => {
   res.status(200).json({ success: true, data });
 };
 
+// Parse request inputs and pass the authenticated user to the listRejectedPolicies service flow.
 export const listRejectedPolicies: RequestHandler = async (req, res) => {
   const data = await policyComplianceService.listRejectedPolicies(
     authenticatedUserId(res.locals.authenticatedUserId),
@@ -218,6 +237,7 @@ export const listRejectedPolicies: RequestHandler = async (req, res) => {
   res.status(200).json({ success: true, data });
 };
 
+// Parse request inputs and pass the authenticated user to the listOwnedPublishedPolicies service flow.
 export const listOwnedPublishedPolicies: RequestHandler = async (_req, res) => {
   const data = await policyComplianceService.listOwnedPublishedPolicies(
     authenticatedUserId(res.locals.authenticatedUserId),
@@ -225,6 +245,7 @@ export const listOwnedPublishedPolicies: RequestHandler = async (_req, res) => {
   res.status(200).json({ success: true, data });
 };
 
+// Parse request inputs and pass the authenticated user to the listEmployeePublishedPolicies service flow.
 export const listEmployeePublishedPolicies: RequestHandler = async (req, res) => {
   const data = await policyComplianceService.listPublishedPoliciesForEmployee(
     authenticatedUserId(res.locals.authenticatedUserId),
@@ -233,6 +254,7 @@ export const listEmployeePublishedPolicies: RequestHandler = async (req, res) =>
   res.status(200).json({ success: true, data });
 };
 
+// Parse request inputs and pass the authenticated user to the getEmployeePublishedPolicy service flow.
 export const getEmployeePublishedPolicy: RequestHandler = async (req, res) => {
   const { policyId, versionId } = publishedPolicyParamsSchema.parse(req.params);
   const data = await policyComplianceService.getPublishedPolicyForEmployee(
@@ -243,6 +265,7 @@ export const getEmployeePublishedPolicy: RequestHandler = async (req, res) => {
   res.status(200).json({ success: true, data });
 };
 
+// Parse request inputs and pass the authenticated user to the acknowledgeEmployeePublishedPolicy service flow.
 export const acknowledgeEmployeePublishedPolicy: RequestHandler = async (req, res) => {
   const { policyId, versionId } = publishedPolicyParamsSchema.parse(req.params);
   const data = await policyComplianceService.acknowledgePublishedPolicy(

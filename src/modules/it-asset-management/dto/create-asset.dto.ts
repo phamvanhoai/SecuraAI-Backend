@@ -8,34 +8,16 @@ export const createAssetBodySchema = z
     name: z.string().trim().min(3).max(100),
     assetType: assetTypeSchema,
     ownerUserId: optionalUuid,
-    description: z.string().trim().max(2000).refine((value) => value.length === 0 || value.length >= 20, "Enter at least 20 characters or leave blank.").optional(),
-    dependencies: z
-      .array(
-        z.object({
-          assetId: z.uuid(),
-          type: z.string().trim().max(100).optional(),
-          description: z.string().trim().max(2_000).optional(),
-        }),
+    description: z
+      .string()
+      .trim()
+      .max(2000)
+      .refine(
+        (value) => value.length === 0 || value.length >= 20,
+        'Enter at least 20 characters or leave blank.',
       )
-      .max(50)
-      .default([]),
-    eventSourceIds: z.array(z.uuid()).max(50).default([]),
+      .optional(),
   })
-  .strict()
-  .superRefine((value, context) => {
-    const dependencyIds = value.dependencies.map((item) => item.assetId);
-    if (new Set(dependencyIds).size !== dependencyIds.length)
-      context.addIssue({
-        code: 'custom',
-        path: ['dependencies'],
-        message: 'Duplicate dependencies are not allowed',
-      });
-    if (new Set(value.eventSourceIds).size !== value.eventSourceIds.length)
-      context.addIssue({
-        code: 'custom',
-        path: ['eventSourceIds'],
-        message: 'Duplicate event sources are not allowed',
-      });
-  });
+  .strict();
 
 export type CreateAssetInput = z.infer<typeof createAssetBodySchema>;

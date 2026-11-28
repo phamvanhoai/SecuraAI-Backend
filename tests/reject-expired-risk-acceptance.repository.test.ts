@@ -85,4 +85,15 @@ describe('expired acceptance decision', () => {
     ).resolves.toMatchObject({ kind: 'decided' });
     expect(db.risks.update).toHaveBeenCalled();
   });
+  it.each([
+    ['2026-10-14T16:59:59.999Z', 'decided'],
+    ['2026-10-14T17:00:00.000Z', 'expired'],
+  ])('expires at Vietnam midnight: %s', async (instant, kind) => {
+    db.$queryRaw.mockResolvedValue([{ time: new Date(instant) }]);
+    db.risk_acceptances.findUnique.mockResolvedValue({ ...acceptance, valid_until: new Date('2026-10-14') });
+    await expect(riskRegisterRepository.decideAcceptance('request', 'approver', {
+      decision: 'approved', reason: 'Check the final validity day.',
+    })).resolves.toMatchObject({ kind });
+    if (kind === 'expired') expect(db.risk_acceptances.update).not.toHaveBeenCalled();
+  });
 });

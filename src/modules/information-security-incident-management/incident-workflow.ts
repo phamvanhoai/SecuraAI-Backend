@@ -11,6 +11,7 @@ export const incidentPhases: readonly incident_status[] = [
   'CLOSED',
 ];
 
+// Require the incident to have reached the minimum phase for this action journal.
 export function requireRecordPhase(current: incident_status, phase: incident_status): void {
   if (incidentPhases.indexOf(current) < incidentPhases.indexOf(phase)) {
     throw new AppError(
@@ -21,6 +22,7 @@ export function requireRecordPhase(current: incident_status, phase: incident_sta
   }
 }
 
+// Allow forward non-closing transitions and require reasons for skipped phases.
 export function validatePhaseTransition(
   current: incident_status,
   target: incident_status,

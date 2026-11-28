@@ -14,6 +14,7 @@ const statuses = {
   lessons_learned: 'LESSONS_LEARNED',
 } as const;
 export const incidentProgressRepository = {
+  // Lock the incident and verify expected state before an audited forward phase transition.
   update(userId: string, incidentId: string, input: IncidentProgress) {
     return prisma.$transaction(
       async (tx) => {
@@ -81,6 +82,7 @@ export const incidentProgressRepository = {
       { isolationLevel: 'Serializable' },
     );
   },
+  // Read paginated audit snapshots for this incident workflow.
   history(incidentId: string, page: number, limit: number) {
     const where = {
       resource_type: 'INCIDENT',

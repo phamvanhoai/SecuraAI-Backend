@@ -15,15 +15,18 @@ const analysisSelect = {
 } satisfies Prisma.incident_analysisSelect;
 export type AnalysisRecord = Prisma.incident_analysisGetPayload<{ select: typeof analysisSelect }>;
 export const incidentAnalysisRepository = {
+  // Read only the actor fields needed for authorization.
   findActor(userId: string) {
     return prisma.users.findUnique({ where: { id: userId }, select: { role: true, status: true } });
   },
+  // Read incident state and current analysis for this workflow.
   findIncident(incidentId: string) {
     return prisma.incidents.findUnique({
       where: { id: incidentId },
       select: { status: true, incident_analysis: { select: analysisSelect } },
     });
   },
+  // Read paginated audit snapshots for this incident workflow.
   history(incidentId: string, page: number, limit: number) {
     const where = {
       resource_type: 'INCIDENT',
@@ -48,6 +51,7 @@ export const incidentAnalysisRepository = {
       }),
     ]);
   },
+  // Save analysis in Lessons learned with revision checks and an atomic audit.
   save(userId: string, incidentId: string, input: SaveIncidentAnalysis) {
     return prisma.$transaction(
       async (tx) => {
@@ -67,6 +71,7 @@ export const incidentAnalysisRepository = {
         if (incident.status !== 'LESSONS_LEARNED')
           return { outcome: 'not_ready' as const };
         const previous = incident.incident_analysis;
+        // Null identifies the first save; later saves must match the analysis revision the client read.
         if ((previous?.updated_at.toISOString() ?? null) !== input.expectedUpdatedAt)
           return { outcome: 'conflict' as const };
         const at = new Date();

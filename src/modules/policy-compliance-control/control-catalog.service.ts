@@ -13,7 +13,12 @@ function map(control: CatalogControl & { revision: string }) {
     applicability: control.applicability.toLowerCase(),
     implementationStatus: control.implementation_status.toLowerCase(),
     owner: owner
-      ? { id: owner.id, fullName: owner.full_name, email: owner.email, status: owner.status.toLowerCase() }
+      ? {
+          id: owner.id,
+          fullName: owner.full_name,
+          email: owner.email,
+          status: owner.status.toLowerCase(),
+        }
       : null,
     createdAt: control.created_at,
     updatedAt: control.updated_at,

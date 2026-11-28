@@ -1,5 +1,6 @@
 import { z } from 'zod';
 
+// Validate request data for incident progress.
 export const incidentProgressSchema = z
   .object({
     status: z.enum(['triage', 'containment', 'eradication', 'recovery', 'lessons_learned']),
@@ -11,6 +12,7 @@ export const incidentProgressSchema = z
   })
   .strict();
 export type IncidentProgress = z.infer<typeof incidentProgressSchema>;
+// Validate request data for phase history query.
 export const phaseHistoryQuerySchema = z
   .object({
     page: z.coerce.number().int().min(1).max(100000).default(1),

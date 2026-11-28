@@ -3,6 +3,7 @@ import { AppError } from '../../common/errors/app-error.js';
 import { closureSnapshotSchema, type CloseIncident } from './dto/close-incident.dto.js';
 import { closureRestriction, incidentClosureRepository } from './incident-closure.repository.js';
 
+// Require an active Security Officer or Executive for closure reads.
 async function viewer(userId: string) {
   const actor = await incidentClosureRepository.actor(userId);
   if (!actor || actor.status !== 'ACTIVE')
@@ -12,6 +13,7 @@ async function viewer(userId: string) {
   return actor;
 }
 export const incidentClosureService = {
+  // Read current workflow data and calculate the permitted UI actions.
   async current(userId: string, incidentId: string) {
     const actor = await viewer(userId);
     const incident = await incidentClosureRepository.incident(incidentId);
@@ -38,6 +40,7 @@ export const incidentClosureService = {
         : null,
     };
   },
+  // Close an eligible incident while preserving an existing closure on retries.
   async close(userId: string, incidentId: string, input: CloseIncident) {
     const actor = await viewer(userId);
     if (actor.role !== 'SECURITY_OFFICER')

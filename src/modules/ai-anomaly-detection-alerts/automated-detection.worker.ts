@@ -7,6 +7,7 @@ let running = false;
 let rerunRequested = false;
 const scheduledCycleMs = Math.max(60_000, env.ANOMALY_AUTO_DETECTION_INTERVAL_MS);
 
+// Drain pending real-time events in batches while preventing overlapping cycles.
 async function drainPendingEvents(): Promise<void> {
   if (!env.ANOMALY_AUTO_DETECTION_ENABLED) return;
   if (running) {
@@ -35,23 +36,15 @@ async function drainPendingEvents(): Promise<void> {
   }
 }
 
-export function requestAutomatedDetection(): void {
-  // API ingestion only commits events. A separate process discovers durable
-  // jobs on its fixed schedule; ingestion never triggers immediate analysis.
-  if (env.DETECTION_PIPELINE_ENABLED) return;
-  queueMicrotask(() => void drainPendingEvents());
-}
-
+// Start the periodic in-process detection timer when the feature is enabled.
 export function startAutomatedDetectionWorker(): void {
   if (!env.ANOMALY_AUTO_DETECTION_ENABLED || timer) return;
   timer = setInterval(() => queueMicrotask(() => void drainPendingEvents()), scheduledCycleMs);
   timer.unref();
-  logger.info(
-    { intervalMs: scheduledCycleMs },
-    'Automated anomaly detection worker started',
-  );
+  logger.info({ intervalMs: scheduledCycleMs }, 'Automated anomaly detection worker started');
 }
 
+// Stop the periodic in-process timer during application shutdown.
 export function stopAutomatedDetectionWorker(): void {
   if (!timer) return;
   clearInterval(timer);

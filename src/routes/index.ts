@@ -50,25 +50,39 @@ apiRouter.use('/notifications', notificationsRouter);
 apiRouter.use('/system-logs', systemLogsRouter);
 apiRouter.use('/audit', auditRouter);
 
-// AI Anomaly Detection & Alerts use cases:
-// - Run Anomaly Detection starts in anomaly-detection.routes.ts and calls
-//   the runAnomalyDetection controller through POST /runs.
-// - Configure Detection Threshold starts in ai-alerts.routes.ts and calls
-//   the configureDetectionThreshold controller through PUT /thresholds.
-// The final URL combines API_PREFIX, the path below, and the module path.
-// Example: /api/v1 + /ai-alerts + /thresholds.
+// Run Anomaly Detection starts at POST /runs and contains two internal flows:
+// Generate Anomaly Score evaluates each event, then Generate Anomaly Alert
+// groups anomalous results and stores their alert and audit records.
 apiRouter.use('/anomaly-detections', anomalyDetectionRouter);
+
+// Alert list/detail/filter, score, features, XAI, model versions,
+// thresholds, triage and feedback.
+// Open ai-alerts.routes.ts -> its controller name is the last route argument.
 apiRouter.use('/ai-alerts', aiAlertsRouter);
 
 // Risk, asset, incident, and compliance routes.
 apiRouter.use('/risks', riskRegisterRouter);
+
+// Review Risk Reassessment Request and Reassess Residual Risk.
+// Open risk-reassessment-review.routes.ts.
 apiRouter.use('/risks', riskReassessmentReviewRouter);
 apiRouter.use('/assets', assetsRouter);
 apiRouter.use('/business-services', businessServicesRouter);
+
+// Link Incident to Asset -> incident-assets.routes.ts -> linkIncidentAsset.
 apiRouter.use('/incidents', incidentAssetsRouter);
+
+// Link Incident to Control -> incident-controls.routes.ts -> linkIncidentControl.
 apiRouter.use('/incidents', incidentControlsRouter);
+
+// Link Incident to Existing Risk -> incident-risks.routes.ts -> linkIncidentRisk.
 apiRouter.use('/incidents', incidentRisksRouter);
+
+// Record Control Weakness -> control-weaknesses.routes.ts -> recordControlWeakness.
 apiRouter.use('/incidents', controlWeaknessesRouter);
+
+// Create Risk Reassessment Request.
+// Open risk-reassessment-requests.routes.ts -> createRiskReassessmentRequest.
 apiRouter.use('/incidents', riskReassessmentRequestsRouter);
 apiRouter.use('/incidents', incidentsRouter);
 apiRouter.use('/compliance', policyComplianceRouter);

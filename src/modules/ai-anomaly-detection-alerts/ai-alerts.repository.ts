@@ -45,6 +45,7 @@ const alertSelect = {
 
 export type AiAlertRecord = Prisma.anomaly_alertsGetPayload<{ select: typeof alertSelect }>;
 
+// Translate public filter names to the database alert-status enum.
 function databaseStatuses(status: ListAiAlertsQuery['status']): alert_status[] | undefined {
   if (!status) return undefined;
   if (status === 'new') return ['NEW'];
@@ -56,10 +57,21 @@ function databaseStatuses(status: ListAiAlertsQuery['status']): alert_status[] |
   return undefined;
 }
 
+// Read model parameters as a JSON object without trusting other JSON shapes.
 function readParameters(value: Prisma.JsonValue | null | undefined): Prisma.JsonObject {
   return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
 }
 
+// Preserve current model settings while removing retired backend scoring weights.
+function currentDetectionParameters(
+  value: Prisma.JsonValue | null | undefined,
+): Prisma.JsonObject {
+  const parameters = { ...readParameters(value) };
+  delete parameters.weights;
+  return parameters;
+}
+
+// Extract valid asset-threshold entries from deployed-model parameters.
 function readThresholdMap(
   value: Prisma.JsonValue | null | undefined,
 ): Record<string, Prisma.JsonObject> {
@@ -73,6 +85,7 @@ function readThresholdMap(
   );
 }
 
+// Read the previous audit hash used to extend the tamper-evident chain.
 async function latestAuditHash(transaction: Prisma.TransactionClient): Promise<string | null> {
   const previous = await transaction.audit_logs.findFirst({
     orderBy: [{ occurred_at: 'desc' }, { id: 'desc' }],
@@ -81,6 +94,7 @@ async function latestAuditHash(transaction: Prisma.TransactionClient): Promise<s
   return previous?.record_hash ?? null;
 }
 
+// Produce the deterministic hash stored with a new audit record.
 export function hashAuditRecord(input: {
   previousHash: string | null;
   actorUserId: string;
@@ -114,6 +128,8 @@ export function hashAuditRecord(input: {
 }
 
 export const aiAlertsRepository = {
+  // Claim a NEW alert for one analyst. The transaction prevents two analysts
+  // from starting triage on the same alert at the same time.
   async startTriage(input: { alertId: string; analystUserId: string }) {
     return prisma.$transaction(async (transaction) => {
       const startedAt = new Date();
@@ -184,6 +200,7 @@ export const aiAlertsRepository = {
       return { outcome: 'conflict' as const, alert };
     });
   },
+  // Query active assets eligible for custom threshold configuration.
   listActiveAssetOptions(q?: string) {
     return prisma.assets.findMany({
       where: {
@@ -202,6 +219,7 @@ export const aiAlertsRepository = {
       take: 50,
     });
   },
+  // Read the latest deployed model and its threshold parameters.
   findDeployedModelThreshold() {
     // Find the latest deployed model and return only the fields needed
     // by the service and the API response.
@@ -218,6 +236,7 @@ export const aiAlertsRepository = {
       },
     });
   },
+  // Update the deployed threshold and append its audit record atomically.
   async configureDeployedModelThreshold(input: {
     modelVersionId: string;
     threshold: number;
@@ -243,12 +262,8 @@ export const aiAlertsRepository = {
       });
       if (!model) return null;
 
-      // The threshold is stored inside the model parameters JSON.
-      // Keep all other settings and replace only the threshold value.
-      const current =
-        model.parameters && typeof model.parameters === 'object' && !Array.isArray(model.parameters)
-          ? model.parameters
-          : {};
+      // Keep current model settings, remove retired scoring weights and replace the threshold.
+      const current = currentDetectionParameters(model.parameters);
       const updated = await transaction.ai_model_versions.update({
         where: { id: model.id },
         data: { parameters: { ...current, threshold: input.threshold } },
@@ -299,6 +314,7 @@ export const aiAlertsRepository = {
       return updated;
     });
   },
+  // Query a filtered and paginated model-version list with evaluation metrics.
   listModelVersions(query: ListModelVersionsQuery) {
     const where: Prisma.ai_model_versionsWhereInput = {
       ...(query.modelName
@@ -346,6 +362,7 @@ export const aiAlertsRepository = {
       }),
     ]);
   },
+  // Read one page of asset threshold settings from deployed-model parameters.
   async listAlertThresholds(query: ListAlertThresholdsQuery) {
     const model = await prisma.ai_model_versions.findFirst({
       where: { status: 'DEPLOYED' },
@@ -381,6 +398,7 @@ export const aiAlertsRepository = {
           [total, assets.map((asset) => ({ asset, configuration: thresholds[asset.id] }))] as const,
       );
   },
+  // Save or update the threshold for one asset and record the actor.
   async setAlertThreshold(assetId: string, userId: string, input: SetAlertThresholdBody) {
     return prisma.$transaction(
       async (transaction) => {
@@ -405,7 +423,7 @@ export const aiAlertsRepository = {
           updatedByUserId: userId,
           updatedAt,
         } satisfies Prisma.InputJsonObject;
-        const parameters = readParameters(model.parameters);
+        const parameters = currentDetectionParameters(model.parameters);
         const thresholds = readThresholdMap(model.parameters);
         const existing = thresholds[assetId];
         if (input.mode === 'create' && existing?.enabled === true) {
@@ -425,6 +443,7 @@ export const aiAlertsRepository = {
       { isolationLevel: 'Serializable' },
     );
   },
+  // Group recent alerts by workflow status for dashboard totals.
   metrics(detectedAfter: Date) {
     return prisma.anomaly_alerts.groupBy({
       by: ['status'],
@@ -432,6 +451,7 @@ export const aiAlertsRepository = {
       _count: { _all: true },
     });
   },
+  // Apply the validated filters and pagination in PostgreSQL, not in the client.
   list(query: ListAiAlertsQuery) {
     const statuses = databaseStatuses(query.status);
     const where: Prisma.anomaly_alertsWhereInput = {
@@ -480,6 +500,7 @@ export const aiAlertsRepository = {
       }),
     ]);
   },
+  // Load only the alert, detection and feature evidence needed by the detail response.
   findExplanation(alertId: string) {
     return prisma.anomaly_alerts.findUnique({
       where: { id: alertId },
@@ -509,6 +530,7 @@ export const aiAlertsRepository = {
       },
     });
   },
+  // Load explanation data plus model/event context needed for regeneration.
   findExplanationForRegeneration(alertId: string) {
     return prisma.anomaly_alerts.findUnique({
       where: { id: alertId },
@@ -539,6 +561,7 @@ export const aiAlertsRepository = {
       },
     });
   },
+  // Replace explanation text conditionally and record the audited change.
   replaceExplanation(input: {
     alertId: string;
     actorUserId: string;
@@ -609,6 +632,7 @@ export const aiAlertsRepository = {
       return true;
     });
   },
+  // Load the alert state and model version required before feedback creation.
   findForFeedback(alertId: string) {
     return prisma.anomaly_alerts.findUnique({
       where: { id: alertId },
@@ -618,6 +642,7 @@ export const aiAlertsRepository = {
       },
     });
   },
+  // Store analyst feedback with actor, time, reason and model version.
   createFeedback(input: {
     alertId: string;
     analystUserId: string;
@@ -649,6 +674,7 @@ export const aiAlertsRepository = {
       },
     });
   },
+  // Query one page of analyst feedback history for an alert.
   listFeedback(alertId: string, query: ListAiAlertFeedbackQuery) {
     const where = { alert_id: alertId };
     return Promise.all([
@@ -672,6 +698,7 @@ export const aiAlertsRepository = {
       }),
     ]);
   },
+  // Confirm an alert, create its incident and feedback, and audit the transition.
   confirmAsIncident(input: { alertId: string; userId: string; comment?: string }) {
     return prisma.$transaction(async (transaction) => {
       const alert = await transaction.anomaly_alerts.findUnique({
@@ -754,6 +781,7 @@ export const aiAlertsRepository = {
       return { outcome: 'confirmed' as const, alert, finding, changed: true };
     });
   },
+  // Dismiss an alert and store false-positive feedback in one transaction.
   markFalsePositive(input: { alertId: string; userId: string; comment?: string }) {
     return prisma.$transaction(async (transaction) => {
       const alert = await transaction.anomaly_alerts.findUnique({
@@ -808,6 +836,7 @@ export const aiAlertsRepository = {
       return { outcome: 'changed' as const, alert, triage };
     });
   },
+  // Keep an alert open for investigation and record the analyst's reason.
   markFurtherInvestigation(input: { alertId: string; userId: string; reason: string }) {
     return prisma.$transaction(async (transaction) => {
       const alert = await transaction.anomaly_alerts.findUnique({

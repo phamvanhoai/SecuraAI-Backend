@@ -8,6 +8,7 @@ import type { ClassifyIncidentSeverity } from './dto/classify-incident-severity.
 import type { AssignIncidentHandler } from './dto/assign-incident-handler.dto.js';
 import type { RecordRecoveryAction } from './dto/record-recovery-action.dto.js';
 import { requireRecordPhase } from './incident-workflow.js';
+import { relatedTitleTerms } from './incident-related.js';
 import type {
   CreateIncidentFromSource,
   IncidentSourceOptionsQuery,
@@ -116,6 +117,7 @@ export type IncidentDetailRecord = Omit<
   assignment_at?: Date | null;
 };
 
+// Attach assignment timestamps from recorded handler audit history.
 async function withAssignmentTimes<T extends { id: string; handler_user_id: string | null }>(
   records: T[],
 ) {
@@ -146,6 +148,7 @@ async function withAssignmentTimes<T extends { id: string; handler_user_id: stri
 }
 
 export const incidentsRepository = {
+  // Read paginated actions restricted to the CONTAINMENT phase.
   containmentHistory(incidentId: string, page: number, limit: number) {
     const where = { incident_id: incidentId, phase: 'CONTAINMENT' as const };
     return prisma.$transaction([
@@ -165,6 +168,7 @@ export const incidentsRepository = {
       }),
     ]);
   },
+  // Record a completed containment action without advancing the incident phase.
   recordContainment(
     userId: string,
     incidentId: string,
@@ -224,6 +228,7 @@ export const incidentsRepository = {
       { isolationLevel: 'Serializable' },
     );
   },
+  // Read paginated actions restricted to the ERADICATION phase.
   eradicationHistory(incidentId: string, page: number, limit: number) {
     const where = { incident_id: incidentId, phase: 'ERADICATION' as const };
     return prisma.$transaction([
@@ -243,6 +248,7 @@ export const incidentsRepository = {
       }),
     ]);
   },
+  // Record a completed eradication action without advancing the incident phase.
   recordEradication(
     userId: string,
     incidentId: string,
@@ -302,6 +308,7 @@ export const incidentsRepository = {
       { isolationLevel: 'Serializable' },
     );
   },
+  // Read paginated actions restricted to the RECOVERY phase.
   recoveryHistory(incidentId: string, page: number, limit: number) {
     const where = { incident_id: incidentId, phase: 'RECOVERY' as const };
     return prisma.$transaction([
@@ -321,6 +328,7 @@ export const incidentsRepository = {
       }),
     ]);
   },
+  // Record a completed recovery action without advancing the incident phase.
   recordRecovery(userId: string, incidentId: string, input: RecordRecoveryAction) {
     return prisma.$transaction(
       async (tx) => {
@@ -376,6 +384,7 @@ export const incidentsRepository = {
       { isolationLevel: 'Serializable' },
     );
   },
+  // Read paginated handler changes for the incident.
   assignmentHistory(incidentId: string, page: number, limit: number) {
     const where = {
       resource_type: 'INCIDENT',
@@ -400,12 +409,14 @@ export const incidentsRepository = {
       }),
     ]);
   },
+  // Resolve handler display names in one batch for assignment history.
   handlerNames(ids: string[]) {
     return prisma.users.findMany({
       where: { id: { in: ids } },
       select: { id: true, full_name: true },
     });
   },
+  // Return active Security Officers eligible to handle incidents.
   assignmentOptions() {
     return prisma.users.findMany({
       where: { role: 'SECURITY_OFFICER', status: 'ACTIVE' },
@@ -413,6 +424,7 @@ export const incidentsRepository = {
       select: { id: true, full_name: true, email: true },
     });
   },
+  // Validate the handler and revision before saving an audited assignment.
   assignHandler(userId: string, incidentId: string, input: AssignIncidentHandler) {
     return prisma.$transaction(
       async (transaction) => {
@@ -481,6 +493,7 @@ export const incidentsRepository = {
       { isolationLevel: 'Serializable' },
     );
   },
+  // Read paginated severity-classification history for the incident.
   classificationHistory(incidentId: string, page: number, limit: number) {
     const where = {
       resource_type: 'INCIDENT',
@@ -505,6 +518,7 @@ export const incidentsRepository = {
       }),
     ]);
   },
+  // Collect severity-classification metadata for a batch of incident IDs.
   async classificationMetadata(incidentIds: string[]) {
     const where = {
       resource_type: 'INCIDENT',
@@ -541,6 +555,7 @@ export const incidentsRepository = {
     };
   },
 
+  // Classify an incident with a rationale and stale-state checks.
   classifySeverity(userId: string, incidentId: string, input: ClassifyIncidentSeverity) {
     return prisma.$transaction(
       async (transaction) => {
@@ -599,6 +614,7 @@ export const incidentsRepository = {
       { isolationLevel: 'Serializable' },
     );
   },
+  // Read only the actor fields needed for authorization.
   findActor(userId: string) {
     return prisma.users.findUnique({
       where: { id: userId },
@@ -606,6 +622,7 @@ export const incidentsRepository = {
     });
   },
 
+  // Read a filtered incident page and enrich its selected metadata.
   async list(query: ViewIncidentsQuery) {
     const where: Prisma.incidentsWhereInput = {
       ...(query.search
@@ -636,6 +653,7 @@ export const incidentsRepository = {
     return [total, await withAssignmentTimes(records)] as const;
   },
 
+  // Read a paginated incident list restricted to its creator.
   async listCreatedBy(userId: string, query: ViewIncidentsQuery) {
     const where: Prisma.incidentsWhereInput = { created_by: userId };
     const [total, records] = await prisma.$transaction([
@@ -651,6 +669,7 @@ export const incidentsRepository = {
     return [total, await withAssignmentTimes(records)] as const;
   },
 
+  // Read one incident with the selected investigation relationships.
   async findById(incidentId: string): Promise<IncidentDetailRecord | null> {
     const record = await prisma.incidents.findUnique({
       where: { id: incidentId },
@@ -660,6 +679,7 @@ export const incidentsRepository = {
     return (await withAssignmentTimes([record]))[0] ?? null;
   },
 
+  // List confirmed finding sources available for incident creation.
   listSourceOptions(query: IncidentSourceOptionsQuery) {
     const where: Prisma.security_findingsWhereInput = {
       incidents: null,
@@ -694,6 +714,7 @@ export const incidentsRepository = {
     ]);
   },
 
+  // Create an OPEN incident manually or claim a confirmed finding before conversion.
   createFromSource(userId: string, input: CreateIncidentFromSource) {
     return prisma.$transaction(async (transaction) => {
       const actor = await transaction.users.findUnique({
@@ -703,7 +724,86 @@ export const incidentsRepository = {
       if (!actor || actor.status !== 'ACTIVE' || actor.role !== 'SECURITY_OFFICER') {
         throw new AppError(403, 'FORBIDDEN', 'Active Security Officer required');
       }
+      const checkRelated = async (detectedAt: Date): Promise<void> => {
+        const window = 7 * 24 * 60 * 60 * 1000;
+        const records = await transaction.incidents.findMany({
+          where: {
+            OR: [
+              {
+                detected_at: {
+                  gte: new Date(detectedAt.getTime() - window),
+                  lte: new Date(detectedAt.getTime() + window),
+                },
+              },
+              {
+                detected_at: null,
+                created_at: {
+                  gte: new Date(detectedAt.getTime() - window),
+                  lte: new Date(detectedAt.getTime() + window),
+                },
+              },
+            ],
+          },
+          orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+          take: 200,
+          select: {
+            id: true,
+            incident_code: true,
+            title: true,
+            status: true,
+            detected_at: true,
+            created_at: true,
+          },
+        });
+        const items = records
+          .flatMap((record) => {
+            const shared = relatedTitleTerms(input.title, record.title);
+            return shared.length
+              ? [
+                  {
+                    id: record.id,
+                    incidentCode: record.incident_code,
+                    title: record.title,
+                    status: record.status.toLowerCase(),
+                    detectedAt: record.detected_at ?? record.created_at,
+                    reason: `Shared title terms: ${shared.join(', ')}; detection times within 7 days.`,
+                  },
+                ]
+              : [];
+          })
+          .sort((a, b) => Number(a.status === 'closed') - Number(b.status === 'closed'))
+          .slice(0, 5);
+        if (
+          items.length &&
+          (!input.separateReason ||
+            items.some((item) => !input.reviewedIncidentIds?.includes(item.id)))
+        ) {
+          throw new AppError(
+            409,
+            'INCIDENT_RELATED_REVIEW_REQUIRED',
+            'Review potentially related incidents before creating a separate incident.',
+            { items },
+          );
+        }
+      };
+      const recordSeparateDecision = async (incidentId: string): Promise<void> => {
+        if (!input.separateReason) return;
+        await auditWriter.record(
+          {
+            actorUserId: userId,
+            action: 'INCIDENT_CREATED_SEPARATELY',
+            resourceType: 'INCIDENT',
+            resourceId: incidentId,
+            afterData: {
+              reason: input.separateReason,
+              reviewedIncidentIds: input.reviewedIncidentIds ?? [],
+            },
+          },
+          transaction,
+        );
+      };
       if (input.sourceType === 'manual') {
+        await checkRelated(input.detectedAt ?? new Date());
         const incident = await transaction.incidents.create({
           data: {
             incident_code: `INC-${randomUUID().replaceAll('-', '').slice(0, 16).toUpperCase()}`,
@@ -716,6 +816,7 @@ export const incidentsRepository = {
           },
           select: incidentViewSelect,
         });
+        await recordSeparateDecision(incident.id);
         return { outcome: 'created' as const, incident };
       }
       const finding = await transaction.security_findings.findFirst({
@@ -735,6 +836,8 @@ export const incidentsRepository = {
       if (finding.incidents) {
         return { outcome: 'already_converted' as const, incident: finding.incidents };
       }
+
+      await checkRelated(input.detectedAt ?? finding.identified_at);
 
       const claimed = await transaction.security_findings.updateMany({
         where: { id: finding.id, status: { not: 'CONVERTED_TO_INCIDENT' }, incidents: null },
@@ -757,6 +860,7 @@ export const incidentsRepository = {
         },
         select: incidentViewSelect,
       });
+      await recordSeparateDecision(incident.id);
       return { outcome: 'created' as const, incident };
     });
   },

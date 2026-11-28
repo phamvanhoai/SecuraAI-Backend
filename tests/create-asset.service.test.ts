@@ -14,8 +14,6 @@ const userId = '11111111-1111-4111-8111-111111111111';
 const input = {
   name: 'App Server',
   assetType: 'SERVER' as const,
-  dependencies: [],
-  eventSourceIds: [],
 };
 
 describe('assetsService.create', () => {
@@ -27,9 +25,6 @@ describe('assetsService.create', () => {
     });
     vi.mocked(assetsRepository.validateCreateReferences).mockResolvedValue({
       ownerValid: true,
-      serviceValid: true,
-      dependenciesValid: true,
-      eventSourcesValid: true,
     });
     vi.mocked(assetsRepository.create).mockResolvedValue({
       id: userId,
@@ -63,20 +58,17 @@ describe('assetsService.create', () => {
       code: 'FORBIDDEN',
     });
   });
-  it('rejects unavailable related records before creating', async () => {
+  it('rejects an unavailable owner before creating', async () => {
     vi.mocked(assetsRepository.findActor).mockResolvedValue({
       role: 'SECURITY_OFFICER',
       status: 'ACTIVE',
     });
     vi.mocked(assetsRepository.validateCreateReferences).mockResolvedValue({
-      ownerValid: true,
-      serviceValid: true,
-      dependenciesValid: true,
-      eventSourcesValid: false,
+      ownerValid: false,
     });
     await expect(assetsService.create(userId, input)).rejects.toMatchObject({
       statusCode: 422,
-      code: 'INVALID_EVENT_SOURCE',
+      code: 'INVALID_ASSET_OWNER',
     });
     expect(assetsRepository.create).not.toHaveBeenCalled();
   });

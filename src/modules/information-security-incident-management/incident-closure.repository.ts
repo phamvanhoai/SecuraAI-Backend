@@ -11,6 +11,7 @@ const select = {
     select: { root_cause: true, lessons_learned: true, improvement_actions: true },
   },
 } as const;
+// Explain why closure is blocked until Lessons learned and complete analysis.
 export function closureRestriction(incident: {
   status: string;
   incident_analysis: {
@@ -35,9 +36,11 @@ export const incidentClosureRepository = {
   actor(id: string) {
     return prisma.users.findUnique({ where: { id }, select: { role: true, status: true } });
   },
+  // Read the incident status and analysis fields used by closure checks.
   incident(id: string) {
     return prisma.incidents.findUnique({ where: { id }, select });
   },
+  // Read the latest successful closure audit for the incident.
   record(id: string) {
     return prisma.audit_logs.findFirst({
       where: {
@@ -55,6 +58,7 @@ export const incidentClosureRepository = {
       },
     });
   },
+  // Close an eligible incident while preserving an existing closure on retries.
   close(userId: string, incidentId: string, input: CloseIncident) {
     return prisma.$transaction(
       async (tx) => {
@@ -76,6 +80,7 @@ export const incidentClosureRepository = {
             'Incident changed. Reload and review before closing.',
           );
         const restriction = closureRestriction(incident);
+        // Recheck readiness under the row lock even if the UI previously allowed closing.
         if (restriction) throw new AppError(409, 'INCIDENT_NOT_READY_TO_CLOSE', restriction);
         const at = new Date();
         await tx.incidents.update({

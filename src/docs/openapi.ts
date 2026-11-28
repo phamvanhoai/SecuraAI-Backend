@@ -306,7 +306,7 @@ export const openApiSpec = {
         summary: 'Submit risk acceptance',
         security: [{ bearerAuth: [] }],
         description:
-          'Active assigned Risk Owner only. Locks Risk and related Controls. Requires OPEN/UNDER_TREATMENT, no pending request, eligible plan, current inherent/residual context including Threat/Vulnerability edits, and current applicable implemented Control assessments with valid Evidence. Records a fresh residual assessment and an immutable acceptance audit basis; never changes plan status or its source assessment. Stores versioned Asset classification/context and Evidence metadata/link fingerprints in the existing submission audit. Optional legacy treatmentPlanStatus must match the stored status. Appetite/tolerance exceedance is disclosed for approver review, not automatically rejected. Validity is an inclusive UTC calendar date. After opening review, a new residual assessment and Complete Risk Review are required before submission. An open review returns HTTP 409 RISK_REVIEW_IN_PROGRESS. A review_date before today in Asia/Ho_Chi_Minh returns 409 RISK_REVIEW_OVERDUE, including when submission crosses midnight; a date equal to today remains eligible. Missing review_date is not treated as overdue. Detail exposes canSubmit=false and the completion instruction. Ongoing treatment and assessment actions remain available subject to their existing checks.',
+          'Active assigned Risk Owner only. Locks Risk and related Controls. Requires OPEN/UNDER_TREATMENT, no pending request, eligible plan, current inherent/residual context including Threat/Vulnerability edits, and current applicable implemented Control assessments with valid Evidence. Records a fresh residual assessment and an immutable acceptance audit basis; never changes plan status or its source assessment. Stores versioned Asset classification/context and Evidence metadata/link fingerprints in the existing submission audit. Optional legacy treatmentPlanStatus must match the stored status. Appetite/tolerance exceedance is disclosed for approver review, not automatically rejected. Validity is an inclusive calendar date in Asia/Ho_Chi_Minh (UTC+7); today is allowed and expiry starts at the next Vietnam midnight. After opening review, a new residual assessment and Complete Risk Review are required before submission. An open review returns HTTP 409 RISK_REVIEW_IN_PROGRESS. A review_date before today in Asia/Ho_Chi_Minh returns 409 RISK_REVIEW_OVERDUE, including when submission crosses midnight; a date equal to today remains eligible. Missing review_date is not treated as overdue. Detail exposes canSubmit=false and the completion instruction. Ongoing treatment and assessment actions remain available subject to their existing checks.',
         parameters: [
           {
             name: 'riskId',
@@ -501,7 +501,7 @@ export const openApiSpec = {
           content: { 'application/json': { schema: createTreatmentPlanOpenApi } },
         },
         description:
-          'Active Security Officer or assigned Risk Owner. Locks selected Risk. OPEN/UNDER_TREATMENT with no pending acceptance or Draft/Active plan. Eligible controls must belong to the Risk; mitigate requires at least one, other strategies allow none. Non-accept strategies require actions. Unique control IDs and action titles, active owners, future dates and action dates within plan date required. Target cannot exceed known residual and is saved as TARGET_DEFINITION without copying inherent/residual. Creation remains Draft and does not approve acceptance. All four strategies require a verified residual based on current Inherent, Threat/Vulnerability, Control and Asset/Evidence snapshots. Missing residual returns 409 RESIDUAL_ASSESSMENT_REQUIRED; stale bases return 409 RISK_REASSESSMENT_REQUIRED, CONTROL_REASSESSMENT_REQUIRED or RESIDUAL_BASIS_CHANGED with recovery guidance. Legacy residual without verifiable snapshots must be saved again. Pending acceptance returns HTTP 409 ACCEPTANCE_PENDING with the shared Risk lock message.',
+          'Active Security Officer or assigned Risk Owner. Locks selected Risk. OPEN/UNDER_TREATMENT with no pending acceptance or Draft/Active plan. Eligible controls must belong to the Risk; mitigate requires at least one, other strategies allow none. Non-accept strategies require actions. Unique control IDs and action titles, active owners, dates strictly after today in Asia/Ho_Chi_Minh (UTC+7) and action dates within plan date required. Target cannot exceed known residual and is saved as TARGET_DEFINITION without copying inherent/residual. Creation remains Draft and does not approve acceptance. All four strategies require a verified residual based on current Inherent, Threat/Vulnerability, Control and Asset/Evidence snapshots. Missing residual returns 409 RESIDUAL_ASSESSMENT_REQUIRED; stale bases return 409 RISK_REASSESSMENT_REQUIRED, CONTROL_REASSESSMENT_REQUIRED or RESIDUAL_BASIS_CHANGED with recovery guidance. Legacy residual without verifiable snapshots must be saved again. Pending acceptance returns HTTP 409 ACCEPTANCE_PENDING with the shared Risk lock message.',
         responses: {
           '201': { description: 'Draft plan with intended target saved' },
           '401': { description: 'Authentication required' },
@@ -522,7 +522,7 @@ export const openApiSpec = {
           content: { 'application/json': { schema: updateTreatmentPlanOpenApi } },
         },
         description:
-          'Active Security Officer or assigned Risk Owner. Locks Risk and plan, checks expectedUpdatedAt and blocks pending acceptance or finalized records. Existing overdue deadlines may be retained; dates cannot predate record creation. Completed/cancelled actions are read-only, original completion timestamps are preserved. In-progress actions cannot return to pending. Non-acceptance plans with all actions cancelled cannot be completed. Stored Active strategy is immutable (409 ACTIVE_PLAN_STRATEGY_LOCKED); Draft may change strategy. Active updates and all cancellations require changeReason (10?2000 characters, 422 PLAN_CHANGE_REASON_REQUIRED for missing Active reason). Cancellation changes only plan status and preserves all action/control records, including work already started/completed; audit stores reason, actor, time and preserved action status. To replace strategy, cancel the current plan then create a new one. Changes append an audit snapshot. Progress uses status weights and excludes cancelled actions.',
+          'Active Security Officer or assigned Risk Owner. Locks Risk and plan, checks expectedUpdatedAt and blocks pending acceptance or finalized records. Existing overdue deadlines may be retained; dates cannot predate the record creation calendar day in Asia/Ho_Chi_Minh (UTC+7). Completed/cancelled actions are read-only, original completion timestamps are preserved. In-progress actions cannot return to pending. Non-acceptance plans with all actions cancelled cannot be completed. Stored Active strategy is immutable (409 ACTIVE_PLAN_STRATEGY_LOCKED); Draft may change strategy. Active updates and all cancellations require changeReason (10?2000 characters, 422 PLAN_CHANGE_REASON_REQUIRED for missing Active reason). Cancellation changes only plan status and preserves all action/control records, including work already started/completed; audit stores reason, actor, time and preserved action status. To replace strategy, cancel the current plan then create a new one. Changes append an audit snapshot. Progress uses status weights and excludes cancelled actions.',
         parameters: [
           {
             name: 'treatmentPlanId',
@@ -910,7 +910,7 @@ export const openApiSpec = {
         tags: ['IT Asset Management'],
         summary: 'Create an IT asset',
         description:
-          'Registers an IT asset with an optional owner. Business service, criticality and data classification start as null; use context and classification operations afterwards. No default classification is assigned. Requires an active Security Officer.',
+          'Registers an IT asset with an optional owner. Dependencies and event sources are not accepted during creation; link them afterwards through Link Asset Context. Business service, criticality and data classification start as null; use context and classification operations afterwards. No default classification is assigned. Requires an active Security Officer.',
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
@@ -929,12 +929,7 @@ export const openApiSpec = {
                     maxLength: 2000,
                     description: 'Optional; empty or 20-2000 characters after trimming.',
                   },
-                  dependencies: { type: 'array', maxItems: 50 },
-                  eventSourceIds: {
-                    type: 'array',
-                    maxItems: 50,
-                    items: { type: 'string', format: 'uuid' },
-                  },
+
                 },
               },
             },
@@ -948,7 +943,25 @@ export const openApiSpec = {
           '401': { description: 'Authentication required' },
           '403': { description: 'Security Officer role required' },
           '409': { description: 'Asset code already exists' },
-          '422': { description: 'Invalid input or unavailable relationship' },
+          '422': { description: 'Invalid input or unavailable Asset Owner' },
+        },
+      },
+    },
+    '/assets/{assetId}/dependency-options': {
+      get: {
+        tags: ['IT Asset Management'], summary: 'Search asset dependency options with cycle eligibility',
+        description: 'Active Security Officer only, for an active asset. Returns the latest 10 active assets excluding itself; q searches code/name. canSelect is false for candidates with a dependency path back to the edited asset; blockedReason and cyclePath explain why. This is advisory: PUT context rechecks cycles transactionally at save time. No pagination.',
+        security: [{ bearerAuth: [] }],
+        parameters: [
+          { name: 'assetId', in: 'path', required: true, schema: { type: 'string', format: 'uuid' } },
+          { name: 'q', in: 'query', schema: { type: 'string', maxLength: 100 } },
+        ],
+        responses: {
+          '200': {
+            description: 'Envelope data.items contains up to 10 objects: id, assetCode, name, status, canSelect (boolean), blockedReason (string or null), and cyclePath (string array). Blocked options remain visible.',
+          },
+          '401': { description: 'Authentication required' }, '403': { description: 'Security Officer required' },
+          '404': { description: 'Asset not found' }, '409': { description: 'Asset archived' }, '422': { description: 'Invalid asset ID or search' },
         },
       },
     },
@@ -989,8 +1002,9 @@ export const openApiSpec = {
               schema: {
                 type: 'object',
                 additionalProperties: false,
-                required: ['reason'],
-                properties: { reason: { type: 'string', minLength: 20, maxLength: 1000 } },
+                required: ['reason', 'confirmationCode'],
+                properties: {
+                  confirmationCode: { type: 'string', minLength: 1, maxLength: 100, description: 'Exact asset code; checked inside the archive transaction.' }, reason: { type: 'string', minLength: 20, maxLength: 1000 } },
               },
             },
           },
@@ -1004,7 +1018,7 @@ export const openApiSpec = {
             description:
               'Already archived, active dependent assets, or concurrent changes. Dependency message lists up to 20 asset codes/names.',
           },
-          '422': { description: 'Missing or invalid archive reason' },
+          '422': { description: 'Missing/invalid reason or confirmation code; ASSET_CONFIRMATION_MISMATCH when the code does not match' },
           '503': { description: 'Transaction timeout; retry' },
         },
       },
@@ -1881,7 +1895,7 @@ export const openApiSpec = {
         tags: ['Incident Management'],
         summary: 'Create an incident manually or from a confirmed source',
         description:
-          'Only an active Security Officer can create a V2 incident, either manually when no suitable alert/finding is available, or from an eligible confirmed alert/security finding. Source-backed incidents retain a unique finding link. Executive/Admin/Employee accounts cannot create incidents. This is not a general incident-report intake endpoint.',
+          'Only an active Security Officer can create a V2 incident manually or from a confirmed source. Both modes check up to 200 newest incidents with detection times within seven days (creation time fallback), returning at most five title-based suggestions. A 409 INCIDENT_RELATED_REVIEW_REQUIRED includes error.details.items with id, incidentCode, title, status, detectedAt and reason. Retry with separateReason and all suggested reviewedIncidentIds to create separately; the reason is audited atomically. These bounded suggestions are not exhaustive deduplication or asset/account correlation. Source-backed incidents retain a unique finding link. Executive/Admin/Employee cannot create incidents.',
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
@@ -1894,6 +1908,12 @@ export const openApiSpec = {
                     required: ['sourceType', 'sourceId', 'title', 'description', 'severity'],
                     properties: {
                       sourceType: { type: 'string', enum: ['alert', 'finding'] },
+                      separateReason: { type: 'string', minLength: 10, maxLength: 2000 },
+                      reviewedIncidentIds: {
+                        type: 'array',
+                        maxItems: 5,
+                        items: { type: 'string', format: 'uuid' },
+                      },
                       sourceId: { type: 'string', format: 'uuid' },
                       title: { type: 'string', minLength: 5, maxLength: 255 },
                       description: { type: 'string', minLength: 20, maxLength: 10000 },
@@ -1906,6 +1926,12 @@ export const openApiSpec = {
                     required: ['sourceType', 'title', 'description', 'severity'],
                     properties: {
                       sourceType: { type: 'string', enum: ['manual'] },
+                      separateReason: { type: 'string', minLength: 10, maxLength: 2000 },
+                      reviewedIncidentIds: {
+                        type: 'array',
+                        maxItems: 5,
+                        items: { type: 'string', format: 'uuid' },
+                      },
                       title: { type: 'string', minLength: 5, maxLength: 255 },
                       description: { type: 'string', minLength: 20, maxLength: 10000 },
                       severity: { type: 'string', enum: ['low', 'medium', 'high', 'critical'] },
@@ -1923,7 +1949,8 @@ export const openApiSpec = {
           '403': { description: 'Security Officer role required' },
           '404': { description: 'Source alert or finding not found' },
           '409': {
-            description: 'Source is unconfirmed, already converted, or changed concurrently',
+            description:
+              'Related incident review required (INCIDENT_RELATED_REVIEW_REQUIRED with error.details.items), or source unconfirmed, already converted, or changed concurrently',
           },
           '422': { description: 'Invalid incident details' },
         },
@@ -2886,7 +2913,7 @@ export const openApiSpec = {
         tags: ['Policy Management'],
         summary: 'List published policies for the current Employee',
         description:
-          'Returns current active V2 policies and their published versions with the Employee reading status.',
+          'All active Employees can read all current active published policies; there is no department/applicability filter. acknowledgedAt refers only to the current version. Each item includes changeSummary and previousAcknowledgement (null, or the latest superseded published version this Employee acknowledged: versionId, versionNumber, acknowledgedAt). Draft/approval work does not change the current publication or its reading status.',
         security: [{ bearerAuth: [] }],
         parameters: [
           { name: 'page', in: 'query', schema: { type: 'integer', minimum: 1, default: 1 } },
@@ -2896,7 +2923,6 @@ export const openApiSpec = {
             schema: { type: 'integer', minimum: 1, maximum: 100, default: 20 },
           },
           { name: 'q', in: 'query', schema: { type: 'string', minLength: 1, maxLength: 100 } },
-          { name: 'departmentId', in: 'query', schema: { type: 'string', format: 'uuid' } },
           {
             name: 'status',
             in: 'query',
@@ -2916,7 +2942,7 @@ export const openApiSpec = {
         tags: ['Policy Management'],
         summary: 'View a published policy version',
         description:
-          'Returns the content and details of the current published V2 policy version to an active Employee.',
+          'Returns the content and details of the current published V2 policy version to any active Employee. Includes acknowledgedAt for this version and nullable previousAcknowledgement { versionId, versionNumber, acknowledgedAt } for the latest superseded published version this Employee confirmed. Earlier confirmations are retained, never transferred to a new version. A draft replacement is not exposed here.',
         security: [{ bearerAuth: [] }],
         parameters: [
           {
@@ -2946,7 +2972,7 @@ export const openApiSpec = {
         tags: ['Policy Management'],
         summary: 'Acknowledge a published policy version',
         description:
-          'Records that the active Employee has read and understood the current published V2 policy version. Repeated requests return the existing acknowledgement.',
+          'Records an explicit Employee confirmation of reading the current published version. Rechecks active Employee role and current publication inside the acknowledgement transaction using the same policy row lock as publication. Stale requests return 409 POLICY_VERSION_CHANGED and require reading the current version. Repeated confirmations preserve the original timestamp without duplicate audit. A new confirmation appends POLICY_READING_ACKNOWLEDGED through the shared audit writer atomically; audit failure rolls back. Existing version confirmations are retained. No department restriction.',
         security: [{ bearerAuth: [] }],
         parameters: [
           {
@@ -2964,6 +2990,7 @@ export const openApiSpec = {
         ],
         responses: {
           '200': { description: 'Acknowledgement recorded or existing acknowledgement returned' },
+          '409': { description: 'Published version changed; refresh and read the current version before confirming' },
           '401': { description: 'Authentication required' },
           '403': { description: 'Employee role required' },
           '404': { description: 'Current published policy version not found' },
@@ -3841,15 +3868,6 @@ export const openApiSpec = {
                 type: 'object',
                 additionalProperties: false,
                 properties: {
-                  lookbackHours: {
-                    type: 'integer',
-                    minimum: 1,
-                    maximum: 720,
-                    default: 24,
-                    deprecated: true,
-                    description:
-                      'Retained for client compatibility. Manual recovery now processes all pending events regardless of age.',
-                  },
                   maxEvents: {
                     type: 'integer',
                     minimum: 1,
@@ -5277,6 +5295,55 @@ export const openApiSpec = {
           '403': { description: 'Administrator or Security Officer role required' },
           '404': { description: 'Event data governance policy not found' },
           '422': { description: 'Invalid policy ID format' },
+        },
+      },
+    },
+    '/event-governance/retention-purge/status': {
+      get: {
+        tags: ['Event Ingestion'],
+        summary: 'Get automated retention purge worker status and history',
+        description:
+          'Returns the retention purge schedule configuration, per-family effective retention cutoffs resolved from active event governance policies, last in-memory execution result, and recent audited purge runs. Restricted to System Administrators.',
+        security: [{ bearerAuth: [] }],
+        responses: {
+          '200': { description: 'Retention purge worker status and recent purge audit history' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'System Administrator role required' },
+        },
+      },
+    },
+    '/event-governance/retention-purge/run': {
+      post: {
+        tags: ['Event Ingestion'],
+        summary: 'Execute or dry-run automated retention purge',
+        description:
+          'Triggers an immediate retention purge (or dry-run count preview) enforcing active event data governance policies using PostgreSQL advisory locks and FK-safe batched deletion while preserving events linked to alerts or incident evidence. Restricted to System Administrators.',
+        security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: false,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: {
+                  dryRun: { type: 'boolean', default: false },
+                  eventFamily: {
+                    type: 'string',
+                    enum: ['AUTHENTICATION', 'VPN_SSO', 'APPLICATION_ACCESS'],
+                  },
+                  batchSize: { type: 'integer', minimum: 10, maximum: 1000 },
+                  maxBatches: { type: 'integer', minimum: 1, maximum: 100 },
+                },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': { description: 'Retention purge run summary or dry-run preview' },
+          '401': { description: 'Authentication required' },
+          '403': { description: 'System Administrator role required' },
+          '409': { description: 'Retention purge job is already running' },
+          '422': { description: 'Invalid retention purge parameters' },
         },
       },
     },

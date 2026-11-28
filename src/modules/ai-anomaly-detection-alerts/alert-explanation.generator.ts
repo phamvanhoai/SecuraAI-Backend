@@ -6,44 +6,16 @@ export interface StoredAlertExplanationInput {
   threshold: number;
   suggestedRiskLevel: string | null;
   detectedAt: Date;
-  featureContributions: Array<{
+  evidence: Array<{
     featureName: string;
     featureValue: string | null;
-    contributionScore: number | null;
     rank: number | null;
   }>;
   eventId: string;
 }
 
+// Build deterministic analyst text when Ollama cannot provide an explanation.
 function fallbackExplanation(input: StoredAlertExplanationInput): string {
-  const read = (name: string): unknown => {
-    try {
-      return JSON.parse(
-        input.featureContributions.find((f) => f.featureName === name)?.featureValue ?? 'null',
-      ) as unknown;
-    } catch {
-      return null;
-    }
-  };
-  const record = (name: string): Record<string, unknown> => {
-    const value = read(name);
-    return typeof value === 'object' && value !== null && !Array.isArray(value)
-      ? (value as Record<string, unknown>)
-      : {};
-  };
-  const ruleNames: Record<string, string> = {
-    AUTH_FAILURE_BURST: 'Repeated failed sign-ins were detected.',
-    AUTH_SUCCESS_AFTER_FAILURE: 'A successful sign-in followed repeated failed attempts.',
-    APP_DENIAL_BURST: 'Repeated denied access to an application was detected.',
-    APP_SUCCESS_AFTER_DENIAL: 'Successful application access followed repeated denials.',
-    VPN_SSO_FAILURE_BURST: 'Repeated failed VPN or SSO sign-ins were detected.',
-    VPN_SSO_NEW_CONTEXT_OFF_HOURS:
-      'Successful VPN or SSO access used a new IP address or device outside working hours.',
-  };
-  const rawRules = read('matched_rules');
-  const rules = Array.isArray(rawRules)
-    ? rawRules.filter((r): r is string => typeof r === 'string')
-    : [];
   const score = new Intl.NumberFormat('en', { style: 'percent', maximumFractionDigits: 1 }).format(
     input.anomalyScore,
   );
@@ -51,84 +23,15 @@ function fallbackExplanation(input: StoredAlertExplanationInput): string {
     style: 'percent',
     maximumFractionDigits: 1,
   }).format(input.threshold);
-  const sections = [
-    rules.length
-      ? rules
-          .map((rule) => ruleNames[rule] ?? 'A configured detection rule matched this activity.')
-          .join(' ')
-      : 'The detection score met the configured threshold.',
-  ];
-  const statistical = record('statistical_baseline');
-  if (
-    statistical.method === 'empirical-history-v1' ||
-    statistical.method === 'empirical-history-multi-window-v2'
-  ) {
-    const windows = Array.isArray(statistical.windows)
-      ? statistical.windows
-          .filter((window): window is Record<string, unknown> =>
-            typeof window === 'object' && window !== null && !Array.isArray(window),
-          )
-          .filter((window) => window.status === 'READY')
-          .map((window) => `${String(window.windowMinutes)}m=${String(window.currentFailures)}`)
-          .join(', ')
-      : `${String(statistical.windowMinutes)}m`;
-    return `The current activity was compared with historical rolling windows for the same account/source and event family (${windows}).\n\nHistorical anomaly score: ${score}. This is a multiple-window-adjusted empirical rarity score, not attack probability. It reached the configured threshold of ${threshold}.\n\nReview the per-window observations and reference sample sizes below. Overlapping windows are corrected rather than added as independent evidence. Confirm whether this activity was expected before taking action.`;
-  }
-  const failures = record('failure_count_in_window');
-  if (
-    typeof failures.count === 'number' &&
-    failures.count > 0 &&
-    typeof failures.windowMinutes === 'number'
-  )
-    sections.push(
-      String(failures.count) +
-        ' failed attempts were recorded within ' +
-        String(failures.windowMinutes) +
-        ' minutes.',
-    );
-  const baseline = record('baseline_context');
-  if (
-    baseline.ready === true &&
-    baseline.newIp === true &&
-    typeof baseline.successfulEvents === 'number'
-  )
-    sections.push(
-      'The IP address was not seen in ' +
-        String(baseline.successfulEvents) +
-        ' previous successful events.',
-    );
-  if (baseline.ready === true && baseline.newDevice === true)
-    sections.push('The device was not seen in the available successful activity history.');
-  const hours = record('working_hours');
-  if (
-    hours.offHours === true &&
-    typeof hours.localHour === 'number' &&
-    typeof hours.timeZone === 'string'
-  )
-    sections.push(
-      'The event occurred during hour ' +
-        String(hours.localHour).padStart(2, '0') +
-        ':00 in ' +
-        hours.timeZone +
-        ', outside configured working hours.',
-    );
-  sections.push(
-    'Priority score: ' +
-      score +
-      (input.suggestedRiskLevel ? ' (' + input.suggestedRiskLevel + ').' : '.') +
-      ' This is a signal-strength score, not attack probability.',
-  );
-  sections.push(
-    input.anomalyScore >= input.threshold
-      ? `The detection score ${score} met the configured threshold ${threshold}. Rules provide scoring evidence; they do not bypass this threshold.`
-      : `This historical alert has a score of ${score}, below its recorded threshold ${threshold}. It predates the current threshold-only policy; new events below threshold do not create alerts.`,
-  );
-  sections.push(
-    'Review the related activity and confirm whether the access was expected before taking action.',
-  );
-  return sections.join('\n\n');
+  return [
+    'The ML/LLM detection pipeline classified this event as malicious.',
+    `Diagnostic evidence score: ${score}${input.suggestedRiskLevel ? ` (${input.suggestedRiskLevel})` : ''}. This is not attack probability.`,
+    `The configured model or Asset threshold used for ML escalation was ${threshold}. The final alert decision came from the LLM MALICIOUS verdict, not from the LLM score.`,
+    'Review the stored ML prediction, LLM classification and related events before taking action.',
+  ].join('\n\n');
 }
 
+// Convert the validated Ollama JSON structure into stored plain text.
 function formatGeneratedExplanation(explanation: GeneratedAlertExplanation): string {
   const sections = [explanation.summary];
   if (explanation.observations.length > 0) {
@@ -140,10 +43,12 @@ function formatGeneratedExplanation(explanation: GeneratedAlertExplanation): str
   return sections.join('\n');
 }
 
+// Generate explanation text and fall back safely when the optional model fails.
 export async function generateStoredAlertExplanation(
   input: StoredAlertExplanationInput,
   options?: { timeoutMs: number },
 ): Promise<string> {
+  // Ollama writes prose only; fallback text keeps alert creation independent of it.
   if (options && options.timeoutMs <= 0) return fallbackExplanation(input);
   try {
     const generated = await ollamaClient.generateAlertExplanation(input, options);

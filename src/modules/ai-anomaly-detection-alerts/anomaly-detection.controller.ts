@@ -4,6 +4,7 @@ import { extractClientContext } from '../../common/utils/client-context.js';
 import type { RunAnomalyDetectionBody } from './dto/run-anomaly-detection.dto.js';
 import { anomalyDetectionService } from './anomaly-detection.service.js';
 
+// Pass trusted request data and audit context to the detection service.
 export const runAnomalyDetection: RequestHandler = async (req, res) => {
   const userId: unknown = res.locals.authenticatedUserId;
   if (typeof userId !== 'string')

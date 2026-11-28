@@ -2,6 +2,7 @@ import { AppError } from '../../common/errors/app-error.js';
 import type { RecordControlWeaknessInput } from './dto/record-control-weakness.dto.js';
 import type { ControlWeaknessHistoryQuery } from './dto/record-control-weakness.dto.js';
 import { controlWeaknessesRepository } from './control-weaknesses.repository.js';
+// Require an active Security Officer for control-weakness operations.
 async function requireSecurityOfficer(userId: string) {
   const actor = await controlWeaknessesRepository.findActor(userId);
   if (!actor || actor.status !== 'ACTIVE')
@@ -9,6 +10,7 @@ async function requireSecurityOfficer(userId: string) {
   if (actor.role !== 'SECURITY_OFFICER')
     throw new AppError(403, 'FORBIDDEN', 'Security Officer role required');
 }
+// Map a linked control into the option response used by the frontend.
 const controlResponse = (control: {
   id: string;
   control_code: string;
@@ -21,6 +23,7 @@ const controlResponse = (control: {
   implementationStatus: control.implementation_status.toLowerCase(),
 });
 export const controlWeaknessesService = {
+  // Return the authorized, paginated weakness history for an incident.
   async history(userId: string, incidentId: string, query: ControlWeaknessHistoryQuery) {
     await requireSecurityOfficer(userId);
     const incident = await controlWeaknessesRepository.findIncident(incidentId);
@@ -61,6 +64,7 @@ export const controlWeaknessesService = {
       },
     };
   },
+  // Return incident-linked controls available for weakness recording.
   async options(userId: string, incidentId: string) {
     await requireSecurityOfficer(userId);
     const { incident, links } = await controlWeaknessesRepository.findOptions(incidentId);
@@ -80,6 +84,8 @@ export const controlWeaknessesService = {
       })),
     };
   },
+  // Record Control Weakness from Incident: require a linked control, an open
+  // incident, and no duplicate open weakness for the same control.
   async record(userId: string, incidentId: string, input: RecordControlWeaknessInput) {
     await requireSecurityOfficer(userId);
     const [incident, link, existing] = await Promise.all([

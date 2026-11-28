@@ -1,4 +1,4 @@
-import { Prisma, type policy_decision_action, type policy_version_status } from '@prisma/client';
+import type { Prisma, policy_decision_action, policy_version_status } from '@prisma/client';
 import { auditWriter } from '../audit-security-reporting/audit-writer.js';
 import { prisma } from '../../database/prisma.js';
 import { AppError } from '../../common/errors/app-error.js';
@@ -182,6 +182,7 @@ export type PolicyVersionHistoryRecord = Prisma.policy_versionsGetPayload<{
   select: typeof policyVersionHistorySelect;
 }>;
 
+// Lock the version before capturing the state used by decision auditing.
 async function lockPolicyDecisionSnapshot(
   transaction: Prisma.TransactionClient,
   policyId: string,
@@ -195,6 +196,7 @@ async function lockPolicyDecisionSnapshot(
   });
 }
 
+// Append decision metadata and before/after status in the same transaction.
 async function auditPolicyDecision(
   transaction: Prisma.TransactionClient,
   version: PolicyReviewRecord,
@@ -224,6 +226,7 @@ async function auditPolicyDecision(
 }
 
 export const policyComplianceRepository = {
+  // Create the next draft while preserving the current published version.
   createPolicyVersion(userId: string, policyId: string, input: CreatePolicyVersionBody) {
     return prisma.$transaction(async (transaction) => {
       // Serialize competing drafts for the same policy, including requests using different numbers.
@@ -322,6 +325,7 @@ export const policyComplianceRepository = {
       return { policy: updatedPolicy, version };
     });
   },
+  // Read only the actor fields needed for authorization.
   findActor(userId: string) {
     return prisma.users.findUnique({
       where: { id: userId },
@@ -329,6 +333,7 @@ export const policyComplianceRepository = {
     });
   },
 
+  // Create the policy and its first draft version for the authenticated Security Officer.
   createPolicyDraft(userId: string, input: CreatePolicyDraftBody) {
     return prisma.$transaction(async (transaction) => {
       const policy = await transaction.policies.create({
@@ -370,6 +375,7 @@ export const policyComplianceRepository = {
     });
   },
 
+  // List submitted policies eligible for the Admin review workspace.
   listReviewableDrafts(query: ReviewablePolicyDraftQuery) {
     const where: Prisma.policiesWhereInput = {
       status: { in: ['DRAFT', 'ACTIVE'] },
@@ -403,6 +409,7 @@ export const policyComplianceRepository = {
     ]);
   },
 
+  // Read the selected ReviewableDraft fields for this workflow.
   findReviewableDraft(policyId: string, versionId: string) {
     return prisma.policy_versions.findFirst({
       where: {
@@ -415,6 +422,7 @@ export const policyComplianceRepository = {
     });
   },
 
+  // Read applicability and ownership fields for the service authorization checks.
   findOwnedDraftApplicability(policyId: string, versionId: string) {
     return prisma.policy_versions.findFirst({
       where: { id: versionId, policy_id: policyId },
@@ -431,6 +439,7 @@ export const policyComplianceRepository = {
     });
   },
 
+  // Return bounded active department options in deterministic order.
   listActiveDepartments() {
     return prisma.departments.findMany({
       where: { status: 'ACTIVE' },
@@ -440,10 +449,12 @@ export const policyComplianceRepository = {
     });
   },
 
+  // Count selected departments that still exist and are active.
   countActiveDepartments(ids: string[]) {
     return prisma.departments.count({ where: { id: { in: ids }, status: 'ACTIVE' } });
   },
 
+  // Create or replace applicability for this version and record the defining user.
   upsertApplicability(versionId: string, userId: string, input: DefinePolicyApplicabilityBody) {
     const data = {
       department_ids: input.departmentIds,
@@ -463,6 +474,7 @@ export const policyComplianceRepository = {
     });
   },
 
+  // List published and superseded versions for authorized history viewers.
   listPolicyVersionHistory(query: PolicyVersionHistoryQuery) {
     const statuses: policy_version_status[] =
       query.status === 'published'
@@ -495,6 +507,7 @@ export const policyComplianceRepository = {
     ]);
   },
 
+  // Find a published or superseded version belonging to the requested policy.
   findPolicyVersionHistory(policyId: string, versionId: string) {
     return prisma.policy_versions.findFirst({
       where: {
@@ -506,6 +519,7 @@ export const policyComplianceRepository = {
     });
   },
 
+  // Move IN_REVIEW to WAITING_APPROVAL with a decision and audit in one transaction.
   reviewDraft(policyId: string, versionId: string, actorUserId: string) {
     return prisma.$transaction(async (transaction) => {
       const before = await lockPolicyDecisionSnapshot(transaction, policyId, versionId);
@@ -548,6 +562,7 @@ export const policyComplianceRepository = {
     });
   },
 
+  // Return the version to DRAFT and record the revision comment and audit atomically.
   requestDraftRevision(
     policyId: string,
     versionId: string,
@@ -596,6 +611,7 @@ export const policyComplianceRepository = {
     });
   },
 
+  // Move WAITING_APPROVAL to APPROVED with its decision and audit.
   approveDraftForPublication(policyId: string, versionId: string, actorUserId: string) {
     return prisma.$transaction(async (transaction) => {
       const before = await lockPolicyDecisionSnapshot(transaction, policyId, versionId);
@@ -627,6 +643,7 @@ export const policyComplianceRepository = {
     });
   },
 
+  // Read the selected PolicyVersionForPublication fields for this workflow.
   findPolicyVersionForPublication(policyId: string, versionId: string) {
     return prisma.policy_versions.findFirst({
       where: {
@@ -639,8 +656,11 @@ export const policyComplianceRepository = {
     });
   },
 
+  // Publish the approved version, supersede the old one and switch the current-version pointer.
   publishApprovedVersion(policyId: string, versionId: string) {
     return prisma.$transaction(async (transaction) => {
+      // Publication and reading confirmation share this lock; the current version cannot change mid-confirmation.
+      await transaction.$queryRaw`SELECT id FROM policies WHERE id = ${policyId}::uuid FOR UPDATE`;
       const policy = await transaction.policies.findFirst({
         where: { id: policyId, status: { in: ['DRAFT', 'ACTIVE'] } },
         select: { current_published_version_id: true },
@@ -684,6 +704,7 @@ export const policyComplianceRepository = {
     });
   },
 
+  // Read owned publications and whether another version is already in progress.
   listOwnedPublishedPolicies(userId: string) {
     return prisma.policies.findMany({
       where: {
@@ -710,6 +731,7 @@ export const policyComplianceRepository = {
     });
   },
 
+  // Read current publications with this Employee's version-specific acknowledgements.
   listPublishedPoliciesForEmployee(userId: string, query: PublishedPolicyListQuery) {
     const acknowledgementFilter: Prisma.Policy_acknowledgementsListRelationFilter =
       query.status === 'acknowledged'
@@ -738,6 +760,15 @@ export const policyComplianceRepository = {
       policy_code: true,
       title: true,
       description: true,
+      policy_versions_policy_versions_policy_idTopolicies: {
+        where: { status: 'SUPERSEDED', policy_acknowledgements: { some: { user_id: userId } } },
+        orderBy: [{ published_at: 'desc' }, { id: 'desc' }],
+        take: 1,
+        select: {
+          id: true, version_number: true,
+          policy_acknowledgements: { where: { user_id: userId }, take: 1, select: { acknowledged_at: true } },
+        },
+      },
       policy_versions_policies_current_published_version_idTopolicy_versions: {
         select: {
           ...currentPublishedVersionSelect,
@@ -761,6 +792,7 @@ export const policyComplianceRepository = {
     ]);
   },
 
+  // Select only the active policy's current published version for Employee reading.
   findPublishedPolicyForEmployee(policyId: string, versionId: string, userId: string) {
     return prisma.policy_versions.findFirst({
       where: {
@@ -775,7 +807,16 @@ export const policyComplianceRepository = {
         ...currentPublishedVersionSelect,
         policy_id: true,
         policies_policy_versions_policy_idTopolicies: {
-          select: { policy_code: true, title: true, description: true },
+          select: {
+            policy_code: true, title: true, description: true,
+            policy_versions_policy_versions_policy_idTopolicies: {
+              where: { status: 'SUPERSEDED', policy_acknowledgements: { some: { user_id: userId } } },
+              orderBy: [{ published_at: 'desc' }, { id: 'desc' }], take: 1,
+              select: { id: true, version_number: true,
+                policy_acknowledgements: { where: { user_id: userId }, take: 1, select: { acknowledged_at: true } },
+              },
+            },
+          },
         },
         policy_acknowledgements: {
           where: { user_id: userId },
@@ -786,37 +827,44 @@ export const policyComplianceRepository = {
     });
   },
 
-  async createPolicyAcknowledgement(versionId: string, userId: string) {
+  // Lock the policy, recheck the current publication and save acknowledgement with its audit.
+  async createPolicyAcknowledgement(policyId: string, versionId: string, userId: string) {
     const uniqueWhere = {
       policy_version_id_user_id: {
         policy_version_id: versionId,
         user_id: userId,
       },
     } as const;
-    const existing = await prisma.policy_acknowledgements.findUnique({
-      where: uniqueWhere,
-      select: { acknowledged_at: true },
-    });
-    if (existing) return { ...existing, alreadyAcknowledged: true };
-
-    try {
-      const created = await prisma.policy_acknowledgements.create({
-        data: { policy_version_id: versionId, user_id: userId },
-        select: { acknowledged_at: true },
-      });
-      return { ...created, alreadyAcknowledged: false };
-    } catch (error) {
-      if (!(error instanceof Prisma.PrismaClientKnownRequestError) || error.code !== 'P2002') {
-        throw error;
+    return prisma.$transaction(async (transaction) => {
+      await transaction.$queryRaw`SELECT id FROM policies WHERE id = ${policyId}::uuid FOR UPDATE`;
+      await transaction.$queryRaw`SELECT id FROM users WHERE id = ${userId}::uuid FOR SHARE`;
+      const actor = await transaction.users.findUnique({ where: { id: userId }, select: { role: true, status: true } });
+      if (!actor || actor.status !== 'ACTIVE') throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
+      if (actor.role !== 'EMPLOYEE') throw new AppError(403, 'FORBIDDEN', 'Employee role required');
+      const policy = await transaction.policies.findUnique({ where: { id: policyId }, select: { status: true, current_published_version_id: true } });
+      const version = await transaction.policy_versions.findFirst({ where: { id: versionId, policy_id: policyId, status: 'PUBLISHED' }, select: { version_number: true } });
+      if (!policy || policy.status !== 'ACTIVE' || policy.current_published_version_id !== versionId || !version) {
+        throw new AppError(409, 'POLICY_VERSION_CHANGED', 'The published policy has changed. Refresh the list and read the current version before confirming.');
       }
-      const acknowledgement = await prisma.policy_acknowledgements.findUniqueOrThrow({
+      const existing = await transaction.policy_acknowledgements.findUnique({
         where: uniqueWhere,
         select: { acknowledged_at: true },
       });
-      return { ...acknowledgement, alreadyAcknowledged: true };
-    }
+      if (existing) return { ...existing, alreadyAcknowledged: true };
+      const created = await transaction.policy_acknowledgements.create({
+        data: { policy_version_id: versionId, user_id: userId },
+        select: { acknowledged_at: true },
+      });
+      await auditWriter.record({ actorType: 'USER', actorUserId: userId,
+        action: 'POLICY_READING_ACKNOWLEDGED', resourceType: 'POLICY_VERSION', resourceId: versionId,
+        occurredAt: created.acknowledged_at, source: 'API',
+        afterData: { policyId, versionId, versionNumber: version.version_number, acknowledgedAt: created.acknowledged_at.toISOString() },
+      }, transaction);
+      return { ...created, alreadyAcknowledged: false };
+    });
   },
 
+  // List rejection decisions within the actor's policy ownership scope.
   listRejectedPolicies(query: RejectedPolicyQuery, ownerUserId?: string) {
     const policyWhere: Prisma.policiesWhereInput = {
       ...(ownerUserId ? { owner_user_id: ownerUserId } : {}),
@@ -848,6 +896,7 @@ export const policyComplianceRepository = {
     ]);
   },
 
+  // Reject an eligible submitted version with its decision and audit.
   rejectDraft(policyId: string, versionId: string, actorUserId: string, input: RejectPolicyBody) {
     return prisma.$transaction(async (transaction) => {
       const before = await lockPolicyDecisionSnapshot(transaction, policyId, versionId);
@@ -891,6 +940,7 @@ export const policyComplianceRepository = {
     });
   },
 
+  // List authored drafts within the current policy ownership scope.
   listOwnDrafts(userId: string, query: ListPolicyDraftsQuery) {
     const where: Prisma.policy_versionsWhereInput = {
       status: 'DRAFT',
@@ -923,6 +973,7 @@ export const policyComplianceRepository = {
     ]);
   },
 
+  // Read version, policy and applicability fields needed for submission checks.
   findDraftForSubmission(policyId: string, versionId: string) {
     return prisma.policy_versions.findFirst({
       where: { id: versionId, policy_id: policyId },
@@ -930,6 +981,7 @@ export const policyComplianceRepository = {
     });
   },
 
+  // Read a draft only when the current user is both author and policy owner.
   findOwnDraftDetail(userId: string, policyId: string, versionId: string) {
     return prisma.policy_versions.findFirst({
       where: {
@@ -946,6 +998,7 @@ export const policyComplianceRepository = {
     });
   },
 
+  // Read the version and parent policy for edit authorization checks.
   findDraftForEdit(policyId: string, versionId: string) {
     return prisma.policy_versions.findFirst({
       where: { id: versionId, policy_id: policyId },
@@ -953,6 +1006,7 @@ export const policyComplianceRepository = {
     });
   },
 
+  // Conditionally update the owned draft and shared policy fields in one transaction.
   editDraft(policyId: string, versionId: string, actorUserId: string, input: EditPolicyDraftBody) {
     return prisma.$transaction(async (transaction) => {
       const versionUpdate = await transaction.policy_versions.updateMany({
@@ -990,6 +1044,7 @@ export const policyComplianceRepository = {
     });
   },
 
+  // Conditionally move an authored or owned draft to IN_REVIEW.
   submitDraft(policyId: string, versionId: string, actorUserId: string) {
     return prisma.$transaction(async (transaction) => {
       const updated = await transaction.policy_versions.updateMany({

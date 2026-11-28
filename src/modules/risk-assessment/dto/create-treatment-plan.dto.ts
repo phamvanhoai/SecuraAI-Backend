@@ -1,20 +1,74 @@
 import { z } from 'zod';
 import { acceptanceCostSchema, validateAcceptanceCost } from './acceptance-cost.dto.js';
-const action = z.object({ title: z.string().trim().min(3).max(100), description: z.string().trim().max(2000).refine((value) => value.length === 0 || value.length >= 20, "Enter at least 20 characters or leave blank.").optional(), assignedToUserId: z.uuid(), dueDate: z.iso.date() });
-export const createTreatmentPlanBodySchema = z.object({
-  riskId: z.uuid(), title: z.string().trim().min(3).max(100), strategy: z.enum(['avoid', 'mitigate', 'transfer', 'accept']),
-  ownerUserId: z.uuid(), targetDate: z.iso.date(), targetRisk: z.enum(['low', 'medium', 'high', 'critical']),
-  controlIds: z.array(z.uuid()).max(100), actions: z.array(action).max(100),
-  acceptanceCost: acceptanceCostSchema.nullish(),
-}).strict().superRefine((value, context) => {
-  validateAcceptanceCost(value, context);
-  if (value.strategy === 'mitigate' && !value.controlIds.length) context.addIssue({ code: 'custom', path: ['controlIds'], message: 'Mitigation plans require at least one related control' });
-  if (new Set(value.controlIds).size !== value.controlIds.length) context.addIssue({ code: 'custom', path: ['controlIds'], message: 'Control IDs must be unique' });
-  const titles = value.actions.map((item) => item.title.normalize('NFKC').replace(/\s+/g, ' ').toLowerCase());
-  if (new Set(titles).size !== titles.length) context.addIssue({ code: 'custom', path: ['actions'], message: 'Action titles must be unique' });
-  if (value.strategy !== 'accept' && !value.actions.length) context.addIssue({ code: 'custom', path: ['actions'], message: 'Treatment actions are required' });
-  value.actions.forEach((item, index) => { if (item.dueDate > value.targetDate) context.addIssue({ code: 'custom', path: ['actions', index, 'dueDate'], message: 'Action due date must not exceed plan target date' }); });
+const action = z.object({
+  title: z.string().trim().min(3).max(100),
+  description: z
+    .string()
+    .trim()
+    .max(2000)
+    .refine(
+      (value) => value.length === 0 || value.length >= 20,
+      'Enter at least 20 characters or leave blank.',
+    )
+    .optional(),
+  assignedToUserId: z.uuid(),
+  dueDate: z.iso.date(),
 });
-export const treatmentPlanOptionsQuerySchema = z.object({ riskId: z.uuid().optional(), q: z.string().trim().max(100).default(''), limit: z.coerce.number().int().min(1).max(100).default(10) });
+export const createTreatmentPlanBodySchema = z
+  .object({
+    riskId: z.uuid(),
+    title: z.string().trim().min(3).max(100),
+    strategy: z.enum(['avoid', 'mitigate', 'transfer', 'accept']),
+    ownerUserId: z.uuid(),
+    targetDate: z.iso.date(),
+    targetRisk: z.enum(['low', 'medium', 'high', 'critical']),
+    controlIds: z.array(z.uuid()).max(100),
+    actions: z.array(action).max(100),
+    acceptanceCost: acceptanceCostSchema.nullish(),
+  })
+  .strict()
+  .superRefine((value, context) => {
+    validateAcceptanceCost(value, context);
+    if (value.strategy === 'mitigate' && !value.controlIds.length)
+      context.addIssue({
+        code: 'custom',
+        path: ['controlIds'],
+        message: 'Mitigation plans require at least one related control',
+      });
+    if (new Set(value.controlIds).size !== value.controlIds.length)
+      context.addIssue({
+        code: 'custom',
+        path: ['controlIds'],
+        message: 'Control IDs must be unique',
+      });
+    const titles = value.actions.map((item) =>
+      item.title.normalize('NFKC').replace(/\s+/g, ' ').toLowerCase(),
+    );
+    if (new Set(titles).size !== titles.length)
+      context.addIssue({
+        code: 'custom',
+        path: ['actions'],
+        message: 'Action titles must be unique',
+      });
+    if (value.strategy !== 'accept' && !value.actions.length)
+      context.addIssue({
+        code: 'custom',
+        path: ['actions'],
+        message: 'Treatment actions are required',
+      });
+    value.actions.forEach((item, index) => {
+      if (item.dueDate > value.targetDate)
+        context.addIssue({
+          code: 'custom',
+          path: ['actions', index, 'dueDate'],
+          message: 'Action due date must not exceed plan target date',
+        });
+    });
+  });
+export const treatmentPlanOptionsQuerySchema = z.object({
+  riskId: z.uuid().optional(),
+  q: z.string().trim().max(100).default(''),
+  limit: z.coerce.number().int().min(1).max(100).default(10),
+});
 export type CreateTreatmentPlanBody = z.infer<typeof createTreatmentPlanBodySchema>;
 export type TreatmentPlanOptionsQuery = z.infer<typeof treatmentPlanOptionsQuerySchema>;

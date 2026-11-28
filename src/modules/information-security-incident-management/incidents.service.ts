@@ -17,10 +17,12 @@ import {
   type IncidentViewRecord,
 } from './incidents.repository.js';
 
+// Map Actor database fields into the API response.
 function mapActor(actor: { id: string; full_name: string; email: string } | null) {
   return actor ? { id: actor.id, name: actor.full_name, email: actor.email } : null;
 }
 
+// Map Incident database fields into the API response.
 function mapIncident(incident: IncidentViewRecord) {
   return {
     id: incident.id,
@@ -65,6 +67,7 @@ function mapIncident(incident: IncidentViewRecord) {
   };
 }
 
+// Collect severity-classification metadata for a batch of incident IDs.
 async function classificationMetadata(incidentIds: string[]) {
   const { counts, latest } = await incidentsRepository.classificationMetadata(incidentIds);
   return new Map(
@@ -86,6 +89,7 @@ async function classificationMetadata(incidentIds: string[]) {
   );
 }
 
+// Map IncidentDetail database fields into the API response.
 function mapIncidentDetail(incident: IncidentDetailRecord) {
   const base = mapIncident(incident);
   const responseActions = incident.incident_actions.map((action) => ({
@@ -185,6 +189,7 @@ function mapIncidentDetail(incident: IncidentDetailRecord) {
   };
 }
 
+// Require an active account with incident viewing access.
 async function requireViewer(userId: string): Promise<void> {
   const actor = await incidentsRepository.findActor(userId);
   if (!actor || actor.status !== 'ACTIVE') {
@@ -195,6 +200,7 @@ async function requireViewer(userId: string): Promise<void> {
   }
 }
 
+// Require an active Security Officer before incident changes.
 async function requireSecurityOfficer(userId: string): Promise<void> {
   const actor = await incidentsRepository.findActor(userId);
   if (!actor || actor.status !== 'ACTIVE') {
@@ -205,6 +211,7 @@ async function requireSecurityOfficer(userId: string): Promise<void> {
   }
 }
 
+// Require an active account before applying reporter-specific access checks.
 async function requireActiveReporter(userId: string) {
   const actor = await incidentsRepository.findActor(userId);
   if (!actor || actor.status !== 'ACTIVE') {
@@ -214,6 +221,7 @@ async function requireActiveReporter(userId: string) {
 }
 
 export const incidentsService = {
+  // Require a Security Officer and translate phase-update transaction conflicts.
   async updatePhase(userId: string, incidentId: string, input: IncidentProgress) {
     await requireSecurityOfficer(userId);
     try {
@@ -224,6 +232,7 @@ export const incidentsService = {
       throw error;
     }
   },
+  // Read recorded incident phase transitions with pagination.
   async phaseHistory(userId: string, incidentId: string, query: { page: number; limit: number }) {
     await requireViewer(userId);
     if (!(await incidentsRepository.findById(incidentId)))
@@ -244,6 +253,7 @@ export const incidentsService = {
       pagination: { ...query, total, totalPages: Math.ceil(total / query.limit) },
     };
   },
+  // Read paginated actions restricted to the CONTAINMENT phase.
   async containmentHistory(
     userId: string,
     incidentId: string,
@@ -269,6 +279,7 @@ export const incidentsService = {
       pagination: { ...query, total, totalPages: Math.ceil(total / query.limit) },
     };
   },
+  // Record a completed containment action without advancing the incident phase.
   async recordContainment(
     userId: string,
     incidentId: string,
@@ -300,6 +311,7 @@ export const incidentsService = {
       throw error;
     }
   },
+  // Read paginated actions restricted to the ERADICATION phase.
   async eradicationHistory(
     userId: string,
     incidentId: string,
@@ -325,6 +337,7 @@ export const incidentsService = {
       pagination: { ...query, total, totalPages: Math.ceil(total / query.limit) },
     };
   },
+  // Record a completed eradication action without advancing the incident phase.
   async recordEradication(
     userId: string,
     incidentId: string,
@@ -356,6 +369,7 @@ export const incidentsService = {
       throw error;
     }
   },
+  // Read paginated actions restricted to the RECOVERY phase.
   async recoveryHistory(
     userId: string,
     incidentId: string,
@@ -381,6 +395,7 @@ export const incidentsService = {
       pagination: { ...query, total, totalPages: Math.ceil(total / query.limit) },
     };
   },
+  // Record a completed recovery action without advancing the incident phase.
   async recordRecovery(userId: string, incidentId: string, input: RecordRecoveryAction) {
     await requireSecurityOfficer(userId);
     try {
@@ -408,6 +423,7 @@ export const incidentsService = {
       throw error;
     }
   },
+  // Read paginated handler changes for the incident.
   async assignmentHistory(
     userId: string,
     incidentId: string,
@@ -460,10 +476,12 @@ export const incidentsService = {
       },
     };
   },
+  // Return active Security Officers eligible to handle incidents.
   async assignmentOptions(userId: string) {
     await requireSecurityOfficer(userId);
     return { users: (await incidentsRepository.assignmentOptions()).map(mapActor) };
   },
+  // Validate the handler and revision before saving an audited assignment.
   async assignHandler(userId: string, incidentId: string, input: AssignIncidentHandler) {
     await requireSecurityOfficer(userId);
     try {
@@ -492,6 +510,7 @@ export const incidentsService = {
       throw error;
     }
   },
+  // Read paginated severity-classification history for the incident.
   async classificationHistory(
     userId: string,
     incidentId: string,
@@ -528,6 +547,7 @@ export const incidentsService = {
       },
     };
   },
+  // Read a filtered incident page and enrich its selected metadata.
   async list(userId: string, query: ViewIncidentsQuery) {
     await requireViewer(userId);
     const [total, incidents] = await incidentsRepository.list(query);
@@ -546,6 +566,7 @@ export const incidentsService = {
     };
   },
 
+  // Read incidents created by the authenticated reporter.
   async listMine(userId: string, query: ViewIncidentsQuery) {
     await requireActiveReporter(userId);
     const [total, incidents] = await incidentsRepository.listCreatedBy(userId, query);
@@ -564,6 +585,7 @@ export const incidentsService = {
     };
   },
 
+  // Allow operational viewers or the original reporter to read incident details.
   async detail(userId: string, incidentId: string) {
     const actor = await requireActiveReporter(userId);
     const incident = await incidentsRepository.findById(incidentId);
@@ -576,6 +598,7 @@ export const incidentsService = {
     return { ...mapIncidentDetail(incident), ...metadata.get(incidentId) };
   },
 
+  // Classify an incident with a rationale and stale-state checks.
   async classifySeverity(userId: string, incidentId: string, input: ClassifyIncidentSeverity) {
     await requireSecurityOfficer(userId);
     try {
@@ -598,6 +621,7 @@ export const incidentsService = {
     }
   },
 
+  // List confirmed finding sources available for incident creation.
   async listSourceOptions(userId: string, query: IncidentSourceOptionsQuery) {
     await requireSecurityOfficer(userId);
     const [total, findings] = await incidentsRepository.listSourceOptions(query);
@@ -621,6 +645,7 @@ export const incidentsService = {
     };
   },
 
+  // Create an OPEN incident manually or claim a confirmed finding before conversion.
   async createFromSource(userId: string, input: CreateIncidentFromSource) {
     await requireSecurityOfficer(userId);
     const result = await incidentsRepository.createFromSource(userId, input);

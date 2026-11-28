@@ -7,11 +7,13 @@ import {
 } from './dto/create-risk-reassessment-request.dto.js';
 import { riskReassessmentRequestsService } from './risk-reassessment-requests.service.js';
 
+// Read the trusted user ID placed in response locals by authenticate.
 function userId(value: unknown) {
   if (typeof value !== 'string') throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
   return value;
 }
 
+// Return paginated reassessment requests created from the incident.
 export const listRiskReassessmentRequestHistory: RequestHandler = async (req, res) => {
   const { incidentId } = riskReassessmentRequestParamsSchema.parse(req.params);
   res.status(200).json({
@@ -24,6 +26,7 @@ export const listRiskReassessmentRequestHistory: RequestHandler = async (req, re
   });
 };
 
+// Return the risks and findings allowed by the service for this incident.
 export const getRiskReassessmentRequestOptions: RequestHandler = async (req, res) => {
   const { incidentId } = riskReassessmentRequestParamsSchema.parse(req.params);
   res.status(200).json({
@@ -35,6 +38,7 @@ export const getRiskReassessmentRequestOptions: RequestHandler = async (req, res
   });
 };
 
+// Parse the incident and request body, then ask the service to create it.
 export const createRiskReassessmentRequest: RequestHandler = async (req, res) => {
   const { incidentId } = riskReassessmentRequestParamsSchema.parse(req.params);
   res.status(201).json({

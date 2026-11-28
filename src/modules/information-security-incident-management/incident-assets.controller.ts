@@ -8,11 +8,13 @@ import {
 } from './dto/link-incident-asset.dto.js';
 import { incidentAssetsService } from './incident-assets.service.js';
 
+// Read the trusted user ID placed in response locals by authenticate.
 function authenticatedUserId(value: unknown): string {
   if (typeof value !== 'string') throw new AppError(401, 'UNAUTHORIZED', 'Authentication required');
   return value;
 }
 
+// Return validated asset options for the selected incident.
 export const getIncidentAssetOptions: RequestHandler = async (req, res) => {
   const { incidentId } = incidentIdParamsSchema.parse(req.params);
   const data = await incidentAssetsService.options(
@@ -23,6 +25,7 @@ export const getIncidentAssetOptions: RequestHandler = async (req, res) => {
   res.status(200).json({ success: true, data });
 };
 
+// Parse the incident and asset input, then ask the service to create the link.
 export const linkIncidentAsset: RequestHandler = async (req, res) => {
   const { incidentId } = incidentIdParamsSchema.parse(req.params);
   const data = await incidentAssetsService.link(
@@ -33,6 +36,7 @@ export const linkIncidentAsset: RequestHandler = async (req, res) => {
   res.status(201).json({ success: true, data });
 };
 
+// Parse both IDs and ask the service to remove the incident-asset link.
 export const unlinkIncidentAsset: RequestHandler = async (req, res) => {
   const { incidentId, assetId } = incidentAssetParamsSchema.parse(req.params);
   await incidentAssetsService.unlink(

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { env } from '../../config/env.js';
 
+// Validate the explanation content before it can be stored or returned.
 const generatedExplanationSchema = z.object({
   summary: z.string().trim().min(1).max(2_000),
   observations: z.array(z.string().trim().min(1).max(500)).max(8).default([]),
@@ -13,15 +14,15 @@ const ollamaResponseSchema = z.object({
 
 export type GeneratedAlertExplanation = z.infer<typeof generatedExplanationSchema>;
 
+// Evidence supplied by the detection flow for explanation only.
 export interface AlertExplanationInput {
   anomalyScore: number;
   threshold: number;
   suggestedRiskLevel: string | null;
   detectedAt: Date;
-  featureContributions: Array<{
+  evidence: Array<{
     featureName: string;
     featureValue: string | null;
-    contributionScore: number | null;
     rank: number | null;
   }>;
 }
@@ -37,30 +38,35 @@ const outputJsonSchema = {
   additionalProperties: false,
 } as const;
 
+// Build a bounded, evidence-only prompt. The prompt tells the model that scores
+// are not attack probabilities and that it must not invent missing facts.
 function buildPrompt(input: AlertExplanationInput): string {
   return [
     'Explain this security anomaly to a SOC analyst using only the supplied evidence.',
     'Do not invent users, IP addresses, locations, prior events, or attack techniques.',
-    'The current statistical_baseline method calculates historical rarity across rolling 5-minute, 30-minute, 1-hour and 24-hour windows, with finite-sample smoothing and a multiple-window correction. Overlapping windows are not independent evidence and must not be added together. It does not add rule points, severity bonuses, or working-hour bonuses. Do not describe it as attack probability. Rules are contextual evidence and never bypass the configured threshold. An alert requires score >= threshold. Signal scores are not attack probabilities. Stored historical alerts may predate this policy; do not claim a score met its threshold when it did not.',
+    'The first-stage ML model uses past-only 1/5/15/60-minute context for triage. Its score is compared with the enabled Asset threshold, or the deployed model threshold when no Asset override is enabled. Escalated events receive a final LLM verdict. Only MALICIOUS creates an alert; the LLM score is diagnostic evidence strength, not probability or a decision threshold.',
     'Keep the summary concise. Observations must be evidence-based. Recommended actions must be investigative, not automatic enforcement.',
     `Evidence: ${JSON.stringify({
       anomalyScore: input.anomalyScore,
       threshold: input.threshold,
-      scoreAboveThreshold: Number((input.anomalyScore - input.threshold).toFixed(8)),
       suggestedRiskLevel: input.suggestedRiskLevel,
       detectedAt: input.detectedAt.toISOString(),
-      featureContributions: input.featureContributions,
+      evidence: input.evidence,
     })}`,
   ].join('\n');
 }
 
 export const ollamaClient = {
+  // Ask Ollama to write analyst-readable text. This function cannot change the
+  // detection score, threshold or alert decision.
   async generateAlertExplanation(
     input: AlertExplanationInput,
     options?: { timeoutMs: number },
   ): Promise<GeneratedAlertExplanation | null> {
+    // Explanation generation is optional; callers keep a deterministic fallback.
     if (!env.OLLAMA_ENABLED) return null;
 
+    // Send the evidence prompt to the configured Ollama chat endpoint.
     const endpoint = new URL('/api/chat', `${env.OLLAMA_BASE_URL.replace(/\/$/, '')}/`);
     const response = await fetch(endpoint, {
       method: 'POST',
@@ -89,6 +95,7 @@ export const ollamaClient = {
       throw new Error(`Ollama request failed with status ${response.status}`);
     }
 
+    // Validate both the Ollama envelope and the JSON explanation content.
     const body = ollamaResponseSchema.parse(await response.json());
     return generatedExplanationSchema.parse(JSON.parse(body.message.content) as unknown);
   },

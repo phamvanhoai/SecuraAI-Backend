@@ -5,6 +5,7 @@ import type {
 } from './dto/link-incident-control.dto.js';
 import { incidentControlsRepository } from './incident-controls.repository.js';
 
+// Require an active Security Officer for incident-control operations.
 async function requireSecurityOfficer(userId: string) {
   const actor = await incidentControlsRepository.findActor(userId);
   if (!actor || actor.status !== 'ACTIVE')
@@ -13,6 +14,7 @@ async function requireSecurityOfficer(userId: string) {
     throw new AppError(403, 'FORBIDDEN', 'Security Officer role required');
 }
 
+// Map a security control and link state into the public response.
 const controlResponse = (control: {
   id: string;
   control_code: string;
@@ -28,6 +30,7 @@ const controlResponse = (control: {
 });
 
 export const incidentControlsService = {
+  // Load controls according to the validated link-state and search filters.
   async options(userId: string, incidentId: string, query: IncidentControlOptionsQuery) {
     await requireSecurityOfficer(userId);
     const { incident, controls, total } = await incidentControlsRepository.findOptions(
@@ -55,6 +58,7 @@ export const incidentControlsService = {
       },
     };
   },
+  // Link Incident to Control after checking the actor, incident state and control.
   async link(userId: string, incidentId: string, input: LinkIncidentControlInput) {
     await requireSecurityOfficer(userId);
     const [incident, control] = await Promise.all([
@@ -85,6 +89,7 @@ export const incidentControlsService = {
       throw error;
     }
   },
+  // Validate the incident and remove one linked control.
   async unlink(userId: string, incidentId: string, controlId: string) {
     await requireSecurityOfficer(userId);
     const incident = await incidentControlsRepository.findIncident(incidentId);

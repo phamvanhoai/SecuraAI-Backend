@@ -24,6 +24,7 @@ export type ValidatedEventRecord = ImportEventItem & {
 };
 
 export const eventImportRepository = {
+  /** Creates a new ingestion batch record in PROCESSING state before validating/inserting events. */
   async createIngestionBatch(params: CreateBatchParams) {
     const isFile = params.ingestionMethod === 'FILE';
     const fileName = isFile
@@ -62,6 +63,10 @@ export const eventImportRepository = {
     });
   },
 
+  /**
+   * Resolves auto-mappings outside the transaction, then atomically persists valid normalized_events,
+   * event_entity_mappings, invalid_events, and finalizes the batch status (COMPLETED / PARTIALLY_COMPLETED / FAILED).
+   */
   async saveBatchResults(
     batchId: string,
     eventSourceId: string,
@@ -180,6 +185,7 @@ export const eventImportRepository = {
     }, { isolationLevel: 'ReadCommitted', maxWait: 10_000, timeout: 20_000 });
   },
 
+  /** Marks an ingestion batch as FAILED when batch persistence throws an unexpected error. */
   markBatchFailed(batchId: string) {
     return prisma.event_ingestion_batches.update({
       where: { id: batchId },
@@ -188,6 +194,7 @@ export const eventImportRepository = {
     });
   },
 
+  /** Loads a single ingestion batch with its source name and creator profile. */
   async findBatchById(batchId: string) {
     return prisma.event_ingestion_batches.findUnique({
       where: { id: batchId },
@@ -223,6 +230,7 @@ export const eventImportRepository = {
     });
   },
 
+  /** Queries a paginated, filterable list of invalid event records belonging to one import batch. */
   async findInvalidEventsByBatchId(
     batchId: string,
     params: { page: number; limit: number; errorCode?: string | undefined; q?: string | undefined },
@@ -267,6 +275,7 @@ export const eventImportRepository = {
     return { items, total };
   },
 
+  /** Queries paginated import batch history for a specific event source ordered by newest first. */
   async findBatchesBySourceId(sourceId: string, params: { page: number; limit: number }) {
     const { page, limit } = params;
     const skip = (page - 1) * limit;

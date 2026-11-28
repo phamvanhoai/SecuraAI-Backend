@@ -55,12 +55,14 @@ const requestSelect = {
 } as const;
 
 export const riskReassessmentReviewRepository = {
+  // Load the fixed role, status and responsibility data used for authorization.
   findActor(userId: string) {
     return prisma.users.findUnique({
       where: { id: userId },
       select: { id: true, role: true, status: true },
     });
   },
+  // Query only requests visible to the contextual Risk Owner or elevated actor.
   async listOwned(userId: string | undefined, query: ListOwnedReassessmentRequestsQuery) {
     const status =
       query.status === 'all'
@@ -114,12 +116,14 @@ export const riskReassessmentReviewRepository = {
       }),
     ]);
   },
+  // Load one request with its risk owner and current workflow state.
   findById(requestId: string) {
     return prisma.risk_reassessment_requests.findUnique({
       where: { id: requestId },
       select: requestSelect,
     });
   },
+  // Change PENDING to UNDER_REVIEW only when the database state still matches.
   async startReview(requestId: string, userId: string) {
     const result = await prisma.risk_reassessment_requests.updateMany({
       where: {
@@ -132,6 +136,7 @@ export const riskReassessmentReviewRepository = {
     if (result.count === 0) return null;
     return this.findById(requestId);
   },
+  // Reject an in-review request with a conditional workflow update.
   async reject(requestId: string, userId: string, input: RejectRiskReassessmentRequestInput) {
     const reviewedAt = new Date();
     const result = await prisma.risk_reassessment_requests.updateMany({
@@ -149,6 +154,7 @@ export const riskReassessmentReviewRepository = {
     });
     return result.count === 0 ? null : { reviewedAt };
   },
+  // Save the residual assessment and complete the request in one transaction.
   async complete(requestId: string, actorId: string, input: CompleteRiskReassessmentInput) {
     return prisma.$transaction(async (database) => {
       const request = await database.risk_reassessment_requests.findUnique({

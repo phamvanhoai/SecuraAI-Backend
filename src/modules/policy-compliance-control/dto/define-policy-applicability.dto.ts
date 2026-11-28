@@ -1,10 +1,12 @@
 import { z } from 'zod';
 
+// Validate request data for policy applicability params.
 export const policyApplicabilityParamsSchema = z.object({
   policyId: z.uuid(),
   versionId: z.uuid(),
 });
 
+// Validate request data for define policy applicability body.
 export const definePolicyApplicabilityBodySchema = z
   .object({
     departmentIds: z
