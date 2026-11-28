@@ -90,6 +90,14 @@ describe('residual risk workflow', () => {
     await expect(riskRegisterRepository.assessResidualRisk('risk', 'owner', input)).rejects.toThrow('audit chain unavailable');
     expect(db.audit_logs.create).not.toHaveBeenCalled();
   });
+  it('does not copy an overdue review date after midnight in Vietnam', async () => {
+    db.risks.findUnique.mockResolvedValue({ ...risk, review_date: new Date('2026-11-28') });
+    db.$queryRaw.mockResolvedValue([{ time: new Date('2026-11-28T17:00:00Z') }]);
+    await riskRegisterRepository.assessResidualRisk('risk', 'owner', input);
+    expect(db.risk_assessments.create).toHaveBeenCalledWith(expect.objectContaining({
+      data: expect.objectContaining({ review_date: null }),
+    }));
+  });
   it.each(['ACCEPTED' , 'CLOSED', 'ARCHIVED'])('blocks %s', async (status) => {
     db.risks.findUnique.mockResolvedValue({ ...risk, status });
     await expect(
