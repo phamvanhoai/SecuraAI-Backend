@@ -26,7 +26,6 @@ services:
       PORT: 3000
       DATABASE_URL: postgresql://postgres:${DEMO_DB_PASSWORD}@postgres:5432/securaai_demo?schema=public
       OLLAMA_BASE_URL: http://host.docker.internal:11434
-      DETECTION_PIPELINE_ENABLED: "true"
       ML_MODEL_BASE_URL: http://host.docker.internal:8002
       ML_MODEL_TIMEOUT_MS: "2000"
       # Demo automation signs in with several isolated role profiles and may

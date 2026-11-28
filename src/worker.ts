@@ -1,4 +1,3 @@
-import { env } from './config/env.js';
 import { logger } from './config/logger.js';
 import { prisma } from './database/prisma.js';
 import {
@@ -11,10 +10,6 @@ import {
 } from './modules/event-ingestion/event-retention-purge.worker.js';
 import { runExplanationJobs } from './modules/ai-anomaly-detection-alerts/explanation-jobs.service.js';
 
-if (!env.DETECTION_PIPELINE_ENABLED)
-  throw new Error(
-    'Apply the pipeline migration and enable DETECTION_PIPELINE_ENABLED before starting the worker',
-  );
 let stopping = false;
 let explaining = false;
 startAutomatedDetectionWorker();

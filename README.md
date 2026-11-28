@@ -154,4 +154,4 @@ Durable detection setup and deployment: [docs/durable-detection-pipeline.md](doc
 
 Docker local demo: see [docs/docker-local-demo.md](docs/docker-local-demo.md).
 
-Local development: npm run dev starts both API and detection/explanation processing when DETECTION_PIPELINE_ENABLED=true. No extra worker terminal is needed. Docker/production retain separate worker processes.
+Local development: `npm run dev` starts both API and durable detection/explanation processing. No extra worker terminal is needed. Docker/production retain separate API and worker processes.

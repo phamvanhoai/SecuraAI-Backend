@@ -1,9 +1,9 @@
 # Durable detection pipeline
 
-Enable `DETECTION_PIPELINE_ENABLED=true` only after applying migration
-`20261030140000_durable_detection_jobs`. Local development only needs `npm run dev`:
-it watches the API and automatically starts detection/explanation processing when
-the pipeline flag is enabled. Do not also run `npm run worker` in this mode.
+Migration `20261030140000_durable_detection_jobs` is required. The durable queue
+is the only supported detection path. Local development only needs `npm run dev`:
+it watches the API and automatically starts detection/explanation processing.
+Do not also run `npm run worker` in this mode.
 Production uses `npm run build`,
 `npm start` and `npm run worker:start`; a serverless API alone cannot run the worker.
 

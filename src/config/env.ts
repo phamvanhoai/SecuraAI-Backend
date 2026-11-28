@@ -37,7 +37,6 @@ const envSchema = z.object({
   OLLAMA_MODEL: z.string().trim().min(1).default('qwen3:4b'),
   OLLAMA_TIMEOUT_MS: z.coerce.number().int().min(1000).max(120_000).default(60_000),
   ANOMALY_AUTO_DETECTION_ENABLED: booleanString.default(true),
-  DETECTION_PIPELINE_ENABLED: booleanString.default(false),
   ML_MODEL_BASE_URL: z.url().default('http://127.0.0.1:8000'),
   ML_MODEL_TIMEOUT_MS: z.coerce.number().int().min(100).max(10_000).default(2_000),
   ANOMALY_AUTO_DETECTION_INTERVAL_MS: z.coerce
@@ -47,7 +46,12 @@ const envSchema = z.object({
     .max(300_000)
     .default(60_000),
   RETENTION_PURGE_ENABLED: booleanString.default(true),
-  RETENTION_PURGE_INTERVAL_MS: z.coerce.number().int().min(60_000).max(86_400_000).default(3_600_000),
+  RETENTION_PURGE_INTERVAL_MS: z.coerce
+    .number()
+    .int()
+    .min(60_000)
+    .max(86_400_000)
+    .default(3_600_000),
   RETENTION_PURGE_BATCH_SIZE: z.coerce.number().int().min(10).max(1_000).default(200),
   RETENTION_PURGE_MAX_BATCHES_PER_RUN: z.coerce.number().int().min(1).max(500).default(50),
   RETENTION_PURGE_RUN_ON_STARTUP: booleanString.default(false),

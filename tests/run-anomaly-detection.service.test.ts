@@ -44,6 +44,7 @@ const event = {
   normalized_payload: {},
   event_entity_mappings: [],
 };
+const leaseToken = '11111111-1111-4111-8111-111111111111' as const;
 
 describe('run anomaly detection service', () => {
   beforeEach(() => {
@@ -54,7 +55,10 @@ describe('run anomaly detection service', () => {
       version: '8',
       parameters: { threshold: 0.8 },
     });
-    vi.mocked(anomalyDetectionRepository.findPendingEvents).mockResolvedValue({ events: [event] });
+    vi.mocked(anomalyDetectionRepository.findPendingEvents).mockResolvedValue({
+      events: [event],
+      leaseToken,
+    });
     vi.mocked(anomalyDetectionRepository.findMlTemporalContext).mockResolvedValue([]);
     vi.mocked(anomalyDetectionRepository.hasPendingEvents).mockResolvedValue(false);
     vi.mocked(anomalyDetectionRepository.persistRun).mockResolvedValue({
@@ -162,6 +166,7 @@ describe('run anomaly detection service', () => {
     });
     vi.mocked(anomalyDetectionRepository.findPendingEvents).mockResolvedValue({
       events: [{ ...event, event_entity_mappings: [{ asset_id: 'asset-1' }] }],
+      leaseToken,
     });
     vi.mocked(requestMlPrediction).mockResolvedValue({
       status: 'PREDICTED',
@@ -215,6 +220,7 @@ describe('run anomaly detection service', () => {
     });
     vi.mocked(anomalyDetectionRepository.findPendingEvents).mockResolvedValue({
       events: [{ ...event, event_entity_mappings: [{ asset_id: 'asset-1' }] }],
+      leaseToken,
     });
     vi.mocked(requestMlPrediction).mockResolvedValue({
       status: 'PREDICTED',
